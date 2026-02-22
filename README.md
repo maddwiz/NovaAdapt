@@ -26,7 +26,7 @@ Implemented now:
   - Sends actions to DirectShell (or dry-run preview).
   - Records each action in a local undo queue database.
   - Exposes HTTP API with optional bearer auth and async jobs.
-- `bridge` relay service for secure remote forwarding into core API.
+- `bridge` relay service in Go for secure remote forwarding into core API.
 
 Planned next:
 
@@ -120,10 +120,11 @@ API endpoints:
 - `POST /undo` with JSON payload
 - `POST /check` with JSON payload
 
-8. Start secure bridge relay:
+8. Build and start secure bridge relay:
 
 ```bash
-novaadapt-bridge \
+./installer/build_bridge_go.sh
+./bridge/bin/novaadapt-bridge \
   --host 127.0.0.1 \
   --port 9797 \
   --core-url http://127.0.0.1:8787 \

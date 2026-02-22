@@ -1,1 +1,0 @@
-"""NovaAdapt bridge relay package."""

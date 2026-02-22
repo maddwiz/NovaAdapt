@@ -2,9 +2,9 @@
 
 Secure relay service for remote clients (phone/glasses) to reach NovaAdapt core.
 
-## Current MVP
+## Implementation
 
-- Python relay package: `novaadapt_bridge.relay`
+- Primary implementation: Go (`bridge/cmd/novaadapt-bridge`)
 - Token-authenticated ingress (bridge token)
 - Token-authenticated upstream calls to core API (core token)
 - Forwards endpoints:
@@ -16,10 +16,18 @@ Secure relay service for remote clients (phone/glasses) to reach NovaAdapt core.
   - `POST /undo`
   - `POST /check`
 
+## Build
+
+```bash
+cd bridge
+go test ./...
+go build -o ./bin/novaadapt-bridge ./cmd/novaadapt-bridge
+```
+
 ## Run
 
 ```bash
-novaadapt-bridge \
+./bridge/bin/novaadapt-bridge \
   --host 127.0.0.1 \
   --port 9797 \
   --core-url http://127.0.0.1:8787 \

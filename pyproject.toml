@@ -15,10 +15,9 @@ litellm = ["litellm>=1.61.0"]
 
 [project.scripts]
 novaadapt = "novaadapt_core.cli:main"
-novaadapt-bridge = "novaadapt_bridge.relay:main"
 
 [tool.setuptools]
 include-package-data = true
 
 [tool.setuptools.packages.find]
-where = ["core", "shared", "bridge"]
+where = ["core", "shared"]
