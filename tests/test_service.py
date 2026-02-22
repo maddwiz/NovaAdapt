@@ -100,6 +100,44 @@ class ServiceTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             service.run({})
 
+    def test_plan_lifecycle_execute_and_reject(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            service = NovaAdaptService(
+                default_config=Path("unused.json"),
+                db_path=Path(tmp) / "actions.db",
+                plans_db_path=Path(tmp) / "plans.db",
+                router_loader=lambda _path: _StubRouter(),
+                directshell_factory=_StubDirectShell,
+            )
+
+            created = service.create_plan({"objective": "click ok"})
+            self.assertEqual(created["status"], "pending")
+            self.assertEqual(created["objective"], "click ok")
+
+            # Plan generation does not write to action history.
+            self.assertEqual(service.history(limit=5), [])
+
+            listed = service.list_plans(limit=5)
+            self.assertEqual(len(listed), 1)
+            self.assertEqual(listed[0]["id"], created["id"])
+
+            approved = service.approve_plan(created["id"], {"execute": True})
+            self.assertEqual(approved["status"], "executed")
+            self.assertEqual(len(approved.get("execution_results") or []), 1)
+            self.assertEqual(len(approved.get("action_log_ids") or []), 1)
+
+            history = service.history(limit=5)
+            self.assertEqual(len(history), 1)
+            self.assertEqual(history[0]["status"], "ok")
+
+            created_2 = service.create_plan({"objective": "click ok again"})
+            rejected = service.reject_plan(created_2["id"], reason="operator rejected")
+            self.assertEqual(rejected["status"], "rejected")
+            self.assertEqual(rejected["reject_reason"], "operator rejected")
+
+            with self.assertRaises(ValueError):
+                service.approve_plan(created_2["id"], {"execute": True})
+
 
 if __name__ == "__main__":
     unittest.main()

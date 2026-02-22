@@ -28,6 +28,7 @@ var allowedPaths = map[string]struct{}{
 	"/undo":         {},
 	"/check":        {},
 	"/jobs":         {},
+	"/plans":        {},
 }
 
 // Config controls bridge relay behavior.
@@ -203,6 +204,10 @@ func (h *Handler) healthPayload(requestID string, deep bool) (int, any) {
 func isForwardedPath(p string) bool {
 	if strings.HasPrefix(p, "/jobs/") {
 		id := strings.TrimSpace(strings.TrimPrefix(p, "/jobs/"))
+		return id != ""
+	}
+	if strings.HasPrefix(p, "/plans/") {
+		id := strings.TrimSpace(strings.TrimPrefix(p, "/plans/"))
 		return id != ""
 	}
 	_, ok := allowedPaths[p]

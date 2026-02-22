@@ -114,6 +114,12 @@ def _build_parser() -> argparse.ArgumentParser:
         default=Path(os.getenv("NOVAADAPT_JOBS_DB", str(Path.home() / ".novaadapt" / "jobs.db"))),
         help="Path to persisted async jobs SQLite database",
     )
+    serve_cmd.add_argument(
+        "--plans-db-path",
+        type=Path,
+        default=Path(os.getenv("NOVAADAPT_PLANS_DB", str(Path.home() / ".novaadapt" / "plans.db"))),
+        help="Path to persisted approval plans SQLite database",
+    )
     serve_cmd.add_argument("--host", default="127.0.0.1")
     serve_cmd.add_argument("--port", type=int, default=8787)
     serve_cmd.add_argument(
@@ -158,7 +164,11 @@ def main() -> None:
 
     try:
         if args.command == "serve":
-            service = NovaAdaptService(default_config=args.config, db_path=args.db_path)
+            service = NovaAdaptService(
+                default_config=args.config,
+                db_path=args.db_path,
+                plans_db_path=args.plans_db_path,
+            )
             run_server(
                 host=args.host,
                 port=args.port,

@@ -51,6 +51,37 @@ class NovaAdaptAPIClient:
             return payload
         raise APIClientError("Expected object payload from /run_async")
 
+    def create_plan(self, objective: str, **kwargs: Any) -> dict[str, Any]:
+        body = {"objective": objective, **kwargs}
+        payload = self._post_json("/plans", body)
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /plans")
+
+    def plans(self, limit: int = 50) -> list[dict[str, Any]]:
+        payload = self._get_json(f"/plans?limit={max(1, limit)}")
+        if isinstance(payload, list):
+            return payload
+        raise APIClientError("Expected list payload from /plans")
+
+    def plan(self, plan_id: str) -> dict[str, Any]:
+        payload = self._get_json(f"/plans/{plan_id}")
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /plans/{id}")
+
+    def approve_plan(self, plan_id: str, **kwargs: Any) -> dict[str, Any]:
+        payload = self._post_json(f"/plans/{plan_id}/approve", kwargs)
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /plans/{id}/approve")
+
+    def reject_plan(self, plan_id: str, reason: str | None = None) -> dict[str, Any]:
+        payload = self._post_json(f"/plans/{plan_id}/reject", {"reason": reason} if reason is not None else {})
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /plans/{id}/reject")
+
     def jobs(self, limit: int = 50) -> list[dict[str, Any]]:
         payload = self._get_json(f"/jobs?limit={max(1, limit)}")
         if isinstance(payload, list):

@@ -36,6 +36,7 @@ class NovaAdaptAgent:
         candidate_models: list[str] | None = None,
         fallback_models: list[str] | None = None,
         dry_run: bool = True,
+        record_history: bool = True,
         allow_dangerous: bool = False,
         max_actions: int = 25,
     ) -> dict[str, Any]:
@@ -74,13 +75,14 @@ class NovaAdaptAgent:
                     "dangerous": decision.dangerous,
                 }
                 execution.append(blocked_payload)
-                action_log_ids.append(
-                    self.undo_queue.record(
-                        action=action,
-                        status="blocked",
-                        undo_action=undo_action,
+                if record_history:
+                    action_log_ids.append(
+                        self.undo_queue.record(
+                            action=action,
+                            status="blocked",
+                            undo_action=undo_action,
+                        )
                     )
-                )
                 continue
 
             run_result = self.directshell.execute_action(action=action, dry_run=dry_run)
@@ -92,13 +94,14 @@ class NovaAdaptAgent:
                     "dangerous": decision.dangerous,
                 }
             )
-            action_log_ids.append(
-                self.undo_queue.record(
-                    action=run_result.action,
-                    status=run_result.status,
-                    undo_action=undo_action,
+            if record_history:
+                action_log_ids.append(
+                    self.undo_queue.record(
+                        action=run_result.action,
+                        status=run_result.status,
+                        undo_action=undo_action,
+                    )
                 )
-            )
 
         return {
             "model": result.model_name,

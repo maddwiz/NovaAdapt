@@ -237,6 +237,27 @@ def _build_handler(
                     self._send_json(status_code, item)
                     return
 
+                if path == "/plans":
+                    limit = int(_single(query, "limit") or 50)
+                    status_code = 200
+                    self._send_json(status_code, service.list_plans(limit=limit))
+                    return
+
+                if path.startswith("/plans/"):
+                    plan_id = path.removeprefix("/plans/").strip("/")
+                    if not plan_id:
+                        status_code = 404
+                        self._send_json(status_code, {"error": "Not found"})
+                        return
+                    item = service.get_plan(plan_id)
+                    if item is None:
+                        status_code = 404
+                        self._send_json(status_code, {"error": "Plan not found"})
+                        return
+                    status_code = 200
+                    self._send_json(status_code, item)
+                    return
+
                 status_code = 404
                 self._send_json(status_code, {"error": "Not found"})
             except ValueError as exc:
@@ -286,6 +307,36 @@ def _build_handler(
                         return
                     status_code = 200
                     self._send_json(status_code, canceled)
+                    return
+
+                if path == "/plans":
+                    created = service.create_plan(payload)
+                    status_code = 201
+                    self._send_json(status_code, created)
+                    return
+
+                if path.startswith("/plans/") and path.endswith("/approve"):
+                    plan_id = path.removeprefix("/plans/").removesuffix("/approve").strip("/")
+                    if not plan_id:
+                        status_code = 404
+                        self._send_json(status_code, {"error": "Not found"})
+                        return
+                    status_code = 200
+                    self._send_json(status_code, service.approve_plan(plan_id, payload))
+                    return
+
+                if path.startswith("/plans/") and path.endswith("/reject"):
+                    plan_id = path.removeprefix("/plans/").removesuffix("/reject").strip("/")
+                    if not plan_id:
+                        status_code = 404
+                        self._send_json(status_code, {"error": "Not found"})
+                        return
+                    reason = payload.get("reason")
+                    status_code = 200
+                    self._send_json(
+                        status_code,
+                        service.reject_plan(plan_id, reason=str(reason) if reason is not None else None),
+                    )
                     return
 
                 if path == "/run":

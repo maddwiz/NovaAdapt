@@ -86,6 +86,58 @@ def build_openapi_spec() -> dict:
                     "responses": {"200": {"description": "Cancellation status"}, "404": {"description": "Not found"}},
                 }
             },
+            "/plans": {
+                "get": {
+                    "summary": "List recent approval plans",
+                    "responses": {"200": {"description": "Plan list"}},
+                },
+                "post": {
+                    "summary": "Create a pending plan from objective",
+                    "responses": {"201": {"description": "Plan created"}},
+                },
+            },
+            "/plans/{id}": {
+                "get": {
+                    "summary": "Fetch plan status/details",
+                    "parameters": [
+                        {
+                            "name": "id",
+                            "in": "path",
+                            "required": True,
+                            "schema": {"type": "string"},
+                        }
+                    ],
+                    "responses": {"200": {"description": "Plan"}, "404": {"description": "Not found"}},
+                }
+            },
+            "/plans/{id}/approve": {
+                "post": {
+                    "summary": "Approve plan and optionally execute actions",
+                    "parameters": [
+                        {
+                            "name": "id",
+                            "in": "path",
+                            "required": True,
+                            "schema": {"type": "string"},
+                        }
+                    ],
+                    "responses": {"200": {"description": "Approved plan"}, "404": {"description": "Not found"}},
+                }
+            },
+            "/plans/{id}/reject": {
+                "post": {
+                    "summary": "Reject plan with optional reason",
+                    "parameters": [
+                        {
+                            "name": "id",
+                            "in": "path",
+                            "required": True,
+                            "schema": {"type": "string"},
+                        }
+                    ],
+                    "responses": {"200": {"description": "Rejected plan"}, "404": {"description": "Not found"}},
+                }
+            },
             "/history": {
                 "get": {
                     "summary": "Fetch action history",

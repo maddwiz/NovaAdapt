@@ -34,6 +34,12 @@ class _Handler(BaseHTTPRequestHandler):
         if self.path.startswith("/jobs"):
             self._send(200, [{"id": "job-1"}])
             return
+        if self.path.startswith("/plans/"):
+            self._send(200, {"id": "plan-1", "status": "pending"})
+            return
+        if self.path.startswith("/plans"):
+            self._send(200, [{"id": "plan-1", "status": "pending"}])
+            return
         if self.path.startswith("/history"):
             self._send(200, [{"id": 1}])
             return
@@ -54,7 +60,16 @@ class _Handler(BaseHTTPRequestHandler):
             self._send(401, {"error": "unauthorized"})
             return
 
-        if self.path in {"/run", "/run_async", "/undo", "/check", "/jobs/job-1/cancel"}:
+        if self.path in {
+            "/run",
+            "/run_async",
+            "/undo",
+            "/check",
+            "/jobs/job-1/cancel",
+            "/plans",
+            "/plans/plan-1/approve",
+            "/plans/plan-1/reject",
+        }:
             length = int(self.headers.get("Content-Length", "0"))
             raw = self.rfile.read(length).decode("utf-8")
             payload = json.loads(raw)
@@ -64,6 +79,12 @@ class _Handler(BaseHTTPRequestHandler):
                 self._send(202, {"job_id": "job-1", "status": "queued"})
             elif self.path == "/jobs/job-1/cancel":
                 self._send(200, {"id": "job-1", "status": "canceled", "canceled": True})
+            elif self.path == "/plans":
+                self._send(201, {"id": "plan-1", "status": "pending"})
+            elif self.path == "/plans/plan-1/approve":
+                self._send(200, {"id": "plan-1", "status": "executed"})
+            elif self.path == "/plans/plan-1/reject":
+                self._send(200, {"id": "plan-1", "status": "rejected"})
             elif self.path == "/undo":
                 self._send(200, {"id": payload.get("id", 1), "status": "marked_undone"})
             else:
@@ -108,6 +129,11 @@ class APIClientTests(unittest.TestCase):
         self.assertEqual(client.jobs(limit=5)[0]["id"], "job-1")
         self.assertEqual(client.job("job-1")["status"], "succeeded")
         self.assertTrue(client.cancel_job("job-1")["canceled"])
+        self.assertEqual(client.create_plan("demo")["id"], "plan-1")
+        self.assertEqual(client.plans(limit=3)[0]["id"], "plan-1")
+        self.assertEqual(client.plan("plan-1")["status"], "pending")
+        self.assertEqual(client.approve_plan("plan-1", execute=True)["status"], "executed")
+        self.assertEqual(client.reject_plan("plan-1", reason="nope")["status"], "rejected")
         self.assertEqual(client.history(limit=1)[0]["id"], 1)
         self.assertEqual(client.undo(id=1, mark_only=True)["status"], "marked_undone")
         self.assertIn("novaadapt_core_requests_total", client.metrics_text())

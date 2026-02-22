@@ -22,6 +22,7 @@ Implemented now:
   - API client SDK for core/bridge (`NovaAdaptAPIClient`).
 - `core` Python CLI orchestrator that:
   - Requests an action plan from selected model(s).
+  - Supports explicit plan approval workflow (`create -> approve/reject`).
   - Parses JSON actions.
   - Enforces execution guardrails for destructive actions.
   - Sends actions to DirectShell (or dry-run preview).
@@ -127,6 +128,10 @@ API endpoints:
 - `POST /run_async` with JSON payload (returns `job_id`)
 - `GET /jobs` and `GET /jobs/{id}`
 - `POST /jobs/{id}/cancel`
+- `GET /plans` and `GET /plans/{id}`
+- `POST /plans` (create pending plan)
+- `POST /plans/{id}/approve` (execute on approval by default)
+- `POST /plans/{id}/reject`
 - `POST /undo` with JSON payload
 - `POST /check` with JSON payload
 
@@ -254,6 +259,7 @@ Environment variables:
 - Bridge relay forwards `/dashboard` HTML for secure remote browser access.
 - Core API supports configurable request rate limiting and max body size on `serve`.
 - Async job records can be persisted to SQLite (`--jobs-db-path`) for restart-safe history.
+- Plan approval records can be persisted to SQLite (`--plans-db-path`) for restart-safe approvals/audits.
 
 ## License
 

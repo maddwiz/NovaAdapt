@@ -7,6 +7,8 @@ from novaadapt_shared import ModelRouter, UndoQueue
 
 from .agent import NovaAdaptAgent
 from .directshell import DirectShellClient
+from .plan_store import PlanStore
+from .policy import ActionPolicy
 
 
 class NovaAdaptService:
@@ -16,13 +18,16 @@ class NovaAdaptService:
         self,
         default_config: Path,
         db_path: Path | None = None,
+        plans_db_path: Path | None = None,
         router_loader: Callable[[Path], ModelRouter] | None = None,
         directshell_factory: Callable[[], DirectShellClient] | None = None,
     ) -> None:
         self.default_config = default_config
         self.db_path = db_path
+        self.plans_db_path = plans_db_path
         self.router_loader = router_loader or ModelRouter.from_config_file
         self.directshell_factory = directshell_factory or DirectShellClient
+        self._plan_store: PlanStore | None = None
 
     def models(self, config_path: Path | None = None) -> list[dict[str, Any]]:
         router = self.router_loader(config_path or self.default_config)
@@ -56,6 +61,7 @@ class NovaAdaptService:
         candidate_models = self._as_name_list(payload.get("candidates"))
         fallback_models = self._as_name_list(payload.get("fallbacks"))
         execute = bool(payload.get("execute", False))
+        record_history = bool(payload.get("record_history", True))
         allow_dangerous = bool(payload.get("allow_dangerous", False))
         max_actions = int(payload.get("max_actions", 25))
 
@@ -73,9 +79,129 @@ class NovaAdaptService:
             candidate_models=candidate_models or None,
             fallback_models=fallback_models or None,
             dry_run=not execute,
+            record_history=record_history,
             allow_dangerous=allow_dangerous,
             max_actions=max(1, max_actions),
         )
+
+    def create_plan(self, payload: dict[str, Any]) -> dict[str, Any]:
+        plan_preview = self.run(
+            {
+                **payload,
+                "execute": False,
+                "record_history": False,
+            }
+        )
+        objective = str(payload.get("objective", "")).strip()
+        if not objective:
+            raise ValueError("'objective' is required")
+        stored = self._plans().create(
+            {
+                "objective": objective,
+                "strategy": str(payload.get("strategy", "single")),
+                "model": plan_preview.get("model"),
+                "model_id": plan_preview.get("model_id"),
+                "actions": plan_preview.get("actions", []),
+                "votes": plan_preview.get("votes", {}),
+                "model_errors": plan_preview.get("model_errors", {}),
+                "attempted_models": plan_preview.get("attempted_models", []),
+                "status": "pending",
+            }
+        )
+        stored["preview_results"] = plan_preview.get("results", [])
+        return stored
+
+    def list_plans(self, limit: int = 50) -> list[dict[str, Any]]:
+        return self._plans().list(limit=max(1, int(limit)))
+
+    def get_plan(self, plan_id: str) -> dict[str, Any] | None:
+        return self._plans().get(plan_id)
+
+    def approve_plan(self, plan_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        plan = self._plans().get(plan_id)
+        if plan is None:
+            raise ValueError("Plan not found")
+        if plan["status"] == "rejected":
+            raise ValueError("Plan already rejected")
+        if plan["status"] == "executed":
+            return plan
+
+        execute = bool(payload.get("execute", True))
+        allow_dangerous = bool(payload.get("allow_dangerous", False))
+        max_actions = int(payload.get("max_actions", len(plan.get("actions", [])) or 1))
+
+        if not execute:
+            approved = self._plans().approve(plan_id=plan_id, status="approved")
+            if approved is None:
+                raise ValueError("Plan not found")
+            return approved
+
+        actions = [item for item in plan.get("actions", []) if isinstance(item, dict)]
+        actions = actions[: max(1, max_actions)]
+        policy = ActionPolicy()
+        queue = UndoQueue(db_path=self.db_path)
+        directshell = self.directshell_factory()
+
+        execution_results: list[dict[str, Any]] = []
+        action_log_ids: list[int] = []
+        for action in actions:
+            decision = policy.evaluate(action, allow_dangerous=allow_dangerous)
+            undo_action = action.get("undo") if isinstance(action.get("undo"), dict) else None
+            if not decision.allowed:
+                execution_results.append(
+                    {
+                        "status": "blocked",
+                        "output": decision.reason,
+                        "action": action,
+                        "dangerous": decision.dangerous,
+                    }
+                )
+                action_log_ids.append(
+                    queue.record(
+                        action=action,
+                        status="blocked",
+                        undo_action=undo_action,
+                    )
+                )
+                continue
+
+            run_result = directshell.execute_action(action=action, dry_run=False)
+            execution_results.append(
+                {
+                    "status": run_result.status,
+                    "output": run_result.output,
+                    "action": run_result.action,
+                    "dangerous": decision.dangerous,
+                }
+            )
+            action_log_ids.append(
+                queue.record(
+                    action=run_result.action,
+                    status=run_result.status,
+                    undo_action=undo_action,
+                )
+            )
+
+        approved = self._plans().approve(
+            plan_id=plan_id,
+            execution_results=execution_results,
+            action_log_ids=action_log_ids,
+            status="executed",
+        )
+        if approved is None:
+            raise ValueError("Plan not found")
+        return approved
+
+    def reject_plan(self, plan_id: str, reason: str | None = None) -> dict[str, Any]:
+        plan = self._plans().get(plan_id)
+        if plan is None:
+            raise ValueError("Plan not found")
+        if plan["status"] == "executed":
+            raise ValueError("Plan already executed")
+        rejected = self._plans().reject(plan_id, reason=reason)
+        if rejected is None:
+            raise ValueError("Plan not found")
+        return rejected
 
     def history(self, limit: int = 20) -> list[dict[str, Any]]:
         queue = UndoQueue(db_path=self.db_path)
@@ -129,3 +255,8 @@ class NovaAdaptService:
         if isinstance(value, list):
             return [str(item).strip() for item in value if str(item).strip()]
         return []
+
+    def _plans(self) -> PlanStore:
+        if self._plan_store is None:
+            self._plan_store = PlanStore(self.plans_db_path)
+        return self._plan_store

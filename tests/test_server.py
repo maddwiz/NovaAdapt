@@ -56,6 +56,7 @@ class ServerTests(unittest.TestCase):
             service = NovaAdaptService(
                 default_config=Path("unused.json"),
                 db_path=Path(tmp) / "actions.db",
+                plans_db_path=Path(tmp) / "plans.db",
                 router_loader=lambda _path: _StubRouter(),
                 directshell_factory=_StubDirectShell,
             )
@@ -77,6 +78,7 @@ class ServerTests(unittest.TestCase):
                 self.assertEqual(openapi["openapi"], "3.1.0")
                 self.assertIn("/run", openapi["paths"])
                 self.assertIn("/jobs/{id}/cancel", openapi["paths"])
+                self.assertIn("/plans/{id}/approve", openapi["paths"])
 
                 models, _ = _get_json_with_headers(f"http://{host}:{port}/models")
                 self.assertEqual(models[0]["name"], "local")
@@ -90,6 +92,26 @@ class ServerTests(unittest.TestCase):
 
                 history, _ = _get_json_with_headers(f"http://{host}:{port}/history?limit=5")
                 self.assertEqual(len(history), 1)
+
+                created_plan, _ = _post_json_with_headers(
+                    f"http://{host}:{port}/plans",
+                    {"objective": "click ok"},
+                )
+                self.assertEqual(created_plan["status"], "pending")
+                plan_id = created_plan["id"]
+
+                plan_list, _ = _get_json_with_headers(f"http://{host}:{port}/plans?limit=5")
+                self.assertGreaterEqual(len(plan_list), 1)
+
+                plan_item, _ = _get_json_with_headers(f"http://{host}:{port}/plans/{plan_id}")
+                self.assertEqual(plan_item["id"], plan_id)
+
+                approved_plan, _ = _post_json_with_headers(
+                    f"http://{host}:{port}/plans/{plan_id}/approve",
+                    {"execute": True},
+                )
+                self.assertEqual(approved_plan["status"], "executed")
+                self.assertEqual(len(approved_plan.get("execution_results") or []), 1)
             finally:
                 server.shutdown()
                 server.server_close()
@@ -100,6 +122,7 @@ class ServerTests(unittest.TestCase):
             service = NovaAdaptService(
                 default_config=Path("unused.json"),
                 db_path=Path(tmp) / "actions.db",
+                plans_db_path=Path(tmp) / "plans.db",
                 router_loader=lambda _path: _StubRouter(),
                 directshell_factory=_StubDirectShell,
             )
@@ -145,6 +168,20 @@ class ServerTests(unittest.TestCase):
 
                 self.assertIsNotNone(terminal)
                 self.assertIn(terminal["status"], {"succeeded", "running", "queued", "canceled"})
+
+                created_plan = _post_json(
+                    f"http://{host}:{port}/plans",
+                    {"objective": "click ok"},
+                    token="secret",
+                )
+                self.assertEqual(created_plan["status"], "pending")
+
+                rejected_plan = _post_json(
+                    f"http://{host}:{port}/plans/{created_plan['id']}/reject",
+                    {"reason": "manual deny"},
+                    token="secret",
+                )
+                self.assertEqual(rejected_plan["status"], "rejected")
             finally:
                 server.shutdown()
                 server.server_close()
@@ -168,6 +205,7 @@ class ServerTests(unittest.TestCase):
             service = NovaAdaptService(
                 default_config=Path("unused.json"),
                 db_path=Path(tmp) / "actions.db",
+                plans_db_path=Path(tmp) / "plans.db",
                 router_loader=lambda _path: _StubRouter(),
                 directshell_factory=_StubDirectShell,
             )
@@ -203,6 +241,7 @@ class ServerTests(unittest.TestCase):
             service = NovaAdaptService(
                 default_config=Path("unused.json"),
                 db_path=Path(tmp) / "actions.db",
+                plans_db_path=Path(tmp) / "plans.db",
                 router_loader=lambda _path: _StubRouter(),
                 directshell_factory=_StubDirectShell,
             )
@@ -230,6 +269,7 @@ class ServerTests(unittest.TestCase):
             service = NovaAdaptService(
                 default_config=Path("unused.json"),
                 db_path=Path(tmp) / "actions.db",
+                plans_db_path=Path(tmp) / "plans.db",
                 router_loader=lambda _path: _StubRouter(),
                 directshell_factory=_StubDirectShell,
             )

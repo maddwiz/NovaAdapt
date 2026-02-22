@@ -18,6 +18,10 @@ Secure relay service for remote clients (phone/glasses) to reach NovaAdapt core.
   - `GET /history`
   - `GET /jobs` and `GET /jobs/{id}`
   - `POST /jobs/{id}/cancel`
+  - `GET /plans` and `GET /plans/{id}`
+  - `POST /plans`
+  - `POST /plans/{id}/approve`
+  - `POST /plans/{id}/reject`
   - `POST /run`
   - `POST /run_async`
   - `POST /undo`

@@ -102,6 +102,19 @@ func TestForwardArrayWithAuthAndRequestID(t *testing.T) {
 			_, _ = w.Write([]byte(`{"job_id":"abc123","status":"queued"}`))
 		case "/jobs/abc123/cancel":
 			_, _ = w.Write([]byte(`{"id":"abc123","status":"canceled","canceled":true}`))
+		case "/plans":
+			if r.Method == http.MethodGet {
+				_, _ = w.Write([]byte(`[{"id":"plan1","status":"pending"}]`))
+				return
+			}
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"id":"plan1","status":"pending"}`))
+		case "/plans/plan1":
+			_, _ = w.Write([]byte(`{"id":"plan1","status":"pending"}`))
+		case "/plans/plan1/approve":
+			_, _ = w.Write([]byte(`{"id":"plan1","status":"executed"}`))
+		case "/plans/plan1/reject":
+			_, _ = w.Write([]byte(`{"id":"plan1","status":"rejected"}`))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 			_, _ = w.Write([]byte(`{"error":"not found"}`))
@@ -192,6 +205,38 @@ func TestForwardArrayWithAuthAndRequestID(t *testing.T) {
 	}
 	if cancelPayload["id"] != "abc123" {
 		t.Fatalf("unexpected cancel payload: %#v", cancelPayload)
+	}
+
+	rrPlans := httptest.NewRecorder()
+	reqPlans := httptest.NewRequest(http.MethodGet, "/plans", nil)
+	reqPlans.Header.Set("Authorization", "Bearer bridge")
+	h.ServeHTTP(rrPlans, reqPlans)
+	if rrPlans.Code != http.StatusOK {
+		t.Fatalf("expected 200 got %d body=%s", rrPlans.Code, rrPlans.Body.String())
+	}
+
+	rrCreatePlan := httptest.NewRecorder()
+	reqCreatePlan := httptest.NewRequest(http.MethodPost, "/plans", strings.NewReader(`{"objective":"test"}`))
+	reqCreatePlan.Header.Set("Authorization", "Bearer bridge")
+	h.ServeHTTP(rrCreatePlan, reqCreatePlan)
+	if rrCreatePlan.Code != http.StatusCreated {
+		t.Fatalf("expected 201 got %d body=%s", rrCreatePlan.Code, rrCreatePlan.Body.String())
+	}
+
+	rrApprovePlan := httptest.NewRecorder()
+	reqApprovePlan := httptest.NewRequest(http.MethodPost, "/plans/plan1/approve", strings.NewReader(`{"execute":true}`))
+	reqApprovePlan.Header.Set("Authorization", "Bearer bridge")
+	h.ServeHTTP(rrApprovePlan, reqApprovePlan)
+	if rrApprovePlan.Code != http.StatusOK {
+		t.Fatalf("expected 200 got %d body=%s", rrApprovePlan.Code, rrApprovePlan.Body.String())
+	}
+
+	rrRejectPlan := httptest.NewRecorder()
+	reqRejectPlan := httptest.NewRequest(http.MethodPost, "/plans/plan1/reject", strings.NewReader(`{"reason":"nope"}`))
+	reqRejectPlan.Header.Set("Authorization", "Bearer bridge")
+	h.ServeHTTP(rrRejectPlan, reqRejectPlan)
+	if rrRejectPlan.Code != http.StatusOK {
+		t.Fatalf("expected 200 got %d body=%s", rrRejectPlan.Code, rrRejectPlan.Body.String())
 	}
 }
 
