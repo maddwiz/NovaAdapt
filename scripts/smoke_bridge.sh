@@ -45,7 +45,7 @@ CORE_PID=$!
 BRIDGE_PID=$!
 
 for _ in {1..50}; do
-  if curl -sS "http://127.0.0.1:${BRIDGE_PORT}/health" >/dev/null 2>&1; then
+  if curl -s "http://127.0.0.1:${BRIDGE_PORT}/health?deep=1" | python3 -c 'import json,sys; data=json.load(sys.stdin); raise SystemExit(0 if data.get("ok") else 1)' >/dev/null 2>&1; then
     break
   fi
   sleep 0.1
@@ -67,7 +67,22 @@ echo "$models_json" | python3 -c 'import json,sys; data=json.load(sys.stdin); as
 openapi_json=$(curl -sS \
   -H "Authorization: Bearer ${BRIDGE_TOKEN}" \
   "http://127.0.0.1:${BRIDGE_PORT}/openapi.json")
-echo "$openapi_json" | python3 -c 'import json,sys; data=json.load(sys.stdin); assert data.get("openapi")=="3.1.0"; assert "/run" in data.get("paths", {})'
+echo "$openapi_json" | python3 -c 'import json,sys; data=json.load(sys.stdin); assert data.get("openapi")=="3.1.0"; assert "/run" in data.get("paths", {}); assert "/plans/{id}/approve" in data.get("paths", {})'
+
+plans_json=$(curl -sS \
+  -H "Authorization: Bearer ${BRIDGE_TOKEN}" \
+  "http://127.0.0.1:${BRIDGE_PORT}/plans?limit=5")
+echo "$plans_json" | python3 -c 'import json,sys; data=json.load(sys.stdin); assert isinstance(data,list)'
+
+missing_plan_status=$(curl -s -o /tmp/novaadapt-smoke-plan-missing.json -w "%{http_code}" \
+  -H "Authorization: Bearer ${BRIDGE_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{"execute":false}' \
+  "http://127.0.0.1:${BRIDGE_PORT}/plans/missing-plan-id/approve")
+if [[ "$missing_plan_status" != "400" ]]; then
+  echo "Expected 400 from missing plan approve, got $missing_plan_status"
+  exit 1
+fi
 
 queued_job=$(curl -sS \
   -H "Authorization: Bearer ${BRIDGE_TOKEN}" \

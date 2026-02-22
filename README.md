@@ -94,14 +94,23 @@ novaadapt undo --id 12
 novaadapt undo --id 12 --execute
 ```
 
-6. Probe model health:
+6. Create and manage approval plans:
+
+```bash
+novaadapt plan-create --objective "Open browser and go to example.com"
+novaadapt plans --limit 10
+novaadapt plan-approve --id PLAN_ID         # executes by default
+novaadapt plan-reject --id PLAN_ID --reason "Not safe enough"
+```
+
+7. Probe model health:
 
 ```bash
 novaadapt check --config config/models.local.json
 novaadapt check --config config/models.local.json --models local-qwen,openai-gpt
 ```
 
-7. Start local HTTP API (for phone/glasses/bridge clients):
+8. Start local HTTP API (for phone/glasses/bridge clients):
 
 ```bash
 novaadapt serve \

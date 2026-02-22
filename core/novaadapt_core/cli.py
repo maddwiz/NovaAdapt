@@ -21,6 +21,7 @@ def _default_config_path() -> Path:
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="novaadapt", description="NovaAdapt desktop orchestrator")
     sub = parser.add_subparsers(dest="command", required=True)
+    default_plans_db = Path(os.getenv("NOVAADAPT_PLANS_DB", str(Path.home() / ".novaadapt" / "plans.db")))
 
     list_cmd = sub.add_parser("models", help="List configured model endpoints")
     list_cmd.add_argument("--config", type=Path, default=_default_config_path())
@@ -81,6 +82,64 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Mark action as undone even if no undo action is stored",
     )
 
+    plans_cmd = sub.add_parser("plans", help="List recent approval plans")
+    plans_cmd.add_argument("--limit", type=int, default=20)
+    plans_cmd.add_argument("--plans-db-path", type=Path, default=default_plans_db)
+
+    plan_get_cmd = sub.add_parser("plan-get", help="Fetch a stored approval plan by id")
+    plan_get_cmd.add_argument("--id", required=True)
+    plan_get_cmd.add_argument("--plans-db-path", type=Path, default=default_plans_db)
+
+    plan_create_cmd = sub.add_parser("plan-create", help="Create a pending approval plan from objective")
+    plan_create_cmd.add_argument("--config", type=Path, default=_default_config_path())
+    plan_create_cmd.add_argument("--db-path", type=Path, default=None)
+    plan_create_cmd.add_argument("--plans-db-path", type=Path, default=default_plans_db)
+    plan_create_cmd.add_argument("--objective", required=True)
+    plan_create_cmd.add_argument("--strategy", choices=["single", "vote"], default="single")
+    plan_create_cmd.add_argument("--model", default=None)
+    plan_create_cmd.add_argument(
+        "--candidates",
+        default="",
+        help="Comma-separated model endpoint names for vote mode",
+    )
+    plan_create_cmd.add_argument(
+        "--fallbacks",
+        default="",
+        help="Comma-separated fallback model endpoint names for single mode",
+    )
+    plan_create_cmd.add_argument(
+        "--max-actions",
+        type=int,
+        default=25,
+        help="Cap the number of generated plan actions",
+    )
+
+    plan_approve_cmd = sub.add_parser("plan-approve", help="Approve plan and optionally execute actions")
+    plan_approve_cmd.add_argument("--id", required=True)
+    plan_approve_cmd.add_argument("--db-path", type=Path, default=None)
+    plan_approve_cmd.add_argument("--plans-db-path", type=Path, default=default_plans_db)
+    plan_approve_cmd.add_argument(
+        "--no-execute",
+        action="store_true",
+        help="Mark approved without executing plan actions",
+    )
+    plan_approve_cmd.add_argument(
+        "--allow-dangerous",
+        action="store_true",
+        help="Allow potentially destructive actions during execution",
+    )
+    plan_approve_cmd.add_argument(
+        "--max-actions",
+        type=int,
+        default=25,
+        help="Cap number of actions executed from the stored plan",
+    )
+
+    plan_reject_cmd = sub.add_parser("plan-reject", help="Reject a plan with optional reason")
+    plan_reject_cmd.add_argument("--id", required=True)
+    plan_reject_cmd.add_argument("--plans-db-path", type=Path, default=default_plans_db)
+    plan_reject_cmd.add_argument("--reason", default=None)
+
     check_cmd = sub.add_parser("check", help="Probe model endpoints and report health")
     check_cmd.add_argument("--config", type=Path, default=_default_config_path())
     check_cmd.add_argument(
@@ -117,7 +176,7 @@ def _build_parser() -> argparse.ArgumentParser:
     serve_cmd.add_argument(
         "--plans-db-path",
         type=Path,
-        default=Path(os.getenv("NOVAADAPT_PLANS_DB", str(Path.home() / ".novaadapt" / "plans.db"))),
+        default=default_plans_db,
         help="Path to persisted approval plans SQLite database",
     )
     serve_cmd.add_argument("--host", default="127.0.0.1")
@@ -195,6 +254,64 @@ def main() -> None:
                 "max_actions": max(1, args.max_actions),
             }
             print(json.dumps(service.run(payload), indent=2))
+            return
+
+        if args.command == "plan-create":
+            service = NovaAdaptService(
+                default_config=args.config,
+                db_path=args.db_path,
+                plans_db_path=args.plans_db_path,
+            )
+            payload = {
+                "objective": args.objective,
+                "strategy": args.strategy,
+                "model": args.model,
+                "candidates": args.candidates,
+                "fallbacks": args.fallbacks,
+                "max_actions": max(1, args.max_actions),
+            }
+            print(json.dumps(service.create_plan(payload), indent=2))
+            return
+
+        if args.command == "plans":
+            service = NovaAdaptService(
+                default_config=_default_config_path(),
+                plans_db_path=args.plans_db_path,
+            )
+            print(json.dumps(service.list_plans(limit=max(1, args.limit)), indent=2))
+            return
+
+        if args.command == "plan-get":
+            service = NovaAdaptService(
+                default_config=_default_config_path(),
+                plans_db_path=args.plans_db_path,
+            )
+            item = service.get_plan(args.id)
+            if item is None:
+                raise ValueError(f"Plan not found: {args.id}")
+            print(json.dumps(item, indent=2))
+            return
+
+        if args.command == "plan-approve":
+            service = NovaAdaptService(
+                default_config=_default_config_path(),
+                db_path=args.db_path,
+                plans_db_path=args.plans_db_path,
+            )
+            payload = {
+                "execute": not bool(args.no_execute),
+                "allow_dangerous": bool(args.allow_dangerous),
+                "max_actions": max(1, args.max_actions),
+            }
+            print(json.dumps(service.approve_plan(args.id, payload), indent=2))
+            return
+
+        if args.command == "plan-reject":
+            service = NovaAdaptService(
+                default_config=_default_config_path(),
+                plans_db_path=args.plans_db_path,
+            )
+            print(json.dumps(service.reject_plan(args.id, reason=args.reason), indent=2))
             return
 
         if args.command == "history":
