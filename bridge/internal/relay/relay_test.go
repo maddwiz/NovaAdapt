@@ -92,6 +92,8 @@ func TestForwardArrayWithAuthAndRequestID(t *testing.T) {
 		switch r.URL.Path {
 		case "/models":
 			_, _ = w.Write([]byte(`[{"name":"local"}]`))
+		case "/openapi.json":
+			_, _ = w.Write([]byte(`{"openapi":"3.1.0","paths":{"/run":{}}}`))
 		case "/run_async":
 			w.WriteHeader(http.StatusAccepted)
 			_, _ = w.Write([]byte(`{"job_id":"abc123","status":"queued"}`))
@@ -129,6 +131,21 @@ func TestForwardArrayWithAuthAndRequestID(t *testing.T) {
 	}
 	if rrModels.Header().Get("X-Request-ID") != "custom-rid" {
 		t.Fatalf("expected response request id header")
+	}
+
+	rrOpenAPI := httptest.NewRecorder()
+	reqOpenAPI := httptest.NewRequest(http.MethodGet, "/openapi.json", nil)
+	reqOpenAPI.Header.Set("Authorization", "Bearer bridge")
+	h.ServeHTTP(rrOpenAPI, reqOpenAPI)
+	if rrOpenAPI.Code != http.StatusOK {
+		t.Fatalf("expected 200 got %d body=%s", rrOpenAPI.Code, rrOpenAPI.Body.String())
+	}
+	var spec map[string]any
+	if err := json.Unmarshal(rrOpenAPI.Body.Bytes(), &spec); err != nil {
+		t.Fatalf("unmarshal spec: %v", err)
+	}
+	if spec["openapi"] != "3.1.0" {
+		t.Fatalf("unexpected spec payload: %#v", spec)
 	}
 
 	rrRun := httptest.NewRecorder()

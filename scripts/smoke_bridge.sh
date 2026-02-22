@@ -64,6 +64,11 @@ models_json=$(curl -sS \
 
 echo "$models_json" | python3 -c 'import json,sys; data=json.load(sys.stdin); assert isinstance(data,list) and len(data)>=1'
 
+openapi_json=$(curl -sS \
+  -H "Authorization: Bearer ${BRIDGE_TOKEN}" \
+  "http://127.0.0.1:${BRIDGE_PORT}/openapi.json")
+echo "$openapi_json" | python3 -c 'import json,sys; data=json.load(sys.stdin); assert data.get("openapi")=="3.1.0"; assert "/run" in data.get("paths", {})'
+
 trace_header=$(curl -sS -D - -o /tmp/novaadapt-smoke-models.json \
   -H "Authorization: Bearer ${BRIDGE_TOKEN}" \
   -H "X-Request-ID: ${RID}" \

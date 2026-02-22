@@ -19,6 +19,7 @@
 - `GET /jobs` and `GET /jobs/{id}` for job polling.
 - `POST /undo` for action reversal.
 - `GET /models` and `POST /check` for model routing visibility.
+- `GET /openapi.json` for contract discovery.
 - `GET /history` for audit state.
 
 Bearer token auth can be required for all routes except `/health`.

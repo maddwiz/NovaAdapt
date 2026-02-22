@@ -70,6 +70,10 @@ class ServerTests(unittest.TestCase):
                 self.assertIn("request_id", health)
                 self.assertTrue(health_headers.get("X-Request-ID"))
 
+                openapi, _ = _get_json_with_headers(f"http://{host}:{port}/openapi.json")
+                self.assertEqual(openapi["openapi"], "3.1.0")
+                self.assertIn("/run", openapi["paths"])
+
                 models, _ = _get_json_with_headers(f"http://{host}:{port}/models")
                 self.assertEqual(models[0]["name"], "local")
 

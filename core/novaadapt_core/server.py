@@ -10,6 +10,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 from .jobs import JobManager
+from .openapi import build_openapi_spec
 from .service import NovaAdaptService
 
 
@@ -164,6 +165,11 @@ def _build_handler(
                 if path == "/health":
                     status_code = 200
                     self._send_json(status_code, {"ok": True, "service": "novaadapt"})
+                    return
+
+                if path == "/openapi.json":
+                    status_code = 200
+                    self._send_json(status_code, build_openapi_spec())
                     return
 
                 if path == "/metrics":

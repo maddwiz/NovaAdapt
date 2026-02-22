@@ -116,6 +116,7 @@ novaadapt serve \
 API endpoints:
 
 - `GET /health`
+- `GET /openapi.json`
 - `GET /models`
 - `GET /history?limit=20`
 - `GET /metrics` (Prometheus-style counters, auth-protected when token is enabled)
@@ -198,6 +199,7 @@ Environment variables:
 - Bridge relay enforces independent ingress token and forwards with a separate core token.
 - Bridge relay propagates `X-Request-ID` for traceability and supports deep health probing at `/health?deep=1`.
 - Bridge relay exposes `/metrics` for basic operational counters.
+- Bridge relay forwards `/openapi.json` so remote clients can discover contract shape.
 - Core API supports configurable request rate limiting and max body size on `serve`.
 
 ## License
