@@ -123,6 +123,21 @@ API endpoints:
 
 Core API responses include `X-Request-ID` for tracing (and object responses also include `request_id` in JSON).
 
+9. Run full local smoke test (core + bridge):
+
+```bash
+make smoke
+```
+
+## Dev Commands
+
+```bash
+make test      # Python + Go tests
+make test-py   # Python tests only
+make test-go   # Go bridge tests only
+make build-bridge
+```
+
 8. Build and start secure bridge relay:
 
 ```bash

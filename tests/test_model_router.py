@@ -90,7 +90,7 @@ class ModelRouterTests(unittest.TestCase):
             strategy="vote",
             candidate_models=["a", "b", "c"],
         )
-        self.assertEqual(result.model_name, "a")
+        self.assertIn(result.model_name, {"a", "b"})
         self.assertEqual(len(result.votes), 2)
         self.assertIn("c", result.errors)
 

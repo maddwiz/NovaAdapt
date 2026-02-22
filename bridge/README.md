@@ -27,6 +27,12 @@ go test ./...
 go build -o ./bin/novaadapt-bridge ./cmd/novaadapt-bridge
 ```
 
+Or from repo root:
+
+```bash
+make build-bridge
+```
+
 ## Run
 
 ```bash

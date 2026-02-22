@@ -30,6 +30,11 @@ All responses include `X-Request-ID` for request-level tracing across bridge/cor
 
 It also preserves per-request tracing through `X-Request-ID` and supports deep upstream health checks for relay monitoring.
 
+## Delivery Tooling
+
+- Cross-language CI runs Python unit tests and Go bridge tests on every push/PR.
+- A local smoke script (`scripts/smoke_bridge.sh`) validates auth and tracing across core + bridge.
+
 ## Reliability Track
 
 - Multi-model voting provides consensus-based planning.

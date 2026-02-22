@@ -1,0 +1,37 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Run Python tests
+        run: |
+          PYTHONPATH=core:shared python -m unittest discover -s tests -p 'test_*.py' -v
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Run Go tests
+        run: |
+          cd bridge
+          go test ./...
+
+      - name: Build Go bridge
+        run: |
+          cd bridge
+          go build -o ./bin/novaadapt-bridge ./cmd/novaadapt-bridge
