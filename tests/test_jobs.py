@@ -23,6 +23,7 @@ class JobManagerTests(unittest.TestCase):
         self.assertIsNotNone(record)
         self.assertEqual(record["status"], "succeeded")
         self.assertEqual(record["result"], {"value": 42})
+        jobs.shutdown()
 
     def test_failed_job(self):
         jobs = JobManager(max_workers=1)
@@ -42,6 +43,35 @@ class JobManagerTests(unittest.TestCase):
         self.assertIsNotNone(record)
         self.assertEqual(record["status"], "failed")
         self.assertIn("boom", record["error"])
+        jobs.shutdown()
+
+    def test_cancel_queued_job(self):
+        jobs = JobManager(max_workers=1)
+
+        def slow_work():
+            time.sleep(0.2)
+            return {"status": "done"}
+
+        first = jobs.submit(slow_work)
+        second = jobs.submit(slow_work)
+
+        canceled = jobs.cancel(second)
+        self.assertIsNotNone(canceled)
+        self.assertTrue(canceled["canceled"])
+        self.assertEqual(canceled["status"], "canceled")
+
+        record = jobs.get(second)
+        self.assertIsNotNone(record)
+        self.assertEqual(record["status"], "canceled")
+        self.assertTrue(record["cancel_requested"])
+
+        # Allow first job to complete cleanly before shutdown.
+        for _ in range(50):
+            first_record = jobs.get(first)
+            if first_record and first_record["status"] in {"succeeded", "failed"}:
+                break
+            time.sleep(0.01)
+        jobs.shutdown()
 
 
 if __name__ == "__main__":

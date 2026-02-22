@@ -97,6 +97,8 @@ func TestForwardArrayWithAuthAndRequestID(t *testing.T) {
 		case "/run_async":
 			w.WriteHeader(http.StatusAccepted)
 			_, _ = w.Write([]byte(`{"job_id":"abc123","status":"queued"}`))
+		case "/jobs/abc123/cancel":
+			_, _ = w.Write([]byte(`{"id":"abc123","status":"canceled","canceled":true}`))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 			_, _ = w.Write([]byte(`{"error":"not found"}`))
@@ -161,6 +163,21 @@ func TestForwardArrayWithAuthAndRequestID(t *testing.T) {
 	}
 	if runPayload["request_id"] == "" {
 		t.Fatalf("expected request_id in object payload")
+	}
+
+	rrCancel := httptest.NewRecorder()
+	reqCancel := httptest.NewRequest(http.MethodPost, "/jobs/abc123/cancel", strings.NewReader(`{}`))
+	reqCancel.Header.Set("Authorization", "Bearer bridge")
+	h.ServeHTTP(rrCancel, reqCancel)
+	if rrCancel.Code != http.StatusOK {
+		t.Fatalf("expected 200 got %d body=%s", rrCancel.Code, rrCancel.Body.String())
+	}
+	var cancelPayload map[string]any
+	if err := json.Unmarshal(rrCancel.Body.Bytes(), &cancelPayload); err != nil {
+		t.Fatalf("unmarshal cancel payload: %v", err)
+	}
+	if cancelPayload["id"] != "abc123" {
+		t.Fatalf("unexpected cancel payload: %#v", cancelPayload)
 	}
 }
 

@@ -73,6 +73,7 @@ class ServerTests(unittest.TestCase):
                 openapi, _ = _get_json_with_headers(f"http://{host}:{port}/openapi.json")
                 self.assertEqual(openapi["openapi"], "3.1.0")
                 self.assertIn("/run", openapi["paths"])
+                self.assertIn("/jobs/{id}/cancel", openapi["paths"])
 
                 models, _ = _get_json_with_headers(f"http://{host}:{port}/models")
                 self.assertEqual(models[0]["name"], "local")
@@ -119,6 +120,13 @@ class ServerTests(unittest.TestCase):
                 )
                 self.assertEqual(queued["status"], "queued")
                 job_id = queued["job_id"]
+
+                cancel = _post_json(
+                    f"http://{host}:{port}/jobs/{job_id}/cancel",
+                    {},
+                    token="secret",
+                )
+                self.assertEqual(cancel["id"], job_id)
 
                 # Poll briefly for completion.
                 terminal = None

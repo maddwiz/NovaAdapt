@@ -124,6 +124,7 @@ API endpoints:
 - `POST /run` with JSON payload
 - `POST /run_async` with JSON payload (returns `job_id`)
 - `GET /jobs` and `GET /jobs/{id}`
+- `POST /jobs/{id}/cancel`
 - `POST /undo` with JSON payload
 - `POST /check` with JSON payload
 

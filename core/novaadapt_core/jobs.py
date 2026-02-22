@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import threading
 import uuid
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Callable
@@ -17,6 +17,7 @@ class JobRecord:
     finished_at: str | None = None
     result: dict[str, Any] | None = None
     error: str | None = None
+    cancel_requested: bool = False
 
 
 class JobManager:
@@ -26,6 +27,7 @@ class JobManager:
         self._executor = ThreadPoolExecutor(max_workers=max_workers)
         self._lock = threading.Lock()
         self._jobs: dict[str, JobRecord] = {}
+        self._futures: dict[str, Future[None]] = {}
 
     def submit(self, fn: Callable[..., dict[str, Any]], *args: Any, **kwargs: Any) -> str:
         job_id = uuid.uuid4().hex
@@ -37,12 +39,51 @@ class JobManager:
         with self._lock:
             self._jobs[job_id] = record
 
-        self._executor.submit(self._run, job_id, fn, *args, **kwargs)
+        future = self._executor.submit(self._run, job_id, fn, *args, **kwargs)
+        with self._lock:
+            self._futures[job_id] = future
         return job_id
+
+    def cancel(self, job_id: str) -> dict[str, Any] | None:
+        with self._lock:
+            record = self._jobs.get(job_id)
+            future = self._futures.get(job_id)
+            if record is None or future is None:
+                return None
+
+            if record.status in {"succeeded", "failed", "canceled"}:
+                return {
+                    "id": job_id,
+                    "canceled": False,
+                    "status": record.status,
+                    "message": "Job already finished",
+                }
+
+            canceled = future.cancel()
+            if canceled:
+                record.status = "canceled"
+                record.cancel_requested = True
+                record.finished_at = _now_iso()
+                return {
+                    "id": job_id,
+                    "canceled": True,
+                    "status": "canceled",
+                    "message": "Job canceled before execution",
+                }
+
+            record.cancel_requested = True
+            return {
+                "id": job_id,
+                "canceled": False,
+                "status": record.status,
+                "message": "Job already running; cancellation requested",
+            }
 
     def _run(self, job_id: str, fn: Callable[..., dict[str, Any]], *args: Any, **kwargs: Any) -> None:
         with self._lock:
             record = self._jobs[job_id]
+            if record.status == "canceled":
+                return
             record.status = "running"
             record.started_at = _now_iso()
 
@@ -50,12 +91,16 @@ class JobManager:
             result = fn(*args, **kwargs)
             with self._lock:
                 record = self._jobs[job_id]
+                if record.status == "canceled":
+                    return
                 record.status = "succeeded"
                 record.result = result
                 record.finished_at = _now_iso()
         except Exception as exc:  # pragma: no cover - defensive boundary
             with self._lock:
                 record = self._jobs[job_id]
+                if record.status == "canceled":
+                    return
                 record.status = "failed"
                 record.error = str(exc)
                 record.finished_at = _now_iso()
@@ -86,6 +131,7 @@ def _serialize(record: JobRecord) -> dict[str, Any]:
         "finished_at": record.finished_at,
         "result": record.result,
         "error": record.error,
+        "cancel_requested": record.cancel_requested,
     }
 
 

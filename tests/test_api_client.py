@@ -48,7 +48,7 @@ class _Handler(BaseHTTPRequestHandler):
             self._send(401, {"error": "unauthorized"})
             return
 
-        if self.path in {"/run", "/run_async", "/undo", "/check"}:
+        if self.path in {"/run", "/run_async", "/undo", "/check", "/jobs/job-1/cancel"}:
             length = int(self.headers.get("Content-Length", "0"))
             raw = self.rfile.read(length).decode("utf-8")
             payload = json.loads(raw)
@@ -56,6 +56,8 @@ class _Handler(BaseHTTPRequestHandler):
                 self._send(200, {"status": "ok", "objective": payload.get("objective")})
             elif self.path == "/run_async":
                 self._send(202, {"job_id": "job-1", "status": "queued"})
+            elif self.path == "/jobs/job-1/cancel":
+                self._send(200, {"id": "job-1", "status": "canceled", "canceled": True})
             elif self.path == "/undo":
                 self._send(200, {"id": payload.get("id", 1), "status": "marked_undone"})
             else:
@@ -98,6 +100,7 @@ class APIClientTests(unittest.TestCase):
         self.assertEqual(client.run_async("demo")["status"], "queued")
         self.assertEqual(client.jobs(limit=5)[0]["id"], "job-1")
         self.assertEqual(client.job("job-1")["status"], "succeeded")
+        self.assertTrue(client.cancel_job("job-1")["canceled"])
         self.assertEqual(client.history(limit=1)[0]["id"], 1)
         self.assertEqual(client.undo(id=1, mark_only=True)["status"], "marked_undone")
         self.assertIn("novaadapt_core_requests_total", client.metrics_text())

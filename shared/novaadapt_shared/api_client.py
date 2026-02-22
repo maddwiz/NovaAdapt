@@ -60,6 +60,12 @@ class NovaAdaptAPIClient:
             return payload
         raise APIClientError("Expected object payload from /jobs/{id}")
 
+    def cancel_job(self, job_id: str) -> dict[str, Any]:
+        payload = self._post_json(f"/jobs/{job_id}/cancel", {})
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /jobs/{id}/cancel")
+
     def history(self, limit: int = 20) -> list[dict[str, Any]]:
         payload = self._get_json(f"/history?limit={max(1, limit)}")
         if isinstance(payload, list):

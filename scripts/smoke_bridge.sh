@@ -69,6 +69,20 @@ openapi_json=$(curl -sS \
   "http://127.0.0.1:${BRIDGE_PORT}/openapi.json")
 echo "$openapi_json" | python3 -c 'import json,sys; data=json.load(sys.stdin); assert data.get("openapi")=="3.1.0"; assert "/run" in data.get("paths", {})'
 
+queued_job=$(curl -sS \
+  -H "Authorization: Bearer ${BRIDGE_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{"objective":"Smoke test objective"}' \
+  "http://127.0.0.1:${BRIDGE_PORT}/run_async")
+job_id=$(echo "$queued_job" | python3 -c 'import json,sys; data=json.load(sys.stdin); print(data["job_id"])')
+
+cancel_result=$(curl -sS \
+  -H "Authorization: Bearer ${BRIDGE_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{}' \
+  "http://127.0.0.1:${BRIDGE_PORT}/jobs/${job_id}/cancel")
+echo "$cancel_result" | python3 -c 'import json,sys; data=json.load(sys.stdin); assert "id" in data'
+
 trace_header=$(curl -sS -D - -o /tmp/novaadapt-smoke-models.json \
   -H "Authorization: Bearer ${BRIDGE_TOKEN}" \
   -H "X-Request-ID: ${RID}" \

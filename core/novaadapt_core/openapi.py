@@ -66,6 +66,20 @@ def build_openapi_spec() -> dict:
                     "responses": {"200": {"description": "Job status"}, "404": {"description": "Not found"}},
                 }
             },
+            "/jobs/{id}/cancel": {
+                "post": {
+                    "summary": "Request cancellation for queued/running async job",
+                    "parameters": [
+                        {
+                            "name": "id",
+                            "in": "path",
+                            "required": True,
+                            "schema": {"type": "string"},
+                        }
+                    ],
+                    "responses": {"200": {"description": "Cancellation status"}, "404": {"description": "Not found"}},
+                }
+            },
             "/history": {
                 "get": {
                     "summary": "Fetch action history",

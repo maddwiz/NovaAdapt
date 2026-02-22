@@ -17,6 +17,7 @@
 - `POST /run` for objective execution.
 - `POST /run_async` for queued objective execution.
 - `GET /jobs` and `GET /jobs/{id}` for job polling.
+- `POST /jobs/{id}/cancel` for cancellation requests.
 - `POST /undo` for action reversal.
 - `GET /models` and `POST /check` for model routing visibility.
 - `GET /openapi.json` for contract discovery.

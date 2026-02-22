@@ -260,6 +260,21 @@ def _build_handler(
             try:
                 payload = self._read_json_body()
 
+                if path.startswith("/jobs/") and path.endswith("/cancel"):
+                    job_id = path.removeprefix("/jobs/").removesuffix("/cancel").strip("/")
+                    if not job_id:
+                        status_code = 404
+                        self._send_json(status_code, {"error": "Not found"})
+                        return
+                    canceled = job_manager.cancel(job_id)
+                    if canceled is None:
+                        status_code = 404
+                        self._send_json(status_code, {"error": "Job not found"})
+                        return
+                    status_code = 200
+                    self._send_json(status_code, canceled)
+                    return
+
                 if path == "/run":
                     status_code = 200
                     self._send_json(status_code, service.run(payload))
