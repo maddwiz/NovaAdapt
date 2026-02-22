@@ -94,6 +94,9 @@ func TestForwardArrayWithAuthAndRequestID(t *testing.T) {
 			_, _ = w.Write([]byte(`[{"name":"local"}]`))
 		case "/openapi.json":
 			_, _ = w.Write([]byte(`{"openapi":"3.1.0","paths":{"/run":{}}}`))
+		case "/dashboard":
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			_, _ = w.Write([]byte(`<html><body>dashboard</body></html>`))
 		case "/run_async":
 			w.WriteHeader(http.StatusAccepted)
 			_, _ = w.Write([]byte(`{"job_id":"abc123","status":"queued"}`))
@@ -148,6 +151,17 @@ func TestForwardArrayWithAuthAndRequestID(t *testing.T) {
 	}
 	if spec["openapi"] != "3.1.0" {
 		t.Fatalf("unexpected spec payload: %#v", spec)
+	}
+
+	rrDashboard := httptest.NewRecorder()
+	reqDashboard := httptest.NewRequest(http.MethodGet, "/dashboard", nil)
+	reqDashboard.Header.Set("Authorization", "Bearer bridge")
+	h.ServeHTTP(rrDashboard, reqDashboard)
+	if rrDashboard.Code != http.StatusOK {
+		t.Fatalf("expected 200 got %d body=%s", rrDashboard.Code, rrDashboard.Body.String())
+	}
+	if !strings.Contains(rrDashboard.Body.String(), "dashboard") {
+		t.Fatalf("expected dashboard body, got %s", rrDashboard.Body.String())
 	}
 
 	rrRun := httptest.NewRecorder()

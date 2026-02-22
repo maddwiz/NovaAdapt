@@ -21,6 +21,7 @@ const maxRequestBodyBytes = 1 << 20 // 1 MiB
 var allowedPaths = map[string]struct{}{
 	"/models":       {},
 	"/openapi.json": {},
+	"/dashboard":    {},
 	"/history":      {},
 	"/run":          {},
 	"/run_async":    {},
@@ -121,6 +122,21 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if !isForwardedPath(r.URL.Path) {
 		statusCode = http.StatusNotFound
 		h.writeJSON(w, statusCode, map[string]any{"error": "Not found", "request_id": requestID})
+		return
+	}
+
+	if r.URL.Path == "/dashboard" {
+		if r.Method != http.MethodGet {
+			statusCode = http.StatusMethodNotAllowed
+			h.writeJSON(w, statusCode, map[string]any{"error": "Method not allowed", "request_id": requestID})
+			return
+		}
+		rawStatus, rawContentType, rawBody := h.forwardRaw(r, requestID)
+		statusCode = rawStatus
+		if rawStatus >= 500 {
+			atomic.AddUint64(&h.upstreamErrorsTotal, 1)
+		}
+		h.writeRaw(w, rawStatus, rawContentType, rawBody)
 		return
 	}
 
@@ -268,6 +284,39 @@ func (h *Handler) forward(r *http.Request, requestID string, body []byte) (int, 
 	return resp.StatusCode, payload
 }
 
+func (h *Handler) forwardRaw(r *http.Request, requestID string) (int, string, []byte) {
+	target, err := joinURL(h.cfg.CoreBaseURL, r.URL.Path, r.URL.RawQuery)
+	if err != nil {
+		payload, _ := json.Marshal(map[string]any{"error": "Failed to build core URL", "request_id": requestID})
+		return http.StatusBadGateway, "application/json", payload
+	}
+	req, err := http.NewRequest(http.MethodGet, target, nil)
+	if err != nil {
+		payload, _ := json.Marshal(map[string]any{"error": "Failed to create core request", "request_id": requestID})
+		return http.StatusBadGateway, "application/json", payload
+	}
+	req.Header.Set("X-Request-ID", requestID)
+	if strings.TrimSpace(h.cfg.CoreToken) != "" {
+		req.Header.Set("Authorization", "Bearer "+h.cfg.CoreToken)
+	}
+	resp, err := h.client.Do(req)
+	if err != nil {
+		payload, _ := json.Marshal(map[string]any{"error": fmt.Sprintf("Core API unreachable: %v", err), "request_id": requestID})
+		return http.StatusBadGateway, "application/json", payload
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		payload, _ := json.Marshal(map[string]any{"error": "Failed to read core response", "request_id": requestID})
+		return http.StatusBadGateway, "application/json", payload
+	}
+	contentType := resp.Header.Get("Content-Type")
+	if contentType == "" {
+		contentType = "text/html; charset=utf-8"
+	}
+	return resp.StatusCode, contentType, body
+}
+
 func joinURL(base, requestPath, rawQuery string) (string, error) {
 	u, err := url.Parse(base)
 	if err != nil {
@@ -340,4 +389,10 @@ func (h *Handler) writeMetrics(w http.ResponseWriter) {
 	)
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4")
 	_, _ = w.Write([]byte(body))
+}
+
+func (h *Handler) writeRaw(w http.ResponseWriter, status int, contentType string, body []byte) {
+	w.Header().Set("Content-Type", contentType)
+	w.WriteHeader(status)
+	_, _ = w.Write(body)
 }

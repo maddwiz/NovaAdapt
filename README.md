@@ -251,6 +251,7 @@ Environment variables:
 - Bridge relay propagates `X-Request-ID` for traceability and supports deep health probing at `/health?deep=1`.
 - Bridge relay exposes `/metrics` for basic operational counters.
 - Bridge relay forwards `/openapi.json` so remote clients can discover contract shape.
+- Bridge relay forwards `/dashboard` HTML for secure remote browser access.
 - Core API supports configurable request rate limiting and max body size on `serve`.
 - Async job records can be persisted to SQLite (`--jobs-db-path`) for restart-safe history.
 

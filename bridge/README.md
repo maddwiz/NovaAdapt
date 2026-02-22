@@ -13,6 +13,7 @@ Secure relay service for remote clients (phone/glasses) to reach NovaAdapt core.
 - Metrics endpoint (`/metrics`) for request/unauthorized/upstream-error counters
 - Forwards endpoints:
   - `GET /openapi.json`
+  - `GET /dashboard`
   - `GET /models`
   - `GET /history`
   - `GET /jobs` and `GET /jobs/{id}`
