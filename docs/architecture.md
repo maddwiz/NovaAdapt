@@ -22,6 +22,7 @@
 - `GET /history` for audit state.
 
 Bearer token auth can be required for all routes except `/health`.
+All responses include `X-Request-ID` for request-level tracing across bridge/core.
 
 ## Relay Layer
 

@@ -102,6 +102,11 @@ def _build_parser() -> argparse.ArgumentParser:
         default=os.getenv("NOVAADAPT_API_TOKEN"),
         help="Require Bearer auth token for all API routes except /health",
     )
+    serve_cmd.add_argument(
+        "--log-requests",
+        action="store_true",
+        help="Emit per-request access logs from the core API server",
+    )
 
     return parser
 
@@ -113,7 +118,13 @@ def main() -> None:
     try:
         if args.command == "serve":
             service = NovaAdaptService(default_config=args.config, db_path=args.db_path)
-            run_server(host=args.host, port=args.port, service=service, api_token=args.api_token)
+            run_server(
+                host=args.host,
+                port=args.port,
+                service=service,
+                api_token=args.api_token,
+                log_requests=args.log_requests,
+            )
             return
 
         if args.command == "run":

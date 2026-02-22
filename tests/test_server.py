@@ -65,19 +65,22 @@ class ServerTests(unittest.TestCase):
             thread.start()
 
             try:
-                health = _get_json(f"http://{host}:{port}/health")
+                health, health_headers = _get_json_with_headers(f"http://{host}:{port}/health")
                 self.assertTrue(health["ok"])
+                self.assertIn("request_id", health)
+                self.assertTrue(health_headers.get("X-Request-ID"))
 
-                models = _get_json(f"http://{host}:{port}/models")
+                models, _ = _get_json_with_headers(f"http://{host}:{port}/models")
                 self.assertEqual(models[0]["name"], "local")
 
-                run = _post_json(
+                run, _ = _post_json_with_headers(
                     f"http://{host}:{port}/run",
                     {"objective": "click ok"},
                 )
                 self.assertEqual(run["results"][0]["status"], "preview")
+                self.assertIn("request_id", run)
 
-                history = _get_json(f"http://{host}:{port}/history?limit=5")
+                history, _ = _get_json_with_headers(f"http://{host}:{port}/history?limit=5")
                 self.assertEqual(len(history), 1)
             finally:
                 server.shutdown()
@@ -129,21 +132,74 @@ class ServerTests(unittest.TestCase):
                 server.server_close()
                 thread.join(timeout=2)
 
+    def test_request_id_roundtrip(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            service = NovaAdaptService(
+                default_config=Path("unused.json"),
+                db_path=Path(tmp) / "actions.db",
+                router_loader=lambda _path: _StubRouter(),
+                directshell_factory=_StubDirectShell,
+            )
+            server = create_server("127.0.0.1", 0, service, api_token="secret")
+            host, port = server.server_address
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+
+            try:
+                body, headers = _get_json_with_headers(
+                    f"http://{host}:{port}/models",
+                    token="secret",
+                    request_id="rid-123",
+                )
+                self.assertEqual(body[0]["name"], "local")
+                self.assertEqual(headers.get("X-Request-ID"), "rid-123")
+
+                run, headers = _post_json_with_headers(
+                    f"http://{host}:{port}/run",
+                    {"objective": "click ok"},
+                    token="secret",
+                    request_id="rid-xyz",
+                )
+                self.assertEqual(run["request_id"], "rid-xyz")
+                self.assertEqual(headers.get("X-Request-ID"), "rid-xyz")
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=2)
+
 
 def _get_json(url: str, token: str | None = None):
-    headers = {}
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
-    req = request.Request(url=url, headers=headers, method="GET")
-    with request.urlopen(req, timeout=5) as response:
-        return json.loads(response.read().decode("utf-8"))
+    return _get_json_with_headers(url=url, token=token)[0]
 
 
 def _post_json(url: str, payload: dict, token: str | None = None):
+    return _post_json_with_headers(url=url, payload=payload, token=token)[0]
+
+
+def _get_json_with_headers(url: str, token: str | None = None, request_id: str | None = None):
+    headers = {}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    if request_id:
+        headers["X-Request-ID"] = request_id
+    req = request.Request(url=url, headers=headers, method="GET")
+    with request.urlopen(req, timeout=5) as response:
+        body = json.loads(response.read().decode("utf-8"))
+        return body, dict(response.headers)
+
+
+def _post_json_with_headers(
+    url: str,
+    payload: dict,
+    token: str | None = None,
+    request_id: str | None = None,
+):
     data = json.dumps(payload).encode("utf-8")
     headers = {"Content-Type": "application/json"}
     if token:
         headers["Authorization"] = f"Bearer {token}"
+    if request_id:
+        headers["X-Request-ID"] = request_id
     req = request.Request(
         url=url,
         data=data,
@@ -151,7 +207,8 @@ def _post_json(url: str, payload: dict, token: str | None = None):
         method="POST",
     )
     with request.urlopen(req, timeout=5) as response:
-        return json.loads(response.read().decode("utf-8"))
+        body = json.loads(response.read().decode("utf-8"))
+        return body, dict(response.headers)
 
 
 if __name__ == "__main__":

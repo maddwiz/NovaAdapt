@@ -106,7 +106,8 @@ novaadapt serve \
   --config config/models.local.json \
   --host 127.0.0.1 \
   --port 8787 \
-  --api-token YOUR_CORE_TOKEN
+  --api-token YOUR_CORE_TOKEN \
+  --log-requests
 ```
 
 API endpoints:
@@ -119,6 +120,8 @@ API endpoints:
 - `GET /jobs` and `GET /jobs/{id}`
 - `POST /undo` with JSON payload
 - `POST /check` with JSON payload
+
+Core API responses include `X-Request-ID` for tracing (and object responses also include `request_id` in JSON).
 
 8. Build and start secure bridge relay:
 
