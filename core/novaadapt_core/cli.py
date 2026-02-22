@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 
 from .benchmark import run_benchmark
+from .mcp_server import NovaAdaptMCPServer
 from .server import run_server
 from .service import NovaAdaptService
 
@@ -144,6 +145,10 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Maximum HTTP request body size in bytes",
     )
 
+    mcp_cmd = sub.add_parser("mcp", help="Run MCP-compatible stdio server")
+    mcp_cmd.add_argument("--config", type=Path, default=_default_config_path())
+    mcp_cmd.add_argument("--db-path", type=Path, default=None)
+
     return parser
 
 
@@ -211,6 +216,12 @@ def main() -> None:
                 output_path=args.out,
             )
             print(json.dumps(result, indent=2))
+            return
+
+        if args.command == "mcp":
+            service = NovaAdaptService(default_config=args.config, db_path=args.db_path)
+            server = NovaAdaptMCPServer(service=service)
+            server.serve_stdio()
             return
 
         if args.command == "models":

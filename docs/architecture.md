@@ -43,6 +43,7 @@ The bridge additionally exposes `/metrics` for request and error counters.
 - Container deployment assets live under `deploy/` (core + bridge images and compose stack).
 - Token bootstrap helper `installer/gen_dev_tokens.sh` writes `deploy/.env` for local stack auth.
 - Benchmark runner (`novaadapt benchmark`) provides repeatable success-rate measurement from task suites.
+- MCP-compatible stdio server (`novaadapt mcp`) exposes core operations as tools for external agents.
 
 ## Reliability Track
 

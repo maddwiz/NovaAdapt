@@ -158,6 +158,19 @@ PYTHONPATH=core:shared python3 -m novaadapt_core.cli benchmark \
 
 This produces pass/fail and success-rate metrics so reliability progress can be tracked objectively.
 
+## MCP Server
+
+```bash
+PYTHONPATH=core:shared python3 -m novaadapt_core.cli mcp \
+  --config config/models.example.json
+```
+
+Exposed tools:
+- `novaadapt_run`
+- `novaadapt_models`
+- `novaadapt_check`
+- `novaadapt_history`
+
 ## Docker Deployment
 
 ```bash
