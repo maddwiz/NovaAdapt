@@ -1,9 +1,10 @@
 import json
 import tempfile
 import threading
+import time
 import unittest
 from pathlib import Path
-from urllib import request
+from urllib import error, request
 
 from novaadapt_core.directshell import ExecutionResult
 from novaadapt_core.server import create_server
@@ -83,18 +84,70 @@ class ServerTests(unittest.TestCase):
                 server.server_close()
                 thread.join(timeout=2)
 
+    def test_token_auth_and_async_jobs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            service = NovaAdaptService(
+                default_config=Path("unused.json"),
+                db_path=Path(tmp) / "actions.db",
+                router_loader=lambda _path: _StubRouter(),
+                directshell_factory=_StubDirectShell,
+            )
+            server = create_server("127.0.0.1", 0, service, api_token="secret")
+            host, port = server.server_address
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
 
-def _get_json(url: str):
-    with request.urlopen(url, timeout=5) as response:
+            try:
+                with self.assertRaises(error.HTTPError) as err:
+                    _get_json(f"http://{host}:{port}/models")
+                self.assertEqual(err.exception.code, 401)
+
+                models = _get_json(f"http://{host}:{port}/models", token="secret")
+                self.assertEqual(models[0]["name"], "local")
+
+                queued = _post_json(
+                    f"http://{host}:{port}/run_async",
+                    {"objective": "click ok"},
+                    token="secret",
+                )
+                self.assertEqual(queued["status"], "queued")
+                job_id = queued["job_id"]
+
+                # Poll briefly for completion.
+                terminal = None
+                for _ in range(30):
+                    terminal = _get_json(f"http://{host}:{port}/jobs/{job_id}", token="secret")
+                    if terminal["status"] in {"succeeded", "failed"}:
+                        break
+                    time.sleep(0.02)
+
+                self.assertIsNotNone(terminal)
+                self.assertEqual(terminal["status"], "succeeded")
+                self.assertIsNotNone(terminal["result"])
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=2)
+
+
+def _get_json(url: str, token: str | None = None):
+    headers = {}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    req = request.Request(url=url, headers=headers, method="GET")
+    with request.urlopen(req, timeout=5) as response:
         return json.loads(response.read().decode("utf-8"))
 
 
-def _post_json(url: str, payload: dict):
+def _post_json(url: str, payload: dict, token: str | None = None):
     data = json.dumps(payload).encode("utf-8")
+    headers = {"Content-Type": "application/json"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
     req = request.Request(
         url=url,
         data=data,
-        headers={"Content-Type": "application/json"},
+        headers=headers,
         method="POST",
     )
     with request.urlopen(req, timeout=5) as response:

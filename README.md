@@ -25,6 +25,8 @@ Implemented now:
   - Enforces execution guardrails for destructive actions.
   - Sends actions to DirectShell (or dry-run preview).
   - Records each action in a local undo queue database.
+  - Exposes HTTP API with optional bearer auth and async jobs.
+- `bridge` relay service for secure remote forwarding into core API.
 
 Planned next:
 
@@ -100,7 +102,11 @@ novaadapt check --config config/models.local.json --models local-qwen,openai-gpt
 7. Start local HTTP API (for phone/glasses/bridge clients):
 
 ```bash
-novaadapt serve --config config/models.local.json --host 127.0.0.1 --port 8787
+novaadapt serve \
+  --config config/models.local.json \
+  --host 127.0.0.1 \
+  --port 8787 \
+  --api-token YOUR_CORE_TOKEN
 ```
 
 API endpoints:
@@ -109,8 +115,21 @@ API endpoints:
 - `GET /models`
 - `GET /history?limit=20`
 - `POST /run` with JSON payload
+- `POST /run_async` with JSON payload (returns `job_id`)
+- `GET /jobs` and `GET /jobs/{id}`
 - `POST /undo` with JSON payload
 - `POST /check` with JSON payload
+
+8. Start secure bridge relay:
+
+```bash
+novaadapt-bridge \
+  --host 127.0.0.1 \
+  --port 9797 \
+  --core-url http://127.0.0.1:8787 \
+  --bridge-token YOUR_BRIDGE_TOKEN \
+  --core-token YOUR_CORE_TOKEN
+```
 
 ## Model-Agnostic Design
 
@@ -151,6 +170,8 @@ Environment variables:
 - Potentially destructive actions are blocked unless `--allow-dangerous` is set.
 - Plans are capped by `--max-actions` (default `25`) to reduce runaway execution.
 - Every action is logged in SQLite (`~/.novaadapt/actions.db`) for audit/undo workflows.
+- Core API can require bearer auth via `--api-token` / `NOVAADAPT_API_TOKEN`.
+- Bridge relay enforces independent ingress token and forwards with a separate core token.
 
 ## License
 

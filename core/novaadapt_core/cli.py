@@ -97,6 +97,11 @@ def _build_parser() -> argparse.ArgumentParser:
     serve_cmd.add_argument("--db-path", type=Path, default=None)
     serve_cmd.add_argument("--host", default="127.0.0.1")
     serve_cmd.add_argument("--port", type=int, default=8787)
+    serve_cmd.add_argument(
+        "--api-token",
+        default=os.getenv("NOVAADAPT_API_TOKEN"),
+        help="Require Bearer auth token for all API routes except /health",
+    )
 
     return parser
 
@@ -108,7 +113,7 @@ def main() -> None:
     try:
         if args.command == "serve":
             service = NovaAdaptService(default_config=args.config, db_path=args.db_path)
-            run_server(host=args.host, port=args.port, service=service)
+            run_server(host=args.host, port=args.port, service=service, api_token=args.api_token)
             return
 
         if args.command == "run":

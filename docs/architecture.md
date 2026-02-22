@@ -8,15 +8,24 @@
 4. `ActionPolicy` evaluates each action for risk before execution.
 5. `DirectShellClient` previews or executes each action (subprocess or HTTP transport).
 6. `UndoQueue` stores every action, optional undo action, and status in local SQLite.
+7. Optional async runner (`/run_async`) executes long tasks through in-memory job manager.
 
 ## API Surface
 
 `novaadapt serve` exposes the same operations over HTTP:
 
 - `POST /run` for objective execution.
+- `POST /run_async` for queued objective execution.
+- `GET /jobs` and `GET /jobs/{id}` for job polling.
 - `POST /undo` for action reversal.
 - `GET /models` and `POST /check` for model routing visibility.
 - `GET /history` for audit state.
+
+Bearer token auth can be required for all routes except `/health`.
+
+## Relay Layer
+
+`novaadapt-bridge` is a secure relay process for remote devices. It enforces a bridge ingress token and forwards to the core API using a separate upstream token.
 
 ## Reliability Track
 

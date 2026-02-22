@@ -4,16 +4,43 @@ import json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
+from .jobs import JobManager
 from .service import NovaAdaptService
 
 
-def create_server(host: str, port: int, service: NovaAdaptService) -> ThreadingHTTPServer:
-    handler_cls = _build_handler(service)
-    return ThreadingHTTPServer((host, port), handler_cls)
+class NovaAdaptHTTPServer(ThreadingHTTPServer):
+    def __init__(self, server_address: tuple[str, int], handler_cls, job_manager: JobManager):
+        super().__init__(server_address, handler_cls)
+        self.job_manager = job_manager
+
+    def server_close(self) -> None:
+        self.job_manager.shutdown(wait=True)
+        super().server_close()
 
 
-def run_server(host: str, port: int, service: NovaAdaptService) -> None:
-    server = create_server(host=host, port=port, service=service)
+def create_server(
+    host: str,
+    port: int,
+    service: NovaAdaptService,
+    api_token: str | None = None,
+    job_manager: JobManager | None = None,
+) -> ThreadingHTTPServer:
+    managed_jobs = job_manager or JobManager()
+    handler_cls = _build_handler(
+        service=service,
+        api_token=api_token,
+        job_manager=managed_jobs,
+    )
+    return NovaAdaptHTTPServer((host, port), handler_cls, managed_jobs)
+
+
+def run_server(
+    host: str,
+    port: int,
+    service: NovaAdaptService,
+    api_token: str | None = None,
+) -> None:
+    server = create_server(host=host, port=port, service=service, api_token=api_token)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
@@ -22,7 +49,11 @@ def run_server(host: str, port: int, service: NovaAdaptService) -> None:
         server.server_close()
 
 
-def _build_handler(service: NovaAdaptService):
+def _build_handler(
+    service: NovaAdaptService,
+    api_token: str | None,
+    job_manager: JobManager,
+):
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self) -> None:
             parsed = urlparse(self.path)
@@ -32,6 +63,9 @@ def _build_handler(service: NovaAdaptService):
             try:
                 if path == "/health":
                     self._send_json(200, {"ok": True, "service": "novaadapt"})
+                    return
+
+                if not self._check_auth(path):
                     return
 
                 if path == "/models":
@@ -45,6 +79,23 @@ def _build_handler(service: NovaAdaptService):
                     self._send_json(200, service.history(limit=limit))
                     return
 
+                if path == "/jobs":
+                    limit = int(_single(query, "limit") or 50)
+                    self._send_json(200, job_manager.list(limit=limit))
+                    return
+
+                if path.startswith("/jobs/"):
+                    job_id = path.removeprefix("/jobs/").strip()
+                    if not job_id:
+                        self._send_json(404, {"error": "Not found"})
+                        return
+                    item = job_manager.get(job_id)
+                    if item is None:
+                        self._send_json(404, {"error": "Job not found"})
+                        return
+                    self._send_json(200, item)
+                    return
+
                 self._send_json(404, {"error": "Not found"})
             except ValueError as exc:
                 self._send_json(400, {"error": str(exc)})
@@ -54,11 +105,20 @@ def _build_handler(service: NovaAdaptService):
         def do_POST(self) -> None:
             parsed = urlparse(self.path)
             path = parsed.path
-            payload = self._read_json_body()
+
+            if not self._check_auth(path):
+                return
 
             try:
+                payload = self._read_json_body()
+
                 if path == "/run":
                     self._send_json(200, service.run(payload))
+                    return
+
+                if path == "/run_async":
+                    job_id = job_manager.submit(service.run, payload)
+                    self._send_json(202, {"job_id": job_id, "status": "queued"})
                     return
 
                 if path == "/undo":
@@ -76,8 +136,26 @@ def _build_handler(service: NovaAdaptService):
                 self._send_json(404, {"error": "Not found"})
             except ValueError as exc:
                 self._send_json(400, {"error": str(exc)})
+            except json.JSONDecodeError:
+                self._send_json(400, {"error": "Request body must be valid JSON"})
             except Exception as exc:  # pragma: no cover - defensive server boundary
                 self._send_json(500, {"error": str(exc)})
+
+        def _check_auth(self, path: str) -> bool:
+            if path == "/health" or not api_token:
+                return True
+            auth_header = self.headers.get("Authorization", "")
+            expected = f"Bearer {api_token}"
+            if auth_header == expected:
+                return True
+            self.send_response(401)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("WWW-Authenticate", "Bearer")
+            payload = json.dumps({"error": "Unauthorized"}).encode("utf-8")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+            return False
 
         def _read_json_body(self) -> dict:
             content_length = int(self.headers.get("Content-Length", "0"))

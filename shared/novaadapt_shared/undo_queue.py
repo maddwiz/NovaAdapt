@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -19,8 +20,16 @@ class UndoQueue:
     def _connect(self) -> sqlite3.Connection:
         return sqlite3.connect(self.db_path)
 
+    @contextmanager
+    def _connection(self):
+        conn = self._connect()
+        try:
+            yield conn
+        finally:
+            conn.close()
+
     def _initialize(self) -> None:
-        with self._connect() as conn:
+        with self._connection() as conn:
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS action_log (
@@ -39,6 +48,7 @@ class UndoQueue:
             }
             if "undo_action_json" not in columns:
                 conn.execute("ALTER TABLE action_log ADD COLUMN undo_action_json TEXT")
+            conn.commit()
 
     def record(
         self,
@@ -52,23 +62,25 @@ class UndoQueue:
             if undo_action is not None
             else None
         )
-        with self._connect() as conn:
+        with self._connection() as conn:
             cursor = conn.execute(
                 "INSERT INTO action_log(action_json, undo_action_json, status) VALUES (?, ?, ?)",
                 (payload, undo_payload, status),
             )
+            conn.commit()
             return int(cursor.lastrowid)
 
     def mark_undone(self, action_id: int) -> bool:
-        with self._connect() as conn:
+        with self._connection() as conn:
             cursor = conn.execute(
                 "UPDATE action_log SET undone = 1 WHERE id = ? AND undone = 0",
                 (action_id,),
             )
+            conn.commit()
             return cursor.rowcount > 0
 
     def get(self, action_id: int) -> dict[str, Any] | None:
-        with self._connect() as conn:
+        with self._connection() as conn:
             row = conn.execute(
                 """
                 SELECT id, action_json, undo_action_json, status, created_at, undone
@@ -82,7 +94,7 @@ class UndoQueue:
         return self._row_to_dict(row)
 
     def latest_pending(self) -> dict[str, Any] | None:
-        with self._connect() as conn:
+        with self._connection() as conn:
             row = conn.execute(
                 """
                 SELECT id, action_json, undo_action_json, status, created_at, undone
@@ -97,7 +109,7 @@ class UndoQueue:
         return self._row_to_dict(row)
 
     def recent(self, limit: int = 20) -> list[dict[str, Any]]:
-        with self._connect() as conn:
+        with self._connection() as conn:
             rows = conn.execute(
                 """
                 SELECT id, action_json, undo_action_json, status, created_at, undone
