@@ -26,6 +26,7 @@
 Bearer token auth can be required for all routes except `/health`.
 All responses include `X-Request-ID` for request-level tracing across bridge/core.
 Core also exposes `/metrics` and can enforce request-rate and request-body limits.
+Async job records are persisted to SQLite when `--jobs-db-path` is configured.
 
 ## Relay Layer
 

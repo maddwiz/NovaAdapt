@@ -107,6 +107,12 @@ def _build_parser() -> argparse.ArgumentParser:
     serve_cmd = sub.add_parser("serve", help="Run NovaAdapt HTTP API server")
     serve_cmd.add_argument("--config", type=Path, default=_default_config_path())
     serve_cmd.add_argument("--db-path", type=Path, default=None)
+    serve_cmd.add_argument(
+        "--jobs-db-path",
+        type=Path,
+        default=Path(os.getenv("NOVAADAPT_JOBS_DB", str(Path.home() / ".novaadapt" / "jobs.db"))),
+        help="Path to persisted async jobs SQLite database",
+    )
     serve_cmd.add_argument("--host", default="127.0.0.1")
     serve_cmd.add_argument("--port", type=int, default=8787)
     serve_cmd.add_argument(
@@ -157,6 +163,7 @@ def main() -> None:
                 rate_limit_rps=max(0.0, float(args.rate_limit_rps)),
                 rate_limit_burst=args.rate_limit_burst,
                 max_request_body_bytes=max(1, int(args.max_body_bytes)),
+                jobs_db_path=str(args.jobs_db_path),
             )
             return
 

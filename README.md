@@ -107,6 +107,7 @@ novaadapt serve \
   --config config/models.local.json \
   --host 127.0.0.1 \
   --port 8787 \
+  --jobs-db-path ~/.novaadapt/jobs.db \
   --api-token YOUR_CORE_TOKEN \
   --log-requests \
   --rate-limit-rps 20 \
@@ -237,6 +238,7 @@ Environment variables:
 - Bridge relay exposes `/metrics` for basic operational counters.
 - Bridge relay forwards `/openapi.json` so remote clients can discover contract shape.
 - Core API supports configurable request rate limiting and max body size on `serve`.
+- Async job records can be persisted to SQLite (`--jobs-db-path`) for restart-safe history.
 
 ## License
 

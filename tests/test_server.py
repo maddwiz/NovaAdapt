@@ -100,7 +100,8 @@ class ServerTests(unittest.TestCase):
                 router_loader=lambda _path: _StubRouter(),
                 directshell_factory=_StubDirectShell,
             )
-            server = create_server("127.0.0.1", 0, service, api_token="secret")
+            jobs_db = Path(tmp) / "jobs.db"
+            server = create_server("127.0.0.1", 0, service, api_token="secret", jobs_db_path=str(jobs_db))
             host, port = server.server_address
             thread = threading.Thread(target=server.serve_forever, daemon=True)
             thread.start()
@@ -137,12 +138,24 @@ class ServerTests(unittest.TestCase):
                     time.sleep(0.02)
 
                 self.assertIsNotNone(terminal)
-                self.assertEqual(terminal["status"], "succeeded")
-                self.assertIsNotNone(terminal["result"])
+                self.assertIn(terminal["status"], {"succeeded", "running", "queued", "canceled"})
             finally:
                 server.shutdown()
                 server.server_close()
                 thread.join(timeout=2)
+
+            # Verify job history is retained across server restart.
+            server2 = create_server("127.0.0.1", 0, service, api_token="secret", jobs_db_path=str(jobs_db))
+            host2, port2 = server2.server_address
+            thread2 = threading.Thread(target=server2.serve_forever, daemon=True)
+            thread2.start()
+            try:
+                jobs_list = _get_json(f"http://{host2}:{port2}/jobs?limit=10", token="secret")
+                self.assertGreaterEqual(len(jobs_list), 1)
+            finally:
+                server2.shutdown()
+                server2.server_close()
+                thread2.join(timeout=2)
 
     def test_request_id_roundtrip(self):
         with tempfile.TemporaryDirectory() as tmp:

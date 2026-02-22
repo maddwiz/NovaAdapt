@@ -1,6 +1,9 @@
 import time
 import unittest
+from pathlib import Path
+import tempfile
 
+from novaadapt_core.job_store import JobStore
 from novaadapt_core.jobs import JobManager
 
 
@@ -72,6 +75,31 @@ class JobManagerTests(unittest.TestCase):
                 break
             time.sleep(0.01)
         jobs.shutdown()
+
+    def test_persists_records_with_store(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = JobStore(Path(tmp) / "jobs.db")
+            jobs = JobManager(max_workers=1, store=store)
+
+            def work():
+                return {"ok": True}
+
+            job_id = jobs.submit(work)
+            for _ in range(50):
+                record = jobs.get(job_id)
+                if record and record["status"] in {"succeeded", "failed"}:
+                    break
+                time.sleep(0.01)
+            jobs.shutdown()
+
+            # Simulate restart: new manager can still list/get persisted jobs.
+            jobs2 = JobManager(max_workers=1, store=store)
+            persisted = jobs2.get(job_id)
+            self.assertIsNotNone(persisted)
+            self.assertEqual(persisted["status"], "succeeded")
+            self.assertEqual(persisted["result"], {"ok": True})
+            self.assertGreaterEqual(len(jobs2.list(limit=10)), 1)
+            jobs2.shutdown()
 
 
 if __name__ == "__main__":

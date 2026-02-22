@@ -9,6 +9,7 @@ from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
+from .job_store import JobStore
 from .jobs import JobManager
 from .openapi import build_openapi_spec
 from .service import NovaAdaptService
@@ -87,8 +88,9 @@ def create_server(
     rate_limit_rps: float = 0.0,
     rate_limit_burst: int | None = None,
     max_request_body_bytes: int = DEFAULT_MAX_REQUEST_BODY_BYTES,
+    jobs_db_path: str | None = None,
 ) -> ThreadingHTTPServer:
-    managed_jobs = job_manager or JobManager()
+    managed_jobs = job_manager or JobManager(store=JobStore(jobs_db_path) if jobs_db_path else None)
     metrics = _RequestMetrics()
 
     limiter = None
@@ -119,6 +121,7 @@ def run_server(
     rate_limit_rps: float = 0.0,
     rate_limit_burst: int | None = None,
     max_request_body_bytes: int = DEFAULT_MAX_REQUEST_BODY_BYTES,
+    jobs_db_path: str | None = None,
 ) -> None:
     server = create_server(
         host=host,
@@ -130,6 +133,7 @@ def run_server(
         rate_limit_rps=rate_limit_rps,
         rate_limit_burst=rate_limit_burst,
         max_request_body_bytes=max_request_body_bytes,
+        jobs_db_path=jobs_db_path,
     )
     try:
         server.serve_forever()
