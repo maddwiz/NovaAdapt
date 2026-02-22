@@ -70,6 +70,9 @@ class ServerTests(unittest.TestCase):
                 self.assertIn("request_id", health)
                 self.assertTrue(health_headers.get("X-Request-ID"))
 
+                dashboard_html = _get_text(f"http://{host}:{port}/dashboard")
+                self.assertIn("NovaAdapt Core Dashboard", dashboard_html)
+
                 openapi, _ = _get_json_with_headers(f"http://{host}:{port}/openapi.json")
                 self.assertEqual(openapi["openapi"], "3.1.0")
                 self.assertIn("/run", openapi["paths"])
@@ -113,6 +116,9 @@ class ServerTests(unittest.TestCase):
 
                 models = _get_json(f"http://{host}:{port}/models", token="secret")
                 self.assertEqual(models[0]["name"], "local")
+
+                dashboard_html = _get_text(f"http://{host}:{port}/dashboard", token="secret")
+                self.assertIn("NovaAdapt Core Dashboard", dashboard_html)
 
                 queued = _post_json(
                     f"http://{host}:{port}/run_async",

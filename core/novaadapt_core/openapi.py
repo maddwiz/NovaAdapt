@@ -16,6 +16,12 @@ def build_openapi_spec() -> dict:
                     "responses": {"200": {"description": "Healthy"}},
                 }
             },
+            "/dashboard": {
+                "get": {
+                    "summary": "Operational dashboard HTML",
+                    "responses": {"200": {"description": "Dashboard"}},
+                }
+            },
             "/openapi.json": {
                 "get": {
                     "summary": "OpenAPI schema",

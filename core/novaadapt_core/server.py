@@ -9,6 +9,7 @@ from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
+from .dashboard import render_dashboard_html
 from .job_store import JobStore
 from .jobs import JobManager
 from .openapi import build_openapi_spec
@@ -169,6 +170,14 @@ def _build_handler(
                 if path == "/health":
                     status_code = 200
                     self._send_json(status_code, {"ok": True, "service": "novaadapt"})
+                    return
+
+                if path == "/dashboard":
+                    if not self._check_auth(path):
+                        status_code = 401
+                        return
+                    status_code = 200
+                    self._send_html(status_code, render_dashboard_html())
                     return
 
                 if path == "/openapi.json":
@@ -378,6 +387,15 @@ def _build_handler(
             encoded = metrics.render().encode("utf-8")
             self.send_response(status_code)
             self.send_header("Content-Type", "text/plain; version=0.0.4")
+            self.send_header("X-Request-ID", self._request_id)
+            self.send_header("Content-Length", str(len(encoded)))
+            self.end_headers()
+            self.wfile.write(encoded)
+
+        def _send_html(self, status_code: int, html: str) -> None:
+            encoded = html.encode("utf-8")
+            self.send_response(status_code)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("X-Request-ID", self._request_id)
             self.send_header("Content-Length", str(len(encoded)))
             self.end_headers()

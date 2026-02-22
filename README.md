@@ -119,6 +119,7 @@ API endpoints:
 
 - `GET /health`
 - `GET /openapi.json`
+- `GET /dashboard` (auth-protected operational HTML dashboard)
 - `GET /models`
 - `GET /history?limit=20`
 - `GET /metrics` (Prometheus-style counters, auth-protected when token is enabled)
