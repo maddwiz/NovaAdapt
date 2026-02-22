@@ -129,7 +129,8 @@ API endpoints:
   --port 9797 \
   --core-url http://127.0.0.1:8787 \
   --bridge-token YOUR_BRIDGE_TOKEN \
-  --core-token YOUR_CORE_TOKEN
+  --core-token YOUR_CORE_TOKEN \
+  --log-requests true
 ```
 
 ## Model-Agnostic Design
@@ -173,6 +174,7 @@ Environment variables:
 - Every action is logged in SQLite (`~/.novaadapt/actions.db`) for audit/undo workflows.
 - Core API can require bearer auth via `--api-token` / `NOVAADAPT_API_TOKEN`.
 - Bridge relay enforces independent ingress token and forwards with a separate core token.
+- Bridge relay propagates `X-Request-ID` for traceability and supports deep health probing at `/health?deep=1`.
 
 ## License
 

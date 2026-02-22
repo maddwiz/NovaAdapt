@@ -27,6 +27,8 @@ Bearer token auth can be required for all routes except `/health`.
 
 `novaadapt-bridge` is a Go secure relay process for remote devices. It enforces a bridge ingress token and forwards to the core API using a separate upstream token.
 
+It also preserves per-request tracing through `X-Request-ID` and supports deep upstream health checks for relay monitoring.
+
 ## Reliability Track
 
 - Multi-model voting provides consensus-based planning.
