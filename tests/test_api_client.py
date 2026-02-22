@@ -1,0 +1,112 @@
+import json
+import threading
+import unittest
+from http.server import BaseHTTPRequestHandler, HTTPServer
+
+from novaadapt_shared.api_client import APIClientError, NovaAdaptAPIClient
+
+
+class _Handler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        auth = self.headers.get("Authorization")
+        if self.path != "/health" and auth != "Bearer token":
+            self._send(401, {"error": "unauthorized"})
+            return
+
+        if self.path == "/health":
+            self._send(200, {"ok": True})
+            return
+        if self.path == "/openapi.json":
+            self._send(200, {"openapi": "3.1.0", "paths": {"/run": {}}})
+            return
+        if self.path == "/models":
+            self._send(200, [{"name": "local"}])
+            return
+        if self.path.startswith("/jobs/"):
+            self._send(200, {"id": "job-1", "status": "succeeded"})
+            return
+        if self.path.startswith("/jobs"):
+            self._send(200, [{"id": "job-1"}])
+            return
+        if self.path.startswith("/history"):
+            self._send(200, [{"id": 1}])
+            return
+        if self.path == "/metrics":
+            body = "novaadapt_core_requests_total 1\n".encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        self._send(404, {"error": "not found"})
+
+    def do_POST(self):
+        auth = self.headers.get("Authorization")
+        if auth != "Bearer token":
+            self._send(401, {"error": "unauthorized"})
+            return
+
+        if self.path in {"/run", "/run_async", "/undo", "/check"}:
+            length = int(self.headers.get("Content-Length", "0"))
+            raw = self.rfile.read(length).decode("utf-8")
+            payload = json.loads(raw)
+            if self.path == "/run":
+                self._send(200, {"status": "ok", "objective": payload.get("objective")})
+            elif self.path == "/run_async":
+                self._send(202, {"job_id": "job-1", "status": "queued"})
+            elif self.path == "/undo":
+                self._send(200, {"id": payload.get("id", 1), "status": "marked_undone"})
+            else:
+                self._send(200, [{"name": "local", "ok": True}])
+            return
+
+        self._send(404, {"error": "not found"})
+
+    def _send(self, status: int, payload):
+        body = json.dumps(payload).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, format, *args):
+        return
+
+
+class APIClientTests(unittest.TestCase):
+    def setUp(self):
+        self.server = HTTPServer(("127.0.0.1", 0), _Handler)
+        self.host, self.port = self.server.server_address
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread.start()
+
+    def tearDown(self):
+        self.server.shutdown()
+        self.server.server_close()
+        self.thread.join(timeout=2)
+
+    def test_core_operations(self):
+        client = NovaAdaptAPIClient(base_url=f"http://{self.host}:{self.port}", token="token")
+
+        self.assertTrue(client.health()["ok"])
+        self.assertEqual(client.openapi()["openapi"], "3.1.0")
+        self.assertEqual(client.models()[0]["name"], "local")
+        self.assertEqual(client.run("demo")["status"], "ok")
+        self.assertEqual(client.run_async("demo")["status"], "queued")
+        self.assertEqual(client.jobs(limit=5)[0]["id"], "job-1")
+        self.assertEqual(client.job("job-1")["status"], "succeeded")
+        self.assertEqual(client.history(limit=1)[0]["id"], 1)
+        self.assertEqual(client.undo(id=1, mark_only=True)["status"], "marked_undone")
+        self.assertIn("novaadapt_core_requests_total", client.metrics_text())
+
+    def test_error_without_token(self):
+        client = NovaAdaptAPIClient(base_url=f"http://{self.host}:{self.port}")
+        with self.assertRaises(APIClientError):
+            client.models()
+
+
+if __name__ == "__main__":
+    unittest.main()

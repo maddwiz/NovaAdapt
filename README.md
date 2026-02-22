@@ -19,6 +19,7 @@ Implemented now:
   - Optional LiteLLM execution path when `litellm` is installed.
   - Multi-model voting strategy (`single` or `vote`).
   - Health probes and resilient fallback for single-model mode.
+  - API client SDK for core/bridge (`NovaAdaptAPIClient`).
 - `core` Python CLI orchestrator that:
   - Requests an action plan from selected model(s).
   - Parses JSON actions.
@@ -141,6 +142,16 @@ make test      # Python + Go tests
 make test-py   # Python tests only
 make test-go   # Go bridge tests only
 make build-bridge
+```
+
+## Python API Client
+
+```python
+from novaadapt_shared import NovaAdaptAPIClient
+
+client = NovaAdaptAPIClient(base_url="http://127.0.0.1:8787", token="YOUR_CORE_TOKEN")
+print(client.models())
+print(client.run("Open browser and go to example.com"))
 ```
 
 8. Build and start secure bridge relay:
