@@ -145,6 +145,17 @@ make test-go   # Go bridge tests only
 make build-bridge
 ```
 
+## Benchmarking
+
+```bash
+PYTHONPATH=core:shared python3 -m novaadapt_core.cli benchmark \
+  --config config/models.example.json \
+  --suite config/benchmark.example.json \
+  --out results/benchmark.json
+```
+
+This produces pass/fail and success-rate metrics so reliability progress can be tracked objectively.
+
 ## Docker Deployment
 
 ```bash

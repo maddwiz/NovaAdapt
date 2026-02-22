@@ -1,0 +1,19 @@
+{
+  "tasks": [
+    {
+      "id": "open-browser",
+      "objective": "Open a browser and navigate to example.com",
+      "strategy": "single",
+      "expected_action_types": ["click"],
+      "expected_target_contains": ["browser"]
+    },
+    {
+      "id": "search-docs",
+      "objective": "Open docs tab and search for release notes",
+      "strategy": "vote",
+      "candidates": ["local-qwen", "openai-gpt"],
+      "expected_action_types": ["type"],
+      "expected_target_contains": ["search"]
+    }
+  ]
+}

@@ -1,0 +1,39 @@
+{
+  "summary": {
+    "total": 2,
+    "passed": 0,
+    "failed": 2,
+    "success_rate": 0.0,
+    "first_try_success_rate": 0.0,
+    "avg_action_count": 0,
+    "blocked_count": 0
+  },
+  "tasks": [
+    {
+      "id": "open-browser",
+      "objective": "Open a browser and navigate to example.com",
+      "passed": false,
+      "action_count": 0,
+      "blocked": false,
+      "has_meaningful_action": false,
+      "type_requirements_met": false,
+      "target_requirements_met": false,
+      "run_error": "All model attempts failed: local-qwen: Model endpoint 'local-qwen' unreachable: [Errno 61] Connection refused",
+      "model": null,
+      "strategy": null
+    },
+    {
+      "id": "search-docs",
+      "objective": "Open docs tab and search for release notes",
+      "passed": false,
+      "action_count": 0,
+      "blocked": false,
+      "has_meaningful_action": false,
+      "type_requirements_met": false,
+      "target_requirements_met": false,
+      "run_error": "All vote candidates failed: openai-gpt: Missing API key env var 'OPENAI_API_KEY' for endpoint 'openai-gpt'; local-qwen: Model endpoint 'local-qwen' unreachable: [Errno 61] Connection refused",
+      "model": null,
+      "strategy": null
+    }
+  ]
+}

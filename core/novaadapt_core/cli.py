@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 
+from .benchmark import run_benchmark
 from .server import run_server
 from .service import NovaAdaptService
 
@@ -90,6 +91,17 @@ def _build_parser() -> argparse.ArgumentParser:
         "--probe",
         default="Reply with: OK",
         help="Probe prompt text sent to each model",
+    )
+
+    bench_cmd = sub.add_parser("benchmark", help="Run benchmark suite and report success metrics")
+    bench_cmd.add_argument("--config", type=Path, default=_default_config_path())
+    bench_cmd.add_argument("--db-path", type=Path, default=None)
+    bench_cmd.add_argument("--suite", type=Path, required=True, help="Path to benchmark suite JSON")
+    bench_cmd.add_argument(
+        "--out",
+        type=Path,
+        default=None,
+        help="Optional output path for benchmark report JSON",
     )
 
     serve_cmd = sub.add_parser("serve", help="Run NovaAdapt HTTP API server")
@@ -182,6 +194,16 @@ def main() -> None:
             service = NovaAdaptService(default_config=args.config)
             models = [name.strip() for name in args.models.split(",") if name.strip()]
             print(json.dumps(service.check(model_names=models or None, probe_prompt=args.probe), indent=2))
+            return
+
+        if args.command == "benchmark":
+            service = NovaAdaptService(default_config=args.config, db_path=args.db_path)
+            result = run_benchmark(
+                run_fn=service.run,
+                suite_path=args.suite,
+                output_path=args.out,
+            )
+            print(json.dumps(result, indent=2))
             return
 
         if args.command == "models":
