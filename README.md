@@ -148,6 +148,7 @@ make build-bridge
 ## Docker Deployment
 
 ```bash
+./installer/gen_dev_tokens.sh   # optional: writes deploy/.env
 ./installer/run_docker_stack.sh
 ```
 

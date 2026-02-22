@@ -8,3 +8,4 @@ __pycache__/
 .DS_Store
 config/models.local.json
 bridge/bin/
+deploy/.env

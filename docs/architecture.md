@@ -39,6 +39,7 @@ The bridge additionally exposes `/metrics` for request and error counters.
 - Cross-language CI runs Python unit tests and Go bridge tests on every push/PR.
 - A local smoke script (`scripts/smoke_bridge.sh`) validates auth and tracing across core + bridge.
 - Container deployment assets live under `deploy/` (core + bridge images and compose stack).
+- Token bootstrap helper `installer/gen_dev_tokens.sh` writes `deploy/.env` for local stack auth.
 
 ## Reliability Track
 

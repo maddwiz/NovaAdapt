@@ -5,6 +5,9 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR/deploy"
 
 if command -v docker >/dev/null 2>&1; then
+  if [[ ! -f .env ]]; then
+    "$ROOT_DIR/installer/gen_dev_tokens.sh"
+  fi
   docker compose up --build -d
   echo "NovaAdapt stack started."
   echo "Core:   http://127.0.0.1:8787/health"
