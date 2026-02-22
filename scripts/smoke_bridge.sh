@@ -28,6 +28,9 @@ PYTHONPATH='core:shared' python3 -m novaadapt_core.cli serve \
   --port "$CORE_PORT" \
   --api-token "$CORE_TOKEN" \
   --log-requests \
+  --rate-limit-rps 20 \
+  --rate-limit-burst 20 \
+  --max-body-bytes 1048576 \
   > /tmp/novaadapt-core-smoke.log 2>&1 &
 CORE_PID=$!
 
@@ -73,4 +76,10 @@ fi
 deep_health=$(curl -sS "http://127.0.0.1:${BRIDGE_PORT}/health?deep=1")
 echo "$deep_health" | python3 -c 'import json,sys; data=json.load(sys.stdin); assert data.get("ok") is True; assert "core" in data'
 
-echo "Smoke test passed: bridge/core auth and tracing are working."
+bridge_metrics=$(curl -sS "http://127.0.0.1:${BRIDGE_PORT}/metrics")
+echo "$bridge_metrics" | grep -q 'novaadapt_bridge_requests_total'
+
+core_metrics=$(curl -sS -H "Authorization: Bearer ${CORE_TOKEN}" "http://127.0.0.1:${CORE_PORT}/metrics")
+echo "$core_metrics" | grep -q 'novaadapt_core_requests_total'
+
+echo "Smoke test passed: bridge/core auth, tracing, and metrics are working."

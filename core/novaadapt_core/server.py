@@ -3,12 +3,66 @@ from __future__ import annotations
 import json
 import logging
 import secrets
+import threading
 import time
+from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 from .jobs import JobManager
 from .service import NovaAdaptService
+
+
+DEFAULT_MAX_REQUEST_BODY_BYTES = 1 << 20  # 1 MiB
+
+
+class PayloadTooLargeError(ValueError):
+    pass
+
+
+class _SlidingWindowRateLimiter:
+    """Simple thread-safe fixed-window limiter for API requests."""
+
+    def __init__(self, burst: int, window_seconds: float = 1.0) -> None:
+        self.burst = max(1, burst)
+        self.window_seconds = window_seconds
+        self._timestamps: deque[float] = deque()
+        self._lock = threading.Lock()
+
+    def allow(self) -> bool:
+        now = time.monotonic()
+        cutoff = now - self.window_seconds
+        with self._lock:
+            while self._timestamps and self._timestamps[0] < cutoff:
+                self._timestamps.popleft()
+            if len(self._timestamps) >= self.burst:
+                return False
+            self._timestamps.append(now)
+            return True
+
+
+class _RequestMetrics:
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self.requests_total = 0
+        self.unauthorized_total = 0
+        self.rate_limited_total = 0
+        self.bad_request_total = 0
+        self.server_errors_total = 0
+
+    def inc(self, field: str) -> None:
+        with self._lock:
+            setattr(self, field, getattr(self, field) + 1)
+
+    def render(self) -> str:
+        with self._lock:
+            return (
+                f"novaadapt_core_requests_total {self.requests_total}\n"
+                f"novaadapt_core_unauthorized_total {self.unauthorized_total}\n"
+                f"novaadapt_core_rate_limited_total {self.rate_limited_total}\n"
+                f"novaadapt_core_bad_request_total {self.bad_request_total}\n"
+                f"novaadapt_core_server_errors_total {self.server_errors_total}\n"
+            )
 
 
 class NovaAdaptHTTPServer(ThreadingHTTPServer):
@@ -29,14 +83,27 @@ def create_server(
     job_manager: JobManager | None = None,
     log_requests: bool = False,
     logger: logging.Logger | None = None,
+    rate_limit_rps: float = 0.0,
+    rate_limit_burst: int | None = None,
+    max_request_body_bytes: int = DEFAULT_MAX_REQUEST_BODY_BYTES,
 ) -> ThreadingHTTPServer:
     managed_jobs = job_manager or JobManager()
+    metrics = _RequestMetrics()
+
+    limiter = None
+    if rate_limit_rps > 0:
+        burst = rate_limit_burst if rate_limit_burst is not None else max(1, int(rate_limit_rps))
+        limiter = _SlidingWindowRateLimiter(burst=burst, window_seconds=1.0)
+
     handler_cls = _build_handler(
         service=service,
         api_token=api_token,
         job_manager=managed_jobs,
         log_requests=log_requests,
         logger=logger or logging.getLogger("novaadapt.api"),
+        limiter=limiter,
+        metrics=metrics,
+        max_request_body_bytes=max(1, int(max_request_body_bytes)),
     )
     return NovaAdaptHTTPServer((host, port), handler_cls, managed_jobs)
 
@@ -48,6 +115,9 @@ def run_server(
     api_token: str | None = None,
     log_requests: bool = False,
     logger: logging.Logger | None = None,
+    rate_limit_rps: float = 0.0,
+    rate_limit_burst: int | None = None,
+    max_request_body_bytes: int = DEFAULT_MAX_REQUEST_BODY_BYTES,
 ) -> None:
     server = create_server(
         host=host,
@@ -56,6 +126,9 @@ def run_server(
         api_token=api_token,
         log_requests=log_requests,
         logger=logger,
+        rate_limit_rps=rate_limit_rps,
+        rate_limit_burst=rate_limit_burst,
+        max_request_body_bytes=max_request_body_bytes,
     )
     try:
         server.serve_forever()
@@ -71,6 +144,9 @@ def _build_handler(
     job_manager: JobManager,
     log_requests: bool,
     logger: logging.Logger,
+    limiter: _SlidingWindowRateLimiter | None,
+    metrics: _RequestMetrics,
+    max_request_body_bytes: int,
 ):
     class Handler(BaseHTTPRequestHandler):
         _request_id: str
@@ -79,6 +155,7 @@ def _build_handler(
             started = time.perf_counter()
             self._request_id = _normalize_request_id(self.headers.get("X-Request-ID"))
             status_code = 500
+            metrics.inc("requests_total")
             parsed = urlparse(self.path)
             path = parsed.path
             query = parse_qs(parsed.query)
@@ -87,6 +164,20 @@ def _build_handler(
                 if path == "/health":
                     status_code = 200
                     self._send_json(status_code, {"ok": True, "service": "novaadapt"})
+                    return
+
+                if path == "/metrics":
+                    if not self._check_auth(path):
+                        status_code = 401
+                        return
+                    status_code = 200
+                    self._send_metrics(status_code)
+                    return
+
+                if self._is_rate_limited(path):
+                    status_code = 429
+                    metrics.inc("rate_limited_total")
+                    self._send_json(status_code, {"error": "Rate limit exceeded"})
                     return
 
                 if not self._check_auth(path):
@@ -131,9 +222,11 @@ def _build_handler(
                 self._send_json(status_code, {"error": "Not found"})
             except ValueError as exc:
                 status_code = 400
+                metrics.inc("bad_request_total")
                 self._send_json(status_code, {"error": str(exc)})
             except Exception as exc:  # pragma: no cover - defensive server boundary
                 status_code = 500
+                metrics.inc("server_errors_total")
                 self._send_json(status_code, {"error": str(exc)})
             finally:
                 self._log_request(status_code, started)
@@ -142,8 +235,16 @@ def _build_handler(
             started = time.perf_counter()
             self._request_id = _normalize_request_id(self.headers.get("X-Request-ID"))
             status_code = 500
+            metrics.inc("requests_total")
             parsed = urlparse(self.path)
             path = parsed.path
+
+            if self._is_rate_limited(path):
+                status_code = 429
+                metrics.inc("rate_limited_total")
+                self._send_json(status_code, {"error": "Rate limit exceeded"})
+                self._log_request(status_code, started)
+                return
 
             if not self._check_auth(path):
                 status_code = 401
@@ -180,17 +281,31 @@ def _build_handler(
 
                 status_code = 404
                 self._send_json(status_code, {"error": "Not found"})
+            except PayloadTooLargeError as exc:
+                status_code = 413
+                metrics.inc("bad_request_total")
+                self._send_json(status_code, {"error": str(exc)})
             except ValueError as exc:
                 status_code = 400
+                metrics.inc("bad_request_total")
                 self._send_json(status_code, {"error": str(exc)})
             except json.JSONDecodeError:
                 status_code = 400
+                metrics.inc("bad_request_total")
                 self._send_json(status_code, {"error": "Request body must be valid JSON"})
             except Exception as exc:  # pragma: no cover - defensive server boundary
                 status_code = 500
+                metrics.inc("server_errors_total")
                 self._send_json(status_code, {"error": str(exc)})
             finally:
                 self._log_request(status_code, started)
+
+        def _is_rate_limited(self, path: str) -> bool:
+            if limiter is None:
+                return False
+            if path in {"/health", "/metrics"}:
+                return False
+            return not limiter.allow()
 
         def _check_auth(self, path: str) -> bool:
             if path == "/health" or not api_token:
@@ -199,14 +314,20 @@ def _build_handler(
             expected = f"Bearer {api_token}"
             if auth_header == expected:
                 return True
+            metrics.inc("unauthorized_total")
             self._send_json(401, {"error": "Unauthorized"}, unauthorized=True)
             return False
 
         def _read_json_body(self) -> dict:
             content_length = int(self.headers.get("Content-Length", "0"))
+            if content_length > max_request_body_bytes:
+                raise PayloadTooLargeError("Request body too large")
             if content_length <= 0:
                 return {}
-            raw = self.rfile.read(content_length).decode("utf-8")
+
+            raw = self.rfile.read(min(content_length, max_request_body_bytes + 1)).decode("utf-8")
+            if len(raw.encode("utf-8")) > max_request_body_bytes:
+                raise PayloadTooLargeError("Request body too large")
             if not raw.strip():
                 return {}
             value = json.loads(raw)
@@ -224,6 +345,15 @@ def _build_handler(
             self.send_header("X-Request-ID", self._request_id)
             if unauthorized:
                 self.send_header("WWW-Authenticate", "Bearer")
+            self.send_header("Content-Length", str(len(encoded)))
+            self.end_headers()
+            self.wfile.write(encoded)
+
+        def _send_metrics(self, status_code: int) -> None:
+            encoded = metrics.render().encode("utf-8")
+            self.send_response(status_code)
+            self.send_header("Content-Type", "text/plain; version=0.0.4")
+            self.send_header("X-Request-ID", self._request_id)
             self.send_header("Content-Length", str(len(encoded)))
             self.end_headers()
             self.wfile.write(encoded)

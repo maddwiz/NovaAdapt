@@ -107,6 +107,24 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Emit per-request access logs from the core API server",
     )
+    serve_cmd.add_argument(
+        "--rate-limit-rps",
+        type=float,
+        default=float(os.getenv("NOVAADAPT_RATE_LIMIT_RPS", "0")),
+        help="Per-second request rate limit for core API (0 disables limit)",
+    )
+    serve_cmd.add_argument(
+        "--rate-limit-burst",
+        type=int,
+        default=None,
+        help="Burst requests allowed inside 1 second window (defaults to rate limit rounded down)",
+    )
+    serve_cmd.add_argument(
+        "--max-body-bytes",
+        type=int,
+        default=int(os.getenv("NOVAADAPT_MAX_BODY_BYTES", str(1 << 20))),
+        help="Maximum HTTP request body size in bytes",
+    )
 
     return parser
 
@@ -124,6 +142,9 @@ def main() -> None:
                 service=service,
                 api_token=args.api_token,
                 log_requests=args.log_requests,
+                rate_limit_rps=max(0.0, float(args.rate_limit_rps)),
+                rate_limit_burst=args.rate_limit_burst,
+                max_request_body_bytes=max(1, int(args.max_body_bytes)),
             )
             return
 

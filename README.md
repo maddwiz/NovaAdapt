@@ -107,7 +107,10 @@ novaadapt serve \
   --host 127.0.0.1 \
   --port 8787 \
   --api-token YOUR_CORE_TOKEN \
-  --log-requests
+  --log-requests \
+  --rate-limit-rps 20 \
+  --rate-limit-burst 20 \
+  --max-body-bytes 1048576
 ```
 
 API endpoints:
@@ -115,6 +118,7 @@ API endpoints:
 - `GET /health`
 - `GET /models`
 - `GET /history?limit=20`
+- `GET /metrics` (Prometheus-style counters, auth-protected when token is enabled)
 - `POST /run` with JSON payload
 - `POST /run_async` with JSON payload (returns `job_id`)
 - `GET /jobs` and `GET /jobs/{id}`
@@ -194,6 +198,7 @@ Environment variables:
 - Bridge relay enforces independent ingress token and forwards with a separate core token.
 - Bridge relay propagates `X-Request-ID` for traceability and supports deep health probing at `/health?deep=1`.
 - Bridge relay exposes `/metrics` for basic operational counters.
+- Core API supports configurable request rate limiting and max body size on `serve`.
 
 ## License
 

@@ -167,6 +167,73 @@ class ServerTests(unittest.TestCase):
                 server.server_close()
                 thread.join(timeout=2)
 
+    def test_metrics_endpoint_and_auth(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            service = NovaAdaptService(
+                default_config=Path("unused.json"),
+                db_path=Path(tmp) / "actions.db",
+                router_loader=lambda _path: _StubRouter(),
+                directshell_factory=_StubDirectShell,
+            )
+            server = create_server("127.0.0.1", 0, service, api_token="secret")
+            host, port = server.server_address
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+
+            try:
+                with self.assertRaises(error.HTTPError) as err:
+                    _get_text(f"http://{host}:{port}/metrics")
+                self.assertEqual(err.exception.code, 401)
+
+                _ = _get_json(f"http://{host}:{port}/models", token="secret")
+                metrics = _get_text(f"http://{host}:{port}/metrics", token="secret")
+                self.assertIn("novaadapt_core_requests_total", metrics)
+                self.assertIn("novaadapt_core_unauthorized_total", metrics)
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=2)
+
+    def test_rate_limit_and_max_body(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            service = NovaAdaptService(
+                default_config=Path("unused.json"),
+                db_path=Path(tmp) / "actions.db",
+                router_loader=lambda _path: _StubRouter(),
+                directshell_factory=_StubDirectShell,
+            )
+            server = create_server(
+                "127.0.0.1",
+                0,
+                service,
+                api_token="secret",
+                rate_limit_rps=1,
+                rate_limit_burst=1,
+                max_request_body_bytes=128,
+            )
+            host, port = server.server_address
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+
+            try:
+                _ = _get_json(f"http://{host}:{port}/models", token="secret")
+                with self.assertRaises(error.HTTPError) as err:
+                    _get_json(f"http://{host}:{port}/models", token="secret")
+                self.assertEqual(err.exception.code, 429)
+
+                time.sleep(1.05)
+                with self.assertRaises(error.HTTPError) as err:
+                    _post_json(
+                        f"http://{host}:{port}/run",
+                        {"objective": "x" * 1024},
+                        token="secret",
+                    )
+                self.assertEqual(err.exception.code, 413)
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=2)
+
 
 def _get_json(url: str, token: str | None = None):
     return _get_json_with_headers(url=url, token=token)[0]
@@ -174,6 +241,15 @@ def _get_json(url: str, token: str | None = None):
 
 def _post_json(url: str, payload: dict, token: str | None = None):
     return _post_json_with_headers(url=url, payload=payload, token=token)[0]
+
+
+def _get_text(url: str, token: str | None = None):
+    headers = {}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    req = request.Request(url=url, headers=headers, method="GET")
+    with request.urlopen(req, timeout=5) as response:
+        return response.read().decode("utf-8")
 
 
 def _get_json_with_headers(url: str, token: str | None = None, request_id: str | None = None):
