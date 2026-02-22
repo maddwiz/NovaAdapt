@@ -7,6 +7,8 @@ from novaadapt_shared.api_client import APIClientError, NovaAdaptAPIClient
 
 
 class _Handler(BaseHTTPRequestHandler):
+    models_attempts = 0
+
     def do_GET(self):
         auth = self.headers.get("Authorization")
         if self.path != "/health" and auth != "Bearer token":
@@ -20,6 +22,10 @@ class _Handler(BaseHTTPRequestHandler):
             self._send(200, {"openapi": "3.1.0", "paths": {"/run": {}}})
             return
         if self.path == "/models":
+            _Handler.models_attempts += 1
+            if _Handler.models_attempts == 1:
+                self._send(502, {"error": "temporary upstream"})
+                return
             self._send(200, [{"name": "local"}])
             return
         if self.path.startswith("/jobs/"):
@@ -80,6 +86,7 @@ class _Handler(BaseHTTPRequestHandler):
 
 class APIClientTests(unittest.TestCase):
     def setUp(self):
+        _Handler.models_attempts = 0
         self.server = HTTPServer(("127.0.0.1", 0), _Handler)
         self.host, self.port = self.server.server_address
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
@@ -109,6 +116,17 @@ class APIClientTests(unittest.TestCase):
         client = NovaAdaptAPIClient(base_url=f"http://{self.host}:{self.port}")
         with self.assertRaises(APIClientError):
             client.models()
+
+    def test_retry_for_transient_http(self):
+        client = NovaAdaptAPIClient(
+            base_url=f"http://{self.host}:{self.port}",
+            token="token",
+            max_retries=2,
+            retry_backoff_seconds=0,
+        )
+        models = client.models()
+        self.assertEqual(models[0]["name"], "local")
+        self.assertGreaterEqual(_Handler.models_attempts, 2)
 
 
 if __name__ == "__main__":

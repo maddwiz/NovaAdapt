@@ -155,6 +155,8 @@ print(client.models())
 print(client.run("Open browser and go to example.com"))
 ```
 
+`NovaAdaptAPIClient` retries transient HTTP failures by default (`max_retries=1`), configurable per client instance.
+
 8. Build and start secure bridge relay:
 
 ```bash

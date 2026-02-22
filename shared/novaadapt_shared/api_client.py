@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import secrets
+import time
 from dataclasses import dataclass
 from typing import Any
 from urllib import error, request
@@ -16,6 +17,8 @@ class NovaAdaptAPIClient:
     base_url: str
     token: str | None = None
     timeout_seconds: int = 30
+    max_retries: int = 1
+    retry_backoff_seconds: float = 0.25
 
     def health(self, deep: bool = False) -> dict[str, Any]:
         suffix = "/health?deep=1" if deep else "/health"
@@ -89,15 +92,7 @@ class NovaAdaptAPIClient:
 
     def _request_json(self, method: str, path: str, body: dict[str, Any] | None) -> Any:
         payload = None if body is None else json.dumps(body).encode("utf-8")
-        req = self._build_request(method=method, path=path, payload=payload)
-        try:
-            with request.urlopen(req, timeout=self.timeout_seconds) as response:
-                raw = response.read().decode("utf-8")
-        except error.HTTPError as exc:
-            body_text = exc.read().decode("utf-8", errors="ignore")
-            raise APIClientError(f"HTTP {exc.code}: {body_text}") from exc
-        except error.URLError as exc:
-            raise APIClientError(f"Request failed: {exc.reason}") from exc
+        raw = self._perform_request_with_retries(method=method, path=path, payload=payload)
 
         try:
             return json.loads(raw)
@@ -105,15 +100,32 @@ class NovaAdaptAPIClient:
             raise APIClientError("Expected JSON response") from exc
 
     def _request_text(self, method: str, path: str) -> str:
-        req = self._build_request(method=method, path=path, payload=None)
-        try:
-            with request.urlopen(req, timeout=self.timeout_seconds) as response:
-                return response.read().decode("utf-8")
-        except error.HTTPError as exc:
-            body_text = exc.read().decode("utf-8", errors="ignore")
-            raise APIClientError(f"HTTP {exc.code}: {body_text}") from exc
-        except error.URLError as exc:
-            raise APIClientError(f"Request failed: {exc.reason}") from exc
+        return self._perform_request_with_retries(method=method, path=path, payload=None)
+
+    def _perform_request_with_retries(self, method: str, path: str, payload: bytes | None) -> str:
+        attempts = max(0, int(self.max_retries)) + 1
+        last_error: Exception | None = None
+        for attempt in range(attempts):
+            req = self._build_request(method=method, path=path, payload=payload)
+            try:
+                with request.urlopen(req, timeout=self.timeout_seconds) as response:
+                    return response.read().decode("utf-8")
+            except error.HTTPError as exc:
+                body_text = exc.read().decode("utf-8", errors="ignore")
+                last_error = APIClientError(f"HTTP {exc.code}: {body_text}")
+                if not self._should_retry_http(exc.code) or attempt >= attempts - 1:
+                    raise last_error from exc
+            except error.URLError as exc:
+                last_error = APIClientError(f"Request failed: {exc.reason}")
+                if attempt >= attempts - 1:
+                    raise last_error from exc
+
+            if attempt < attempts - 1:
+                backoff = max(0.0, float(self.retry_backoff_seconds)) * (2**attempt)
+                if backoff:
+                    time.sleep(backoff)
+
+        raise APIClientError(str(last_error) if last_error else "Request failed")
 
     def _build_request(self, method: str, path: str, payload: bytes | None) -> request.Request:
         url = f"{self.base_url.rstrip('/')}{path}"
@@ -124,3 +136,7 @@ class NovaAdaptAPIClient:
         if self.token:
             headers["Authorization"] = f"Bearer {self.token}"
         return request.Request(url=url, data=payload, headers=headers, method=method)
+
+    @staticmethod
+    def _should_retry_http(status_code: int) -> bool:
+        return status_code in {408, 425, 429, 500, 502, 503, 504}
