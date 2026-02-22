@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
@@ -27,6 +28,8 @@ class RouterResult:
     content: str
     strategy: str
     votes: dict[str, str] = field(default_factory=dict)
+    errors: dict[str, str] = field(default_factory=dict)
+    attempted_models: list[str] = field(default_factory=list)
 
 
 class ModelRouter:
@@ -92,18 +95,36 @@ class ModelRouter:
         model_name: str | None = None,
         strategy: str = "single",
         candidate_models: Iterable[str] | None = None,
+        fallback_models: Iterable[str] | None = None,
     ) -> RouterResult:
         if strategy not in {"single", "vote"}:
             raise ValueError("strategy must be 'single' or 'vote'")
 
         if strategy == "single":
-            endpoint = self._resolve_model(model_name)
-            content = self._invoke(endpoint, messages)
+            primary_name = model_name or self.default_model
+            fallback_names = list(fallback_models or [])
+            ordered_names = self._dedupe_names([primary_name, *fallback_names])
+            errors: dict[str, str] = {}
+            endpoint = self._resolve_model(ordered_names[0])
+            content = ""
+            for name in ordered_names:
+                endpoint = self._resolve_model(name)
+                try:
+                    content = self._invoke(endpoint, messages)
+                    break
+                except Exception as exc:
+                    errors[name] = str(exc)
+            else:
+                joined = "; ".join(f"{k}: {v}" for k, v in errors.items())
+                raise RuntimeError(f"All model attempts failed: {joined}")
+
             return RouterResult(
                 model_name=endpoint.name,
                 model_id=endpoint.model,
                 content=content,
                 strategy="single",
+                errors=errors,
+                attempted_models=ordered_names,
             )
 
         names = list(candidate_models or [self.default_model])
@@ -113,6 +134,7 @@ class ModelRouter:
         endpoints = [self._resolve_model(name) for name in names]
         votes: dict[str, str] = {}
         outputs: list[str] = []
+        errors: dict[str, str] = {}
 
         with ThreadPoolExecutor(max_workers=min(4, len(endpoints))) as executor:
             futures = {
@@ -120,9 +142,16 @@ class ModelRouter:
             }
             for future in as_completed(futures):
                 endpoint = futures[future]
-                value = future.result()
-                votes[endpoint.name] = value
-                outputs.append(value)
+                try:
+                    value = future.result()
+                    votes[endpoint.name] = value
+                    outputs.append(value)
+                except Exception as exc:
+                    errors[endpoint.name] = str(exc)
+
+        if not outputs:
+            joined = "; ".join(f"{k}: {v}" for k, v in errors.items())
+            raise RuntimeError(f"All vote candidates failed: {joined}")
 
         chosen = self._majority_vote(outputs)
         winner = next((k for k, v in votes.items() if self._normalize(v) == self._normalize(chosen)), endpoints[0].name)
@@ -133,7 +162,47 @@ class ModelRouter:
             content=chosen,
             strategy="vote",
             votes=votes,
+            errors=errors,
+            attempted_models=names,
         )
+
+    def health_check(
+        self,
+        model_names: Iterable[str] | None = None,
+        probe_prompt: str = "Reply with: OK",
+    ) -> list[dict[str, object]]:
+        names = self._dedupe_names(list(model_names or self._endpoints.keys()))
+        messages = [{"role": "user", "content": probe_prompt}]
+        report: list[dict[str, object]] = []
+        for name in names:
+            endpoint = self._resolve_model(name)
+            start = time.perf_counter()
+            try:
+                content = self._invoke(endpoint, messages)
+                elapsed_ms = round((time.perf_counter() - start) * 1000, 2)
+                report.append(
+                    {
+                        "name": endpoint.name,
+                        "model": endpoint.model,
+                        "provider": endpoint.provider,
+                        "ok": True,
+                        "latency_ms": elapsed_ms,
+                        "preview": content[:120],
+                    }
+                )
+            except Exception as exc:
+                elapsed_ms = round((time.perf_counter() - start) * 1000, 2)
+                report.append(
+                    {
+                        "name": endpoint.name,
+                        "model": endpoint.model,
+                        "provider": endpoint.provider,
+                        "ok": False,
+                        "latency_ms": elapsed_ms,
+                        "error": str(exc),
+                    }
+                )
+        return report
 
     def _resolve_model(self, model_name: str | None) -> ModelEndpoint:
         name = model_name or self.default_model
@@ -241,6 +310,16 @@ class ModelRouter:
             if self._normalize(item) == winner_norm:
                 return item
         return outputs[0]
+
+    @staticmethod
+    def _dedupe_names(names: list[str]) -> list[str]:
+        seen: set[str] = set()
+        ordered: list[str] = []
+        for name in names:
+            if name and name not in seen:
+                seen.add(name)
+                ordered.append(name)
+        return ordered
 
     @staticmethod
     def _normalize(text: str) -> str:

@@ -18,9 +18,11 @@ Implemented now:
   - OpenAI-compatible endpoint support (Ollama, OpenAI, Anthropic-compatible proxies, vLLM, Together, Fireworks, etc.).
   - Optional LiteLLM execution path when `litellm` is installed.
   - Multi-model voting strategy (`single` or `vote`).
+  - Health probes and resilient fallback for single-model mode.
 - `core` Python CLI orchestrator that:
   - Requests an action plan from selected model(s).
   - Parses JSON actions.
+  - Enforces execution guardrails for destructive actions.
   - Sends actions to DirectShell (or dry-run preview).
   - Records each action in a local undo queue database.
 
@@ -80,6 +82,36 @@ novaadapt run \
 
 No GUI actions are executed unless `--execute` is provided.
 
+5. Review action history and preview/execute undo:
+
+```bash
+novaadapt history --limit 10
+novaadapt undo --id 12
+novaadapt undo --id 12 --execute
+```
+
+6. Probe model health:
+
+```bash
+novaadapt check --config config/models.local.json
+novaadapt check --config config/models.local.json --models local-qwen,openai-gpt
+```
+
+7. Start local HTTP API (for phone/glasses/bridge clients):
+
+```bash
+novaadapt serve --config config/models.local.json --host 127.0.0.1 --port 8787
+```
+
+API endpoints:
+
+- `GET /health`
+- `GET /models`
+- `GET /history?limit=20`
+- `POST /run` with JSON payload
+- `POST /undo` with JSON payload
+- `POST /check` with JSON payload
+
 ## Model-Agnostic Design
 
 `shared/novaadapt_shared/model_router.py` treats providers as endpoint definitions, not hardcoded vendors. Any model that supports OpenAI-style chat completions can be used by setting:
@@ -90,10 +122,34 @@ No GUI actions are executed unless `--execute` is provided.
 
 This includes local Ollama (`http://localhost:11434/v1`), self-hosted vLLM, or managed endpoints.
 
+Single mode also supports fallback chain routing:
+
+```bash
+novaadapt run \
+  --config config/models.local.json \
+  --objective "Open Slack and search for release notes" \
+  --strategy single \
+  --model local-qwen \
+  --fallbacks openai-gpt,custom-vllm
+```
+
+## DirectShell Transport Modes
+
+- `subprocess` (default): runs `directshell exec --json ...` using `DIRECTSHELL_BIN`.
+- `http`: sends `POST` to `DIRECTSHELL_HTTP_URL` with body `{"action": ...}`.
+
+Environment variables:
+
+- `DIRECTSHELL_TRANSPORT` = `subprocess` or `http`
+- `DIRECTSHELL_BIN` (subprocess mode)
+- `DIRECTSHELL_HTTP_URL` (http mode, default `http://127.0.0.1:8765/execute`)
+
 ## Security Baseline
 
 - Dry-run by default.
 - Action execution is explicit (`--execute`).
+- Potentially destructive actions are blocked unless `--allow-dangerous` is set.
+- Plans are capped by `--max-actions` (default `25`) to reduce runaway execution.
 - Every action is logged in SQLite (`~/.novaadapt/actions.db`) for audit/undo workflows.
 
 ## License
