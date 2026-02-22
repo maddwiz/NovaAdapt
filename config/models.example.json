@@ -1,0 +1,29 @@
+{
+  "default_model": "local-qwen",
+  "routing": {
+    "temperature": 0.2,
+    "max_tokens": 800,
+    "timeout_seconds": 90
+  },
+  "models": [
+    {
+      "name": "local-qwen",
+      "provider": "openai-compatible",
+      "model": "qwen2.5-vl:latest",
+      "base_url": "http://localhost:11434/v1"
+    },
+    {
+      "name": "openai-gpt",
+      "provider": "openai-compatible",
+      "model": "gpt-4.5",
+      "base_url": "https://api.openai.com/v1",
+      "api_key_env": "OPENAI_API_KEY"
+    },
+    {
+      "name": "custom-vllm",
+      "provider": "openai-compatible",
+      "model": "my-finetune",
+      "base_url": "http://127.0.0.1:8000/v1"
+    }
+  ]
+}
