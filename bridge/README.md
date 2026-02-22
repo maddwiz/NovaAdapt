@@ -36,6 +36,10 @@ Or from repo root:
 make build-bridge
 ```
 
+Container build uses:
+
+- `/Users/desmondpottle/Documents/New project/NovaAdapt/deploy/docker/Dockerfile.bridge`
+
 ## Run
 
 ```bash

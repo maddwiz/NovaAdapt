@@ -1,0 +1,16 @@
+FROM golang:1.22-alpine AS builder
+
+WORKDIR /src
+COPY bridge ./bridge
+WORKDIR /src/bridge
+RUN go test ./... && go build -o /out/novaadapt-bridge ./cmd/novaadapt-bridge
+
+FROM alpine:3.20
+RUN adduser -D -h /app app
+USER app
+WORKDIR /app
+COPY --from=builder /out/novaadapt-bridge /app/novaadapt-bridge
+
+EXPOSE 9797
+
+ENTRYPOINT ["/app/novaadapt-bridge"]

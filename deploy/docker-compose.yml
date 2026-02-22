@@ -1,0 +1,47 @@
+services:
+  core:
+    build:
+      context: ..
+      dockerfile: deploy/docker/Dockerfile.core
+    image: novaadapt-core:local
+    environment:
+      NOVAADAPT_API_TOKEN: ${NOVAADAPT_CORE_TOKEN:-core-token}
+      NOVAADAPT_MODEL_CONFIG: /app/config/models.example.json
+    command:
+      - novaadapt
+      - serve
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8787"
+      - --api-token
+      - ${NOVAADAPT_CORE_TOKEN:-core-token}
+      - --log-requests
+      - --rate-limit-rps
+      - "50"
+      - --rate-limit-burst
+      - "50"
+    ports:
+      - "8787:8787"
+
+  bridge:
+    build:
+      context: ..
+      dockerfile: deploy/docker/Dockerfile.bridge
+    image: novaadapt-bridge:local
+    depends_on:
+      - core
+    command:
+      - --host
+      - 0.0.0.0
+      - --port
+      - "9797"
+      - --core-url
+      - http://core:8787
+      - --bridge-token
+      - ${NOVAADAPT_BRIDGE_TOKEN:-bridge-token}
+      - --core-token
+      - ${NOVAADAPT_CORE_TOKEN:-core-token}
+      - --log-requests=true
+    ports:
+      - "9797:9797"

@@ -145,6 +145,16 @@ make test-go   # Go bridge tests only
 make build-bridge
 ```
 
+## Docker Deployment
+
+```bash
+./installer/run_docker_stack.sh
+```
+
+Compose stack file:
+
+- `/Users/desmondpottle/Documents/New project/NovaAdapt/deploy/docker-compose.yml`
+
 ## Python API Client
 
 ```python
