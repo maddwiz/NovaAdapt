@@ -163,3 +163,52 @@ func TestRejectLargeBody(t *testing.T) {
 		t.Fatalf("expected 400 got %d body=%s", rr.Code, rr.Body.String())
 	}
 }
+
+func TestMetricsEndpoint(t *testing.T) {
+	core := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/models":
+			_, _ = w.Write([]byte(`[{"name":"local"}]`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"error":"not found"}`))
+		}
+	}))
+	defer core.Close()
+
+	h, err := NewHandler(Config{CoreBaseURL: core.URL, BridgeToken: "secret", Timeout: 5 * time.Second})
+	if err != nil {
+		t.Fatalf("new handler: %v", err)
+	}
+
+	// Unauthorized request increments unauthorized counter.
+	rrUnauth := httptest.NewRecorder()
+	reqUnauth := httptest.NewRequest(http.MethodGet, "/models", nil)
+	h.ServeHTTP(rrUnauth, reqUnauth)
+	if rrUnauth.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 got %d", rrUnauth.Code)
+	}
+
+	// Authorized request increments total counter.
+	rrAuth := httptest.NewRecorder()
+	reqAuth := httptest.NewRequest(http.MethodGet, "/models", nil)
+	reqAuth.Header.Set("Authorization", "Bearer secret")
+	h.ServeHTTP(rrAuth, reqAuth)
+	if rrAuth.Code != http.StatusOK {
+		t.Fatalf("expected 200 got %d", rrAuth.Code)
+	}
+
+	rrMetrics := httptest.NewRecorder()
+	reqMetrics := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	h.ServeHTTP(rrMetrics, reqMetrics)
+	if rrMetrics.Code != http.StatusOK {
+		t.Fatalf("expected 200 got %d", rrMetrics.Code)
+	}
+	metrics := rrMetrics.Body.String()
+	if !strings.Contains(metrics, "novaadapt_bridge_requests_total") {
+		t.Fatalf("expected requests metric, got: %s", metrics)
+	}
+	if !strings.Contains(metrics, "novaadapt_bridge_unauthorized_total") {
+		t.Fatalf("expected unauthorized metric, got: %s", metrics)
+	}
+}

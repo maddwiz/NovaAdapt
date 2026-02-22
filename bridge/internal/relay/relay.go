@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"path"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
@@ -41,6 +42,10 @@ type Config struct {
 type Handler struct {
 	cfg    Config
 	client *http.Client
+
+	requestsTotal       uint64
+	unauthorizedTotal   uint64
+	upstreamErrorsTotal uint64
 }
 
 // NewHandler creates a configured bridge relay handler.
@@ -68,6 +73,8 @@ func NewHandler(cfg Config) (*Handler, error) {
 
 // ServeHTTP handles bridge requests.
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	atomic.AddUint64(&h.requestsTotal, 1)
+
 	started := time.Now()
 	requestID := normalizeRequestID(r.Header.Get("X-Request-ID"))
 	w.Header().Set("X-Request-ID", requestID)
@@ -92,7 +99,14 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if r.URL.Path == "/metrics" {
+		statusCode = http.StatusOK
+		h.writeMetrics(w)
+		return
+	}
+
 	if !h.authorized(r) {
+		atomic.AddUint64(&h.unauthorizedTotal, 1)
 		statusCode = http.StatusUnauthorized
 		h.writeJSONWithStatus(
 			w,
@@ -123,6 +137,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	statusCode, payload := h.forward(r, requestID, body)
+	if statusCode >= 500 {
+		atomic.AddUint64(&h.upstreamErrorsTotal, 1)
+	}
 	h.writeJSON(w, statusCode, payload)
 }
 
@@ -309,4 +326,17 @@ func (h *Handler) writeJSONWithStatus(w http.ResponseWriter, status int, payload
 	}
 	w.WriteHeader(status)
 	_, _ = w.Write(encoded)
+}
+
+func (h *Handler) writeMetrics(w http.ResponseWriter) {
+	body := fmt.Sprintf(
+		"novaadapt_bridge_requests_total %d\n"+
+			"novaadapt_bridge_unauthorized_total %d\n"+
+			"novaadapt_bridge_upstream_errors_total %d\n",
+		atomic.LoadUint64(&h.requestsTotal),
+		atomic.LoadUint64(&h.unauthorizedTotal),
+		atomic.LoadUint64(&h.upstreamErrorsTotal),
+	)
+	w.Header().Set("Content-Type", "text/plain; version=0.0.4")
+	_, _ = w.Write([]byte(body))
 }

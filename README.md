@@ -193,6 +193,7 @@ Environment variables:
 - Core API can require bearer auth via `--api-token` / `NOVAADAPT_API_TOKEN`.
 - Bridge relay enforces independent ingress token and forwards with a separate core token.
 - Bridge relay propagates `X-Request-ID` for traceability and supports deep health probing at `/health?deep=1`.
+- Bridge relay exposes `/metrics` for basic operational counters.
 
 ## License
 

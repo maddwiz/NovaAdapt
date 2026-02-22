@@ -10,6 +10,7 @@ Secure relay service for remote clients (phone/glasses) to reach NovaAdapt core.
 - Request-id tracing (`X-Request-ID`) propagated to core
 - Optional deep health probe (`/health?deep=1`) to verify core reachability
 - Graceful shutdown on `SIGINT`/`SIGTERM`
+- Metrics endpoint (`/metrics`) for request/unauthorized/upstream-error counters
 - Forwards endpoints:
   - `GET /models`
   - `GET /history`
