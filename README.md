@@ -185,6 +185,11 @@ Exposed tools:
 - `novaadapt_models`
 - `novaadapt_check`
 - `novaadapt_history`
+- `novaadapt_plan_create`
+- `novaadapt_plans`
+- `novaadapt_plan_get`
+- `novaadapt_plan_approve`
+- `novaadapt_plan_reject`
 
 ## Docker Deployment
 

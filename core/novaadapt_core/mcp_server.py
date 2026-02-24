@@ -63,6 +63,65 @@ class NovaAdaptMCPServer:
                     "properties": {"limit": {"type": "integer"}},
                 },
             ),
+            MCPTool(
+                name="novaadapt_plan_create",
+                description="Create a pending approval plan from objective",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "objective": {"type": "string"},
+                        "strategy": {"type": "string", "enum": ["single", "vote"]},
+                        "model": {"type": "string"},
+                        "candidates": {"type": "array", "items": {"type": "string"}},
+                        "fallbacks": {"type": "array", "items": {"type": "string"}},
+                        "max_actions": {"type": "integer"},
+                    },
+                    "required": ["objective"],
+                },
+            ),
+            MCPTool(
+                name="novaadapt_plans",
+                description="List recent approval plans",
+                input_schema={
+                    "type": "object",
+                    "properties": {"limit": {"type": "integer"}},
+                },
+            ),
+            MCPTool(
+                name="novaadapt_plan_get",
+                description="Fetch approval plan by id",
+                input_schema={
+                    "type": "object",
+                    "properties": {"id": {"type": "string"}},
+                    "required": ["id"],
+                },
+            ),
+            MCPTool(
+                name="novaadapt_plan_approve",
+                description="Approve plan and optionally execute",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "id": {"type": "string"},
+                        "execute": {"type": "boolean"},
+                        "allow_dangerous": {"type": "boolean"},
+                        "max_actions": {"type": "integer"},
+                    },
+                    "required": ["id"],
+                },
+            ),
+            MCPTool(
+                name="novaadapt_plan_reject",
+                description="Reject plan with optional reason",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "id": {"type": "string"},
+                        "reason": {"type": "string"},
+                    },
+                    "required": ["id"],
+                },
+            ),
         ]
 
     def handle_request(self, request: dict[str, Any]) -> dict[str, Any]:
@@ -130,6 +189,35 @@ class NovaAdaptMCPServer:
         if tool_name == "novaadapt_history":
             limit = int(arguments.get("limit", 20))
             return self.service.history(limit=limit)
+        if tool_name == "novaadapt_plan_create":
+            return self.service.create_plan(arguments)
+        if tool_name == "novaadapt_plans":
+            limit = int(arguments.get("limit", 50))
+            return self.service.list_plans(limit=limit)
+        if tool_name == "novaadapt_plan_get":
+            plan_id = str(arguments.get("id", "")).strip()
+            if not plan_id:
+                raise ValueError("'id' is required")
+            item = self.service.get_plan(plan_id)
+            if item is None:
+                raise ValueError("Plan not found")
+            return item
+        if tool_name == "novaadapt_plan_approve":
+            plan_id = str(arguments.get("id", "")).strip()
+            if not plan_id:
+                raise ValueError("'id' is required")
+            payload = {
+                "execute": bool(arguments.get("execute", True)),
+                "allow_dangerous": bool(arguments.get("allow_dangerous", False)),
+                "max_actions": int(arguments.get("max_actions", 25)),
+            }
+            return self.service.approve_plan(plan_id, payload)
+        if tool_name == "novaadapt_plan_reject":
+            plan_id = str(arguments.get("id", "")).strip()
+            if not plan_id:
+                raise ValueError("'id' is required")
+            reason = arguments.get("reason")
+            return self.service.reject_plan(plan_id, reason=str(reason) if reason is not None else None)
         raise ValueError(f"Unknown tool: {tool_name}")
 
     @staticmethod
