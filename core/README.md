@@ -11,6 +11,7 @@ Contains:
 - History/undo command support via shared SQLite queue.
 - Service layer reusable by CLI and HTTP API server.
 - Async job manager for long-running API requests.
+- SSE job stream endpoint for live status (`GET /jobs/{id}/stream`).
 - Persisted approval-plan workflow (`/plans`, `approve`, `reject`).
 - Optional bearer auth guard on API routes.
 - Optional request rate limiting and max body-size enforcement.

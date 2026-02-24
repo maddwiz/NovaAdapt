@@ -72,6 +72,32 @@ def build_openapi_spec() -> dict:
                     "responses": {"200": {"description": "Job status"}, "404": {"description": "Not found"}},
                 }
             },
+            "/jobs/{id}/stream": {
+                "get": {
+                    "summary": "Stream async job status updates as SSE",
+                    "parameters": [
+                        {
+                            "name": "id",
+                            "in": "path",
+                            "required": True,
+                            "schema": {"type": "string"},
+                        },
+                        {
+                            "name": "timeout",
+                            "in": "query",
+                            "required": False,
+                            "schema": {"type": "number"},
+                        },
+                        {
+                            "name": "interval",
+                            "in": "query",
+                            "required": False,
+                            "schema": {"type": "number"},
+                        },
+                    ],
+                    "responses": {"200": {"description": "SSE stream"}, "404": {"description": "Not found"}},
+                }
+            },
             "/jobs/{id}/cancel": {
                 "post": {
                     "summary": "Request cancellation for queued/running async job",

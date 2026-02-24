@@ -28,6 +28,19 @@ class _Handler(BaseHTTPRequestHandler):
                 return
             self._send(200, [{"name": "local"}])
             return
+        if self.path == "/jobs/job-1/stream?timeout=2&interval=0.1":
+            body = (
+                'event: job\n'
+                'data: {"id":"job-1","status":"running"}\n\n'
+                'event: end\n'
+                'data: {"id":"job-1","status":"succeeded"}\n\n'
+            ).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
         if self.path.startswith("/jobs/"):
             self._send(200, {"id": "job-1", "status": "succeeded"})
             return
@@ -128,6 +141,9 @@ class APIClientTests(unittest.TestCase):
         self.assertEqual(client.run_async("demo")["status"], "queued")
         self.assertEqual(client.jobs(limit=5)[0]["id"], "job-1")
         self.assertEqual(client.job("job-1")["status"], "succeeded")
+        stream_events = client.job_stream("job-1", timeout_seconds=2, interval_seconds=0.1)
+        self.assertEqual(stream_events[0]["event"], "job")
+        self.assertEqual(stream_events[-1]["data"]["status"], "succeeded")
         self.assertTrue(client.cancel_job("job-1")["canceled"])
         self.assertEqual(client.create_plan("demo")["id"], "plan-1")
         self.assertEqual(client.plans(limit=3)[0]["id"], "plan-1")

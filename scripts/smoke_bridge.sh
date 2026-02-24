@@ -4,8 +4,18 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
-CORE_PORT="${NOVAADAPT_SMOKE_CORE_PORT:-8787}"
-BRIDGE_PORT="${NOVAADAPT_SMOKE_BRIDGE_PORT:-9797}"
+pick_free_port() {
+  python3 - <<'PY'
+import socket
+s = socket.socket()
+s.bind(("127.0.0.1", 0))
+print(s.getsockname()[1])
+s.close()
+PY
+}
+
+CORE_PORT="${NOVAADAPT_SMOKE_CORE_PORT:-$(pick_free_port)}"
+BRIDGE_PORT="${NOVAADAPT_SMOKE_BRIDGE_PORT:-$(pick_free_port)}"
 CORE_TOKEN="${NOVAADAPT_SMOKE_CORE_TOKEN:-core-smoke-token}"
 BRIDGE_TOKEN="${NOVAADAPT_SMOKE_BRIDGE_TOKEN:-bridge-smoke-token}"
 RID="smoke-rid-001"
@@ -34,6 +44,17 @@ PYTHONPATH='core:shared' python3 -m novaadapt_core.cli serve \
   > /tmp/novaadapt-core-smoke.log 2>&1 &
 CORE_PID=$!
 
+for _ in {1..80}; do
+  if ! kill -0 "$CORE_PID" >/dev/null 2>&1; then
+    echo "Core failed to start; see /tmp/novaadapt-core-smoke.log"
+    exit 1
+  fi
+  if curl -s "http://127.0.0.1:${CORE_PORT}/health" | python3 -c 'import json,sys; data=json.load(sys.stdin); raise SystemExit(0 if data.get("ok") else 1)' >/dev/null 2>&1; then
+    break
+  fi
+  sleep 0.1
+done
+
 ./bridge/bin/novaadapt-bridge \
   --host 127.0.0.1 \
   --port "$BRIDGE_PORT" \
@@ -44,12 +65,16 @@ CORE_PID=$!
   > /tmp/novaadapt-bridge-smoke.log 2>&1 &
 BRIDGE_PID=$!
 
-for _ in {1..50}; do
+for _ in {1..80}; do
+  if ! kill -0 "$BRIDGE_PID" >/dev/null 2>&1; then
+    echo "Bridge failed to start; see /tmp/novaadapt-bridge-smoke.log"
+    exit 1
+  fi
   if curl -s "http://127.0.0.1:${BRIDGE_PORT}/health?deep=1" | python3 -c 'import json,sys; data=json.load(sys.stdin); raise SystemExit(0 if data.get("ok") else 1)' >/dev/null 2>&1; then
     break
   fi
   sleep 0.1
- done
+done
 
 unauth_status=$(curl -s -o /tmp/novaadapt-smoke-unauth.json -w "%{http_code}" "http://127.0.0.1:${BRIDGE_PORT}/models")
 if [[ "$unauth_status" != "401" ]]; then
@@ -97,6 +122,11 @@ cancel_result=$(curl -sS \
   -d '{}' \
   "http://127.0.0.1:${BRIDGE_PORT}/jobs/${job_id}/cancel")
 echo "$cancel_result" | python3 -c 'import json,sys; data=json.load(sys.stdin); assert "id" in data'
+
+stream_result=$(curl -sS \
+  -H "Authorization: Bearer ${BRIDGE_TOKEN}" \
+  "http://127.0.0.1:${BRIDGE_PORT}/jobs/${job_id}/stream?timeout=2&interval=0.1")
+echo "$stream_result" | grep -q 'event:'
 
 trace_header=$(curl -sS -D - -o /tmp/novaadapt-smoke-models.json \
   -H "Authorization: Bearer ${BRIDGE_TOKEN}" \

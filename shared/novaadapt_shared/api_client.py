@@ -94,6 +94,35 @@ class NovaAdaptAPIClient:
             return payload
         raise APIClientError("Expected object payload from /jobs/{id}")
 
+    def job_stream(
+        self,
+        job_id: str,
+        timeout_seconds: int = 30,
+        interval_seconds: float = 0.25,
+    ) -> list[dict[str, Any]]:
+        timeout = max(1, int(timeout_seconds))
+        interval = min(5.0, max(0.05, float(interval_seconds)))
+        text = self._request_text(
+            "GET",
+            f"/jobs/{job_id}/stream?timeout={timeout}&interval={interval}",
+        )
+
+        events: list[dict[str, Any]] = []
+        current_event = "message"
+        for line in text.splitlines():
+            if line.startswith("event:"):
+                current_event = line.split(":", 1)[1].strip() or "message"
+                continue
+            if line.startswith("data:"):
+                raw = line.split(":", 1)[1].strip()
+                try:
+                    data = json.loads(raw)
+                except json.JSONDecodeError:
+                    data = {"raw": raw}
+                events.append({"event": current_event, "data": data})
+                current_event = "message"
+        return events
+
     def cancel_job(self, job_id: str) -> dict[str, Any]:
         payload = self._post_json(f"/jobs/{job_id}/cancel", {})
         if isinstance(payload, dict):

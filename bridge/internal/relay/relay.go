@@ -126,7 +126,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if r.URL.Path == "/dashboard" {
+	if isRawForwardPath(r.URL.Path) {
 		if r.Method != http.MethodGet {
 			statusCode = http.StatusMethodNotAllowed
 			h.writeJSON(w, statusCode, map[string]any{"error": "Method not allowed", "request_id": requestID})
@@ -212,6 +212,13 @@ func isForwardedPath(p string) bool {
 	}
 	_, ok := allowedPaths[p]
 	return ok
+}
+
+func isRawForwardPath(p string) bool {
+	if p == "/dashboard" {
+		return true
+	}
+	return strings.HasPrefix(p, "/jobs/") && strings.HasSuffix(p, "/stream")
 }
 
 func (h *Handler) authorized(r *http.Request) bool {

@@ -102,6 +102,9 @@ func TestForwardArrayWithAuthAndRequestID(t *testing.T) {
 			_, _ = w.Write([]byte(`{"job_id":"abc123","status":"queued"}`))
 		case "/jobs/abc123/cancel":
 			_, _ = w.Write([]byte(`{"id":"abc123","status":"canceled","canceled":true}`))
+		case "/jobs/abc123/stream":
+			w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
+			_, _ = w.Write([]byte("event: job\ndata: {\"id\":\"abc123\",\"status\":\"running\"}\n\n"))
 		case "/plans":
 			if r.Method == http.MethodGet {
 				_, _ = w.Write([]byte(`[{"id":"plan1","status":"pending"}]`))
@@ -205,6 +208,20 @@ func TestForwardArrayWithAuthAndRequestID(t *testing.T) {
 	}
 	if cancelPayload["id"] != "abc123" {
 		t.Fatalf("unexpected cancel payload: %#v", cancelPayload)
+	}
+
+	rrStream := httptest.NewRecorder()
+	reqStream := httptest.NewRequest(http.MethodGet, "/jobs/abc123/stream", nil)
+	reqStream.Header.Set("Authorization", "Bearer bridge")
+	h.ServeHTTP(rrStream, reqStream)
+	if rrStream.Code != http.StatusOK {
+		t.Fatalf("expected 200 got %d body=%s", rrStream.Code, rrStream.Body.String())
+	}
+	if !strings.Contains(rrStream.Header().Get("Content-Type"), "text/event-stream") {
+		t.Fatalf("expected event-stream content type, got %s", rrStream.Header().Get("Content-Type"))
+	}
+	if !strings.Contains(rrStream.Body.String(), "event: job") {
+		t.Fatalf("expected stream payload, got %s", rrStream.Body.String())
 	}
 
 	rrPlans := httptest.NewRecorder()

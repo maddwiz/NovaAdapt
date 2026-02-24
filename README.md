@@ -136,6 +136,7 @@ API endpoints:
 - `POST /run` with JSON payload
 - `POST /run_async` with JSON payload (returns `job_id`)
 - `GET /jobs` and `GET /jobs/{id}`
+- `GET /jobs/{id}/stream` (SSE status updates)
 - `POST /jobs/{id}/cancel`
 - `GET /plans` and `GET /plans/{id}`
 - `POST /plans` (create pending plan)
@@ -204,6 +205,7 @@ from novaadapt_shared import NovaAdaptAPIClient
 client = NovaAdaptAPIClient(base_url="http://127.0.0.1:8787", token="YOUR_CORE_TOKEN")
 print(client.models())
 print(client.run("Open browser and go to example.com"))
+print(client.job_stream("job-id", timeout_seconds=10))
 ```
 
 `NovaAdaptAPIClient` retries transient HTTP failures by default (`max_retries=1`), configurable per client instance.

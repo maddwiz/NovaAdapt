@@ -74,7 +74,9 @@ class NovaAdaptHTTPServer(ThreadingHTTPServer):
         self.job_manager = job_manager
 
     def server_close(self) -> None:
-        self.job_manager.shutdown(wait=True)
+        manager = getattr(self, "job_manager", None)
+        if manager is not None:
+            manager.shutdown(wait=True)
         super().server_close()
 
 
@@ -220,6 +222,24 @@ def _build_handler(
                     limit = int(_single(query, "limit") or 50)
                     status_code = 200
                     self._send_json(status_code, job_manager.list(limit=limit))
+                    return
+
+                if path.startswith("/jobs/") and path.endswith("/stream"):
+                    job_id = path.removeprefix("/jobs/").removesuffix("/stream").strip("/")
+                    if not job_id:
+                        status_code = 404
+                        self._send_json(status_code, {"error": "Not found"})
+                        return
+                    timeout_seconds = float(_single(query, "timeout") or 30.0)
+                    interval_seconds = float(_single(query, "interval") or 0.25)
+                    timeout_seconds = min(300.0, max(1.0, timeout_seconds))
+                    interval_seconds = min(5.0, max(0.05, interval_seconds))
+                    status_code = 200
+                    self._stream_job_events(
+                        job_id=job_id,
+                        timeout_seconds=timeout_seconds,
+                        interval_seconds=interval_seconds,
+                    )
                     return
 
                 if path.startswith("/jobs/"):
@@ -451,6 +471,61 @@ def _build_handler(
             self.send_header("Content-Length", str(len(encoded)))
             self.end_headers()
             self.wfile.write(encoded)
+
+        def _stream_job_events(self, job_id: str, timeout_seconds: float, interval_seconds: float) -> None:
+            current = job_manager.get(job_id)
+            if current is None:
+                self._send_json(404, {"error": "Job not found"})
+                return
+
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+            self.send_header("Cache-Control", "no-cache")
+            self.send_header("Connection", "close")
+            self.send_header("X-Request-ID", self._request_id)
+            self.end_headers()
+
+            last_snapshot: str | None = None
+            deadline = time.monotonic() + timeout_seconds
+            while True:
+                current = job_manager.get(job_id)
+                if current is None:
+                    self._write_sse_event("error", {"error": "Job not found", "id": job_id})
+                    return
+
+                snapshot = json.dumps(current, sort_keys=True, separators=(",", ":"))
+                if snapshot != last_snapshot:
+                    payload = dict(current)
+                    payload.setdefault("request_id", self._request_id)
+                    if not self._write_sse_event("job", payload):
+                        return
+                    last_snapshot = snapshot
+
+                status = str(current.get("status", ""))
+                if status in {"succeeded", "failed", "canceled"}:
+                    self._write_sse_event(
+                        "end",
+                        {"id": job_id, "status": status, "request_id": self._request_id},
+                    )
+                    return
+
+                if time.monotonic() >= deadline:
+                    self._write_sse_event("timeout", {"id": job_id, "request_id": self._request_id})
+                    return
+
+                time.sleep(interval_seconds)
+
+        def _write_sse_event(self, event: str, payload: dict[str, object]) -> bool:
+            encoded = (
+                f"event: {event}\n"
+                f"data: {json.dumps(payload, ensure_ascii=True)}\n\n"
+            ).encode("utf-8")
+            try:
+                self.wfile.write(encoded)
+                self.wfile.flush()
+                return True
+            except (BrokenPipeError, ConnectionResetError):
+                return False
 
         def _log_request(self, status_code: int, started: float) -> None:
             if not log_requests:

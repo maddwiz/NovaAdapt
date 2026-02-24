@@ -78,6 +78,7 @@ class ServerTests(unittest.TestCase):
                 self.assertEqual(openapi["openapi"], "3.1.0")
                 self.assertIn("/run", openapi["paths"])
                 self.assertIn("/jobs/{id}/cancel", openapi["paths"])
+                self.assertIn("/jobs/{id}/stream", openapi["paths"])
                 self.assertIn("/plans/{id}/approve", openapi["paths"])
 
                 models, _ = _get_json_with_headers(f"http://{host}:{port}/models")
@@ -150,6 +151,13 @@ class ServerTests(unittest.TestCase):
                 )
                 self.assertEqual(queued["status"], "queued")
                 job_id = queued["job_id"]
+
+                stream = _get_text(
+                    f"http://{host}:{port}/jobs/{job_id}/stream?timeout=2&interval=0.05",
+                    token="secret",
+                )
+                self.assertIn("event: job", stream)
+                self.assertIn(job_id, stream)
 
                 cancel = _post_json(
                     f"http://{host}:{port}/jobs/{job_id}/cancel",
