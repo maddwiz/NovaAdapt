@@ -26,6 +26,7 @@
 - `GET /dashboard/data` for dashboard polling data.
 - `GET /history` for audit state.
 - `POST /plans/{id}/approve_async` to execute approved plans via async jobs.
+- `POST /plans/{id}/undo` to reverse executed plan actions from audit logs.
 
 Bearer token auth can be required for all routes except `/health`.
 All responses include `X-Request-ID` for request-level tracing across bridge/core.

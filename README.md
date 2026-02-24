@@ -144,6 +144,7 @@ API endpoints:
 - `POST /plans/{id}/approve` (execute on approval by default)
 - `POST /plans/{id}/approve_async` (queue approval/execution as async job)
 - `POST /plans/{id}/reject`
+- `POST /plans/{id}/undo` (reverse undo of recorded plan actions)
 - `POST /undo` with JSON payload
 - `POST /check` with JSON payload
 
@@ -200,6 +201,7 @@ Exposed tools:
 - `novaadapt_plan_get`
 - `novaadapt_plan_approve`
 - `novaadapt_plan_reject`
+- `novaadapt_plan_undo`
 
 ## Docker Deployment
 

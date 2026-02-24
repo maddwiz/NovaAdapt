@@ -122,6 +122,19 @@ class NovaAdaptMCPServer:
                     "required": ["id"],
                 },
             ),
+            MCPTool(
+                name="novaadapt_plan_undo",
+                description="Undo executed plan actions in reverse order",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "id": {"type": "string"},
+                        "execute": {"type": "boolean"},
+                        "mark_only": {"type": "boolean"},
+                    },
+                    "required": ["id"],
+                },
+            ),
         ]
 
     def handle_request(self, request: dict[str, Any]) -> dict[str, Any]:
@@ -218,6 +231,15 @@ class NovaAdaptMCPServer:
                 raise ValueError("'id' is required")
             reason = arguments.get("reason")
             return self.service.reject_plan(plan_id, reason=str(reason) if reason is not None else None)
+        if tool_name == "novaadapt_plan_undo":
+            plan_id = str(arguments.get("id", "")).strip()
+            if not plan_id:
+                raise ValueError("'id' is required")
+            payload = {
+                "execute": bool(arguments.get("execute", False)),
+                "mark_only": bool(arguments.get("mark_only", False)),
+            }
+            return self.service.undo_plan(plan_id, payload)
         raise ValueError(f"Unknown tool: {tool_name}")
 
     @staticmethod

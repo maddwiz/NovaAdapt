@@ -33,6 +33,9 @@ class _StubService:
     def reject_plan(self, plan_id, reason=None):
         return {"id": plan_id, "status": "rejected", "reason": reason}
 
+    def undo_plan(self, plan_id, payload):
+        return {"plan_id": plan_id, "executed": payload.get("execute", False), "results": [{"id": 1, "ok": True}]}
+
 
 class MCPServerTests(unittest.TestCase):
     def test_initialize_and_tools(self):
@@ -48,6 +51,7 @@ class MCPServerTests(unittest.TestCase):
         self.assertIn("novaadapt_models", names)
         self.assertIn("novaadapt_plan_create", names)
         self.assertIn("novaadapt_plan_approve", names)
+        self.assertIn("novaadapt_plan_undo", names)
 
     def test_tools_call(self):
         server = NovaAdaptMCPServer(service=_StubService())
@@ -121,6 +125,20 @@ class MCPServerTests(unittest.TestCase):
         )
         plan_reject_payload = plan_reject_resp["result"]["content"][0]["json"]
         self.assertEqual(plan_reject_payload["status"], "rejected")
+
+        plan_undo_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 8,
+                "method": "tools/call",
+                "params": {
+                    "name": "novaadapt_plan_undo",
+                    "arguments": {"id": "plan-1", "mark_only": True},
+                },
+            }
+        )
+        plan_undo_payload = plan_undo_resp["result"]["content"][0]["json"]
+        self.assertEqual(plan_undo_payload["plan_id"], "plan-1")
 
     def test_unknown_method_returns_error(self):
         server = NovaAdaptMCPServer(service=_StubService())

@@ -184,6 +184,20 @@ def build_openapi_spec() -> dict:
                     "responses": {"200": {"description": "Rejected plan"}, "404": {"description": "Not found"}},
                 }
             },
+            "/plans/{id}/undo": {
+                "post": {
+                    "summary": "Undo executed plan actions in reverse order",
+                    "parameters": [
+                        {
+                            "name": "id",
+                            "in": "path",
+                            "required": True,
+                            "schema": {"type": "string"},
+                        }
+                    ],
+                    "responses": {"200": {"description": "Undo results"}, "404": {"description": "Not found"}},
+                }
+            },
             "/history": {
                 "get": {
                     "summary": "Fetch action history",

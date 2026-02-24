@@ -83,6 +83,7 @@ class _Handler(BaseHTTPRequestHandler):
             "/plans/plan-1/approve",
             "/plans/plan-1/approve_async",
             "/plans/plan-1/reject",
+            "/plans/plan-1/undo",
         }:
             length = int(self.headers.get("Content-Length", "0"))
             raw = self.rfile.read(length).decode("utf-8")
@@ -101,6 +102,8 @@ class _Handler(BaseHTTPRequestHandler):
                 self._send(202, {"job_id": "job-plan-1", "status": "queued", "kind": "plan_approval"})
             elif self.path == "/plans/plan-1/reject":
                 self._send(200, {"id": "plan-1", "status": "rejected"})
+            elif self.path == "/plans/plan-1/undo":
+                self._send(200, {"plan_id": "plan-1", "results": [{"id": 1, "ok": True}]})
             elif self.path == "/undo":
                 self._send(200, {"id": payload.get("id", 1), "status": "marked_undone"})
             else:
@@ -154,6 +157,7 @@ class APIClientTests(unittest.TestCase):
         self.assertEqual(client.approve_plan("plan-1", execute=True)["status"], "executed")
         self.assertEqual(client.approve_plan_async("plan-1", execute=True)["kind"], "plan_approval")
         self.assertEqual(client.reject_plan("plan-1", reason="nope")["status"], "rejected")
+        self.assertEqual(client.undo_plan("plan-1", mark_only=True)["plan_id"], "plan-1")
         self.assertEqual(client.history(limit=1)[0]["id"], 1)
         self.assertEqual(client.undo(id=1, mark_only=True)["status"], "marked_undone")
         self.assertIn("novaadapt_core_requests_total", client.metrics_text())

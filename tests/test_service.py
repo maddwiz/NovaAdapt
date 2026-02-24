@@ -130,6 +130,10 @@ class ServiceTests(unittest.TestCase):
             self.assertEqual(len(history), 1)
             self.assertEqual(history[0]["status"], "ok")
 
+            undone = service.undo_plan(created["id"], {"mark_only": True})
+            self.assertEqual(undone["plan_id"], created["id"])
+            self.assertTrue(all(item["ok"] for item in undone["results"]))
+
             created_2 = service.create_plan({"objective": "click ok again"})
             rejected = service.reject_plan(created_2["id"], reason="operator rejected")
             self.assertEqual(rejected["status"], "rejected")

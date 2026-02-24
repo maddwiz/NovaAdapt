@@ -87,6 +87,7 @@ class ServerTests(unittest.TestCase):
                 self.assertIn("/jobs/{id}/stream", openapi["paths"])
                 self.assertIn("/plans/{id}/approve", openapi["paths"])
                 self.assertIn("/plans/{id}/approve_async", openapi["paths"])
+                self.assertIn("/plans/{id}/undo", openapi["paths"])
                 self.assertIn("/dashboard/data", openapi["paths"])
 
                 models, _ = _get_json_with_headers(f"http://{host}:{port}/models")
@@ -121,6 +122,13 @@ class ServerTests(unittest.TestCase):
                 )
                 self.assertEqual(approved_plan["status"], "executed")
                 self.assertEqual(len(approved_plan.get("execution_results") or []), 1)
+
+                undo_plan, _ = _post_json_with_headers(
+                    f"http://{host}:{port}/plans/{plan_id}/undo",
+                    {"mark_only": True},
+                )
+                self.assertEqual(undo_plan["plan_id"], plan_id)
+                self.assertTrue(all(item.get("ok") for item in undo_plan["results"]))
             finally:
                 server.shutdown()
                 server.server_close()

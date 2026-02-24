@@ -25,6 +25,7 @@ Secure relay service for remote clients (phone/glasses) to reach NovaAdapt core.
   - `POST /plans/{id}/approve`
   - `POST /plans/{id}/approve_async`
   - `POST /plans/{id}/reject`
+  - `POST /plans/{id}/undo`
   - `POST /run`
   - `POST /run_async`
   - `POST /undo`

@@ -88,6 +88,12 @@ class NovaAdaptAPIClient:
             return payload
         raise APIClientError("Expected object payload from /plans/{id}/reject")
 
+    def undo_plan(self, plan_id: str, **kwargs: Any) -> dict[str, Any]:
+        payload = self._post_json(f"/plans/{plan_id}/undo", kwargs)
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /plans/{id}/undo")
+
     def jobs(self, limit: int = 50) -> list[dict[str, Any]]:
         payload = self._get_json(f"/jobs?limit={max(1, limit)}")
         if isinstance(payload, list):

@@ -403,6 +403,16 @@ def _build_handler(
                     )
                     return
 
+                if path.startswith("/plans/") and path.endswith("/undo"):
+                    plan_id = path.removeprefix("/plans/").removesuffix("/undo").strip("/")
+                    if not plan_id:
+                        status_code = 404
+                        self._send_json(status_code, {"error": "Not found"})
+                        return
+                    status_code = 200
+                    self._send_json(status_code, service.undo_plan(plan_id, payload))
+                    return
+
                 if path == "/run":
                     status_code = 200
                     self._send_json(status_code, service.run(payload))

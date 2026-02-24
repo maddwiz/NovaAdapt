@@ -203,6 +203,37 @@ class NovaAdaptService:
             raise ValueError("Plan not found")
         return rejected
 
+    def undo_plan(self, plan_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        plan = self._plans().get(plan_id)
+        if plan is None:
+            raise ValueError("Plan not found")
+        action_log_ids = plan.get("action_log_ids") or []
+        if not isinstance(action_log_ids, list) or not action_log_ids:
+            raise ValueError("Plan has no recorded action logs to undo")
+
+        execute = bool(payload.get("execute", False))
+        mark_only = bool(payload.get("mark_only", False))
+        results: list[dict[str, Any]] = []
+        for action_id in reversed(action_log_ids):
+            try:
+                result = self.undo(
+                    {
+                        "id": int(action_id),
+                        "execute": execute,
+                        "mark_only": mark_only,
+                    }
+                )
+                results.append({"id": int(action_id), "ok": True, "result": result})
+            except ValueError as exc:
+                results.append({"id": int(action_id), "ok": False, "error": str(exc)})
+
+        return {
+            "plan_id": plan_id,
+            "executed": execute,
+            "mark_only": mark_only,
+            "results": results,
+        }
+
     def history(self, limit: int = 20) -> list[dict[str, Any]]:
         queue = UndoQueue(db_path=self.db_path)
         return queue.recent(limit=max(1, int(limit)))

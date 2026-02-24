@@ -129,6 +129,16 @@ missing_async_job=$(curl -sS \
   "http://127.0.0.1:${BRIDGE_PORT}/jobs/${missing_async_job_id}")
 echo "$missing_async_job" | python3 -c 'import json,sys; data=json.load(sys.stdin); assert "status" in data'
 
+missing_plan_undo_status=$(curl -s -o /tmp/novaadapt-smoke-plan-missing-undo.json -w "%{http_code}" \
+  -H "Authorization: Bearer ${BRIDGE_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{"mark_only":true}' \
+  "http://127.0.0.1:${BRIDGE_PORT}/plans/missing-plan-id/undo")
+if [[ "$missing_plan_undo_status" != "400" ]]; then
+  echo "Expected 400 from missing plan undo, got $missing_plan_undo_status"
+  exit 1
+fi
+
 queued_job=$(curl -sS \
   -H "Authorization: Bearer ${BRIDGE_TOKEN}" \
   -H "Content-Type: application/json" \

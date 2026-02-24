@@ -123,6 +123,8 @@ func TestForwardArrayWithAuthAndRequestID(t *testing.T) {
 			_, _ = w.Write([]byte(`{"job_id":"plan-job-1","status":"queued","kind":"plan_approval"}`))
 		case "/plans/plan1/reject":
 			_, _ = w.Write([]byte(`{"id":"plan1","status":"rejected"}`))
+		case "/plans/plan1/undo":
+			_, _ = w.Write([]byte(`{"plan_id":"plan1","results":[{"id":1,"ok":true}]}`))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 			_, _ = w.Write([]byte(`{"error":"not found"}`))
@@ -283,6 +285,14 @@ func TestForwardArrayWithAuthAndRequestID(t *testing.T) {
 	h.ServeHTTP(rrRejectPlan, reqRejectPlan)
 	if rrRejectPlan.Code != http.StatusOK {
 		t.Fatalf("expected 200 got %d body=%s", rrRejectPlan.Code, rrRejectPlan.Body.String())
+	}
+
+	rrUndoPlan := httptest.NewRecorder()
+	reqUndoPlan := httptest.NewRequest(http.MethodPost, "/plans/plan1/undo", strings.NewReader(`{"mark_only":true}`))
+	reqUndoPlan.Header.Set("Authorization", "Bearer bridge")
+	h.ServeHTTP(rrUndoPlan, reqUndoPlan)
+	if rrUndoPlan.Code != http.StatusOK {
+		t.Fatalf("expected 200 got %d body=%s", rrUndoPlan.Code, rrUndoPlan.Body.String())
 	}
 }
 
