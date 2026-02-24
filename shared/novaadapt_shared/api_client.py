@@ -76,6 +76,12 @@ class NovaAdaptAPIClient:
             return payload
         raise APIClientError("Expected object payload from /plans/{id}/approve")
 
+    def approve_plan_async(self, plan_id: str, **kwargs: Any) -> dict[str, Any]:
+        payload = self._post_json(f"/plans/{plan_id}/approve_async", kwargs)
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /plans/{id}/approve_async")
+
     def reject_plan(self, plan_id: str, reason: str | None = None) -> dict[str, Any]:
         payload = self._post_json(f"/plans/{plan_id}/reject", {"reason": reason} if reason is not None else {})
         if isinstance(payload, dict):

@@ -114,6 +114,21 @@ if [[ "$missing_plan_status" != "400" ]]; then
   exit 1
 fi
 
+missing_plan_async_status=$(curl -s -o /tmp/novaadapt-smoke-plan-missing-async.json -w "%{http_code}" \
+  -H "Authorization: Bearer ${BRIDGE_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{"execute":true}' \
+  "http://127.0.0.1:${BRIDGE_PORT}/plans/missing-plan-id/approve_async")
+if [[ "$missing_plan_async_status" != "202" ]]; then
+  echo "Expected 202 from missing plan approve_async, got $missing_plan_async_status"
+  exit 1
+fi
+missing_async_job_id=$(python3 -c 'import json; data=json.load(open("/tmp/novaadapt-smoke-plan-missing-async.json")); print(data["job_id"])')
+missing_async_job=$(curl -sS \
+  -H "Authorization: Bearer ${BRIDGE_TOKEN}" \
+  "http://127.0.0.1:${BRIDGE_PORT}/jobs/${missing_async_job_id}")
+echo "$missing_async_job" | python3 -c 'import json,sys; data=json.load(sys.stdin); assert "status" in data'
+
 queued_job=$(curl -sS \
   -H "Authorization: Bearer ${BRIDGE_TOKEN}" \
   -H "Content-Type: application/json" \

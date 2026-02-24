@@ -86,6 +86,7 @@ class ServerTests(unittest.TestCase):
                 self.assertIn("/jobs/{id}/cancel", openapi["paths"])
                 self.assertIn("/jobs/{id}/stream", openapi["paths"])
                 self.assertIn("/plans/{id}/approve", openapi["paths"])
+                self.assertIn("/plans/{id}/approve_async", openapi["paths"])
                 self.assertIn("/dashboard/data", openapi["paths"])
 
                 models, _ = _get_json_with_headers(f"http://{host}:{port}/models")
@@ -198,8 +199,31 @@ class ServerTests(unittest.TestCase):
                 )
                 self.assertEqual(created_plan["status"], "pending")
 
+                queued_plan = _post_json(
+                    f"http://{host}:{port}/plans/{created_plan['id']}/approve_async",
+                    {"execute": True},
+                    token="secret",
+                )
+                self.assertEqual(queued_plan["status"], "queued")
+                self.assertEqual(queued_plan["kind"], "plan_approval")
+                approval_job_id = queued_plan["job_id"]
+
+                terminal_plan_job = None
+                for _ in range(30):
+                    terminal_plan_job = _get_json(f"http://{host}:{port}/jobs/{approval_job_id}", token="secret")
+                    if terminal_plan_job["status"] in {"succeeded", "failed", "canceled"}:
+                        break
+                    time.sleep(0.02)
+                self.assertIsNotNone(terminal_plan_job)
+                self.assertIn(terminal_plan_job["status"], {"succeeded", "running", "queued", "canceled"})
+
+                created_plan_2 = _post_json(
+                    f"http://{host}:{port}/plans",
+                    {"objective": "click ok again"},
+                    token="secret",
+                )
                 rejected_plan = _post_json(
-                    f"http://{host}:{port}/plans/{created_plan['id']}/reject",
+                    f"http://{host}:{port}/plans/{created_plan_2['id']}/reject",
                     {"reason": "manual deny"},
                     token="secret",
                 )

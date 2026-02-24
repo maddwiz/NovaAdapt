@@ -375,6 +375,20 @@ def _build_handler(
                     self._send_json(status_code, service.approve_plan(plan_id, payload))
                     return
 
+                if path.startswith("/plans/") and path.endswith("/approve_async"):
+                    plan_id = path.removeprefix("/plans/").removesuffix("/approve_async").strip("/")
+                    if not plan_id:
+                        status_code = 404
+                        self._send_json(status_code, {"error": "Not found"})
+                        return
+                    job_id = job_manager.submit(service.approve_plan, plan_id, payload)
+                    status_code = 202
+                    self._send_json(
+                        status_code,
+                        {"job_id": job_id, "status": "queued", "kind": "plan_approval"},
+                    )
+                    return
+
                 if path.startswith("/plans/") and path.endswith("/reject"):
                     plan_id = path.removeprefix("/plans/").removesuffix("/reject").strip("/")
                     if not plan_id:

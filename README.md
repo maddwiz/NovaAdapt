@@ -142,6 +142,7 @@ API endpoints:
 - `GET /plans` and `GET /plans/{id}`
 - `POST /plans` (create pending plan)
 - `POST /plans/{id}/approve` (execute on approval by default)
+- `POST /plans/{id}/approve_async` (queue approval/execution as async job)
 - `POST /plans/{id}/reject`
 - `POST /undo` with JSON payload
 - `POST /check` with JSON payload

@@ -81,6 +81,7 @@ class _Handler(BaseHTTPRequestHandler):
             "/jobs/job-1/cancel",
             "/plans",
             "/plans/plan-1/approve",
+            "/plans/plan-1/approve_async",
             "/plans/plan-1/reject",
         }:
             length = int(self.headers.get("Content-Length", "0"))
@@ -96,6 +97,8 @@ class _Handler(BaseHTTPRequestHandler):
                 self._send(201, {"id": "plan-1", "status": "pending"})
             elif self.path == "/plans/plan-1/approve":
                 self._send(200, {"id": "plan-1", "status": "executed"})
+            elif self.path == "/plans/plan-1/approve_async":
+                self._send(202, {"job_id": "job-plan-1", "status": "queued", "kind": "plan_approval"})
             elif self.path == "/plans/plan-1/reject":
                 self._send(200, {"id": "plan-1", "status": "rejected"})
             elif self.path == "/undo":
@@ -149,6 +152,7 @@ class APIClientTests(unittest.TestCase):
         self.assertEqual(client.plans(limit=3)[0]["id"], "plan-1")
         self.assertEqual(client.plan("plan-1")["status"], "pending")
         self.assertEqual(client.approve_plan("plan-1", execute=True)["status"], "executed")
+        self.assertEqual(client.approve_plan_async("plan-1", execute=True)["kind"], "plan_approval")
         self.assertEqual(client.reject_plan("plan-1", reason="nope")["status"], "rejected")
         self.assertEqual(client.history(limit=1)[0]["id"], 1)
         self.assertEqual(client.undo(id=1, mark_only=True)["status"], "marked_undone")

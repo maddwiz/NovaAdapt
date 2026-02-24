@@ -118,6 +118,9 @@ func TestForwardArrayWithAuthAndRequestID(t *testing.T) {
 			_, _ = w.Write([]byte(`{"id":"plan1","status":"pending"}`))
 		case "/plans/plan1/approve":
 			_, _ = w.Write([]byte(`{"id":"plan1","status":"executed"}`))
+		case "/plans/plan1/approve_async":
+			w.WriteHeader(http.StatusAccepted)
+			_, _ = w.Write([]byte(`{"job_id":"plan-job-1","status":"queued","kind":"plan_approval"}`))
 		case "/plans/plan1/reject":
 			_, _ = w.Write([]byte(`{"id":"plan1","status":"rejected"}`))
 		default:
@@ -264,6 +267,14 @@ func TestForwardArrayWithAuthAndRequestID(t *testing.T) {
 	h.ServeHTTP(rrApprovePlan, reqApprovePlan)
 	if rrApprovePlan.Code != http.StatusOK {
 		t.Fatalf("expected 200 got %d body=%s", rrApprovePlan.Code, rrApprovePlan.Body.String())
+	}
+
+	rrApprovePlanAsync := httptest.NewRecorder()
+	reqApprovePlanAsync := httptest.NewRequest(http.MethodPost, "/plans/plan1/approve_async", strings.NewReader(`{"execute":true}`))
+	reqApprovePlanAsync.Header.Set("Authorization", "Bearer bridge")
+	h.ServeHTTP(rrApprovePlanAsync, reqApprovePlanAsync)
+	if rrApprovePlanAsync.Code != http.StatusAccepted {
+		t.Fatalf("expected 202 got %d body=%s", rrApprovePlanAsync.Code, rrApprovePlanAsync.Body.String())
 	}
 
 	rrRejectPlan := httptest.NewRecorder()
