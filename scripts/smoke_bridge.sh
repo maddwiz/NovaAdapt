@@ -94,6 +94,11 @@ openapi_json=$(curl -sS \
   "http://127.0.0.1:${BRIDGE_PORT}/openapi.json")
 echo "$openapi_json" | python3 -c 'import json,sys; data=json.load(sys.stdin); assert data.get("openapi")=="3.1.0"; assert "/run" in data.get("paths", {}); assert "/plans/{id}/approve" in data.get("paths", {})'
 
+dashboard_data=$(curl -sS \
+  -H "Authorization: Bearer ${BRIDGE_TOKEN}" \
+  "http://127.0.0.1:${BRIDGE_PORT}/dashboard/data")
+echo "$dashboard_data" | python3 -c 'import json,sys; data=json.load(sys.stdin); assert data.get("health", {}).get("ok") is True'
+
 plans_json=$(curl -sS \
   -H "Authorization: Bearer ${BRIDGE_TOKEN}" \
   "http://127.0.0.1:${BRIDGE_PORT}/plans?limit=5")

@@ -74,12 +74,19 @@ class ServerTests(unittest.TestCase):
                 dashboard_html = _get_text(f"http://{host}:{port}/dashboard")
                 self.assertIn("NovaAdapt Core Dashboard", dashboard_html)
 
+                dashboard_data, _ = _get_json_with_headers(f"http://{host}:{port}/dashboard/data")
+                self.assertTrue(dashboard_data["health"]["ok"])
+                self.assertIn("metrics", dashboard_data)
+                self.assertIn("jobs", dashboard_data)
+                self.assertIn("plans", dashboard_data)
+
                 openapi, _ = _get_json_with_headers(f"http://{host}:{port}/openapi.json")
                 self.assertEqual(openapi["openapi"], "3.1.0")
                 self.assertIn("/run", openapi["paths"])
                 self.assertIn("/jobs/{id}/cancel", openapi["paths"])
                 self.assertIn("/jobs/{id}/stream", openapi["paths"])
                 self.assertIn("/plans/{id}/approve", openapi["paths"])
+                self.assertIn("/dashboard/data", openapi["paths"])
 
                 models, _ = _get_json_with_headers(f"http://{host}:{port}/models")
                 self.assertEqual(models[0]["name"], "local")
@@ -143,6 +150,13 @@ class ServerTests(unittest.TestCase):
 
                 dashboard_html = _get_text(f"http://{host}:{port}/dashboard", token="secret")
                 self.assertIn("NovaAdapt Core Dashboard", dashboard_html)
+
+                dashboard_with_query = _get_text(f"http://{host}:{port}/dashboard?token=secret")
+                self.assertIn("NovaAdapt Core Dashboard", dashboard_with_query)
+
+                dashboard_data = _get_json(f"http://{host}:{port}/dashboard/data?token=secret")
+                self.assertTrue(dashboard_data["health"]["ok"])
+                self.assertIn("metrics", dashboard_data)
 
                 queued = _post_json(
                     f"http://{host}:{port}/run_async",

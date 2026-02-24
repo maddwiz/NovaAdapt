@@ -14,6 +14,7 @@ Secure relay service for remote clients (phone/glasses) to reach NovaAdapt core.
 - Forwards endpoints:
   - `GET /openapi.json`
   - `GET /dashboard`
+  - `GET /dashboard/data`
   - `GET /models`
   - `GET /history`
   - `GET /jobs` and `GET /jobs/{id}`

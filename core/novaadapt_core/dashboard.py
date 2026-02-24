@@ -65,9 +65,21 @@ def render_dashboard_html() -> str:
       cursor: pointer;
     }
     button:hover { border-color: var(--accent); }
+    .tables {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+    }
     table {
-      width: 100%; border-collapse: collapse; margin-top: 14px;
+      width: 100%; border-collapse: collapse;
       background: var(--panel); border: 1px solid var(--border); border-radius: 12px; overflow: hidden;
+    }
+    .section-title {
+      font-size: 14px;
+      color: var(--muted);
+      margin: 0 0 6px;
+      letter-spacing: .03em;
+      text-transform: uppercase;
     }
     th, td {
       text-align: left; padding: 10px; border-bottom: 1px solid var(--border); font-size: 13px;
@@ -89,22 +101,42 @@ def render_dashboard_html() -> str:
       <button id=\"auto\">Auto: Off</button>
     </div>
 
-    <table>
-      <thead>
-        <tr>
-          <th>Job ID</th>
-          <th>Status</th>
-          <th>Created</th>
-          <th>Finished</th>
-          <th>Cancel Req</th>
-        </tr>
-      </thead>
-      <tbody id=\"jobs\"></tbody>
-    </table>
+    <div class=\"tables\">
+      <div>
+        <div class=\"section-title\">Async Jobs</div>
+        <table>
+          <thead>
+            <tr>
+              <th>Job ID</th>
+              <th>Status</th>
+              <th>Created</th>
+              <th>Finished</th>
+              <th>Cancel Req</th>
+            </tr>
+          </thead>
+          <tbody id=\"jobs\"></tbody>
+        </table>
+      </div>
+      <div>
+        <div class=\"section-title\">Approval Plans</div>
+        <table>
+          <thead>
+            <tr>
+              <th>Plan ID</th>
+              <th>Status</th>
+              <th>Objective</th>
+              <th>Created</th>
+            </tr>
+          </thead>
+          <tbody id=\"plans\"></tbody>
+        </table>
+      </div>
+    </div>
   </div>
 
   <script>
     const state = { auto: false, timer: null };
+    const authToken = new URLSearchParams(window.location.search).get('token');
 
     function metricColor(v, ok=0){
       if (Number(v) <= ok) return 'ok';
@@ -112,38 +144,34 @@ def render_dashboard_html() -> str:
       return 'bad';
     }
 
-    function parseMetrics(txt){
-      const map = {};
-      txt.split('\n').forEach(line => {
-        const parts = line.trim().split(' ');
-        if (parts.length === 2) map[parts[0]] = Number(parts[1]);
-      });
-      return map;
+    function withToken(path){
+      if (!authToken) return path;
+      const sep = path.includes('?') ? '&' : '?';
+      return `${path}${sep}token=${encodeURIComponent(authToken)}`;
     }
 
     async function fetchJSON(path){
-      const r = await fetch(path, { credentials: 'same-origin' });
+      const r = await fetch(withToken(path), { credentials: 'same-origin' });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       return await r.json();
     }
 
-    async function fetchText(path){
-      const r = await fetch(path, { credentials: 'same-origin' });
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      return await r.text();
-    }
-
     async function refresh(){
       try {
-        const [health, jobs, metricsText] = await Promise.all([
-          fetchJSON('/health'),
-          fetchJSON('/jobs?limit=25'),
-          fetchText('/metrics')
-        ]);
+        const data = await fetchJSON('/dashboard/data?jobs_limit=25&plans_limit=25');
+        const health = data.health || {};
+        const jobs = data.jobs || [];
+        const plans = data.plans || [];
+        const metrics = data.metrics || {};
+        const modelsCount = Number(data.models_count || 0);
+        const pendingPlans = plans.filter(item => item.status === 'pending').length;
+        const runningJobs = jobs.filter(item => item.status === 'running').length;
 
-        const metrics = parseMetrics(metricsText);
         const summary = [
           { label: 'Service', value: health.ok ? 'Healthy' : 'Unhealthy', cls: health.ok ? 'ok' : 'bad' },
+          { label: 'Configured Models', value: modelsCount, cls: '' },
+          { label: 'Running Jobs', value: runningJobs, cls: runningJobs > 0 ? 'warn' : 'ok' },
+          { label: 'Pending Plans', value: pendingPlans, cls: pendingPlans > 0 ? 'warn' : 'ok' },
           { label: 'Requests Total', value: metrics.novaadapt_core_requests_total ?? 0, cls: '' },
           { label: 'Unauthorized', value: metrics.novaadapt_core_unauthorized_total ?? 0, cls: metricColor(metrics.novaadapt_core_unauthorized_total ?? 0, 0) },
           { label: 'Rate Limited', value: metrics.novaadapt_core_rate_limited_total ?? 0, cls: metricColor(metrics.novaadapt_core_rate_limited_total ?? 0, 0) },
@@ -166,6 +194,15 @@ def render_dashboard_html() -> str:
             <td>${job.cancel_requested ? 'yes' : 'no'}</td>
           </tr>
         `).join('');
+
+        document.getElementById('plans').innerHTML = (plans || []).map(plan => `
+          <tr>
+            <td class=\"mono\">${plan.id}</td>
+            <td>${plan.status}</td>
+            <td>${String(plan.objective || '').slice(0, 80)}</td>
+            <td>${plan.created_at || ''}</td>
+          </tr>
+        `).join('');
       } catch (err) {
         document.getElementById('summary').innerHTML = `
           <div class=\"card\">
@@ -173,6 +210,8 @@ def render_dashboard_html() -> str:
             <div class=\"value bad\">${String(err)}</div>
           </div>
         `;
+        document.getElementById('jobs').innerHTML = '';
+        document.getElementById('plans').innerHTML = '';
       }
     }
 

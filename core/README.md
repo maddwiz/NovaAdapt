@@ -16,3 +16,4 @@ Contains:
 - Optional bearer auth guard on API routes.
 - Optional request rate limiting and max body-size enforcement.
 - Core metrics endpoint (`/metrics`) for API counters.
+- Dashboard JSON endpoint (`/dashboard/data`) for live UI polling.

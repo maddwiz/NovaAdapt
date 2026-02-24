@@ -97,6 +97,8 @@ func TestForwardArrayWithAuthAndRequestID(t *testing.T) {
 		case "/dashboard":
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
 			_, _ = w.Write([]byte(`<html><body>dashboard</body></html>`))
+		case "/dashboard/data":
+			_, _ = w.Write([]byte(`{"health":{"ok":true},"jobs":[],"plans":[]}`))
 		case "/run_async":
 			w.WriteHeader(http.StatusAccepted)
 			_, _ = w.Write([]byte(`{"job_id":"abc123","status":"queued"}`))
@@ -178,6 +180,22 @@ func TestForwardArrayWithAuthAndRequestID(t *testing.T) {
 	}
 	if !strings.Contains(rrDashboard.Body.String(), "dashboard") {
 		t.Fatalf("expected dashboard body, got %s", rrDashboard.Body.String())
+	}
+
+	rrDashboardData := httptest.NewRecorder()
+	reqDashboardData := httptest.NewRequest(http.MethodGet, "/dashboard/data", nil)
+	reqDashboardData.Header.Set("Authorization", "Bearer bridge")
+	h.ServeHTTP(rrDashboardData, reqDashboardData)
+	if rrDashboardData.Code != http.StatusOK {
+		t.Fatalf("expected 200 got %d body=%s", rrDashboardData.Code, rrDashboardData.Body.String())
+	}
+	var dashboardPayload map[string]any
+	if err := json.Unmarshal(rrDashboardData.Body.Bytes(), &dashboardPayload); err != nil {
+		t.Fatalf("unmarshal dashboard payload: %v", err)
+	}
+	healthPayload, ok := dashboardPayload["health"].(map[string]any)
+	if !ok || healthPayload["ok"] != true {
+		t.Fatalf("unexpected dashboard payload: %#v", dashboardPayload)
 	}
 
 	rrRun := httptest.NewRecorder()

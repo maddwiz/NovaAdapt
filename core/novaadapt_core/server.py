@@ -67,6 +67,16 @@ class _RequestMetrics:
                 f"novaadapt_core_server_errors_total {self.server_errors_total}\n"
             )
 
+    def snapshot(self) -> dict[str, int]:
+        with self._lock:
+            return {
+                "novaadapt_core_requests_total": self.requests_total,
+                "novaadapt_core_unauthorized_total": self.unauthorized_total,
+                "novaadapt_core_rate_limited_total": self.rate_limited_total,
+                "novaadapt_core_bad_request_total": self.bad_request_total,
+                "novaadapt_core_server_errors_total": self.server_errors_total,
+            }
+
 
 class NovaAdaptHTTPServer(ThreadingHTTPServer):
     def __init__(self, server_address: tuple[str, int], handler_cls, job_manager: JobManager):
@@ -175,11 +185,31 @@ def _build_handler(
                     return
 
                 if path == "/dashboard":
-                    if not self._check_auth(path):
+                    if not self._check_auth(path, query):
                         status_code = 401
                         return
                     status_code = 200
                     self._send_html(status_code, render_dashboard_html())
+                    return
+
+                if path == "/dashboard/data":
+                    if not self._check_auth(path, query):
+                        status_code = 401
+                        return
+                    jobs_limit = int(_single(query, "jobs_limit") or 25)
+                    plans_limit = int(_single(query, "plans_limit") or 25)
+                    config = _single(query, "config")
+                    status_code = 200
+                    self._send_json(
+                        status_code,
+                        {
+                            "health": {"ok": True, "service": "novaadapt"},
+                            "metrics": metrics.snapshot(),
+                            "jobs": job_manager.list(limit=max(1, jobs_limit)),
+                            "plans": service.list_plans(limit=max(1, plans_limit)),
+                            "models_count": len(service.models(config_path=_to_path(config))),
+                        },
+                    )
                     return
 
                 if path == "/openapi.json":
@@ -188,7 +218,7 @@ def _build_handler(
                     return
 
                 if path == "/metrics":
-                    if not self._check_auth(path):
+                    if not self._check_auth(path, query):
                         status_code = 401
                         return
                     status_code = 200
@@ -201,7 +231,7 @@ def _build_handler(
                     self._send_json(status_code, {"error": "Rate limit exceeded"})
                     return
 
-                if not self._check_auth(path):
+                if not self._check_auth(path, query):
                     status_code = 401
                     return
 
@@ -412,9 +442,13 @@ def _build_handler(
                 return False
             return not limiter.allow()
 
-        def _check_auth(self, path: str) -> bool:
+        def _check_auth(self, path: str, query: dict[str, list[str]] | None = None) -> bool:
             if path == "/health" or not api_token:
                 return True
+            if query is not None and path in {"/dashboard", "/dashboard/data"}:
+                query_token = _single(query, "token")
+                if query_token == api_token:
+                    return True
             auth_header = self.headers.get("Authorization", "")
             expected = f"Bearer {api_token}"
             if auth_header == expected:

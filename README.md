@@ -130,6 +130,7 @@ API endpoints:
 - `GET /health`
 - `GET /openapi.json`
 - `GET /dashboard` (auth-protected operational HTML dashboard)
+- `GET /dashboard/data` (auth-protected dashboard JSON)
 - `GET /models`
 - `GET /history?limit=20`
 - `GET /metrics` (Prometheus-style counters, auth-protected when token is enabled)
@@ -146,6 +147,14 @@ API endpoints:
 - `POST /check` with JSON payload
 
 Core API responses include `X-Request-ID` for tracing (and object responses also include `request_id` in JSON).
+
+When token auth is enabled, browser dashboard usage supports:
+
+```text
+/dashboard?token=YOUR_CORE_TOKEN
+```
+
+The page will reuse that token for `/dashboard/data` polling.
 
 9. Run full local smoke test (core + bridge):
 

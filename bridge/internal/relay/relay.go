@@ -19,16 +19,17 @@ import (
 const maxRequestBodyBytes = 1 << 20 // 1 MiB
 
 var allowedPaths = map[string]struct{}{
-	"/models":       {},
-	"/openapi.json": {},
-	"/dashboard":    {},
-	"/history":      {},
-	"/run":          {},
-	"/run_async":    {},
-	"/undo":         {},
-	"/check":        {},
-	"/jobs":         {},
-	"/plans":        {},
+	"/models":         {},
+	"/openapi.json":   {},
+	"/dashboard":      {},
+	"/dashboard/data": {},
+	"/history":        {},
+	"/run":            {},
+	"/run_async":      {},
+	"/undo":           {},
+	"/check":          {},
+	"/jobs":           {},
+	"/plans":          {},
 }
 
 // Config controls bridge relay behavior.
