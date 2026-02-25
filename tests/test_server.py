@@ -1,4 +1,6 @@
+import io
 import json
+import logging
 import tempfile
 import threading
 import time
@@ -353,6 +355,50 @@ class ServerTests(unittest.TestCase):
                 server.shutdown()
                 server.server_close()
                 thread.join(timeout=2)
+
+    def test_request_logs_redact_query_tokens(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            service = NovaAdaptService(
+                default_config=Path("unused.json"),
+                db_path=Path(tmp) / "actions.db",
+                plans_db_path=Path(tmp) / "plans.db",
+                router_loader=lambda _path: _StubRouter(),
+                directshell_factory=_StubDirectShell,
+            )
+            stream = io.StringIO()
+            logger = logging.getLogger("novaadapt.tests.server.log_redaction")
+            logger.setLevel(logging.INFO)
+            logger.handlers = []
+            logger.propagate = False
+            handler = logging.StreamHandler(stream)
+            logger.addHandler(handler)
+
+            server = create_server(
+                "127.0.0.1",
+                0,
+                service,
+                api_token="secret",
+                log_requests=True,
+                logger=logger,
+                audit_db_path=str(Path(tmp) / "events.db"),
+            )
+            host, port = server.server_address
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+
+            try:
+                html = _get_text(f"http://{host}:{port}/dashboard?token=secret")
+                self.assertIn("NovaAdapt Core Dashboard", html)
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=2)
+                logger.removeHandler(handler)
+                handler.close()
+
+            output = stream.getvalue()
+            self.assertIn("/dashboard?token=redacted", output)
+            self.assertNotIn("token=secret", output)
 
     def test_metrics_endpoint_and_auth(self):
         with tempfile.TemporaryDirectory() as tmp:

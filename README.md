@@ -403,6 +403,7 @@ Environment variables:
 - Bridge relay only trusts forwarded client/protocol headers from configured trusted proxy CIDRs (`NOVAADAPT_BRIDGE_TRUSTED_PROXY_CIDRS`).
 - Core API supports per-client request rate limiting and max body size on `serve`.
 - Core API only trusts `X-Forwarded-For` for rate-limit identity when `NOVAADAPT_TRUSTED_PROXY_CIDRS` is configured.
+- Core API request logging redacts sensitive query params (for example `token`) before writing access logs.
 - Core API supports persisted idempotency keys on `serve` (`--idempotency-db-path`) to prevent duplicate mutations on retries.
 - Async job records can be persisted to SQLite (`--jobs-db-path`) for restart-safe history.
 - Plan approval records can be persisted to SQLite (`--plans-db-path`) for restart-safe approvals/audits.

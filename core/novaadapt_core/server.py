@@ -8,7 +8,7 @@ import threading
 import time
 from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, parse_qsl, urlencode, urlparse
 
 from .audit_store import AuditStore
 from .dashboard import render_dashboard_html
@@ -20,6 +20,16 @@ from .service import NovaAdaptService
 
 
 DEFAULT_MAX_REQUEST_BODY_BYTES = 1 << 20  # 1 MiB
+SENSITIVE_QUERY_KEYS = {
+    "token",
+    "access_token",
+    "api_token",
+    "api_key",
+    "apikey",
+    "authorization",
+    "auth",
+    "session_token",
+}
 
 
 class PayloadTooLargeError(ValueError):
@@ -1072,7 +1082,7 @@ def _build_handler(
                 "core request id=%s method=%s path=%s status=%s duration_ms=%.2f",
                 self._request_id,
                 self.command,
-                self.path,
+                _redact_path_for_logs(self.path),
                 status_code,
                 duration_ms,
             )
@@ -1151,3 +1161,19 @@ def _parse_ip_token(value: str) -> IPAddress | None:
         return ipaddress.ip_address(token)
     except ValueError:
         return None
+
+
+def _redact_path_for_logs(raw_path: str) -> str:
+    parsed = urlparse(raw_path)
+    if not parsed.query:
+        return parsed.path or raw_path
+    redacted_pairs: list[tuple[str, str]] = []
+    for key, value in parse_qsl(parsed.query, keep_blank_values=True):
+        if key.lower() in SENSITIVE_QUERY_KEYS:
+            redacted_pairs.append((key, "redacted"))
+        else:
+            redacted_pairs.append((key, value))
+    redacted_query = urlencode(redacted_pairs, doseq=True)
+    if not redacted_query:
+        return parsed.path or raw_path
+    return f"{parsed.path}?{redacted_query}"
