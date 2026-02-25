@@ -107,6 +107,8 @@ class _Handler(BaseHTTPRequestHandler):
             "/run_async",
             "/undo",
             "/check",
+            "/auth/session",
+            "/auth/session/revoke",
             "/jobs/job-1/cancel",
             "/plans",
             "/plans/plan-1/approve",
@@ -142,6 +144,29 @@ class _Handler(BaseHTTPRequestHandler):
                 self._send(200, {"plan_id": "plan-1", "results": [{"id": 1, "ok": True}]})
             elif self.path == "/undo":
                 self._send(200, {"id": payload.get("id", 1), "status": "marked_undone"})
+            elif self.path == "/auth/session":
+                self._send(
+                    200,
+                    {
+                        "token": "na1.mock-session",
+                        "session_id": "session-1",
+                        "subject": payload.get("subject", "bridge-session"),
+                        "scopes": payload.get("scopes", ["read"]),
+                        "device_id": payload.get("device_id", ""),
+                        "expires_at": 9999999999,
+                        "issued_at": 9999999000,
+                    },
+                )
+            elif self.path == "/auth/session/revoke":
+                self._send(
+                    200,
+                    {
+                        "revoked": True,
+                        "already_revoked": False,
+                        "session_id": "session-1",
+                        "expires_at": 9999999999,
+                    },
+                )
             else:
                 self._send(200, [{"name": "local", "ok": True}])
             return
@@ -201,6 +226,16 @@ class APIClientTests(unittest.TestCase):
         self.assertEqual(client.events(limit=10)[0]["category"], "run")
         self.assertEqual(client.events_stream(timeout_seconds=2, interval_seconds=0.1, since_id=0)[0]["event"], "audit")
         self.assertEqual(client.undo(id=1, mark_only=True)["status"], "marked_undone")
+        session_payload = client.issue_session_token(
+            scopes=["read", "run"],
+            subject="iphone-operator",
+            device_id="iphone-1",
+            ttl_seconds=300,
+        )
+        self.assertEqual(session_payload["token"], "na1.mock-session")
+        self.assertEqual(session_payload["session_id"], "session-1")
+        revoke_payload = client.revoke_session_token("na1.mock-session")
+        self.assertTrue(revoke_payload["revoked"])
         self.assertIn("novaadapt_core_requests_total", client.metrics_text())
 
     def test_error_without_token(self):

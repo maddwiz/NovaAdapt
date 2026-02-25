@@ -213,6 +213,33 @@ class NovaAdaptAPIClient:
             return payload
         raise APIClientError("Expected object payload from /undo")
 
+    def issue_session_token(
+        self,
+        scopes: list[str] | None = None,
+        subject: str | None = None,
+        device_id: str | None = None,
+        ttl_seconds: int | None = None,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {}
+        if scopes:
+            body["scopes"] = scopes
+        if subject:
+            body["subject"] = subject
+        if device_id:
+            body["device_id"] = device_id
+        if ttl_seconds is not None:
+            body["ttl_seconds"] = max(1, int(ttl_seconds))
+        payload = self._post_json("/auth/session", body)
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /auth/session")
+
+    def revoke_session_token(self, token: str) -> dict[str, Any]:
+        payload = self._post_json("/auth/session/revoke", {"token": token})
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /auth/session/revoke")
+
     def metrics_text(self) -> str:
         return self._request_text("GET", "/metrics")
 

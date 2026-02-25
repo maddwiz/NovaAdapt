@@ -248,6 +248,8 @@ print(client.run("Open browser and go to example.com"))
 print(client.job_stream("job-id", timeout_seconds=10))
 print(client.plan_stream("plan-id", timeout_seconds=10))
 print(client.events(limit=20))
+session = client.issue_session_token(scopes=["read", "plan", "approve"], ttl_seconds=900)
+print(client.revoke_session_token(session["token"]))
 ```
 
 `NovaAdaptAPIClient` retries transient HTTP failures by default (`max_retries=1`), configurable per client instance.
