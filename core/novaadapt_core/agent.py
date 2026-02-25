@@ -108,6 +108,7 @@ class NovaAdaptAgent:
             "model_id": result.model_id,
             "strategy": result.strategy,
             "votes": result.votes,
+            "vote_summary": result.vote_summary,
             "model_errors": result.errors,
             "attempted_models": result.attempted_models,
             "actions": actions,

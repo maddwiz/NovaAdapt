@@ -30,6 +30,7 @@ class RouterResult:
     votes: dict[str, str] = field(default_factory=dict)
     errors: dict[str, str] = field(default_factory=dict)
     attempted_models: list[str] = field(default_factory=list)
+    vote_summary: dict[str, object] = field(default_factory=dict)
 
 
 class ModelRouter:
@@ -45,6 +46,8 @@ class ModelRouter:
         temperature: float = 0.2,
         max_tokens: int = 800,
         timeout_seconds: int = 90,
+        default_vote_candidates: int = 3,
+        min_vote_agreement: int = 1,
         transport: Callable[[ModelEndpoint, list[dict[str, str]], float, int, int], str] | None = None,
     ) -> None:
         if not endpoints:
@@ -58,6 +61,8 @@ class ModelRouter:
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.timeout_seconds = timeout_seconds
+        self.default_vote_candidates = max(1, int(default_vote_candidates))
+        self.min_vote_agreement = max(1, int(min_vote_agreement))
         self._transport = transport
 
     @classmethod
@@ -84,6 +89,8 @@ class ModelRouter:
             temperature=float(routing.get("temperature", 0.2)),
             max_tokens=int(routing.get("max_tokens", 800)),
             timeout_seconds=int(routing.get("timeout_seconds", 90)),
+            default_vote_candidates=int(routing.get("default_vote_candidates", 3)),
+            min_vote_agreement=int(routing.get("min_vote_agreement", 1)),
         )
 
     def list_models(self) -> list[ModelEndpoint]:
@@ -127,9 +134,13 @@ class ModelRouter:
                 attempted_models=ordered_names,
             )
 
-        names = list(candidate_models or [self.default_model])
+        names = self._dedupe_names(list(candidate_models or self._default_vote_models()))
         if not names:
             raise ValueError("candidate_models must not be empty when strategy='vote'")
+        if self.min_vote_agreement > len(names):
+            raise ValueError(
+                f"min_vote_agreement={self.min_vote_agreement} exceeds vote candidates={len(names)}"
+            )
 
         endpoints = [self._resolve_model(name) for name in names]
         votes: dict[str, str] = {}
@@ -153,8 +164,19 @@ class ModelRouter:
             joined = "; ".join(f"{k}: {v}" for k, v in errors.items())
             raise RuntimeError(f"All vote candidates failed: {joined}")
 
-        chosen = self._majority_vote(outputs)
-        winner = next((k for k, v in votes.items() if self._normalize(v) == self._normalize(chosen)), endpoints[0].name)
+        chosen, winner_count = self._majority_vote(outputs)
+        if winner_count < self.min_vote_agreement:
+            raise RuntimeError(
+                f"Vote quorum not met: winner_votes={winner_count}, required_votes={self.min_vote_agreement}"
+            )
+        winner = next(
+            (
+                name
+                for name in names
+                if name in votes and self._normalize(votes[name]) == self._normalize(chosen)
+            ),
+            names[0],
+        )
 
         return RouterResult(
             model_name=winner,
@@ -164,6 +186,12 @@ class ModelRouter:
             votes=votes,
             errors=errors,
             attempted_models=names,
+            vote_summary={
+                "winner_votes": winner_count,
+                "required_votes": self.min_vote_agreement,
+                "total_votes": len(outputs),
+                "quorum_met": True,
+            },
         )
 
     def health_check(
@@ -302,14 +330,14 @@ class ModelRouter:
 
         return str(content).strip()
 
-    def _majority_vote(self, outputs: list[str]) -> str:
+    def _majority_vote(self, outputs: list[str]) -> tuple[str, int]:
         normalized = [self._normalize(item) for item in outputs]
         counts = Counter(normalized)
-        winner_norm = counts.most_common(1)[0][0]
+        winner_norm, winner_count = counts.most_common(1)[0]
         for item in outputs:
             if self._normalize(item) == winner_norm:
-                return item
-        return outputs[0]
+                return item, winner_count
+        return outputs[0], winner_count
 
     @staticmethod
     def _dedupe_names(names: list[str]) -> list[str]:
@@ -321,6 +349,17 @@ class ModelRouter:
                 ordered.append(name)
         return ordered
 
+    def _default_vote_models(self) -> list[str]:
+        ordered = [self.default_model]
+        ordered.extend(name for name in self._endpoints if name != self.default_model)
+        return ordered[: self.default_vote_candidates]
+
     @staticmethod
     def _normalize(text: str) -> str:
+        try:
+            parsed = json.loads(text)
+        except json.JSONDecodeError:
+            parsed = None
+        if parsed is not None:
+            return "json:" + json.dumps(parsed, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
         return " ".join(text.lower().split())

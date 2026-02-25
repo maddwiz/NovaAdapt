@@ -13,7 +13,9 @@ Contains:
 - Async job manager for long-running API requests.
 - SSE job stream endpoint for live status (`GET /jobs/{id}/stream`).
 - SSE plan stream endpoint for live status (`GET /plans/{id}/stream`).
+- SSE audit stream endpoint for live events (`GET /events/stream`).
 - Persisted approval-plan workflow (`/plans`, `approve`, `reject`).
+- Persisted audit event log (`GET /events`).
 - Optional bearer auth guard on API routes.
 - Optional request rate limiting and max body-size enforcement.
 - Optional idempotency key store for mutating POST routes.

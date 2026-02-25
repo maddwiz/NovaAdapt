@@ -3,7 +3,9 @@
   "routing": {
     "temperature": 0.2,
     "max_tokens": 800,
-    "timeout_seconds": 90
+    "timeout_seconds": 90,
+    "default_vote_candidates": 3,
+    "min_vote_agreement": 1
   },
   "models": [
     {

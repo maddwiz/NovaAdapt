@@ -18,6 +18,7 @@ Implemented now:
   - OpenAI-compatible endpoint support (Ollama, OpenAI, Anthropic-compatible proxies, vLLM, Together, Fireworks, etc.).
   - Optional LiteLLM execution path when `litellm` is installed.
   - Multi-model voting strategy (`single` or `vote`).
+  - Deterministic vote winner selection with optional quorum (`min_vote_agreement`).
   - Health probes and resilient fallback for single-model mode.
   - API client SDK for core/bridge (`NovaAdaptAPIClient`).
 - `core` Python CLI orchestrator that:
@@ -84,6 +85,7 @@ novaadapt run \
   --candidates local-qwen,openai-gpt
 ```
 
+`--candidates` is optional in vote mode; if omitted, NovaAdapt uses configured defaults (`routing.default_vote_candidates`).
 No GUI actions are executed unless `--execute` is provided.
 
 5. Review action history and preview/execute undo:
@@ -259,6 +261,17 @@ print(client.events(limit=20))
 - `api_key_env` (if required)
 
 This includes local Ollama (`http://localhost:11434/v1`), self-hosted vLLM, or managed endpoints.
+
+Vote mode reliability controls (in model config):
+
+```json
+"routing": {
+  "default_vote_candidates": 3,
+  "min_vote_agreement": 1
+}
+```
+
+Set `min_vote_agreement` to `2` or `3` when you want stricter consensus before actions execute.
 
 Single mode also supports fallback chain routing:
 
