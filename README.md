@@ -234,6 +234,7 @@ make smoke
 make test      # Python + Go tests
 make test-py   # Python tests only
 make test-go   # Go bridge tests only
+make test-clients  # Desktop/iOS client source checks
 make build-bridge
 make release-artifacts      # Build dist artifacts (bridge + python + runtime bundle)
 make rotate-tokens-dry-run  # Preview token rotation updates
@@ -342,6 +343,11 @@ Build release artifacts (bridge binary, wheel/sdist, runtime bundle, checksums):
 ```bash
 ./installer/build_release_artifacts.sh v0.1.0
 ```
+
+GitHub release workflow behavior:
+
+- Push to `main`: runs release build/test as a dry artifact pipeline (no GitHub Release publish).
+- Push a tag or dispatch with `release_tag`: builds artifacts and publishes release assets.
 
 ## Python API Client
 

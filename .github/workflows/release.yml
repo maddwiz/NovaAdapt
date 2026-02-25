@@ -2,6 +2,8 @@ name: release
 
 on:
   push:
+    branches:
+      - main
     tags:
       - "*"
   workflow_dispatch:
@@ -32,7 +34,7 @@ jobs:
           elif [ "${{ github.ref_type }}" = "tag" ]; then
             release_tag="${GITHUB_REF_NAME}"
           else
-            release_tag="manual-${GITHUB_RUN_NUMBER}-${GITHUB_SHA::7}"
+            release_tag="build-${GITHUB_RUN_NUMBER}-${GITHUB_SHA::7}"
           fi
           echo "release_tag=${release_tag}" >> "${GITHUB_OUTPUT}"
           echo "Using release tag: ${release_tag}"
@@ -51,6 +53,7 @@ jobs:
       - name: Run tests
         run: |
           make test
+          make smoke
 
       - name: Build release artifacts
         run: |

@@ -1,6 +1,6 @@
 PYTHONPATH := core:shared
 
-.PHONY: test test-py test-go build-bridge smoke run-local release-artifacts rotate-tokens-dry-run
+.PHONY: test test-py test-go test-clients build-bridge smoke run-local release-artifacts rotate-tokens-dry-run
 
 test: test-py test-go
 
@@ -9,6 +9,9 @@ test-py:
 
 test-go:
 	cd bridge && go test ./...
+
+test-clients:
+	./scripts/check_clients.sh
 
 build-bridge:
 	./installer/build_bridge_go.sh
