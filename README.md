@@ -37,14 +37,14 @@ Planned next:
 
 - Tauri desktop UI.
 - Real DirectShell daemon connection for richer structured control.
-- Relay bridge + glasses + iPhone modules.
+- Native glasses + iPhone apps (initial terminal/web operator tooling now included).
 
 ## Monorepo Layout
 
 ```text
 NovaAdapt/
 ├── core/          # Desktop orchestrator + DirectShell adapter
-├── vibe/          # Glasses bridge (placeholder for phase 2)
+├── vibe/          # Wearable intent bridge prototype (`vibe_terminal.py`)
 ├── view/          # Realtime operator console + iPhone module seed
 ├── bridge/        # Secure relay server (Go, production-ready)
 ├── shared/        # Model router + memory/security primitives
@@ -278,6 +278,16 @@ python3 -m http.server 8088
 ```
 
 Open `http://127.0.0.1:8088/realtime_console.html`.
+
+Wearable intent bridge prototype:
+
+```bash
+PYTHONPATH=core:shared python3 vibe/vibe_terminal.py \
+  --bridge-url http://127.0.0.1:9797 \
+  --token YOUR_BRIDGE_TOKEN \
+  --objective "Open dashboard and summarize failed jobs" \
+  --wait
+```
 
 ## Model-Agnostic Design
 
