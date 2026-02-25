@@ -190,6 +190,19 @@ events_stream=$(curl -sS \
   "http://127.0.0.1:${BRIDGE_PORT}/events/stream?timeout=1&interval=0.1&since_id=${latest_event_id}")
 echo "$events_stream" | grep -q 'event: timeout'
 
+ws_status=$(curl -s -o /tmp/novaadapt-smoke-ws.txt -w "%{http_code}" \
+  --max-time 3 \
+  -H "Authorization: Bearer ${BRIDGE_TOKEN}" \
+  -H "Connection: Upgrade" \
+  -H "Upgrade: websocket" \
+  -H "Sec-WebSocket-Version: 13" \
+  -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" \
+  "http://127.0.0.1:${BRIDGE_PORT}/ws?since_id=0" || true)
+if [[ "$ws_status" != "101" ]]; then
+  echo "Expected websocket upgrade status 101, got $ws_status"
+  exit 1
+fi
+
 trace_header=$(curl -sS -D - -o /tmp/novaadapt-smoke-models.json \
   -H "Authorization: Bearer ${BRIDGE_TOKEN}" \
   -H "X-Request-ID: ${RID}" \
