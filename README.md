@@ -32,7 +32,7 @@ Implemented now:
 - `bridge` relay service in Go for secure remote forwarding into core API.
   - Includes realtime WebSocket control channel (`/ws`) for events + command relay.
 - `view` static realtime console UI for bridge operations (`view/realtime_console.html`).
-- `desktop` Tauri operator shell (`desktop/tauri-shell`) for objective queueing, plan approval/rejection/undo, job cancellation, and event visibility (alpha quality).
+- `desktop` Tauri operator shell (`desktop/tauri-shell`) for objective queueing, plan approval/rejection/failed-step retry/undo, job cancellation, and event visibility (alpha quality).
 - `mobile` iOS SwiftUI companion source (`mobile/ios/NovaAdaptCompanion`) with objective/plan/job controls plus websocket feed (alpha quality).
 - `wearables` Halo/Omi adapter (`wearables/halo_bridge.py`) with bridge session leasing + optional async wait flow.
 
@@ -224,7 +224,7 @@ When token auth is enabled, browser dashboard usage supports:
 ```
 
 The page will reuse that token for `/dashboard/data` polling.
-Dashboard now includes one-click controls for pending plan approval/rejection, job cancellation, and plan undo marking.
+Dashboard now includes one-click controls for pending plan approval/rejection, failed-plan retry, job cancellation, and plan undo marking.
 
 12. Run full local smoke test (core + bridge + runtime transports):
 

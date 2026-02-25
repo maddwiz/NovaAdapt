@@ -130,6 +130,25 @@ final class BridgeViewModel: ObservableObject {
         }
     }
 
+    func retryFailedPlan(_ planId: String) {
+        Task {
+            await runAction(label: "Retrying failed steps for \(planId)") {
+                _ = try await self.requestJSON(
+                    method: "POST",
+                    path: "/plans/\(planId)/approve",
+                    body: [
+                        "execute": true,
+                        "retry_failed_only": true,
+                        "allow_dangerous": true,
+                        "action_retry_attempts": 2,
+                        "action_retry_backoff_seconds": 0.2,
+                    ]
+                )
+                try await self.refreshDashboardAsync()
+            }
+        }
+    }
+
     func rejectPlan(_ planId: String) {
         Task {
             await runAction(label: "Rejecting plan \(planId)") {

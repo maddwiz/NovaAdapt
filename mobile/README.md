@@ -8,7 +8,7 @@ Native mobile companion scaffolds.
 
 - bridge/core API configuration and auth token entry.
 - objective submission (`/run_async`) and pending-plan creation (`/plans`).
-- operator controls for pending plan approve/reject and job cancel.
+- operator controls for pending plan approve/reject, failed-plan retry, and job cancel.
 - dashboard polling surface for plans/jobs/audit events.
 - optional bridge websocket feed for realtime command/audit traffic.
 

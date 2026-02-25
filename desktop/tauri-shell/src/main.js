@@ -130,8 +130,8 @@ async function createPlan() {
   return coreRequest("POST", "/plans", buildObjectivePayload());
 }
 
-async function approvePlan(planId, execute = true) {
-  return coreRequest("POST", `/plans/${encodeURIComponent(planId)}/approve`, { execute });
+async function approvePlan(planId, payload = { execute: true }) {
+  return coreRequest("POST", `/plans/${encodeURIComponent(planId)}/approve`, payload);
 }
 
 async function rejectPlan(planId, reason) {
@@ -239,7 +239,7 @@ function renderPlans(plans) {
     if (status === "pending") {
       actionRow.appendChild(
         actionButton("Approve + Execute", "secondary", async () => {
-          await runAction("Approving plan", () => approvePlan(plan.id, true));
+          await runAction("Approving plan", () => approvePlan(plan.id, { execute: true }));
         }),
       );
       actionRow.appendChild(
@@ -247,6 +247,26 @@ function renderPlans(plans) {
           const reason = window.prompt("Reject reason", "Operator rejected");
           if (!reason) return;
           await runAction("Rejecting plan", () => rejectPlan(plan.id, reason));
+        }),
+      );
+    }
+
+    if (status === "failed") {
+      actionRow.appendChild(
+        actionButton("Retry Failed Steps", "secondary", async () => {
+          const confirmed = window.confirm(
+            "Retry only failed/blocked actions for this plan with dangerous actions enabled?",
+          );
+          if (!confirmed) return;
+          await runAction("Retrying failed steps", () =>
+            approvePlan(plan.id, {
+              execute: true,
+              retry_failed_only: true,
+              allow_dangerous: true,
+              action_retry_attempts: 2,
+              action_retry_backoff_seconds: 0.2,
+            }),
+          );
         }),
       );
     }

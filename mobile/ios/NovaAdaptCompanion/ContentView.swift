@@ -115,6 +115,10 @@ struct ContentView: View {
                                 Button("Reject") { bridge.rejectPlan(plan.id) }
                                     .buttonStyle(.bordered)
                             }
+                            if plan.status.lowercased() == "failed" {
+                                Button("Retry Failed Steps") { bridge.retryFailedPlan(plan.id) }
+                                    .buttonStyle(.borderedProminent)
+                            }
                             if plan.hasUndoActions {
                                 Button("Undo (Mark)") { bridge.markUndoPlan(plan.id) }
                                     .buttonStyle(.bordered)
