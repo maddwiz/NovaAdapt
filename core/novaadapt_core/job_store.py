@@ -55,6 +55,18 @@ class JobStore:
                 )
                 """
             )
+            conn.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_async_jobs_created_at
+                ON async_jobs(created_at DESC)
+                """
+            )
+            conn.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_async_jobs_status_finished_at
+                ON async_jobs(status, finished_at)
+                """
+            )
             conn.commit()
 
     def upsert(self, record: dict[str, Any]) -> None:

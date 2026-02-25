@@ -82,6 +82,18 @@ class PlanStore:
                 conn.execute("ALTER TABLE plans ADD COLUMN progress_total INTEGER NOT NULL DEFAULT 0")
             if "execution_error" not in columns:
                 conn.execute("ALTER TABLE plans ADD COLUMN execution_error TEXT")
+            conn.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_plans_created_at
+                ON plans(created_at DESC)
+                """
+            )
+            conn.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_plans_status_updated_at
+                ON plans(status, updated_at)
+                """
+            )
             conn.commit()
 
     def create(self, payload: dict[str, Any]) -> dict[str, Any]:

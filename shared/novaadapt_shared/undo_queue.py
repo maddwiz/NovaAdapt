@@ -59,6 +59,18 @@ class UndoQueue:
             }
             if "undo_action_json" not in columns:
                 conn.execute("ALTER TABLE action_log ADD COLUMN undo_action_json TEXT")
+            conn.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_action_log_undone_id
+                ON action_log(undone, id DESC)
+                """
+            )
+            conn.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_action_log_created_at
+                ON action_log(created_at)
+                """
+            )
             conn.commit()
 
     def record(

@@ -38,6 +38,7 @@ Idempotency records are persisted with retention-based cleanup to bound storage 
 Audit events are persisted with retention-based cleanup to bound audit-store growth.
 Async job records are persisted to SQLite when `--jobs-db-path` is configured.
 Core rate limiting is per-client and can trust `X-Forwarded-For` only from configured trusted proxy CIDRs.
+Core state stores apply hot-path SQLite indexes to keep list/filter/read operations efficient as rows grow.
 
 ## Relay Layer
 

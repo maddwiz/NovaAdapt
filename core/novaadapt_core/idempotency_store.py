@@ -131,6 +131,12 @@ class IdempotencyStore:
                 )
                 """
             )
+            conn.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_idempotency_entries_updated_at
+                ON idempotency_entries(updated_at)
+                """
+            )
             conn.commit()
 
     def _connect(self) -> sqlite3.Connection:

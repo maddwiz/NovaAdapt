@@ -128,6 +128,24 @@ class AuditStore:
                 )
                 """
             )
+            conn.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_audit_events_category_id
+                ON audit_events(category, id DESC)
+                """
+            )
+            conn.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_audit_events_entity_type_entity_id_id
+                ON audit_events(entity_type, entity_id, id DESC)
+                """
+            )
+            conn.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_audit_events_created_at
+                ON audit_events(created_at)
+                """
+            )
             conn.commit()
 
     def _append_once(
