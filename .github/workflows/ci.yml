@@ -35,3 +35,7 @@ jobs:
         run: |
           cd bridge
           go build -o ./bin/novaadapt-bridge ./cmd/novaadapt-bridge
+
+      - name: Run smoke test
+        run: |
+          make smoke
