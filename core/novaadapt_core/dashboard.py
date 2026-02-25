@@ -65,6 +65,24 @@ def render_dashboard_html() -> str:
       cursor: pointer;
     }
     button:hover { border-color: var(--accent); }
+    button.mini {
+      padding: 4px 8px;
+      border-radius: 6px;
+      font-size: 12px;
+      margin-right: 6px;
+    }
+    button.warn {
+      border-color: color-mix(in oklab, var(--bad), #000 35%);
+      color: var(--bad);
+    }
+    .action-status {
+      min-height: 18px;
+      margin: 4px 0 10px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .action-status.ok { color: var(--ok); }
+    .action-status.bad { color: var(--bad); }
     .tables {
       display: grid;
       gap: 12px;
@@ -92,7 +110,7 @@ def render_dashboard_html() -> str:
 <body>
   <div class=\"wrap\">
     <h1>NovaAdapt Core Dashboard</h1>
-    <div class=\"sub\">Live operational view for health, metrics, jobs, plans, and audit events.</div>
+    <div class=\"sub\">Live operational view with one-click controls for plans, jobs, and audit events.</div>
 
     <div class=\"grid\" id=\"summary\"></div>
 
@@ -100,6 +118,7 @@ def render_dashboard_html() -> str:
       <button id=\"refresh\">Refresh</button>
       <button id=\"auto\">Auto: Off</button>
     </div>
+    <div class=\"action-status\" id=\"action-status\"></div>
 
     <div class=\"tables\">
       <div>
@@ -112,6 +131,7 @@ def render_dashboard_html() -> str:
               <th>Created</th>
               <th>Finished</th>
               <th>Cancel Req</th>
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody id=\"jobs\"></tbody>
@@ -127,6 +147,7 @@ def render_dashboard_html() -> str:
               <th>Progress</th>
               <th>Objective</th>
               <th>Created</th>
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody id=\"plans\"></tbody>
@@ -154,6 +175,9 @@ def render_dashboard_html() -> str:
   <script>
     const state = { auto: false, timer: null };
     const authToken = new URLSearchParams(window.location.search).get('token');
+    const actionStatus = document.getElementById('action-status');
+    const jobsTbody = document.getElementById('jobs');
+    const plansTbody = document.getElementById('plans');
 
     function metricColor(v, ok=0){
       if (Number(v) <= ok) return 'ok';
@@ -167,10 +191,86 @@ def render_dashboard_html() -> str:
       return `${path}${sep}token=${encodeURIComponent(authToken)}`;
     }
 
+    function authHeaders(includeJSON=false){
+      const headers = {};
+      if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+      if (includeJSON) headers['Content-Type'] = 'application/json';
+      return headers;
+    }
+
+    function setActionStatus(message, ok=true){
+      actionStatus.textContent = String(message || '');
+      actionStatus.className = `action-status ${ok ? 'ok' : 'bad'}`;
+    }
+
+    function escapeHTML(value){
+      return String(value ?? '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;');
+    }
+
     async function fetchJSON(path){
-      const r = await fetch(withToken(path), { credentials: 'same-origin' });
+      const r = await fetch(withToken(path), {
+        credentials: 'same-origin',
+        headers: authHeaders(false),
+      });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       return await r.json();
+    }
+
+    async function postJSON(path, body){
+      const r = await fetch(path, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: authHeaders(true),
+        body: JSON.stringify(body || {}),
+      });
+      const text = await r.text();
+      let payload = null;
+      try {
+        payload = text ? JSON.parse(text) : {};
+      } catch {
+        payload = { raw: text };
+      }
+      if (!r.ok) {
+        throw new Error(payload?.error ? `HTTP ${r.status}: ${payload.error}` : `HTTP ${r.status}`);
+      }
+      return payload;
+    }
+
+    async function handleTableAction(event){
+      const button = event.target.closest('button[data-action]');
+      if (!button) return;
+
+      const action = button.dataset.action;
+      const id = button.dataset.id;
+      if (!id) return;
+      button.disabled = true;
+
+      try {
+        if (action === 'cancel-job') {
+          await postJSON(`/jobs/${encodeURIComponent(id)}/cancel`, {});
+          setActionStatus(`Requested cancel for job ${id}`, true);
+        } else if (action === 'approve-plan') {
+          const out = await postJSON(`/plans/${encodeURIComponent(id)}/approve_async`, { execute: true });
+          setActionStatus(`Queued approval for plan ${id} (job ${out.job_id || 'n/a'})`, true);
+        } else if (action === 'reject-plan') {
+          const reason = prompt(`Reject plan ${id}. Optional reason:`, 'Operator rejected');
+          await postJSON(`/plans/${encodeURIComponent(id)}/reject`, reason ? { reason } : {});
+          setActionStatus(`Rejected plan ${id}`, true);
+        } else if (action === 'undo-plan') {
+          await postJSON(`/plans/${encodeURIComponent(id)}/undo`, { mark_only: true });
+          setActionStatus(`Marked plan ${id} action logs as undone`, true);
+        }
+        await refresh();
+      } catch (err) {
+        setActionStatus(String(err), false);
+      } finally {
+        button.disabled = false;
+      }
     }
 
     async function refresh(){
@@ -205,34 +305,55 @@ def render_dashboard_html() -> str:
           </div>
         `).join('');
 
-        document.getElementById('jobs').innerHTML = (jobs || []).map(job => `
+        jobsTbody.innerHTML = (jobs || []).map(job => {
+          const status = String(job.status || '');
+          const canCancel = status === 'running' || status === 'queued';
+          const actionCell = canCancel
+            ? `<button class="mini warn" data-action="cancel-job" data-id="${escapeHTML(job.id)}">Cancel</button>`
+            : '';
+          return `
           <tr>
-            <td class=\"mono\">${job.id}</td>
-            <td>${job.status}</td>
-            <td>${job.created_at || ''}</td>
-            <td>${job.finished_at || ''}</td>
+            <td class=\"mono\">${escapeHTML(job.id)}</td>
+            <td>${escapeHTML(status)}</td>
+            <td>${escapeHTML(job.created_at || '')}</td>
+            <td>${escapeHTML(job.finished_at || '')}</td>
             <td>${job.cancel_requested ? 'yes' : 'no'}</td>
+            <td>${actionCell}</td>
           </tr>
-        `).join('');
+        `;
+        }).join('');
 
-        document.getElementById('plans').innerHTML = (plans || []).map(plan => `
+        plansTbody.innerHTML = (plans || []).map(plan => {
+          const status = String(plan.status || '');
+          let actionCell = '';
+          if (status === 'pending') {
+            actionCell = `
+              <button class="mini" data-action="approve-plan" data-id="${escapeHTML(plan.id)}">Approve Async</button>
+              <button class="mini warn" data-action="reject-plan" data-id="${escapeHTML(plan.id)}">Reject</button>
+            `;
+          } else if (status === 'executed' || status === 'failed' || status === 'approved') {
+            actionCell = `<button class="mini" data-action="undo-plan" data-id="${escapeHTML(plan.id)}">Undo Mark</button>`;
+          }
+          return `
           <tr>
-            <td class=\"mono\">${plan.id}</td>
-            <td>${plan.status}</td>
+            <td class=\"mono\">${escapeHTML(plan.id)}</td>
+            <td>${escapeHTML(status)}</td>
             <td>${Number(plan.progress_completed || 0)}/${Number(plan.progress_total || 0)}</td>
-            <td>${String(plan.objective || '').slice(0, 80)}</td>
-            <td>${plan.created_at || ''}</td>
+            <td>${escapeHTML(String(plan.objective || '').slice(0, 80))}</td>
+            <td>${escapeHTML(plan.created_at || '')}</td>
+            <td>${actionCell}</td>
           </tr>
-        `).join('');
+        `;
+        }).join('');
 
         document.getElementById('events').innerHTML = (events || []).map(event => `
           <tr>
-            <td class=\"mono\">${event.id ?? ''}</td>
-            <td>${event.category || ''}</td>
-            <td>${event.action || ''}</td>
-            <td>${event.status || ''}</td>
-            <td class=\"mono\">${event.entity_type && event.entity_id ? `${event.entity_type}:${event.entity_id}` : ''}</td>
-            <td>${event.created_at || ''}</td>
+            <td class=\"mono\">${escapeHTML(event.id ?? '')}</td>
+            <td>${escapeHTML(event.category || '')}</td>
+            <td>${escapeHTML(event.action || '')}</td>
+            <td>${escapeHTML(event.status || '')}</td>
+            <td class=\"mono\">${escapeHTML(event.entity_type && event.entity_id ? `${event.entity_type}:${event.entity_id}` : '')}</td>
+            <td>${escapeHTML(event.created_at || '')}</td>
           </tr>
         `).join('');
       } catch (err) {
@@ -242,8 +363,8 @@ def render_dashboard_html() -> str:
             <div class=\"value bad\">${String(err)}</div>
           </div>
         `;
-        document.getElementById('jobs').innerHTML = '';
-        document.getElementById('plans').innerHTML = '';
+        jobsTbody.innerHTML = '';
+        plansTbody.innerHTML = '';
         document.getElementById('events').innerHTML = '';
       }
     }
@@ -255,6 +376,8 @@ def render_dashboard_html() -> str:
       if (state.timer) clearInterval(state.timer);
       if (state.auto) state.timer = setInterval(refresh, 3000);
     });
+    jobsTbody.addEventListener('click', handleTableAction);
+    plansTbody.addEventListener('click', handleTableAction);
 
     refresh();
   </script>
