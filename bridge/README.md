@@ -12,6 +12,7 @@ Secure relay service for remote clients (phone/glasses) to reach NovaAdapt core.
 - Optional deep health probe (`/health?deep=1`) to verify core reachability
 - Graceful shutdown on `SIGINT`/`SIGTERM`
 - Metrics endpoint (`/metrics`) for request/unauthorized/upstream-error counters
+- WebSocket endpoint (`/ws`) for live event streaming + command/approval control
 - Forwards endpoints:
   - `GET /openapi.json`
   - `GET /dashboard`
@@ -32,6 +33,37 @@ Secure relay service for remote clients (phone/glasses) to reach NovaAdapt core.
   - `POST /run_async`
   - `POST /undo`
   - `POST /check`
+  - `GET /ws` (WebSocket upgrade; requires bridge auth)
+
+## WebSocket Channel (`/ws`)
+
+`/ws` provides a single authenticated real-time channel for remote clients.
+
+Server-to-client message types:
+
+- `hello` - initial handshake metadata.
+- `event` - forwarded audit events from core (`/events/stream`).
+- `command_result` - response for an issued command.
+- `ack`, `pong`, `error`.
+
+Client-to-server message types:
+
+- `ping` - health ping.
+- `set_since_id` - move event cursor (`since_id`) for streamed events.
+- `command` - execute authenticated core requests over the socket.
+
+`command` shape:
+
+```json
+{
+  "type": "command",
+  "id": "approve-1",
+  "method": "POST",
+  "path": "/plans/plan1/approve_async",
+  "body": {"execute": true},
+  "idempotency_key": "idem-approve-1"
+}
+```
 
 ## Build
 

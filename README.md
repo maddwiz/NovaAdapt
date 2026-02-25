@@ -262,6 +262,10 @@ print(client.events(limit=20))
   --log-requests true
 ```
 
+Bridge realtime control endpoint:
+
+- `GET /ws` (WebSocket; streams audit events and accepts authenticated command/approval requests)
+
 ## Model-Agnostic Design
 
 `shared/novaadapt_shared/model_router.py` treats providers as endpoint definitions, not hardcoded vendors. Any model that supports OpenAI-style chat completions can be used by setting:

@@ -122,6 +122,14 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if r.URL.Path == "/ws" {
+		statusCode = h.handleWebSocket(w, r, requestID)
+		if statusCode >= 500 {
+			atomic.AddUint64(&h.upstreamErrorsTotal, 1)
+		}
+		return
+	}
+
 	if !isForwardedPath(r.URL.Path) {
 		statusCode = http.StatusNotFound
 		h.writeJSON(w, statusCode, map[string]any{"error": "Not found", "request_id": requestID})
