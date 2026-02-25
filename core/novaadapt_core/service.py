@@ -146,8 +146,6 @@ class NovaAdaptService:
             raise ValueError("Plan already rejected")
         if plan["status"] == "executing":
             raise ValueError("Plan is already executing")
-        if plan["status"] == "executed":
-            return plan
 
         execute = bool(payload.get("execute", True))
         allow_dangerous = bool(payload.get("allow_dangerous", False))
@@ -155,6 +153,13 @@ class NovaAdaptService:
         action_retry_attempts = max(0, int(payload.get("action_retry_attempts", 0)))
         action_retry_backoff_seconds = max(0.0, float(payload.get("action_retry_backoff_seconds", 0.25)))
         retry_failed_only = bool(payload.get("retry_failed_only", False))
+
+        if plan["status"] == "executed":
+            if retry_failed_only:
+                raise ValueError("Plan is already executed and has no failed actions to retry")
+            return plan
+        if retry_failed_only and plan["status"] != "failed":
+            raise ValueError("Plan must be failed to retry failed actions")
 
         if retry_failed_only and not execute:
             raise ValueError("'retry_failed_only' requires execute=true")

@@ -397,6 +397,8 @@ def _build_handler(
                 return self._post_cancel_job(path, payload)
             if path.startswith("/plans/") and path.endswith("/approve_async"):
                 return self._post_plan_approve_async(path, payload)
+            if path.startswith("/plans/") and path.endswith("/retry_failed"):
+                return self._post_plan_retry_failed(path, payload)
             if path.startswith("/plans/") and path.endswith("/approve"):
                 return self._post_plan_approve(path, payload)
             if path.startswith("/plans/") and path.endswith("/reject"):
@@ -674,6 +676,24 @@ def _build_handler(
                 entity_id=plan_id,
             )
 
+        def _post_plan_retry_failed(self, path: str, payload: dict[str, object]) -> int:
+            plan_id = path.removeprefix("/plans/").removesuffix("/retry_failed").strip("/")
+            if not plan_id:
+                self._send_json(404, {"error": "Not found"})
+                return 404
+            retry_payload = dict(payload)
+            retry_payload["execute"] = True
+            retry_payload["retry_failed_only"] = True
+            return self._respond_idempotent(
+                path=path,
+                payload=retry_payload,
+                operation=lambda: (200, service.approve_plan(plan_id, retry_payload)),
+                category="plans",
+                action="retry_failed",
+                entity_type="plan",
+                entity_id=plan_id,
+            )
+
         def _post_plan_reject(self, path: str, payload: dict[str, object]) -> int:
             plan_id = path.removeprefix("/plans/").removesuffix("/reject").strip("/")
             if not plan_id:
@@ -907,6 +927,7 @@ def _build_handler(
             if path.startswith("/plans/") and (
                 path.endswith("/approve")
                 or path.endswith("/approve_async")
+                or path.endswith("/retry_failed")
                 or path.endswith("/reject")
                 or path.endswith("/undo")
             ):

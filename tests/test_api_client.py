@@ -126,6 +126,7 @@ class _Handler(BaseHTTPRequestHandler):
             "/plans",
             "/plans/plan-1/approve",
             "/plans/plan-1/approve_async",
+            "/plans/plan-1/retry_failed",
             "/plans/plan-1/reject",
             "/plans/plan-1/undo",
         }:
@@ -151,6 +152,8 @@ class _Handler(BaseHTTPRequestHandler):
                 self._send(200, {"id": "plan-1", "status": "executed"})
             elif self.path == "/plans/plan-1/approve_async":
                 self._send(202, {"job_id": "job-plan-1", "status": "queued", "kind": "plan_approval"})
+            elif self.path == "/plans/plan-1/retry_failed":
+                self._send(200, {"id": "plan-1", "status": "executed"})
             elif self.path == "/plans/plan-1/reject":
                 self._send(200, {"id": "plan-1", "status": "rejected"})
             elif self.path == "/plans/plan-1/undo":

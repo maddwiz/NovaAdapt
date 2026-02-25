@@ -120,6 +120,7 @@ class ServerTests(unittest.TestCase):
                 self.assertIn("/plans/{id}/stream", openapi["paths"])
                 self.assertIn("/plans/{id}/approve", openapi["paths"])
                 self.assertIn("/plans/{id}/approve_async", openapi["paths"])
+                self.assertIn("/plans/{id}/retry_failed", openapi["paths"])
                 self.assertIn("/plans/{id}/undo", openapi["paths"])
                 self.assertIn("/dashboard/data", openapi["paths"])
                 self.assertIn("/events", openapi["paths"])
@@ -161,6 +162,13 @@ class ServerTests(unittest.TestCase):
                 )
                 self.assertEqual(approved_plan["status"], "executed")
                 self.assertEqual(len(approved_plan.get("execution_results") or []), 1)
+
+                with self.assertRaises(error.HTTPError) as err:
+                    _post_json(
+                        f"http://{host}:{port}/plans/{plan_id}/retry_failed",
+                        {"allow_dangerous": True},
+                    )
+                self.assertEqual(err.exception.code, 400)
 
                 plan_stream = _get_text(
                     f"http://{host}:{port}/plans/{plan_id}/stream?timeout=2&interval=0.05"

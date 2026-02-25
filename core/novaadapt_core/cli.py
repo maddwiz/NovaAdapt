@@ -182,6 +182,37 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Execute only previously failed/blocked actions for this plan",
     )
 
+    plan_retry_failed_cmd = sub.add_parser(
+        "plan-retry-failed",
+        help="Retry only failed/blocked actions in a previously executed failed plan",
+    )
+    plan_retry_failed_cmd.add_argument("--id", required=True)
+    plan_retry_failed_cmd.add_argument("--db-path", type=Path, default=None)
+    plan_retry_failed_cmd.add_argument("--plans-db-path", type=Path, default=default_plans_db)
+    plan_retry_failed_cmd.add_argument(
+        "--allow-dangerous",
+        action="store_true",
+        help="Allow potentially destructive actions during retry execution",
+    )
+    plan_retry_failed_cmd.add_argument(
+        "--max-actions",
+        type=int,
+        default=25,
+        help="Cap number of retried actions executed from the stored plan",
+    )
+    plan_retry_failed_cmd.add_argument(
+        "--action-retry-attempts",
+        type=int,
+        default=2,
+        help="Retries per failed action execution before marking failed",
+    )
+    plan_retry_failed_cmd.add_argument(
+        "--action-retry-backoff-seconds",
+        type=float,
+        default=0.2,
+        help="Base backoff delay between action retries",
+    )
+
     plan_reject_cmd = sub.add_parser("plan-reject", help="Reject a plan with optional reason")
     plan_reject_cmd.add_argument("--id", required=True)
     plan_reject_cmd.add_argument("--plans-db-path", type=Path, default=default_plans_db)
@@ -625,6 +656,23 @@ def main() -> None:
                 "action_retry_attempts": max(0, int(args.action_retry_attempts)),
                 "action_retry_backoff_seconds": max(0.0, float(args.action_retry_backoff_seconds)),
                 "retry_failed_only": bool(args.retry_failed_only),
+            }
+            print(json.dumps(service.approve_plan(args.id, payload), indent=2))
+            return
+
+        if args.command == "plan-retry-failed":
+            service = NovaAdaptService(
+                default_config=_default_config_path(),
+                db_path=args.db_path,
+                plans_db_path=args.plans_db_path,
+            )
+            payload = {
+                "execute": True,
+                "retry_failed_only": True,
+                "allow_dangerous": bool(args.allow_dangerous),
+                "max_actions": max(1, args.max_actions),
+                "action_retry_attempts": max(0, int(args.action_retry_attempts)),
+                "action_retry_backoff_seconds": max(0.0, float(args.action_retry_backoff_seconds)),
             }
             print(json.dumps(service.approve_plan(args.id, payload), indent=2))
             return

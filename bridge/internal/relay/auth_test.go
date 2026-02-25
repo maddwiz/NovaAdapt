@@ -78,6 +78,13 @@ func TestSessionTokenIssueAndScopeEnforcement(t *testing.T) {
 	}
 }
 
+func TestRequiredScopeForRetryFailedRoute(t *testing.T) {
+	scope := requiredScopeForRoute(http.MethodPost, "/plans/plan-1/retry_failed")
+	if scope != scopeApprove {
+		t.Fatalf("expected %q scope, got %q", scopeApprove, scope)
+	}
+}
+
 func TestSessionTokenCannotIssueSessionWithoutAdminScope(t *testing.T) {
 	h, err := NewHandler(Config{
 		CoreBaseURL: "http://example.com",

@@ -264,6 +264,13 @@ def render_dashboard_html() -> str:
         } else if (action === 'undo-plan') {
           await postJSON(`/plans/${encodeURIComponent(id)}/undo`, { mark_only: true });
           setActionStatus(`Marked plan ${id} action logs as undone`, true);
+        } else if (action === 'retry-failed-plan') {
+          await postJSON(`/plans/${encodeURIComponent(id)}/retry_failed`, {
+            allow_dangerous: true,
+            action_retry_attempts: 2,
+            action_retry_backoff_seconds: 0.2,
+          });
+          setActionStatus(`Retried failed actions for plan ${id}`, true);
         }
         await refresh();
       } catch (err) {
@@ -333,6 +340,12 @@ def render_dashboard_html() -> str:
             `;
           } else if (status === 'executed' || status === 'failed' || status === 'approved') {
             actionCell = `<button class="mini" data-action="undo-plan" data-id="${escapeHTML(plan.id)}">Undo Mark</button>`;
+            if (status === 'failed') {
+              actionCell = `
+                <button class="mini" data-action="retry-failed-plan" data-id="${escapeHTML(plan.id)}">Retry Failed</button>
+                ${actionCell}
+              `;
+            }
           }
           return `
           <tr>

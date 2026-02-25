@@ -319,6 +319,21 @@ class ServiceTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 service.approve_plan(created["id"], {"execute": True, "retry_failed_only": True})
 
+    def test_retry_failed_only_rejects_already_executed_plan(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            service = NovaAdaptService(
+                default_config=Path("unused.json"),
+                db_path=Path(tmp) / "actions.db",
+                plans_db_path=Path(tmp) / "plans.db",
+                router_loader=lambda _path: _StubRouter(),
+                directshell_factory=_StubDirectShell,
+            )
+            created = service.create_plan({"objective": "click ok"})
+            approved = service.approve_plan(created["id"], {"execute": True})
+            self.assertEqual(approved["status"], "executed")
+            with self.assertRaises(ValueError):
+                service.approve_plan(created["id"], {"execute": True, "retry_failed_only": True})
+
     def test_events_reads_filtered_audit_log(self):
         with tempfile.TemporaryDirectory() as tmp:
             events_db = Path(tmp) / "events.db"

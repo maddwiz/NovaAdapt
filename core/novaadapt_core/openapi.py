@@ -208,6 +208,20 @@ def build_openapi_spec() -> dict:
                     "responses": {"202": {"description": "Approval queued"}, "404": {"description": "Not found"}},
                 }
             },
+            "/plans/{id}/retry_failed": {
+                "post": {
+                    "summary": "Retry only previously failed/blocked plan actions",
+                    "parameters": [
+                        {
+                            "name": "id",
+                            "in": "path",
+                            "required": True,
+                            "schema": {"type": "string"},
+                        }
+                    ],
+                    "responses": {"200": {"description": "Retried plan"}, "404": {"description": "Not found"}},
+                }
+            },
             "/plans/{id}/reject": {
                 "post": {
                     "summary": "Reject plan with optional reason",

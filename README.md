@@ -120,6 +120,7 @@ novaadapt plans --limit 10
 novaadapt plan-approve --id PLAN_ID         # executes by default
 novaadapt plan-approve --id PLAN_ID --action-retry-attempts 2 --action-retry-backoff-seconds 0.2
 novaadapt plan-approve --id PLAN_ID --retry-failed-only --allow-dangerous
+novaadapt plan-retry-failed --id PLAN_ID --allow-dangerous
 novaadapt plan-reject --id PLAN_ID --reason "Not safe enough"
 ```
 
@@ -201,6 +202,7 @@ API endpoints:
 - `POST /plans` (create pending plan)
 - `POST /plans/{id}/approve` (execute on approval by default)
 - `POST /plans/{id}/approve_async` (queue approval/execution as async job)
+- `POST /plans/{id}/retry_failed` (retry only failed/blocked actions from a previously failed execution)
 - `POST /plans/{id}/reject`
 - `POST /plans/{id}/undo` (reverse undo of recorded plan actions)
 - `POST /undo` with JSON payload

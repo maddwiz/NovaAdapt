@@ -108,14 +108,14 @@ class NovaAdaptAPIClient:
         action_retry_backoff_seconds: float = 0.2,
         idempotency_key: str | None = None,
     ) -> dict[str, Any]:
-        payload = self.approve_plan(
-            plan_id=plan_id,
+        payload = self._post_json(
+            f"/plans/{plan_id}/retry_failed",
+            {
+                "allow_dangerous": bool(allow_dangerous),
+                "action_retry_attempts": max(0, int(action_retry_attempts)),
+                "action_retry_backoff_seconds": max(0.0, float(action_retry_backoff_seconds)),
+            },
             idempotency_key=idempotency_key,
-            execute=True,
-            retry_failed_only=True,
-            allow_dangerous=bool(allow_dangerous),
-            action_retry_attempts=max(0, int(action_retry_attempts)),
-            action_retry_backoff_seconds=max(0.0, float(action_retry_backoff_seconds)),
         )
         if isinstance(payload, dict):
             return payload

@@ -275,6 +275,8 @@ func requiredScopeForRoute(method string, path string) string {
 		return scopeApprove
 	case strings.HasPrefix(path, "/plans/") && strings.HasSuffix(path, "/approve_async"):
 		return scopeApprove
+	case strings.HasPrefix(path, "/plans/") && strings.HasSuffix(path, "/retry_failed"):
+		return scopeApprove
 	case strings.HasPrefix(path, "/plans/") && strings.HasSuffix(path, "/reject"):
 		return scopeReject
 	case path == "/undo" || (strings.HasPrefix(path, "/plans/") && strings.HasSuffix(path, "/undo")):
