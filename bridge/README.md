@@ -6,6 +6,7 @@ Secure relay service for remote clients (phone/glasses) to reach NovaAdapt core.
 
 - Primary implementation: Go (`bridge/cmd/novaadapt-bridge`)
 - Token-authenticated ingress (bridge token)
+- Optional trusted-device allowlist via `X-Device-ID`
 - Token-authenticated upstream calls to core API (core token)
 - Request-id tracing (`X-Request-ID`) propagated to core
 - Idempotency key forwarding (`Idempotency-Key`) propagated to core
@@ -92,6 +93,7 @@ Container build uses:
   --core-url http://127.0.0.1:8787 \
   --bridge-token your_bridge_token \
   --core-token your_core_api_token \
+  --allowed-device-ids iphone-15-pro,halo-glasses-1 \
   --log-requests true
 ```
 
@@ -102,5 +104,6 @@ Environment variables are also supported:
 - `NOVAADAPT_CORE_URL`
 - `NOVAADAPT_BRIDGE_TOKEN`
 - `NOVAADAPT_CORE_TOKEN`
+- `NOVAADAPT_BRIDGE_ALLOWED_DEVICE_IDS` (comma-separated trusted device IDs)
 - `NOVAADAPT_BRIDGE_TIMEOUT`
 - `NOVAADAPT_BRIDGE_LOG_REQUESTS`

@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -21,17 +22,23 @@ func main() {
 	coreURL := flag.String("core-url", envOrDefault("NOVAADAPT_CORE_URL", "http://127.0.0.1:8787"), "Core API URL")
 	bridgeToken := flag.String("bridge-token", os.Getenv("NOVAADAPT_BRIDGE_TOKEN"), "Bearer token required for bridge clients")
 	coreToken := flag.String("core-token", os.Getenv("NOVAADAPT_CORE_TOKEN"), "Bearer token used when calling core API")
+	allowedDeviceIDs := flag.String(
+		"allowed-device-ids",
+		envOrDefault("NOVAADAPT_BRIDGE_ALLOWED_DEVICE_IDS", ""),
+		"Comma-separated trusted X-Device-ID values (optional)",
+	)
 	timeout := flag.Int("timeout", envOrDefaultInt("NOVAADAPT_BRIDGE_TIMEOUT", 30), "Core request timeout seconds")
 	logRequests := flag.Bool("log-requests", envOrDefaultBool("NOVAADAPT_BRIDGE_LOG_REQUESTS", true), "Enable per-request bridge logs")
 	flag.Parse()
 
 	handler, err := relay.NewHandler(relay.Config{
-		CoreBaseURL: *coreURL,
-		BridgeToken: *bridgeToken,
-		CoreToken:   *coreToken,
-		Timeout:     time.Duration(max(1, *timeout)) * time.Second,
-		LogRequests: *logRequests,
-		Logger:      log.Default(),
+		CoreBaseURL:      *coreURL,
+		BridgeToken:      *bridgeToken,
+		CoreToken:        *coreToken,
+		AllowedDeviceIDs: parseCSV(*allowedDeviceIDs),
+		Timeout:          time.Duration(max(1, *timeout)) * time.Second,
+		LogRequests:      *logRequests,
+		Logger:           log.Default(),
 	})
 	if err != nil {
 		log.Fatalf("failed to initialize relay: %v", err)
@@ -104,4 +111,19 @@ func max(a, b int) int {
 		return a
 	}
 	return b
+}
+
+func parseCSV(value string) []string {
+	if value == "" {
+		return nil
+	}
+	items := make([]string, 0)
+	for _, part := range strings.Split(value, ",") {
+		trimmed := strings.TrimSpace(part)
+		if trimmed == "" {
+			continue
+		}
+		items = append(items, trimmed)
+	}
+	return items
 }

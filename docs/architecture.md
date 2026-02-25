@@ -38,6 +38,7 @@ Async job records are persisted to SQLite when `--jobs-db-path` is configured.
 ## Relay Layer
 
 `novaadapt-bridge` is a Go secure relay process for remote devices. It enforces a bridge ingress token and forwards to the core API using a separate upstream token.
+It can also enforce a trusted device allowlist via `X-Device-ID`.
 
 It also preserves per-request tracing through `X-Request-ID` and supports deep upstream health checks for relay monitoring.
 The bridge additionally exposes `/metrics` for request and error counters.

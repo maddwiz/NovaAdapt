@@ -259,6 +259,7 @@ print(client.events(limit=20))
   --core-url http://127.0.0.1:8787 \
   --bridge-token YOUR_BRIDGE_TOKEN \
   --core-token YOUR_CORE_TOKEN \
+  --allowed-device-ids iphone-15-pro,halo-glasses-1 \
   --log-requests true
 ```
 

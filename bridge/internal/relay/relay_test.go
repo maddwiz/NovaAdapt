@@ -408,3 +408,54 @@ func TestMetricsEndpoint(t *testing.T) {
 		t.Fatalf("expected unauthorized metric, got: %s", metrics)
 	}
 }
+
+func TestDeviceAllowlist(t *testing.T) {
+	core := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/models" {
+			_, _ = w.Write([]byte(`[{"name":"local"}]`))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"error":"not found"}`))
+	}))
+	defer core.Close()
+
+	h, err := NewHandler(
+		Config{
+			CoreBaseURL:      core.URL,
+			BridgeToken:      "secret",
+			AllowedDeviceIDs: []string{"iphone-1", "halo-1"},
+			Timeout:          5 * time.Second,
+			LogRequests:      false,
+		},
+	)
+	if err != nil {
+		t.Fatalf("new handler: %v", err)
+	}
+
+	rrMissing := httptest.NewRecorder()
+	reqMissing := httptest.NewRequest(http.MethodGet, "/models", nil)
+	reqMissing.Header.Set("Authorization", "Bearer secret")
+	h.ServeHTTP(rrMissing, reqMissing)
+	if rrMissing.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 for missing device id, got %d", rrMissing.Code)
+	}
+
+	rrWrong := httptest.NewRecorder()
+	reqWrong := httptest.NewRequest(http.MethodGet, "/models", nil)
+	reqWrong.Header.Set("Authorization", "Bearer secret")
+	reqWrong.Header.Set("X-Device-ID", "unknown")
+	h.ServeHTTP(rrWrong, reqWrong)
+	if rrWrong.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 for unknown device id, got %d", rrWrong.Code)
+	}
+
+	rrAllowed := httptest.NewRecorder()
+	reqAllowed := httptest.NewRequest(http.MethodGet, "/models", nil)
+	reqAllowed.Header.Set("Authorization", "Bearer secret")
+	reqAllowed.Header.Set("X-Device-ID", "iphone-1")
+	h.ServeHTTP(rrAllowed, reqAllowed)
+	if rrAllowed.Code != http.StatusOK {
+		t.Fatalf("expected 200 for allowed device id, got %d body=%s", rrAllowed.Code, rrAllowed.Body.String())
+	}
+}

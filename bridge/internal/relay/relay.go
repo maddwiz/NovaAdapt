@@ -38,9 +38,12 @@ type Config struct {
 	CoreBaseURL string
 	BridgeToken string
 	CoreToken   string
-	Timeout     time.Duration
-	LogRequests bool
-	Logger      *log.Logger
+	// AllowedDeviceIDs optionally restricts requests to known device IDs via X-Device-ID.
+	// Empty means device allowlisting is disabled.
+	AllowedDeviceIDs []string
+	Timeout          time.Duration
+	LogRequests      bool
+	Logger           *log.Logger
 }
 
 // Handler is an HTTP handler that secures and forwards requests to NovaAdapt core.
@@ -51,6 +54,7 @@ type Handler struct {
 	requestsTotal       uint64
 	unauthorizedTotal   uint64
 	upstreamErrorsTotal uint64
+	allowedDevices      map[string]struct{}
 }
 
 // NewHandler creates a configured bridge relay handler.
@@ -68,11 +72,20 @@ func NewHandler(cfg Config) (*Handler, error) {
 	if err != nil {
 		return nil, fmt.Errorf("invalid core base url: %w", err)
 	}
+	allowedDevices := make(map[string]struct{})
+	for _, item := range cfg.AllowedDeviceIDs {
+		trimmed := strings.TrimSpace(item)
+		if trimmed == "" {
+			continue
+		}
+		allowedDevices[trimmed] = struct{}{}
+	}
 	return &Handler{
 		cfg: cfg,
 		client: &http.Client{
 			Timeout: cfg.Timeout,
 		},
+		allowedDevices: allowedDevices,
 	}, nil
 }
 
@@ -245,7 +258,18 @@ func (h *Handler) authorized(r *http.Request) bool {
 		return true
 	}
 	expected := "Bearer " + h.cfg.BridgeToken
-	return r.Header.Get("Authorization") == expected
+	if r.Header.Get("Authorization") != expected {
+		return false
+	}
+	if len(h.allowedDevices) == 0 {
+		return true
+	}
+	deviceID := strings.TrimSpace(r.Header.Get("X-Device-ID"))
+	if deviceID == "" {
+		return false
+	}
+	_, ok := h.allowedDevices[deviceID]
+	return ok
 }
 
 func (h *Handler) readBody(r *http.Request) ([]byte, error) {

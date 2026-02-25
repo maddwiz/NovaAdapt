@@ -33,6 +33,49 @@ func TestWebSocketUnauthorized(t *testing.T) {
 	}
 }
 
+func TestWebSocketUnauthorizedWithMissingDeviceID(t *testing.T) {
+	core := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/events/stream" {
+			w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
+			_, _ = w.Write([]byte("event: timeout\ndata: {\"request_id\":\"rid\"}\n\n"))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"error":"not found"}`))
+	}))
+	defer core.Close()
+
+	h, err := NewHandler(
+		Config{
+			CoreBaseURL:      core.URL,
+			BridgeToken:      "bridge",
+			CoreToken:        "coresecret",
+			AllowedDeviceIDs: []string{"iphone-1"},
+			Timeout:          5 * time.Second,
+		},
+	)
+	if err != nil {
+		t.Fatalf("new handler: %v", err)
+	}
+
+	server := httptest.NewServer(h)
+	defer server.Close()
+
+	wsURL := "ws" + strings.TrimPrefix(server.URL, "http") + "/ws"
+	headers := http.Header{}
+	headers.Set("Authorization", "Bearer bridge")
+	_, resp, err := websocket.DefaultDialer.Dial(wsURL, headers)
+	if err == nil {
+		t.Fatalf("expected websocket auth error")
+	}
+	if resp == nil || resp.StatusCode != http.StatusUnauthorized {
+		if resp == nil {
+			t.Fatalf("expected unauthorized response status")
+		}
+		t.Fatalf("expected 401 got %d", resp.StatusCode)
+	}
+}
+
 func TestWebSocketCommandAndEventStreaming(t *testing.T) {
 	eventsRequests := 0
 	core := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
