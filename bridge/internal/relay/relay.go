@@ -258,13 +258,22 @@ func (h *Handler) authorized(r *http.Request) bool {
 		return true
 	}
 	expected := "Bearer " + h.cfg.BridgeToken
-	if r.Header.Get("Authorization") != expected {
+	authHeaderOK := r.Header.Get("Authorization") == expected
+	queryTokenOK := false
+	// Browsers cannot set Authorization header on websocket upgrades.
+	if r.URL.Path == "/ws" {
+		queryTokenOK = strings.TrimSpace(r.URL.Query().Get("token")) == h.cfg.BridgeToken
+	}
+	if !authHeaderOK && !queryTokenOK {
 		return false
 	}
 	if len(h.allowedDevices) == 0 {
 		return true
 	}
 	deviceID := strings.TrimSpace(r.Header.Get("X-Device-ID"))
+	if deviceID == "" && r.URL.Path == "/ws" {
+		deviceID = strings.TrimSpace(r.URL.Query().Get("device_id"))
+	}
 	if deviceID == "" {
 		return false
 	}

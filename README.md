@@ -266,6 +266,7 @@ print(client.events(limit=20))
 Bridge realtime control endpoint:
 
 - `GET /ws` (WebSocket; streams audit events and accepts authenticated command/approval requests)
+- Browser/native friendly auth query: `/ws?token=...` (and `/ws?...&device_id=...` when device allowlist is enabled)
 
 ## Model-Agnostic Design
 

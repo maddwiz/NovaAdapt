@@ -34,7 +34,7 @@ Secure relay service for remote clients (phone/glasses) to reach NovaAdapt core.
   - `POST /run_async`
   - `POST /undo`
   - `POST /check`
-  - `GET /ws` (WebSocket upgrade; requires bridge auth)
+- `GET /ws` (WebSocket upgrade; requires bridge auth)
 
 ## WebSocket Channel (`/ws`)
 
@@ -65,6 +65,11 @@ Client-to-server message types:
   "idempotency_key": "idem-approve-1"
 }
 ```
+
+Browser-compatible websocket auth:
+
+- `ws://.../ws?token=BRIDGE_TOKEN`
+- with device allowlist enabled: `ws://.../ws?token=BRIDGE_TOKEN&device_id=iphone-1`
 
 ## Build
 

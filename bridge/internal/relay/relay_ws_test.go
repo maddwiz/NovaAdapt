@@ -76,6 +76,52 @@ func TestWebSocketUnauthorizedWithMissingDeviceID(t *testing.T) {
 	}
 }
 
+func TestWebSocketAllowsQueryTokenAndDeviceID(t *testing.T) {
+	core := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer coresecret" {
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{"error":"unauthorized core"}`))
+			return
+		}
+		if r.URL.Path == "/events/stream" {
+			w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
+			_, _ = w.Write([]byte("event: timeout\ndata: {\"request_id\":\"rid\"}\n\n"))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"error":"not found"}`))
+	}))
+	defer core.Close()
+
+	h, err := NewHandler(
+		Config{
+			CoreBaseURL:      core.URL,
+			BridgeToken:      "bridge",
+			CoreToken:        "coresecret",
+			AllowedDeviceIDs: []string{"iphone-1"},
+			Timeout:          5 * time.Second,
+		},
+	)
+	if err != nil {
+		t.Fatalf("new handler: %v", err)
+	}
+
+	server := httptest.NewServer(h)
+	defer server.Close()
+
+	wsURL := "ws" + strings.TrimPrefix(server.URL, "http") + "/ws?token=bridge&device_id=iphone-1&since_id=0"
+	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	if err != nil {
+		t.Fatalf("dial websocket with query token/device id: %v", err)
+	}
+	defer conn.Close()
+
+	hello := mustReadWSMessageByType(t, conn, "hello", 2*time.Second)
+	if hello["type"] != "hello" {
+		t.Fatalf("expected hello, got %#v", hello)
+	}
+}
+
 func TestWebSocketCommandAndEventStreaming(t *testing.T) {
 	eventsRequests := 0
 	core := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
