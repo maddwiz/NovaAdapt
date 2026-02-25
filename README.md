@@ -540,6 +540,16 @@ novaadapt native-http --host 127.0.0.1 --port 8765
 novaadapt native-http --host 127.0.0.1 --port 8765 --http-token YOUR_DS_TOKEN
 ```
 
+Run local operator stack with isolated runtime process:
+
+```bash
+# Core transport auto-wired to runtime HTTP endpoint
+NOVAADAPT_RUNTIME_MODE=native-http ./installer/run_local_operator_stack.sh
+
+# Core transport auto-wired to runtime daemon endpoint
+NOVAADAPT_RUNTIME_MODE=native-daemon ./installer/run_local_operator_stack.sh
+```
+
 Built-in native action types:
 
 - `open_app`

@@ -32,6 +32,17 @@ CORE_OTEL_EXPORTER_ENDPOINT="${NOVAADAPT_OTEL_EXPORTER_ENDPOINT:-}"
 LOG_DIR="${NOVAADAPT_LOCAL_LOG_DIR:-$ROOT_DIR/.novaadapt-local}"
 mkdir -p "$LOG_DIR"
 REVOCATION_STORE_PATH="${NOVAADAPT_BRIDGE_REVOCATION_STORE_PATH:-$LOG_DIR/revoked_sessions.json}"
+RUNTIME_MODE_RAW="${NOVAADAPT_RUNTIME_MODE:-none}"
+RUNTIME_MODE="$(echo "$RUNTIME_MODE_RAW" | tr '[:upper:]' '[:lower:]')"
+RUNTIME_HTTP_HOST="${NOVAADAPT_RUNTIME_HTTP_HOST:-127.0.0.1}"
+RUNTIME_HTTP_PORT="${NOVAADAPT_RUNTIME_HTTP_PORT:-8765}"
+RUNTIME_HTTP_TOKEN="${NOVAADAPT_RUNTIME_HTTP_TOKEN:-}"
+RUNTIME_DAEMON_SOCKET="${NOVAADAPT_RUNTIME_DAEMON_SOCKET:-$LOG_DIR/directshell.sock}"
+RUNTIME_DAEMON_HOST="${NOVAADAPT_RUNTIME_DAEMON_HOST:-127.0.0.1}"
+RUNTIME_DAEMON_PORT="${NOVAADAPT_RUNTIME_DAEMON_PORT:-8766}"
+RUNTIME_DAEMON_TOKEN="${NOVAADAPT_RUNTIME_DAEMON_TOKEN:-}"
+RUNTIME_TIMEOUT_SECONDS="${NOVAADAPT_RUNTIME_TIMEOUT_SECONDS:-30}"
+RUNTIME_MAX_BODY_BYTES="${NOVAADAPT_RUNTIME_MAX_BODY_BYTES:-1048576}"
 
 if [[ -z "$CORS_ALLOWED_ORIGINS" && "$WITH_VIEW" == "1" ]]; then
   CORS_ALLOWED_ORIGINS="http://127.0.0.1:${VIEW_PORT}"
@@ -50,11 +61,13 @@ BRIDGE_TOKEN="${NOVAADAPT_BRIDGE_TOKEN:-$(random_token)}"
 CORE_PID=""
 BRIDGE_PID=""
 VIEW_PID=""
+RUNTIME_PID=""
 
 cleanup() {
   if [[ -n "$VIEW_PID" ]]; then kill "$VIEW_PID" >/dev/null 2>&1 || true; fi
   if [[ -n "$BRIDGE_PID" ]]; then kill "$BRIDGE_PID" >/dev/null 2>&1 || true; fi
   if [[ -n "$CORE_PID" ]]; then kill "$CORE_PID" >/dev/null 2>&1 || true; fi
+  if [[ -n "$RUNTIME_PID" ]]; then kill "$RUNTIME_PID" >/dev/null 2>&1 || true; fi
 }
 trap cleanup EXIT INT TERM
 
@@ -62,13 +75,47 @@ wait_for_http() {
   local url="$1"
   local timeout="${2:-12}"
   local insecure_skip_verify="${3:-0}"
+  local header="${4:-}"
   local waited=0
+  local -a curl_header=()
+  if [[ -n "$header" ]]; then
+    curl_header=(-H "$header")
+  fi
   while (( waited < timeout * 10 )); do
     if [[ "$insecure_skip_verify" == "1" ]]; then
-      if curl -k -fsS "$url" >/dev/null 2>&1; then
+      if curl -k -fsS "${curl_header[@]}" "$url" >/dev/null 2>&1; then
         return 0
       fi
-    elif curl -fsS "$url" >/dev/null 2>&1; then
+    elif curl -fsS "${curl_header[@]}" "$url" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 0.1
+    waited=$((waited + 1))
+  done
+  return 1
+}
+
+wait_for_directshell_probe() {
+  local timeout="${1:-12}"
+  local waited=0
+  local -a probe_cmd=(
+    python3
+    -m
+    novaadapt_core.cli
+    directshell-check
+    --timeout-seconds 2
+  )
+  if [[ -n "${DIRECTSHELL_TRANSPORT:-}" ]]; then
+    probe_cmd+=(--transport "$DIRECTSHELL_TRANSPORT")
+  fi
+  if [[ "${DIRECTSHELL_TRANSPORT:-}" == "http" && -n "${DIRECTSHELL_HTTP_TOKEN:-}" ]]; then
+    probe_cmd+=(--http-token "$DIRECTSHELL_HTTP_TOKEN")
+  fi
+  if [[ "${DIRECTSHELL_TRANSPORT:-}" == "daemon" && -n "${DIRECTSHELL_DAEMON_TOKEN:-}" ]]; then
+    probe_cmd+=(--daemon-token "$DIRECTSHELL_DAEMON_TOKEN")
+  fi
+  while (( waited < timeout * 10 )); do
+    if PYTHONPATH=core:shared "${probe_cmd[@]}" 2>/dev/null | grep -q '"ok": true'; then
       return 0
     fi
     sleep 0.1
@@ -79,6 +126,81 @@ wait_for_http() {
 
 echo "Building bridge binary..."
 ./installer/build_bridge_go.sh >/dev/null
+
+if [[ "$RUNTIME_MODE" != "none" ]]; then
+  case "$RUNTIME_MODE" in
+    native-http|http)
+      echo "Starting built-in runtime (native-http)..."
+      runtime_cmd=(
+        python3
+        -m
+        novaadapt_core.cli
+        native-http
+        --host "$RUNTIME_HTTP_HOST"
+        --port "$RUNTIME_HTTP_PORT"
+        --timeout-seconds "$RUNTIME_TIMEOUT_SECONDS"
+        --max-body-bytes "$RUNTIME_MAX_BODY_BYTES"
+      )
+      runtime_health_header=""
+      if [[ -n "$RUNTIME_HTTP_TOKEN" ]]; then
+        runtime_cmd+=(--http-token "$RUNTIME_HTTP_TOKEN")
+        runtime_health_header="X-DirectShell-Token: ${RUNTIME_HTTP_TOKEN}"
+      fi
+      export DIRECTSHELL_TRANSPORT="http"
+      export DIRECTSHELL_HTTP_URL="http://${RUNTIME_HTTP_HOST}:${RUNTIME_HTTP_PORT}/execute"
+      if [[ -n "$RUNTIME_HTTP_TOKEN" ]]; then
+        export DIRECTSHELL_HTTP_TOKEN="$RUNTIME_HTTP_TOKEN"
+      else
+        unset DIRECTSHELL_HTTP_TOKEN || true
+      fi
+      ;;
+    native-daemon|daemon)
+      echo "Starting built-in runtime (native-daemon)..."
+      runtime_cmd=(
+        python3
+        -m
+        novaadapt_core.cli
+        native-daemon
+        --socket "$RUNTIME_DAEMON_SOCKET"
+        --host "$RUNTIME_DAEMON_HOST"
+        --port "$RUNTIME_DAEMON_PORT"
+        --timeout-seconds "$RUNTIME_TIMEOUT_SECONDS"
+      )
+      if [[ -n "$RUNTIME_DAEMON_TOKEN" ]]; then
+        runtime_cmd+=(--daemon-token "$RUNTIME_DAEMON_TOKEN")
+      fi
+      export DIRECTSHELL_TRANSPORT="daemon"
+      export DIRECTSHELL_DAEMON_SOCKET="$RUNTIME_DAEMON_SOCKET"
+      export DIRECTSHELL_DAEMON_HOST="$RUNTIME_DAEMON_HOST"
+      export DIRECTSHELL_DAEMON_PORT="$RUNTIME_DAEMON_PORT"
+      if [[ -n "$RUNTIME_DAEMON_TOKEN" ]]; then
+        export DIRECTSHELL_DAEMON_TOKEN="$RUNTIME_DAEMON_TOKEN"
+      else
+        unset DIRECTSHELL_DAEMON_TOKEN || true
+      fi
+      ;;
+    *)
+      echo "Unsupported NOVAADAPT_RUNTIME_MODE: $RUNTIME_MODE_RAW"
+      echo "Use one of: none, native-http, http, native-daemon, daemon"
+      exit 1
+      ;;
+  esac
+
+  PYTHONPATH=core:shared "${runtime_cmd[@]}" >"$LOG_DIR/runtime.log" 2>&1 &
+  RUNTIME_PID="$!"
+
+  if [[ "$RUNTIME_MODE" == "native-http" || "$RUNTIME_MODE" == "http" ]]; then
+    if ! wait_for_http "http://${RUNTIME_HTTP_HOST}:${RUNTIME_HTTP_PORT}/health" 18 0 "$runtime_health_header"; then
+      echo "Runtime failed to start. Check $LOG_DIR/runtime.log"
+      exit 1
+    fi
+  else
+    if ! wait_for_directshell_probe 18; then
+      echo "Runtime daemon failed readiness probe. Check $LOG_DIR/runtime.log"
+      exit 1
+    fi
+  fi
+fi
 
 echo "Starting core API..."
 core_cmd=(
@@ -182,6 +304,13 @@ fi
 
 echo ""
 echo "NovaAdapt local operator stack is running."
+if [[ -n "$RUNTIME_PID" ]]; then
+  if [[ "$RUNTIME_MODE" == "native-http" || "$RUNTIME_MODE" == "http" ]]; then
+    echo "Runtime health:   http://${RUNTIME_HTTP_HOST}:${RUNTIME_HTTP_PORT}/health"
+  else
+    echo "Runtime mode:     daemon (${RUNTIME_DAEMON_SOCKET:-${RUNTIME_DAEMON_HOST}:${RUNTIME_DAEMON_PORT}})"
+  fi
+fi
 echo "Core health:      http://${CORE_HOST}:${CORE_PORT}/health"
 echo "Core dashboard:   http://${CORE_HOST}:${CORE_PORT}/dashboard?token=${CORE_TOKEN}"
 if [[ -n "$BRIDGE_TLS_CERT_FILE" && -n "$BRIDGE_TLS_KEY_FILE" ]]; then
@@ -197,6 +326,25 @@ fi
 echo ""
 echo "Core token:       ${CORE_TOKEN}"
 echo "Bridge token:     ${BRIDGE_TOKEN}"
+if [[ -n "$RUNTIME_PID" ]]; then
+  echo "Runtime mode:     ${RUNTIME_MODE}"
+  echo "Core transport:   ${DIRECTSHELL_TRANSPORT}"
+  if [[ "$RUNTIME_MODE" == "native-http" || "$RUNTIME_MODE" == "http" ]]; then
+    echo "Runtime endpoint: ${DIRECTSHELL_HTTP_URL}"
+    if [[ -n "$RUNTIME_HTTP_TOKEN" ]]; then
+      echo "Runtime auth:     HTTP token enabled"
+    fi
+  else
+    if [[ -n "${DIRECTSHELL_DAEMON_SOCKET:-}" ]]; then
+      echo "Runtime endpoint: unix://${DIRECTSHELL_DAEMON_SOCKET}"
+    else
+      echo "Runtime endpoint: tcp://${DIRECTSHELL_DAEMON_HOST:-127.0.0.1}:${DIRECTSHELL_DAEMON_PORT:-8766}"
+    fi
+    if [[ -n "$RUNTIME_DAEMON_TOKEN" ]]; then
+      echo "Runtime auth:     daemon token enabled"
+    fi
+  fi
+fi
 if [[ -n "$CORE_TRUSTED_PROXY_CIDRS" ]]; then
   echo "Core trusted proxies: ${CORE_TRUSTED_PROXY_CIDRS}"
 fi
@@ -238,6 +386,9 @@ echo "Max ws conns:     ${MAX_WS_CONNECTIONS}"
 echo "Revocation store: ${REVOCATION_STORE_PATH}"
 echo ""
 echo "Logs:"
+if [[ -n "$RUNTIME_PID" ]]; then
+  echo "  $LOG_DIR/runtime.log"
+fi
 echo "  $LOG_DIR/core.log"
 echo "  $LOG_DIR/bridge.log"
 if [[ "$WITH_VIEW" == "1" ]]; then
@@ -247,6 +398,10 @@ echo ""
 echo "Press Ctrl+C to stop."
 
 while true; do
+  if [[ -n "$RUNTIME_PID" ]] && ! kill -0 "$RUNTIME_PID" >/dev/null 2>&1; then
+    echo "Runtime process exited unexpectedly. Check $LOG_DIR/runtime.log"
+    exit 1
+  fi
   if [[ -n "$CORE_PID" ]] && ! kill -0 "$CORE_PID" >/dev/null 2>&1; then
     echo "Core process exited unexpectedly. Check $LOG_DIR/core.log"
     exit 1
