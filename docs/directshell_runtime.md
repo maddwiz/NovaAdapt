@@ -29,6 +29,11 @@ Supported action types:
 - external DirectShell daemon endpoint
 - built-in NovaAdapt daemon (`novaadapt native-daemon`)
 
+`http` can point to:
+
+- external DirectShell HTTP endpoint
+- built-in NovaAdapt HTTP endpoint (`novaadapt native-http`)
+
 Optional transport auth:
 
 - `DIRECTSHELL_HTTP_TOKEN`: sent as `X-DirectShell-Token` for HTTP transport and probe.
@@ -76,6 +81,28 @@ Then configure core execution transport:
 ```bash
 export DIRECTSHELL_TRANSPORT=daemon
 export DIRECTSHELL_DAEMON_SOCKET=/tmp/directshell.sock
+```
+
+## Built-In HTTP Endpoint
+
+Expose native runtime over HTTP:
+
+```bash
+novaadapt native-http --host 127.0.0.1 --port 8765
+```
+
+With optional token:
+
+```bash
+novaadapt native-http --host 127.0.0.1 --port 8765 --http-token YOUR_DS_TOKEN
+```
+
+Then configure core execution transport:
+
+```bash
+export DIRECTSHELL_TRANSPORT=http
+export DIRECTSHELL_HTTP_URL=http://127.0.0.1:8765/execute
+export DIRECTSHELL_HTTP_TOKEN=YOUR_DS_TOKEN
 ```
 
 For remote monitoring via core API:

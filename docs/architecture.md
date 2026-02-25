@@ -8,6 +8,7 @@
 4. `ActionPolicy` evaluates each action for risk before execution.
 5. `DirectShellClient` previews or executes each action (native, subprocess, HTTP, or daemon transport), with optional native->external fallback and optional transport tokens for HTTP/daemon.
    Daemon transport can target the built-in `novaadapt native-daemon` endpoint or an external DirectShell daemon.
+   HTTP transport can target the built-in `novaadapt native-http` endpoint or an external DirectShell HTTP runtime.
 6. `UndoQueue` stores every action, optional undo action, and status in local SQLite.
 7. Optional async runner (`/run_async`) executes long tasks through in-memory job manager.
 

@@ -11,6 +11,7 @@ from .cleanup import prune_local_state
 from .directshell import DirectShellClient
 from .mcp_server import NovaAdaptMCPServer
 from .native_daemon import NativeExecutionDaemon
+from .native_http import NativeExecutionHTTPServer
 from .server import run_server
 from .service import NovaAdaptService
 
@@ -245,6 +246,39 @@ def _build_parser() -> argparse.ArgumentParser:
         type=int,
         default=30,
         help="Per-connection timeout in seconds",
+    )
+
+    native_http_cmd = sub.add_parser(
+        "native-http",
+        help="Run built-in Native DirectShell-compatible HTTP endpoint",
+    )
+    native_http_cmd.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="Bind host",
+    )
+    native_http_cmd.add_argument(
+        "--port",
+        type=int,
+        default=8765,
+        help="Bind port",
+    )
+    native_http_cmd.add_argument(
+        "--http-token",
+        default=os.getenv("DIRECTSHELL_HTTP_TOKEN", ""),
+        help="Optional shared token required by HTTP requests",
+    )
+    native_http_cmd.add_argument(
+        "--timeout-seconds",
+        type=int,
+        default=30,
+        help="Request timeout in seconds",
+    )
+    native_http_cmd.add_argument(
+        "--max-body-bytes",
+        type=int,
+        default=1 << 20,
+        help="Maximum request body size in bytes",
     )
 
     bench_cmd = sub.add_parser("benchmark", help="Run benchmark suite and report success metrics")
@@ -664,6 +698,17 @@ def main() -> None:
                 timeout_seconds=max(1, int(args.timeout_seconds)),
             )
             daemon.serve_forever()
+            return
+
+        if args.command == "native-http":
+            http_server = NativeExecutionHTTPServer(
+                host=str(args.host or "127.0.0.1"),
+                port=max(1, int(args.port)),
+                http_token=str(args.http_token or "").strip() or None,
+                timeout_seconds=max(1, int(args.timeout_seconds)),
+                max_body_bytes=max(1, int(args.max_body_bytes)),
+            )
+            http_server.serve_forever()
             return
 
         if args.command == "benchmark":
