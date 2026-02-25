@@ -12,6 +12,7 @@ Contains:
 - Audit log query command support (`novaadapt events`).
 - Audit event watch support (`novaadapt events-watch`).
 - SQLite snapshot command support (`novaadapt backup`).
+- SQLite restore command support (`novaadapt restore`).
 - SQLite housekeeping command support (`novaadapt prune`).
 - Service layer reusable by CLI and HTTP API server.
 - Async job manager for long-running API requests.

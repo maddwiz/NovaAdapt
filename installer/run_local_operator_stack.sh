@@ -12,6 +12,11 @@ BRIDGE_PORT="${NOVAADAPT_BRIDGE_PORT:-9797}"
 VIEW_PORT="${NOVAADAPT_VIEW_PORT:-8088}"
 MODEL_CONFIG="${NOVAADAPT_MODEL_CONFIG:-config/models.example.json}"
 WITH_VIEW="${NOVAADAPT_WITH_VIEW:-1}"
+CORE_CA_FILE="${NOVAADAPT_CORE_CA_FILE:-}"
+CORE_CLIENT_CERT_FILE="${NOVAADAPT_CORE_CLIENT_CERT_FILE:-}"
+CORE_CLIENT_KEY_FILE="${NOVAADAPT_CORE_CLIENT_KEY_FILE:-}"
+CORE_TLS_SERVER_NAME="${NOVAADAPT_CORE_TLS_SERVER_NAME:-}"
+CORE_TLS_INSECURE_SKIP_VERIFY="${NOVAADAPT_CORE_TLS_INSECURE_SKIP_VERIFY:-0}"
 ALLOWED_DEVICE_IDS="${NOVAADAPT_BRIDGE_ALLOWED_DEVICE_IDS:-}"
 CORS_ALLOWED_ORIGINS="${NOVAADAPT_BRIDGE_CORS_ALLOWED_ORIGINS:-}"
 TRUSTED_PROXY_CIDRS="${NOVAADAPT_BRIDGE_TRUSTED_PROXY_CIDRS:-}"
@@ -117,6 +122,22 @@ bridge_cmd=(
 if [[ -n "$ALLOWED_DEVICE_IDS" ]]; then
   bridge_cmd+=(--allowed-device-ids "$ALLOWED_DEVICE_IDS")
 fi
+if [[ -n "$CORE_CA_FILE" ]]; then
+  bridge_cmd+=(--core-ca-file "$CORE_CA_FILE")
+fi
+if [[ -n "$CORE_TLS_SERVER_NAME" ]]; then
+  bridge_cmd+=(--core-tls-server-name "$CORE_TLS_SERVER_NAME")
+fi
+if [[ -n "$CORE_CLIENT_CERT_FILE" || -n "$CORE_CLIENT_KEY_FILE" ]]; then
+  if [[ -z "$CORE_CLIENT_CERT_FILE" || -z "$CORE_CLIENT_KEY_FILE" ]]; then
+    echo "Both NOVAADAPT_CORE_CLIENT_CERT_FILE and NOVAADAPT_CORE_CLIENT_KEY_FILE are required for bridge->core mTLS."
+    exit 1
+  fi
+  bridge_cmd+=(--core-client-cert-file "$CORE_CLIENT_CERT_FILE" --core-client-key-file "$CORE_CLIENT_KEY_FILE")
+fi
+if [[ "$CORE_TLS_INSECURE_SKIP_VERIFY" == "1" || "$CORE_TLS_INSECURE_SKIP_VERIFY" == "true" ]]; then
+  bridge_cmd+=(--core-tls-insecure-skip-verify=true)
+fi
 if [[ -n "$CORS_ALLOWED_ORIGINS" ]]; then
   bridge_cmd+=(--cors-allowed-origins "$CORS_ALLOWED_ORIGINS")
 fi
@@ -193,6 +214,19 @@ if [[ -n "$CORS_ALLOWED_ORIGINS" ]]; then
 fi
 if [[ -n "$TRUSTED_PROXY_CIDRS" ]]; then
   echo "Trusted proxies:  ${TRUSTED_PROXY_CIDRS}"
+fi
+if [[ -n "$CORE_CA_FILE" ]]; then
+  echo "Core CA file:     ${CORE_CA_FILE}"
+fi
+if [[ -n "$CORE_CLIENT_CERT_FILE" && -n "$CORE_CLIENT_KEY_FILE" ]]; then
+  echo "Core mTLS cert:   ${CORE_CLIENT_CERT_FILE}"
+  echo "Core mTLS key:    ${CORE_CLIENT_KEY_FILE}"
+fi
+if [[ -n "$CORE_TLS_SERVER_NAME" ]]; then
+  echo "Core TLS SNI:     ${CORE_TLS_SERVER_NAME}"
+fi
+if [[ "$CORE_TLS_INSECURE_SKIP_VERIFY" == "1" || "$CORE_TLS_INSECURE_SKIP_VERIFY" == "true" ]]; then
+  echo "Core TLS verify:  disabled (unsafe)"
 fi
 if [[ -n "$BRIDGE_TLS_CERT_FILE" && -n "$BRIDGE_TLS_KEY_FILE" ]]; then
   echo "Bridge TLS cert:  ${BRIDGE_TLS_CERT_FILE}"

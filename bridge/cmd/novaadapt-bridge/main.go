@@ -22,6 +22,31 @@ func main() {
 	coreURL := flag.String("core-url", envOrDefault("NOVAADAPT_CORE_URL", "http://127.0.0.1:8787"), "Core API URL")
 	bridgeToken := flag.String("bridge-token", os.Getenv("NOVAADAPT_BRIDGE_TOKEN"), "Bearer token required for bridge clients")
 	coreToken := flag.String("core-token", os.Getenv("NOVAADAPT_CORE_TOKEN"), "Bearer token used when calling core API")
+	coreCAFile := flag.String(
+		"core-ca-file",
+		envOrDefault("NOVAADAPT_CORE_CA_FILE", ""),
+		"Optional CA bundle PEM file used to verify bridge->core TLS",
+	)
+	coreClientCertFile := flag.String(
+		"core-client-cert-file",
+		envOrDefault("NOVAADAPT_CORE_CLIENT_CERT_FILE", ""),
+		"Optional client certificate PEM file for bridge->core mTLS",
+	)
+	coreClientKeyFile := flag.String(
+		"core-client-key-file",
+		envOrDefault("NOVAADAPT_CORE_CLIENT_KEY_FILE", ""),
+		"Optional client private key PEM file for bridge->core mTLS",
+	)
+	coreTLSServerName := flag.String(
+		"core-tls-server-name",
+		envOrDefault("NOVAADAPT_CORE_TLS_SERVER_NAME", ""),
+		"Optional TLS server name override for bridge->core HTTPS",
+	)
+	coreTLSInsecureSkipVerify := flag.Bool(
+		"core-tls-insecure-skip-verify",
+		envOrDefaultBool("NOVAADAPT_CORE_TLS_INSECURE_SKIP_VERIFY", false),
+		"Disable certificate verification for bridge->core TLS (unsafe; dev only)",
+	)
 	tlsCertFile := flag.String(
 		"tls-cert-file",
 		envOrDefault("NOVAADAPT_BRIDGE_TLS_CERT_FILE", ""),
@@ -82,21 +107,26 @@ func main() {
 	flag.Parse()
 
 	handler, err := relay.NewHandler(relay.Config{
-		CoreBaseURL:         *coreURL,
-		BridgeToken:         *bridgeToken,
-		CoreToken:           *coreToken,
-		SessionSigningKey:   *sessionSigningKey,
-		SessionTokenTTL:     time.Duration(max(60, *sessionTokenTTL)) * time.Second,
-		AllowedDeviceIDs:    parseCSV(*allowedDeviceIDs),
-		CORSAllowedOrigins:  parseCSV(*corsAllowedOrigins),
-		TrustedProxyCIDRs:   parseCSV(*trustedProxyCIDRs),
-		RevocationStorePath: strings.TrimSpace(*revocationStorePath),
-		RateLimitRPS:        *rateLimitRPS,
-		RateLimitBurst:      max(1, *rateLimitBurst),
-		MaxWSConnections:    *maxWSConnections,
-		Timeout:             time.Duration(max(1, *timeout)) * time.Second,
-		LogRequests:         *logRequests,
-		Logger:              log.Default(),
+		CoreBaseURL:               *coreURL,
+		BridgeToken:               *bridgeToken,
+		CoreToken:                 *coreToken,
+		CoreCAFile:                *coreCAFile,
+		CoreClientCertFile:        *coreClientCertFile,
+		CoreClientKeyFile:         *coreClientKeyFile,
+		CoreTLSServerName:         *coreTLSServerName,
+		CoreTLSInsecureSkipVerify: *coreTLSInsecureSkipVerify,
+		SessionSigningKey:         *sessionSigningKey,
+		SessionTokenTTL:           time.Duration(max(60, *sessionTokenTTL)) * time.Second,
+		AllowedDeviceIDs:          parseCSV(*allowedDeviceIDs),
+		CORSAllowedOrigins:        parseCSV(*corsAllowedOrigins),
+		TrustedProxyCIDRs:         parseCSV(*trustedProxyCIDRs),
+		RevocationStorePath:       strings.TrimSpace(*revocationStorePath),
+		RateLimitRPS:              *rateLimitRPS,
+		RateLimitBurst:            max(1, *rateLimitBurst),
+		MaxWSConnections:          *maxWSConnections,
+		Timeout:                   time.Duration(max(1, *timeout)) * time.Second,
+		LogRequests:               *logRequests,
+		Logger:                    log.Default(),
 	})
 	if err != nil {
 		log.Fatalf("failed to initialize relay: %v", err)

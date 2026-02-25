@@ -136,7 +136,15 @@ novaadapt backup --out-dir ~/.novaadapt/backups
 
 The command snapshots local SQLite stores (`actions`, `plans`, `jobs`, `idempotency`, `audit`) using timestamped files and reports which ones were missing.
 
-9. Prune stale local state rows (recommended for long-running installs):
+9. Restore local state from a snapshot (archives current DBs before overwrite):
+
+```bash
+novaadapt restore --from-dir ~/.novaadapt/backups --timestamp 20260225T120000Z
+```
+
+If `--timestamp` is omitted, NovaAdapt restores the latest discovered snapshot in the backup directory.
+
+10. Prune stale local state rows (recommended for long-running installs):
 
 ```bash
 novaadapt prune \
@@ -149,7 +157,7 @@ novaadapt prune \
 
 `novaadapt prune` only removes terminal plan/job rows and rows older than the configured retention windows.
 
-10. Start local HTTP API (for phone/glasses/bridge clients):
+11. Start local HTTP API (for phone/glasses/bridge clients):
 
 ```bash
 novaadapt serve \
@@ -213,7 +221,7 @@ When token auth is enabled, browser dashboard usage supports:
 The page will reuse that token for `/dashboard/data` polling.
 Dashboard now includes one-click controls for pending plan approval/rejection, job cancellation, and plan undo marking.
 
-11. Run full local smoke test (core + bridge):
+12. Run full local smoke test (core + bridge):
 
 ```bash
 make smoke
@@ -353,6 +361,9 @@ print(client.revoke_session_id(session["session_id"]))
   --core-url http://127.0.0.1:8787 \
   --bridge-token YOUR_BRIDGE_TOKEN \
   --core-token YOUR_CORE_TOKEN \
+  --core-ca-file ./certs/core-ca.pem \
+  --core-client-cert-file ./certs/bridge-client.crt \
+  --core-client-key-file ./certs/bridge-client.key \
   --tls-cert-file ./certs/bridge.crt \
   --tls-key-file ./certs/bridge.key \
   --trusted-proxy-cidrs 127.0.0.1/32 \
@@ -391,6 +402,10 @@ Optional env vars:
 - `NOVAADAPT_AUDIT_RETENTION_SECONDS` / `NOVAADAPT_AUDIT_CLEANUP_INTERVAL_SECONDS`
 - `NOVAADAPT_OTEL_ENABLED` / `NOVAADAPT_OTEL_SERVICE_NAME` / `NOVAADAPT_OTEL_EXPORTER_ENDPOINT`
 - `NOVAADAPT_BRIDGE_TOKEN`
+- `NOVAADAPT_CORE_CA_FILE` (optional CA bundle for bridge->core TLS verification)
+- `NOVAADAPT_CORE_CLIENT_CERT_FILE` / `NOVAADAPT_CORE_CLIENT_KEY_FILE` (optional bridge->core mTLS identity)
+- `NOVAADAPT_CORE_TLS_SERVER_NAME` (optional SNI/hostname override for bridge->core HTTPS)
+- `NOVAADAPT_CORE_TLS_INSECURE_SKIP_VERIFY=1` (dev-only; disables bridge->core cert validation)
 - `NOVAADAPT_BRIDGE_ALLOWED_DEVICE_IDS`
 - `NOVAADAPT_BRIDGE_CORS_ALLOWED_ORIGINS` (defaults to local view origin when `NOVAADAPT_WITH_VIEW=1`)
 - `NOVAADAPT_BRIDGE_TLS_CERT_FILE` / `NOVAADAPT_BRIDGE_TLS_KEY_FILE` (optional HTTPS listener)
@@ -494,6 +509,7 @@ Environment variables:
 - Bridge relay forwards `/dashboard` HTML for secure remote browser access.
 - Bridge relay supports optional per-client request throttling (`NOVAADAPT_BRIDGE_RATE_LIMIT_RPS` / `..._BURST`).
 - Bridge relay only trusts forwarded client/protocol headers from configured trusted proxy CIDRs (`NOVAADAPT_BRIDGE_TRUSTED_PROXY_CIDRS`).
+- Bridge relay supports bridge->core TLS trust pinning and optional mTLS client identity (`NOVAADAPT_CORE_CA_FILE`, `NOVAADAPT_CORE_CLIENT_CERT_FILE`, `NOVAADAPT_CORE_CLIENT_KEY_FILE`).
 - Core API supports per-client request rate limiting and max body size on `serve`.
 - Core API only trusts `X-Forwarded-For` for rate-limit identity when `NOVAADAPT_TRUSTED_PROXY_CIDRS` is configured.
 - Core API request logging redacts sensitive query params (for example `token`) before writing access logs.

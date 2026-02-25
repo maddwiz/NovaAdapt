@@ -4,7 +4,7 @@ import unittest
 from contextlib import closing
 from pathlib import Path
 
-from novaadapt_core.backup import backup_databases, backup_sqlite_db
+from novaadapt_core.backup import backup_databases, backup_sqlite_db, restore_databases, restore_sqlite_db
 
 
 def _write_fixture_db(path: Path, value: str) -> None:
@@ -78,6 +78,67 @@ class BackupTests(unittest.TestCase):
             plans_entry = result["databases"]["plans"]
             self.assertEqual(plans_entry["status"], "missing")
             self.assertIsNone(plans_entry["backup"])
+
+    def test_restore_sqlite_db_restores_and_archives_previous(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            backup_src = Path(tmp) / "backups" / "actions-20260225T120000Z.db"
+            destination = Path(tmp) / "state" / "actions.db"
+            archive_dir = Path(tmp) / "archive"
+            _write_fixture_db(backup_src, "from-backup")
+            _write_fixture_db(destination, "old-value")
+
+            result = restore_sqlite_db(
+                backup_src,
+                destination,
+                archive_dir=archive_dir,
+                archive_suffix="20260225T120000Z",
+            )
+
+            self.assertEqual(result["status"], "ok")
+            self.assertEqual(_read_fixture_values(destination), ["from-backup"])
+            self.assertIsNotNone(result["previous_backup"])
+            self.assertEqual(_read_fixture_values(Path(result["previous_backup"])), ["old-value"])
+
+    def test_restore_databases_uses_latest_timestamp_when_not_provided(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            backups_dir = Path(tmp) / "backups"
+            _write_fixture_db(backups_dir / "actions-20260224T120000Z.db", "old-actions")
+            _write_fixture_db(backups_dir / "actions-20260225T120000Z.db", "new-actions")
+            _write_fixture_db(backups_dir / "plans-20260225T120000Z.db", "new-plans")
+
+            actions_dst = Path(tmp) / "runtime" / "actions.db"
+            plans_dst = Path(tmp) / "runtime" / "plans.db"
+            _write_fixture_db(actions_dst, "current-actions")
+            _write_fixture_db(plans_dst, "current-plans")
+
+            result = restore_databases(
+                backups_dir=backups_dir,
+                databases={"actions": actions_dst, "plans": plans_dst},
+                timestamp=None,
+            )
+
+            self.assertTrue(result["ok"])
+            self.assertEqual(result["timestamp"], "20260225T120000Z")
+            self.assertEqual(_read_fixture_values(actions_dst), ["new-actions"])
+            self.assertEqual(_read_fixture_values(plans_dst), ["new-plans"])
+
+    def test_restore_databases_reports_missing_backups(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            backups_dir = Path(tmp) / "backups"
+            _write_fixture_db(backups_dir / "actions-20260225T120000Z.db", "new-actions")
+            actions_dst = Path(tmp) / "runtime" / "actions.db"
+            plans_dst = Path(tmp) / "runtime" / "plans.db"
+
+            result = restore_databases(
+                backups_dir=backups_dir,
+                databases={"actions": actions_dst, "plans": plans_dst},
+                timestamp="20260225T120000Z",
+            )
+
+            self.assertFalse(result["ok"])
+            self.assertEqual(result["restored"], 1)
+            self.assertEqual(result["missing"], 1)
+            self.assertEqual(result["databases"]["plans"]["status"], "missing")
 
 
 if __name__ == "__main__":

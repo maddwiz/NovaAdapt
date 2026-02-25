@@ -5,6 +5,11 @@ set -euo pipefail
 : "${NOVAADAPT_BRIDGE_HOST:=0.0.0.0}"
 : "${NOVAADAPT_BRIDGE_PORT:=9797}"
 : "${NOVAADAPT_CORE_URL:=http://127.0.0.1:8787}"
+: "${NOVAADAPT_CORE_CA_FILE:=}"
+: "${NOVAADAPT_CORE_CLIENT_CERT_FILE:=}"
+: "${NOVAADAPT_CORE_CLIENT_KEY_FILE:=}"
+: "${NOVAADAPT_CORE_TLS_SERVER_NAME:=}"
+: "${NOVAADAPT_CORE_TLS_INSECURE_SKIP_VERIFY:=0}"
 : "${NOVAADAPT_BRIDGE_RATE_LIMIT_RPS:=20}"
 : "${NOVAADAPT_BRIDGE_RATE_LIMIT_BURST:=20}"
 : "${NOVAADAPT_BRIDGE_MAX_WS_CONNECTIONS:=100}"
@@ -34,6 +39,22 @@ cmd=(
 
 if [[ -n "${NOVAADAPT_CORE_TOKEN:-}" ]]; then
   cmd+=(--core-token "$NOVAADAPT_CORE_TOKEN")
+fi
+if [[ -n "${NOVAADAPT_CORE_CA_FILE:-}" ]]; then
+  cmd+=(--core-ca-file "$NOVAADAPT_CORE_CA_FILE")
+fi
+if [[ -n "${NOVAADAPT_CORE_TLS_SERVER_NAME:-}" ]]; then
+  cmd+=(--core-tls-server-name "$NOVAADAPT_CORE_TLS_SERVER_NAME")
+fi
+if [[ -n "${NOVAADAPT_CORE_CLIENT_CERT_FILE:-}" || -n "${NOVAADAPT_CORE_CLIENT_KEY_FILE:-}" ]]; then
+  if [[ -z "${NOVAADAPT_CORE_CLIENT_CERT_FILE:-}" || -z "${NOVAADAPT_CORE_CLIENT_KEY_FILE:-}" ]]; then
+    echo "both NOVAADAPT_CORE_CLIENT_CERT_FILE and NOVAADAPT_CORE_CLIENT_KEY_FILE are required for bridge->core mTLS" >&2
+    exit 1
+  fi
+  cmd+=(--core-client-cert-file "$NOVAADAPT_CORE_CLIENT_CERT_FILE" --core-client-key-file "$NOVAADAPT_CORE_CLIENT_KEY_FILE")
+fi
+if [[ "$NOVAADAPT_CORE_TLS_INSECURE_SKIP_VERIFY" == "1" || "$NOVAADAPT_CORE_TLS_INSECURE_SKIP_VERIFY" == "true" ]]; then
+  cmd+=(--core-tls-insecure-skip-verify=true)
 fi
 if [[ -n "${NOVAADAPT_BRIDGE_ALLOWED_DEVICE_IDS:-}" ]]; then
   cmd+=(--allowed-device-ids "$NOVAADAPT_BRIDGE_ALLOWED_DEVICE_IDS")

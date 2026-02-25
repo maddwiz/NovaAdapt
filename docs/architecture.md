@@ -46,6 +46,7 @@ Core can emit OpenTelemetry traces (OTLP HTTP) when `--otel-enabled` is configur
 
 `novaadapt-bridge` is a Go secure relay process for remote devices. It enforces a bridge ingress token and forwards to the core API using a separate upstream token.
 It can also enforce a trusted device allowlist via `X-Device-ID`.
+Bridge->core transport supports custom CA verification and optional client-certificate mTLS.
 
 It also preserves per-request tracing through `X-Request-ID` and supports deep upstream health checks for relay monitoring.
 The bridge additionally exposes `/metrics` for request and error counters.
@@ -60,6 +61,7 @@ The bridge additionally exposes `/metrics` for request and error counters.
 - Benchmark runner (`novaadapt benchmark`) provides repeatable success-rate measurement from task suites.
 - MCP-compatible stdio server (`novaadapt mcp`) exposes core operations as tools for external agents.
 - Backup command (`novaadapt backup`) snapshots SQLite state for rollback-safe upgrades.
+- Restore command (`novaadapt restore`) rehydrates SQLite state from snapshots with pre-restore safety archives.
 - Prune command (`novaadapt prune`) removes stale terminal/local rows for bounded SQLite growth.
 - Release workflow (`.github/workflows/release.yml`) builds artifacts and publishes checksums on tag pushes.
 

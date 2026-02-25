@@ -3,6 +3,8 @@ package relay
 import (
 	"bytes"
 	"crypto/rand"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -11,6 +13,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"path"
 	"strings"
 	"sync"
@@ -57,6 +60,15 @@ type Config struct {
 	CoreBaseURL string
 	BridgeToken string
 	CoreToken   string
+	// CoreCAFile optionally sets a CA bundle PEM file for bridge->core TLS verification.
+	CoreCAFile string
+	// CoreClientCertFile and CoreClientKeyFile optionally enable mTLS client cert auth to core.
+	CoreClientCertFile string
+	CoreClientKeyFile  string
+	// CoreTLSServerName overrides SNI/hostname verification for bridge->core TLS.
+	CoreTLSServerName string
+	// CoreTLSInsecureSkipVerify disables core certificate verification. Only for local/dev use.
+	CoreTLSInsecureSkipVerify bool
 	// SessionSigningKey signs scoped short-lived session tokens for websocket/browser clients.
 	SessionSigningKey string
 	// SessionTokenTTL controls default issued session token lifetime.
@@ -129,9 +141,16 @@ func NewHandler(cfg Config) (*Handler, error) {
 	if cfg.Logger == nil {
 		cfg.Logger = log.Default()
 	}
-	_, err := url.Parse(cfg.CoreBaseURL)
+	coreURL, err := url.Parse(strings.TrimSpace(cfg.CoreBaseURL))
 	if err != nil {
 		return nil, fmt.Errorf("invalid core base url: %w", err)
+	}
+	if coreURL.Scheme != "http" && coreURL.Scheme != "https" {
+		return nil, fmt.Errorf("core base url must use http or https")
+	}
+	coreClient, err := buildCoreHTTPClient(cfg, coreURL.Scheme == "https")
+	if err != nil {
+		return nil, err
 	}
 	allowedDevices := make(map[string]struct{})
 	for _, item := range cfg.AllowedDeviceIDs {
@@ -163,10 +182,8 @@ func NewHandler(cfg Config) (*Handler, error) {
 		return nil, fmt.Errorf("invalid trusted proxy cidr config: %w", err)
 	}
 	return &Handler{
-		cfg: cfg,
-		client: &http.Client{
-			Timeout: cfg.Timeout,
-		},
+		cfg:                cfg,
+		client:             coreClient,
 		allowedDevices:     allowedDevices,
 		corsAllowedOrigins: corsAllowedOrigins,
 		corsAllowAll:       corsAllowAll,
@@ -417,6 +434,8 @@ func (h *Handler) bridgeHealthSnapshot() map[string]any {
 		"ws_active_connections": atomic.LoadInt64(&h.wsActiveConnections),
 		"revoked_sessions":      revokedCount,
 		"revocation_store_path": strings.TrimSpace(h.cfg.RevocationStorePath),
+		"core_tls_enabled":      strings.HasPrefix(strings.ToLower(strings.TrimSpace(h.cfg.CoreBaseURL)), "https://"),
+		"core_mtls_enabled":     strings.TrimSpace(h.cfg.CoreClientCertFile) != "",
 	}
 }
 
@@ -699,6 +718,68 @@ func parseTrustedProxyCIDRs(items []string) ([]*net.IPNet, error) {
 		trusted = append(trusted, network)
 	}
 	return trusted, nil
+}
+
+func buildCoreHTTPClient(cfg Config, coreTLS bool) (*http.Client, error) {
+	caFile := strings.TrimSpace(cfg.CoreCAFile)
+	clientCertFile := strings.TrimSpace(cfg.CoreClientCertFile)
+	clientKeyFile := strings.TrimSpace(cfg.CoreClientKeyFile)
+	serverName := strings.TrimSpace(cfg.CoreTLSServerName)
+
+	if (clientCertFile == "") != (clientKeyFile == "") {
+		return nil, fmt.Errorf("both core client cert and key files must be provided together")
+	}
+	useCustomTLS := coreTLS || caFile != "" || clientCertFile != "" || serverName != "" || cfg.CoreTLSInsecureSkipVerify
+	if !useCustomTLS {
+		return &http.Client{Timeout: cfg.Timeout}, nil
+	}
+
+	tlsConfig := &tls.Config{
+		MinVersion:         tls.VersionTLS12,
+		InsecureSkipVerify: cfg.CoreTLSInsecureSkipVerify,
+	}
+	if serverName != "" {
+		tlsConfig.ServerName = serverName
+	}
+	if caFile != "" {
+		pemBytes, err := os.ReadFile(caFile)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read core CA file: %w", err)
+		}
+		roots, err := x509.SystemCertPool()
+		if err != nil || roots == nil {
+			roots = x509.NewCertPool()
+		}
+		if ok := roots.AppendCertsFromPEM(pemBytes); !ok {
+			return nil, fmt.Errorf("failed to parse core CA file")
+		}
+		tlsConfig.RootCAs = roots
+	}
+	if clientCertFile != "" && clientKeyFile != "" {
+		clientCert, err := tls.LoadX509KeyPair(clientCertFile, clientKeyFile)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load core client certificate: %w", err)
+		}
+		tlsConfig.Certificates = []tls.Certificate{clientCert}
+	}
+
+	transport := &http.Transport{
+		Proxy: http.ProxyFromEnvironment,
+		DialContext: (&net.Dialer{
+			Timeout:   30 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		ForceAttemptHTTP2:     true,
+		MaxIdleConns:          100,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+		TLSClientConfig:       tlsConfig,
+	}
+	return &http.Client{
+		Timeout:   cfg.Timeout,
+		Transport: transport,
+	}, nil
 }
 
 func (h *Handler) clientRateKey(r *http.Request) string {

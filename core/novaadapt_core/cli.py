@@ -5,7 +5,7 @@ import json
 import os
 from pathlib import Path
 
-from .backup import backup_databases
+from .backup import backup_databases, restore_databases
 from .benchmark import run_benchmark
 from .cleanup import prune_local_state
 from .mcp_server import NovaAdaptMCPServer
@@ -218,6 +218,43 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Path to idempotency database",
     )
     backup_cmd.add_argument("--audit-db-path", type=Path, default=default_audit_db, help="Path to audit database")
+
+    restore_cmd = sub.add_parser(
+        "restore",
+        help="Restore SQLite databases from backup snapshots (archives existing DBs before overwrite)",
+    )
+    restore_cmd.add_argument(
+        "--from-dir",
+        type=Path,
+        default=default_backup_dir,
+        help="Directory containing backup snapshots (default: ~/.novaadapt/backups)",
+    )
+    restore_cmd.add_argument(
+        "--timestamp",
+        default=None,
+        help="Optional snapshot timestamp (YYYYMMDDTHHMMSSZ); defaults to latest discovered snapshot",
+    )
+    restore_cmd.add_argument(
+        "--archive-dir",
+        type=Path,
+        default=None,
+        help="Optional output directory for pre-restore safety snapshots of current DBs",
+    )
+    restore_cmd.add_argument(
+        "--db-path",
+        type=Path,
+        default=default_actions_db,
+        help="Path to actions database",
+    )
+    restore_cmd.add_argument("--plans-db-path", type=Path, default=default_plans_db, help="Path to plans database")
+    restore_cmd.add_argument("--jobs-db-path", type=Path, default=default_jobs_db, help="Path to jobs database")
+    restore_cmd.add_argument(
+        "--idempotency-db-path",
+        type=Path,
+        default=default_idempotency_db,
+        help="Path to idempotency database",
+    )
+    restore_cmd.add_argument("--audit-db-path", type=Path, default=default_audit_db, help="Path to audit database")
 
     prune_cmd = sub.add_parser("prune", help="Prune stale SQLite records from local NovaAdapt state")
     prune_cmd.add_argument("--db-path", type=Path, default=default_actions_db, help="Path to actions database")
@@ -554,6 +591,22 @@ def main() -> None:
             result = backup_databases(
                 out_dir=args.out_dir,
                 timestamp=args.timestamp,
+                databases={
+                    "actions": args.db_path,
+                    "plans": args.plans_db_path,
+                    "jobs": args.jobs_db_path,
+                    "idempotency": args.idempotency_db_path,
+                    "audit": args.audit_db_path,
+                },
+            )
+            print(json.dumps(result, indent=2))
+            return
+
+        if args.command == "restore":
+            result = restore_databases(
+                backups_dir=args.from_dir,
+                timestamp=args.timestamp,
+                archive_dir=args.archive_dir,
                 databases={
                     "actions": args.db_path,
                     "plans": args.plans_db_path,
