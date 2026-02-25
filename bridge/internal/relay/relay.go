@@ -30,6 +30,7 @@ var allowedPaths = map[string]struct{}{
 	"/check":          {},
 	"/jobs":           {},
 	"/plans":          {},
+	"/events":         {},
 }
 
 // Config controls bridge relay behavior.
@@ -207,6 +208,9 @@ func isForwardedPath(p string) bool {
 		id := strings.TrimSpace(strings.TrimPrefix(p, "/jobs/"))
 		return id != ""
 	}
+	if p == "/events/stream" {
+		return true
+	}
 	if strings.HasPrefix(p, "/plans/") {
 		id := strings.TrimSpace(strings.TrimPrefix(p, "/plans/"))
 		return id != ""
@@ -220,6 +224,9 @@ func isRawForwardPath(p string) bool {
 		return true
 	}
 	if strings.HasPrefix(p, "/jobs/") && strings.HasSuffix(p, "/stream") {
+		return true
+	}
+	if p == "/events/stream" {
 		return true
 	}
 	return strings.HasPrefix(p, "/plans/") && strings.HasSuffix(p, "/stream")

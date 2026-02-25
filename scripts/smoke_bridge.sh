@@ -179,6 +179,17 @@ stream_result=$(curl -sS \
   "http://127.0.0.1:${BRIDGE_PORT}/jobs/${job_id}/stream?timeout=2&interval=0.1")
 echo "$stream_result" | grep -q 'event:'
 
+events_json=$(curl -sS \
+  -H "Authorization: Bearer ${BRIDGE_TOKEN}" \
+  "http://127.0.0.1:${BRIDGE_PORT}/events?limit=20")
+echo "$events_json" | python3 -c 'import json,sys; data=json.load(sys.stdin); assert isinstance(data,list) and len(data)>=1'
+
+latest_event_id=$(echo "$events_json" | python3 -c 'import json,sys; data=json.load(sys.stdin); print(data[0]["id"])')
+events_stream=$(curl -sS \
+  -H "Authorization: Bearer ${BRIDGE_TOKEN}" \
+  "http://127.0.0.1:${BRIDGE_PORT}/events/stream?timeout=1&interval=0.1&since_id=${latest_event_id}")
+echo "$events_stream" | grep -q 'event: timeout'
+
 trace_header=$(curl -sS -D - -o /tmp/novaadapt-smoke-models.json \
   -H "Authorization: Bearer ${BRIDGE_TOKEN}" \
   -H "X-Request-ID: ${RID}" \

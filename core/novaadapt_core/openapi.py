@@ -242,5 +242,17 @@ def build_openapi_spec() -> dict:
                     "responses": {"200": {"description": "Metrics text"}},
                 }
             },
+            "/events": {
+                "get": {
+                    "summary": "List recent audit events",
+                    "responses": {"200": {"description": "Audit events"}},
+                }
+            },
+            "/events/stream": {
+                "get": {
+                    "summary": "Stream audit events as SSE",
+                    "responses": {"200": {"description": "SSE stream"}},
+                }
+            },
         },
     }

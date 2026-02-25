@@ -139,22 +139,7 @@ class NovaAdaptAPIClient:
             "GET",
             f"/jobs/{job_id}/stream?timeout={timeout}&interval={interval}",
         )
-
-        events: list[dict[str, Any]] = []
-        current_event = "message"
-        for line in text.splitlines():
-            if line.startswith("event:"):
-                current_event = line.split(":", 1)[1].strip() or "message"
-                continue
-            if line.startswith("data:"):
-                raw = line.split(":", 1)[1].strip()
-                try:
-                    data = json.loads(raw)
-                except json.JSONDecodeError:
-                    data = {"raw": raw}
-                events.append({"event": current_event, "data": data})
-                current_event = "message"
-        return events
+        return self._parse_sse_events(text)
 
     def plan_stream(
         self,
@@ -168,22 +153,7 @@ class NovaAdaptAPIClient:
             "GET",
             f"/plans/{plan_id}/stream?timeout={timeout}&interval={interval}",
         )
-
-        events: list[dict[str, Any]] = []
-        current_event = "message"
-        for line in text.splitlines():
-            if line.startswith("event:"):
-                current_event = line.split(":", 1)[1].strip() or "message"
-                continue
-            if line.startswith("data:"):
-                raw = line.split(":", 1)[1].strip()
-                try:
-                    data = json.loads(raw)
-                except json.JSONDecodeError:
-                    data = {"raw": raw}
-                events.append({"event": current_event, "data": data})
-                current_event = "message"
-        return events
+        return self._parse_sse_events(text)
 
     def cancel_job(self, job_id: str, idempotency_key: str | None = None) -> dict[str, Any]:
         payload = self._post_json(
@@ -200,6 +170,42 @@ class NovaAdaptAPIClient:
         if isinstance(payload, list):
             return payload
         raise APIClientError("Expected list payload from /history")
+
+    def events(
+        self,
+        limit: int = 100,
+        category: str | None = None,
+        entity_type: str | None = None,
+        entity_id: str | None = None,
+        since_id: int | None = None,
+    ) -> list[dict[str, Any]]:
+        query = [f"limit={max(1, int(limit))}"]
+        if category:
+            query.append(f"category={category}")
+        if entity_type:
+            query.append(f"entity_type={entity_type}")
+        if entity_id:
+            query.append(f"entity_id={entity_id}")
+        if since_id is not None:
+            query.append(f"since_id={int(since_id)}")
+        payload = self._get_json(f"/events?{'&'.join(query)}")
+        if isinstance(payload, list):
+            return payload
+        raise APIClientError("Expected list payload from /events")
+
+    def events_stream(
+        self,
+        timeout_seconds: int = 30,
+        interval_seconds: float = 0.25,
+        since_id: int = 0,
+    ) -> list[dict[str, Any]]:
+        timeout = max(1, int(timeout_seconds))
+        interval = min(5.0, max(0.05, float(interval_seconds)))
+        text = self._request_text(
+            "GET",
+            f"/events/stream?timeout={timeout}&interval={interval}&since_id={max(0, int(since_id))}",
+        )
+        return self._parse_sse_events(text)
 
     def undo(self, idempotency_key: str | None = None, **kwargs: Any) -> dict[str, Any]:
         payload = self._post_json("/undo", kwargs, idempotency_key=idempotency_key)
@@ -243,6 +249,24 @@ class NovaAdaptAPIClient:
 
     def _request_text(self, method: str, path: str) -> str:
         return self._perform_request_with_retries(method=method, path=path, payload=None)
+
+    @staticmethod
+    def _parse_sse_events(text: str) -> list[dict[str, Any]]:
+        events: list[dict[str, Any]] = []
+        current_event = "message"
+        for line in text.splitlines():
+            if line.startswith("event:"):
+                current_event = line.split(":", 1)[1].strip() or "message"
+                continue
+            if line.startswith("data:"):
+                raw = line.split(":", 1)[1].strip()
+                try:
+                    data = json.loads(raw)
+                except json.JSONDecodeError:
+                    data = {"raw": raw}
+                events.append({"event": current_event, "data": data})
+                current_event = "message"
+        return events
 
     def _perform_request_with_retries(
         self,

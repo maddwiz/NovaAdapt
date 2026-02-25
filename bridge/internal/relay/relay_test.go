@@ -112,6 +112,11 @@ func TestForwardArrayWithAuthAndRequestID(t *testing.T) {
 		case "/plans/plan1/stream":
 			w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
 			_, _ = w.Write([]byte("event: plan\ndata: {\"id\":\"plan1\",\"status\":\"pending\"}\n\n"))
+		case "/events":
+			_, _ = w.Write([]byte(`[{"id":1,"category":"run","action":"run_async"}]`))
+		case "/events/stream":
+			w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
+			_, _ = w.Write([]byte("event: audit\ndata: {\"id\":1,\"category\":\"run\"}\n\n"))
 		case "/plans":
 			if r.Method == http.MethodGet {
 				_, _ = w.Write([]byte(`[{"id":"plan1","status":"pending"}]`))
@@ -268,6 +273,25 @@ func TestForwardArrayWithAuthAndRequestID(t *testing.T) {
 	}
 	if !strings.Contains(rrPlanStream.Body.String(), "event: plan") {
 		t.Fatalf("expected plan stream payload, got %s", rrPlanStream.Body.String())
+	}
+
+	rrEvents := httptest.NewRecorder()
+	reqEvents := httptest.NewRequest(http.MethodGet, "/events?limit=5", nil)
+	reqEvents.Header.Set("Authorization", "Bearer bridge")
+	h.ServeHTTP(rrEvents, reqEvents)
+	if rrEvents.Code != http.StatusOK {
+		t.Fatalf("expected 200 got %d body=%s", rrEvents.Code, rrEvents.Body.String())
+	}
+
+	rrEventsStream := httptest.NewRecorder()
+	reqEventsStream := httptest.NewRequest(http.MethodGet, "/events/stream?timeout=1&interval=0.1&since_id=0", nil)
+	reqEventsStream.Header.Set("Authorization", "Bearer bridge")
+	h.ServeHTTP(rrEventsStream, reqEventsStream)
+	if rrEventsStream.Code != http.StatusOK {
+		t.Fatalf("expected 200 got %d body=%s", rrEventsStream.Code, rrEventsStream.Body.String())
+	}
+	if !strings.Contains(rrEventsStream.Body.String(), "event: audit") {
+		t.Fatalf("expected audit stream payload, got %s", rrEventsStream.Body.String())
 	}
 
 	rrPlans := httptest.NewRecorder()

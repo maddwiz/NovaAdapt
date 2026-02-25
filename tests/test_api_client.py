@@ -54,6 +54,19 @@ class _Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
             return
+        if self.path == "/events/stream?timeout=2&interval=0.1&since_id=0":
+            body = (
+                'event: audit\n'
+                'data: {"id":1,"category":"run","action":"run_async"}\n\n'
+                'event: timeout\n'
+                'data: {"request_id":"rid"}\n\n'
+            ).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
         if self.path.startswith("/jobs/"):
             self._send(200, {"id": "job-1", "status": "succeeded"})
             return
@@ -68,6 +81,9 @@ class _Handler(BaseHTTPRequestHandler):
             return
         if self.path.startswith("/history"):
             self._send(200, [{"id": 1}])
+            return
+        if self.path.startswith("/events"):
+            self._send(200, [{"id": 1, "category": "run", "action": "run_async"}])
             return
         if self.path == "/metrics":
             body = "novaadapt_core_requests_total 1\n".encode("utf-8")
@@ -182,6 +198,8 @@ class APIClientTests(unittest.TestCase):
         self.assertEqual(plan_events[0]["event"], "plan")
         self.assertEqual(plan_events[-1]["data"]["status"], "executed")
         self.assertEqual(client.history(limit=1)[0]["id"], 1)
+        self.assertEqual(client.events(limit=10)[0]["category"], "run")
+        self.assertEqual(client.events_stream(timeout_seconds=2, interval_seconds=0.1, since_id=0)[0]["event"], "audit")
         self.assertEqual(client.undo(id=1, mark_only=True)["status"], "marked_undone")
         self.assertIn("novaadapt_core_requests_total", client.metrics_text())
 

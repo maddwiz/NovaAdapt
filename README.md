@@ -118,6 +118,7 @@ novaadapt serve \
   --host 127.0.0.1 \
   --port 8787 \
   --jobs-db-path ~/.novaadapt/jobs.db \
+  --audit-db-path ~/.novaadapt/events.db \
   --api-token YOUR_CORE_TOKEN \
   --log-requests \
   --rate-limit-rps 20 \
@@ -134,6 +135,8 @@ API endpoints:
 - `GET /models`
 - `GET /history?limit=20`
 - `GET /metrics` (Prometheus-style counters, auth-protected when token is enabled)
+- `GET /events?limit=100` (audit log filters: `category`, `entity_type`, `entity_id`, `since_id`)
+- `GET /events/stream` (SSE audit stream, supports `timeout`, `interval`, `since_id`)
 - `POST /run` with JSON payload
 - `POST /run_async` with JSON payload (returns `job_id`)
 - `GET /jobs` and `GET /jobs/{id}`
@@ -151,6 +154,7 @@ API endpoints:
 
 Core API responses include `X-Request-ID` for tracing (and object responses also include `request_id` in JSON).
 Mutating POST routes support idempotency via `Idempotency-Key`; replayed responses return `X-Idempotency-Replayed: true`.
+Audit events are persisted in SQLite (`--audit-db-path`) and include request IDs for forensic tracing.
 Plan records expose execution progress fields (`progress_completed`, `progress_total`) and terminal error state (`execution_error`).
 Plans finalize as `failed` when one or more actions are blocked or fail during execution.
 
@@ -228,6 +232,7 @@ print(client.models())
 print(client.run("Open browser and go to example.com"))
 print(client.job_stream("job-id", timeout_seconds=10))
 print(client.plan_stream("plan-id", timeout_seconds=10))
+print(client.events(limit=20))
 ```
 
 `NovaAdaptAPIClient` retries transient HTTP failures by default (`max_retries=1`), configurable per client instance.

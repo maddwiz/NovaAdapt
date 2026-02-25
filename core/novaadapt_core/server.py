@@ -9,6 +9,7 @@ from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
+from .audit_store import AuditStore
 from .dashboard import render_dashboard_html
 from .idempotency_store import IdempotencyStore
 from .job_store import JobStore
@@ -104,9 +105,11 @@ def create_server(
     max_request_body_bytes: int = DEFAULT_MAX_REQUEST_BODY_BYTES,
     jobs_db_path: str | None = None,
     idempotency_db_path: str | None = None,
+    audit_db_path: str | None = None,
 ) -> ThreadingHTTPServer:
     managed_jobs = job_manager or JobManager(store=JobStore(jobs_db_path) if jobs_db_path else None)
     idempotency_store = IdempotencyStore(idempotency_db_path) if idempotency_db_path else None
+    audit_store = AuditStore(audit_db_path)
     metrics = _RequestMetrics()
 
     limiter = None
@@ -122,6 +125,7 @@ def create_server(
         logger=logger or logging.getLogger("novaadapt.api"),
         limiter=limiter,
         idempotency_store=idempotency_store,
+        audit_store=audit_store,
         metrics=metrics,
         max_request_body_bytes=max(1, int(max_request_body_bytes)),
     )
@@ -140,6 +144,7 @@ def run_server(
     max_request_body_bytes: int = DEFAULT_MAX_REQUEST_BODY_BYTES,
     jobs_db_path: str | None = None,
     idempotency_db_path: str | None = None,
+    audit_db_path: str | None = None,
 ) -> None:
     server = create_server(
         host=host,
@@ -153,6 +158,7 @@ def run_server(
         max_request_body_bytes=max_request_body_bytes,
         jobs_db_path=jobs_db_path,
         idempotency_db_path=idempotency_db_path,
+        audit_db_path=audit_db_path,
     )
     try:
         server.serve_forever()
@@ -170,6 +176,7 @@ def _build_handler(
     logger: logging.Logger,
     limiter: _SlidingWindowRateLimiter | None,
     idempotency_store: IdempotencyStore | None,
+    audit_store: AuditStore | None,
     metrics: _RequestMetrics,
     max_request_body_bytes: int,
 ):
@@ -230,6 +237,47 @@ def _build_handler(
                         return
                     status_code = 200
                     self._send_metrics(status_code)
+                    return
+
+                if path == "/events":
+                    if not self._check_auth(path, query):
+                        status_code = 401
+                        return
+                    limit = int(_single(query, "limit") or 100)
+                    category = _single(query, "category")
+                    entity_type = _single(query, "entity_type")
+                    entity_id = _single(query, "entity_id")
+                    since_id = _single(query, "since_id")
+                    status_code = 200
+                    self._send_json(
+                        status_code,
+                        audit_store.list(
+                            limit=max(1, limit),
+                            category=category,
+                            entity_type=entity_type,
+                            entity_id=entity_id,
+                            since_id=int(since_id) if since_id is not None else None,
+                        )
+                        if audit_store is not None
+                        else [],
+                    )
+                    return
+
+                if path == "/events/stream":
+                    if not self._check_auth(path, query):
+                        status_code = 401
+                        return
+                    timeout_seconds = float(_single(query, "timeout") or 30.0)
+                    interval_seconds = float(_single(query, "interval") or 0.25)
+                    since_id = int(_single(query, "since_id") or 0)
+                    timeout_seconds = min(300.0, max(1.0, timeout_seconds))
+                    interval_seconds = min(5.0, max(0.05, interval_seconds))
+                    status_code = 200
+                    self._stream_audit_events(
+                        timeout_seconds=timeout_seconds,
+                        interval_seconds=interval_seconds,
+                        since_id=since_id,
+                    )
                     return
 
                 if self._is_rate_limited(path):
@@ -386,6 +434,14 @@ def _build_handler(
                         replayed=replayed,
                         idempotency_key=self._idempotency_key(),
                     )
+                    self._audit_event(
+                        category="jobs",
+                        action="cancel",
+                        status="replayed" if replayed else ("ok" if status_code < 400 else "error"),
+                        entity_type="job",
+                        entity_id=job_id,
+                        payload=response_payload if isinstance(response_payload, dict) else None,
+                    )
                     return
 
                 if path == "/plans":
@@ -399,6 +455,14 @@ def _build_handler(
                         response_payload,
                         replayed=replayed,
                         idempotency_key=self._idempotency_key(),
+                    )
+                    self._audit_event(
+                        category="plans",
+                        action="create",
+                        status="replayed" if replayed else ("ok" if status_code < 400 else "error"),
+                        entity_type="plan",
+                        entity_id=str(response_payload.get("id")) if isinstance(response_payload, dict) else None,
+                        payload=response_payload if isinstance(response_payload, dict) else None,
                     )
                     return
 
@@ -418,6 +482,14 @@ def _build_handler(
                         response_payload,
                         replayed=replayed,
                         idempotency_key=self._idempotency_key(),
+                    )
+                    self._audit_event(
+                        category="plans",
+                        action="approve",
+                        status="replayed" if replayed else ("ok" if status_code < 400 else "error"),
+                        entity_type="plan",
+                        entity_id=plan_id,
+                        payload=response_payload if isinstance(response_payload, dict) else None,
                     )
                     return
 
@@ -445,6 +517,14 @@ def _build_handler(
                         replayed=replayed,
                         idempotency_key=self._idempotency_key(),
                     )
+                    self._audit_event(
+                        category="plans",
+                        action="approve_async",
+                        status="replayed" if replayed else ("ok" if status_code < 400 else "error"),
+                        entity_type="plan",
+                        entity_id=plan_id,
+                        payload=response_payload if isinstance(response_payload, dict) else None,
+                    )
                     return
 
                 if path.startswith("/plans/") and path.endswith("/reject"):
@@ -468,6 +548,14 @@ def _build_handler(
                         replayed=replayed,
                         idempotency_key=self._idempotency_key(),
                     )
+                    self._audit_event(
+                        category="plans",
+                        action="reject",
+                        status="replayed" if replayed else ("ok" if status_code < 400 else "error"),
+                        entity_type="plan",
+                        entity_id=plan_id,
+                        payload=response_payload if isinstance(response_payload, dict) else None,
+                    )
                     return
 
                 if path.startswith("/plans/") and path.endswith("/undo"):
@@ -487,6 +575,14 @@ def _build_handler(
                         replayed=replayed,
                         idempotency_key=self._idempotency_key(),
                     )
+                    self._audit_event(
+                        category="plans",
+                        action="undo",
+                        status="replayed" if replayed else ("ok" if status_code < 400 else "error"),
+                        entity_type="plan",
+                        entity_id=plan_id,
+                        payload=response_payload if isinstance(response_payload, dict) else None,
+                    )
                     return
 
                 if path == "/run":
@@ -500,6 +596,12 @@ def _build_handler(
                         response_payload,
                         replayed=replayed,
                         idempotency_key=self._idempotency_key(),
+                    )
+                    self._audit_event(
+                        category="run",
+                        action="run",
+                        status="replayed" if replayed else ("ok" if status_code < 400 else "error"),
+                        payload=response_payload if isinstance(response_payload, dict) else None,
                     )
                     return
 
@@ -518,6 +620,14 @@ def _build_handler(
                         replayed=replayed,
                         idempotency_key=self._idempotency_key(),
                     )
+                    self._audit_event(
+                        category="run",
+                        action="run_async",
+                        status="replayed" if replayed else ("ok" if status_code < 400 else "error"),
+                        entity_type="job",
+                        entity_id=str(response_payload.get("job_id")) if isinstance(response_payload, dict) else None,
+                        payload=response_payload if isinstance(response_payload, dict) else None,
+                    )
                     return
 
                 if path == "/undo":
@@ -531,6 +641,12 @@ def _build_handler(
                         response_payload,
                         replayed=replayed,
                         idempotency_key=self._idempotency_key(),
+                    )
+                    self._audit_event(
+                        category="undo",
+                        action="undo",
+                        status="replayed" if replayed else ("ok" if status_code < 400 else "error"),
+                        payload=response_payload if isinstance(response_payload, dict) else None,
                     )
                     return
 
@@ -797,6 +913,62 @@ def _build_handler(
                     return
 
                 time.sleep(interval_seconds)
+
+        def _stream_audit_events(self, timeout_seconds: float, interval_seconds: float, since_id: int) -> None:
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+            self.send_header("Cache-Control", "no-cache")
+            self.send_header("Connection", "close")
+            self.send_header("X-Request-ID", self._request_id)
+            self.end_headers()
+
+            last_id = max(0, int(since_id))
+            deadline = time.monotonic() + timeout_seconds
+            while True:
+                rows = (
+                    audit_store.list(limit=200, since_id=last_id)
+                    if audit_store is not None
+                    else []
+                )
+                if rows:
+                    # list() is descending; stream oldest-to-newest for natural ordering
+                    for item in reversed(rows):
+                        payload = dict(item)
+                        payload.setdefault("request_id", self._request_id)
+                        if not self._write_sse_event("audit", payload):
+                            return
+                        last_id = max(last_id, int(item.get("id", 0)))
+
+                if time.monotonic() >= deadline:
+                    self._write_sse_event("timeout", {"request_id": self._request_id})
+                    return
+
+                time.sleep(interval_seconds)
+
+        def _audit_event(
+            self,
+            *,
+            category: str,
+            action: str,
+            status: str,
+            entity_type: str | None = None,
+            entity_id: str | None = None,
+            payload: dict[str, object] | None = None,
+        ) -> None:
+            if audit_store is None:
+                return
+            try:
+                audit_store.append(
+                    category=category,
+                    action=action,
+                    status=status,
+                    request_id=self._request_id,
+                    entity_type=entity_type,
+                    entity_id=entity_id,
+                    payload=payload,
+                )
+            except Exception as exc:  # pragma: no cover - audit should never fail request path
+                logger.warning("audit append failed request_id=%s error=%s", self._request_id, exc)
 
         def _write_sse_event(self, event: str, payload: dict[str, object]) -> bool:
             encoded = (

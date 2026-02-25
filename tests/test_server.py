@@ -60,7 +60,12 @@ class ServerTests(unittest.TestCase):
                 router_loader=lambda _path: _StubRouter(),
                 directshell_factory=_StubDirectShell,
             )
-            server = create_server("127.0.0.1", 0, service)
+            server = create_server(
+                "127.0.0.1",
+                0,
+                service,
+                audit_db_path=str(Path(tmp) / "events.db"),
+            )
             host, port = server.server_address
             thread = threading.Thread(target=server.serve_forever, daemon=True)
             thread.start()
@@ -90,6 +95,8 @@ class ServerTests(unittest.TestCase):
                 self.assertIn("/plans/{id}/approve_async", openapi["paths"])
                 self.assertIn("/plans/{id}/undo", openapi["paths"])
                 self.assertIn("/dashboard/data", openapi["paths"])
+                self.assertIn("/events", openapi["paths"])
+                self.assertIn("/events/stream", openapi["paths"])
 
                 models, _ = _get_json_with_headers(f"http://{host}:{port}/models")
                 self.assertEqual(models[0]["name"], "local")
@@ -100,6 +107,10 @@ class ServerTests(unittest.TestCase):
                 )
                 self.assertEqual(run["results"][0]["status"], "preview")
                 self.assertIn("request_id", run)
+
+                events, _ = _get_json_with_headers(f"http://{host}:{port}/events?limit=10")
+                self.assertGreaterEqual(len(events), 1)
+                self.assertEqual(events[0]["category"], "run")
 
                 history, _ = _get_json_with_headers(f"http://{host}:{port}/history?limit=5")
                 self.assertEqual(len(history), 1)
@@ -130,6 +141,9 @@ class ServerTests(unittest.TestCase):
                 self.assertIn("event: plan", plan_stream)
                 self.assertIn("event: end", plan_stream)
 
+                events_stream = _get_text(f"http://{host}:{port}/events/stream?timeout=1&interval=0.05&since_id=0")
+                self.assertIn("event: audit", events_stream)
+
                 undo_plan, _ = _post_json_with_headers(
                     f"http://{host}:{port}/plans/{plan_id}/undo",
                     {"mark_only": True},
@@ -151,7 +165,14 @@ class ServerTests(unittest.TestCase):
                 directshell_factory=_StubDirectShell,
             )
             jobs_db = Path(tmp) / "jobs.db"
-            server = create_server("127.0.0.1", 0, service, api_token="secret", jobs_db_path=str(jobs_db))
+            server = create_server(
+                "127.0.0.1",
+                0,
+                service,
+                api_token="secret",
+                jobs_db_path=str(jobs_db),
+                audit_db_path=str(Path(tmp) / "events.db"),
+            )
             host, port = server.server_address
             thread = threading.Thread(target=server.serve_forever, daemon=True)
             thread.start()
@@ -173,6 +194,10 @@ class ServerTests(unittest.TestCase):
                 dashboard_data = _get_json(f"http://{host}:{port}/dashboard/data?token=secret")
                 self.assertTrue(dashboard_data["health"]["ok"])
                 self.assertIn("metrics", dashboard_data)
+
+                with self.assertRaises(error.HTTPError) as err:
+                    _get_json(f"http://{host}:{port}/events")
+                self.assertEqual(err.exception.code, 401)
 
                 queued = _post_json(
                     f"http://{host}:{port}/run_async",
@@ -243,13 +268,23 @@ class ServerTests(unittest.TestCase):
                     token="secret",
                 )
                 self.assertEqual(rejected_plan["status"], "rejected")
+
+                events = _get_json(f"http://{host}:{port}/events?limit=20", token="secret")
+                self.assertGreaterEqual(len(events), 1)
             finally:
                 server.shutdown()
                 server.server_close()
                 thread.join(timeout=2)
 
             # Verify job history is retained across server restart.
-            server2 = create_server("127.0.0.1", 0, service, api_token="secret", jobs_db_path=str(jobs_db))
+            server2 = create_server(
+                "127.0.0.1",
+                0,
+                service,
+                api_token="secret",
+                jobs_db_path=str(jobs_db),
+                audit_db_path=str(Path(tmp) / "events.db"),
+            )
             host2, port2 = server2.server_address
             thread2 = threading.Thread(target=server2.serve_forever, daemon=True)
             thread2.start()
@@ -270,7 +305,13 @@ class ServerTests(unittest.TestCase):
                 router_loader=lambda _path: _StubRouter(),
                 directshell_factory=_StubDirectShell,
             )
-            server = create_server("127.0.0.1", 0, service, api_token="secret")
+            server = create_server(
+                "127.0.0.1",
+                0,
+                service,
+                api_token="secret",
+                audit_db_path=str(Path(tmp) / "events.db"),
+            )
             host, port = server.server_address
             thread = threading.Thread(target=server.serve_forever, daemon=True)
             thread.start()
@@ -306,7 +347,13 @@ class ServerTests(unittest.TestCase):
                 router_loader=lambda _path: _StubRouter(),
                 directshell_factory=_StubDirectShell,
             )
-            server = create_server("127.0.0.1", 0, service, api_token="secret")
+            server = create_server(
+                "127.0.0.1",
+                0,
+                service,
+                api_token="secret",
+                audit_db_path=str(Path(tmp) / "events.db"),
+            )
             host, port = server.server_address
             thread = threading.Thread(target=server.serve_forever, daemon=True)
             thread.start()
@@ -342,6 +389,7 @@ class ServerTests(unittest.TestCase):
                 rate_limit_rps=1,
                 rate_limit_burst=1,
                 max_request_body_bytes=128,
+                audit_db_path=str(Path(tmp) / "events.db"),
             )
             host, port = server.server_address
             thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -382,6 +430,7 @@ class ServerTests(unittest.TestCase):
                 api_token="secret",
                 jobs_db_path=str(Path(tmp) / "jobs.db"),
                 idempotency_db_path=str(Path(tmp) / "idempotency.db"),
+                audit_db_path=str(Path(tmp) / "events.db"),
             )
             host, port = server.server_address
             thread = threading.Thread(target=server.serve_forever, daemon=True)
