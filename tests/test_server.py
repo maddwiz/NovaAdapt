@@ -167,6 +167,7 @@ class ServerTests(unittest.TestCase):
                 self.assertIn("/run", openapi["paths"])
                 self.assertIn("/jobs/{id}/cancel", openapi["paths"])
                 self.assertIn("/jobs/{id}/stream", openapi["paths"])
+                self.assertIn("/swarm/run", openapi["paths"])
                 self.assertIn("/plans/{id}/stream", openapi["paths"])
                 self.assertIn("/plans/{id}/approve", openapi["paths"])
                 self.assertIn("/plans/{id}/approve_async", openapi["paths"])
@@ -198,6 +199,14 @@ class ServerTests(unittest.TestCase):
                 self.assertEqual(run["results"][0]["status"], "preview")
                 self.assertIn("request_id", run)
 
+                swarm, _ = _post_json_with_headers(
+                    f"http://{host}:{port}/swarm/run",
+                    {"objectives": ["click ok", "click ok again"], "execute": False, "max_agents": 2},
+                )
+                self.assertEqual(swarm["status"], "queued")
+                self.assertEqual(swarm["kind"], "swarm")
+                self.assertEqual(swarm["submitted_jobs"], 2)
+
                 plugin_call, _ = _post_json_with_headers(
                     f"http://{host}:{port}/plugins/novabridge/call",
                     {"route": "/health", "method": "GET"},
@@ -217,7 +226,7 @@ class ServerTests(unittest.TestCase):
                 self.assertTrue(any(item.get("category") == "run" for item in events))
 
                 history, _ = _get_json_with_headers(f"http://{host}:{port}/history?limit=5")
-                self.assertEqual(len(history), 1)
+                self.assertGreaterEqual(len(history), 1)
 
                 created_plan, _ = _post_json_with_headers(
                     f"http://{host}:{port}/plans",

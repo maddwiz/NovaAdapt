@@ -19,6 +19,7 @@
 
 - `POST /run` for objective execution.
 - `POST /run_async` for queued objective execution.
+- `POST /swarm/run` for parallel multi-objective fan-out into async jobs.
 - `GET /plugins`, `GET /plugins/{name}/health`, and `POST /plugins/{name}/call` for first-party tool adapters (`novabridge`, `nova4d`, `novablox`).
 - `POST /feedback` for operator ratings/notes persisted into memory.
 - `GET /jobs` and `GET /jobs/{id}` for job polling.

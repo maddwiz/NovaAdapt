@@ -104,6 +104,12 @@ def build_openapi_spec() -> dict:
                     "responses": {"202": {"description": "Queued"}},
                 }
             },
+            "/swarm/run": {
+                "post": {
+                    "summary": "Queue multiple objectives as parallel async jobs",
+                    "responses": {"202": {"description": "Swarm queued"}},
+                }
+            },
             "/jobs": {
                 "get": {
                     "summary": "List recent async jobs",

@@ -95,6 +95,7 @@ class MCPServerTests(unittest.TestCase):
         tools = server.handle_request({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
         names = [item["name"] for item in tools["result"]["tools"]]
         self.assertIn("novaadapt_run", names)
+        self.assertIn("novaadapt_swarm_run", names)
         self.assertIn("novaadapt_models", names)
         self.assertIn("novaadapt_plugins", names)
         self.assertIn("novaadapt_plugin_health", names)
@@ -122,6 +123,20 @@ class MCPServerTests(unittest.TestCase):
         )
         payload = run_resp["result"]["content"][0]["json"]
         self.assertEqual(payload["objective"], "demo")
+
+        swarm_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 31,
+                "method": "tools/call",
+                "params": {
+                    "name": "novaadapt_swarm_run",
+                    "arguments": {"objectives": ["demo-a", "demo-b"]},
+                },
+            }
+        )
+        swarm_payload = swarm_resp["result"]["content"][0]["json"]
+        self.assertEqual(swarm_payload["submitted_jobs"], 2)
 
         history_resp = server.handle_request(
             {

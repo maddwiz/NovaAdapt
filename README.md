@@ -208,6 +208,7 @@ API endpoints:
 - `GET /events/stream` (SSE audit stream, supports `timeout`, `interval`, `since_id`)
 - `POST /run` with JSON payload
 - `POST /run_async` with JSON payload (returns `job_id`)
+- `POST /swarm/run` with JSON payload (fan out multiple objectives into parallel jobs)
 - `POST /plugins/{name}/call` with JSON payload
 - `POST /feedback` with JSON payload (`rating` 1-10 required)
 - `GET /jobs` and `GET /jobs/{id}`
@@ -331,8 +332,12 @@ PYTHONPATH=core:shared python3 -m novaadapt_core.cli mcp \
 
 Exposed tools:
 - `novaadapt_run`
+- `novaadapt_swarm_run`
 - `novaadapt_models`
 - `novaadapt_check`
+- `novaadapt_plugins`
+- `novaadapt_plugin_health`
+- `novaadapt_plugin_call`
 - `novaadapt_history`
 - `novaadapt_events`
 - `novaadapt_events_wait`
@@ -342,6 +347,7 @@ Exposed tools:
 - `novaadapt_plan_approve`
 - `novaadapt_plan_reject`
 - `novaadapt_plan_undo`
+- `novaadapt_feedback`
 
 ## Docker Deployment
 
@@ -394,8 +400,11 @@ from novaadapt_shared import NovaAdaptAPIClient
 
 client = NovaAdaptAPIClient(base_url="http://127.0.0.1:8787", token="YOUR_CORE_TOKEN")
 print(client.models())
+print(client.plugins())
 print(client.dashboard_data(plans_limit=10, jobs_limit=10, events_limit=10))
 print(client.run("Open browser and go to example.com"))
+print(client.run_swarm(["Open app A", "Open app B"]))
+print(client.submit_feedback(rating=9, objective="Open browser and go to example.com", notes="worked"))
 print(client.retry_failed_plan("plan-id"))
 print(client.retry_failed_plan_async("plan-id"))
 print(client.job_stream("job-id", timeout_seconds=10))

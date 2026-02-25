@@ -389,6 +389,7 @@ def _build_handler(
                 "/plans": lambda body: self._post_create_plan("/plans", body),
                 "/run": lambda body: self._post_run("/run", body),
                 "/run_async": lambda body: self._post_run_async("/run_async", body),
+                "/swarm/run": lambda body: self._post_swarm_run("/swarm/run", body),
                 "/undo": lambda body: self._post_undo("/undo", body),
                 "/check": self._post_check,
                 "/feedback": lambda body: self._post_feedback("/feedback", body),
@@ -801,6 +802,55 @@ def _build_handler(
                 entity_id_key="job_id",
             )
 
+        def _post_swarm_run(self, path: str, payload: dict[str, object]) -> int:
+            objectives = payload.get("objectives")
+            if not isinstance(objectives, list):
+                raise ValueError("'objectives' must be an array")
+            normalized_objectives = [str(item).strip() for item in objectives if str(item).strip()]
+            if not normalized_objectives:
+                raise ValueError("'objectives' must contain at least one non-empty objective")
+
+            requested_max_agents = int(payload.get("max_agents", len(normalized_objectives)))
+            max_agents = min(32, max(1, requested_max_agents))
+            selected = normalized_objectives[:max_agents]
+
+            shared_payload = {
+                "strategy": payload.get("strategy", "single"),
+                "model": payload.get("model"),
+                "candidates": payload.get("candidates"),
+                "fallbacks": payload.get("fallbacks"),
+                "execute": bool(payload.get("execute", False)),
+                "allow_dangerous": bool(payload.get("allow_dangerous", False)),
+                "max_actions": int(payload.get("max_actions", 25)),
+            }
+
+            def _run_swarm() -> tuple[int, dict[str, object]]:
+                jobs: list[dict[str, object]] = []
+                for idx, objective in enumerate(selected, start=1):
+                    run_payload = dict(shared_payload)
+                    run_payload["objective"] = objective
+                    job_id = job_manager.submit(service.run, run_payload)
+                    jobs.append({"index": idx, "objective": objective, "job_id": job_id})
+                return (
+                    202,
+                    {
+                        "status": "queued",
+                        "kind": "swarm",
+                        "total_objectives": len(normalized_objectives),
+                        "submitted_jobs": len(jobs),
+                        "jobs": jobs,
+                    },
+                )
+
+            return self._respond_idempotent(
+                path=path,
+                payload={**payload, "objectives": selected},
+                operation=_run_swarm,
+                category="swarm",
+                action="run",
+                entity_type="swarm",
+            )
+
         def _post_undo(self, path: str, payload: dict[str, object]) -> int:
             return self._respond_idempotent(
                 path=path,
@@ -996,7 +1046,7 @@ def _build_handler(
 
         @staticmethod
         def _is_idempotent_route(path: str) -> bool:
-            if path in {"/run", "/run_async", "/undo", "/plans"}:
+            if path in {"/run", "/run_async", "/swarm/run", "/undo", "/plans"}:
                 return True
             if path in {"/feedback"}:
                 return True

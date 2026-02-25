@@ -40,6 +40,25 @@ class NovaAdaptMCPServer:
                 },
             ),
             MCPTool(
+                name="novaadapt_swarm_run",
+                description="Queue multiple objectives as parallel NovaAdapt async jobs",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "objectives": {"type": "array", "items": {"type": "string"}},
+                        "strategy": {"type": "string", "enum": ["single", "vote"]},
+                        "model": {"type": "string"},
+                        "candidates": {"type": "array", "items": {"type": "string"}},
+                        "fallbacks": {"type": "array", "items": {"type": "string"}},
+                        "execute": {"type": "boolean"},
+                        "allow_dangerous": {"type": "boolean"},
+                        "max_actions": {"type": "integer"},
+                        "max_agents": {"type": "integer"},
+                    },
+                    "required": ["objectives"],
+                },
+            ),
+            MCPTool(
                 name="novaadapt_models",
                 description="List available model endpoints",
                 input_schema={"type": "object", "properties": {}},
@@ -262,6 +281,34 @@ class NovaAdaptMCPServer:
     def _call_tool(self, tool_name: str, arguments: dict[str, Any]) -> Any:
         if tool_name == "novaadapt_run":
             return self.service.run(arguments)
+        if tool_name == "novaadapt_swarm_run":
+            objectives = arguments.get("objectives")
+            if not isinstance(objectives, list):
+                raise ValueError("'objectives' is required and must be an array")
+            normalized = [str(item).strip() for item in objectives if str(item).strip()]
+            if not normalized:
+                raise ValueError("'objectives' must contain at least one non-empty value")
+            max_agents = max(1, min(32, int(arguments.get("max_agents", len(normalized)))))
+            selected = normalized[:max_agents]
+            jobs: list[dict[str, Any]] = []
+            for idx, objective in enumerate(selected, start=1):
+                run_payload = {
+                    "objective": objective,
+                    "strategy": str(arguments.get("strategy", "single")),
+                    "model": arguments.get("model"),
+                    "candidates": arguments.get("candidates"),
+                    "fallbacks": arguments.get("fallbacks"),
+                    "execute": bool(arguments.get("execute", False)),
+                    "allow_dangerous": bool(arguments.get("allow_dangerous", False)),
+                    "max_actions": int(arguments.get("max_actions", 25)),
+                }
+                jobs.append({"index": idx, "objective": objective, "result": self.service.run(run_payload)})
+            return {
+                "status": "completed",
+                "kind": "swarm",
+                "submitted_jobs": len(jobs),
+                "jobs": jobs,
+            }
         if tool_name == "novaadapt_models":
             return self.service.models()
         if tool_name == "novaadapt_check":

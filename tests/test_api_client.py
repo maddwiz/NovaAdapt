@@ -124,6 +124,7 @@ class _Handler(BaseHTTPRequestHandler):
         if self.path in {
             "/run",
             "/run_async",
+            "/swarm/run",
             "/undo",
             "/check",
             "/auth/session",
@@ -153,6 +154,16 @@ class _Handler(BaseHTTPRequestHandler):
                 )
             elif self.path == "/run_async":
                 self._send(202, {"job_id": "job-1", "status": "queued"})
+            elif self.path == "/swarm/run":
+                self._send(
+                    202,
+                    {
+                        "status": "queued",
+                        "kind": "swarm",
+                        "submitted_jobs": len(payload.get("objectives") or []),
+                        "jobs": [{"job_id": "job-1"}, {"job_id": "job-2"}],
+                    },
+                )
             elif self.path == "/jobs/job-1/cancel":
                 self._send(200, {"id": "job-1", "status": "canceled", "canceled": True})
             elif self.path == "/plans":
@@ -252,6 +263,7 @@ class APIClientTests(unittest.TestCase):
         )
         self.assertEqual(client.run("demo", idempotency_key="idem-1")["idempotency"], "idem-1")
         self.assertEqual(client.run_async("demo")["status"], "queued")
+        self.assertEqual(client.run_swarm(["demo-a", "demo-b"])["submitted_jobs"], 2)
         self.assertEqual(client.jobs(limit=5)[0]["id"], "job-1")
         self.assertEqual(client.job("job-1")["status"], "succeeded")
         stream_events = client.job_stream("job-1", timeout_seconds=2, interval_seconds=0.1)

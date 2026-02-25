@@ -130,6 +130,18 @@ class NovaAdaptAPIClient:
             return payload
         raise APIClientError("Expected object payload from /run_async")
 
+    def run_swarm(
+        self,
+        objectives: list[str],
+        idempotency_key: str | None = None,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        body = {"objectives": objectives, **kwargs}
+        payload = self._post_json("/swarm/run", body, idempotency_key=idempotency_key)
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /swarm/run")
+
     def create_plan(self, objective: str, idempotency_key: str | None = None, **kwargs: Any) -> dict[str, Any]:
         body = {"objective": objective, **kwargs}
         payload = self._post_json("/plans", body, idempotency_key=idempotency_key)
