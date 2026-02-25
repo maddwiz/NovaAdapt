@@ -1,6 +1,7 @@
 import sqlite3
 import tempfile
 import unittest
+from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -92,7 +93,7 @@ class IdempotencyStoreTests(unittest.TestCase):
             )
 
             old_timestamp = datetime(2000, 1, 1, tzinfo=timezone.utc).isoformat()
-            with sqlite3.connect(db) as conn:
+            with closing(sqlite3.connect(db)) as conn:
                 conn.execute(
                     "UPDATE idempotency_entries SET created_at = ?, updated_at = ? WHERE key = ?",
                     (old_timestamp, old_timestamp, "key-1"),
@@ -132,7 +133,7 @@ class IdempotencyStoreTests(unittest.TestCase):
             self.assertEqual(state, "new")
 
             old_timestamp = datetime(2000, 1, 1, tzinfo=timezone.utc).isoformat()
-            with sqlite3.connect(db) as conn:
+            with closing(sqlite3.connect(db)) as conn:
                 conn.execute(
                     "UPDATE idempotency_entries SET created_at = ?, updated_at = ? WHERE key = ?",
                     (old_timestamp, old_timestamp, "old-key"),

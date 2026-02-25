@@ -54,6 +54,7 @@ The bridge additionally exposes `/metrics` for request and error counters.
 - Token bootstrap helper `installer/gen_dev_tokens.sh` writes `deploy/.env` for local stack auth.
 - Benchmark runner (`novaadapt benchmark`) provides repeatable success-rate measurement from task suites.
 - MCP-compatible stdio server (`novaadapt mcp`) exposes core operations as tools for external agents.
+- Backup command (`novaadapt backup`) snapshots SQLite state for rollback-safe upgrades.
 
 ## Reliability Track
 

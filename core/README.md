@@ -11,6 +11,7 @@ Contains:
 - History/undo command support via shared SQLite queue.
 - Audit log query command support (`novaadapt events`).
 - Audit event watch support (`novaadapt events-watch`).
+- SQLite snapshot command support (`novaadapt backup`).
 - Service layer reusable by CLI and HTTP API server.
 - Async job manager for long-running API requests.
 - SSE job stream endpoint for live status (`GET /jobs/{id}/stream`).

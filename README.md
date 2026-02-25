@@ -122,7 +122,15 @@ novaadapt check --config config/models.local.json
 novaadapt check --config config/models.local.json --models local-qwen,openai-gpt
 ```
 
-8. Start local HTTP API (for phone/glasses/bridge clients):
+8. Snapshot local state databases (recommended before upgrades):
+
+```bash
+novaadapt backup --out-dir ~/.novaadapt/backups
+```
+
+The command snapshots local SQLite stores (`actions`, `plans`, `jobs`, `idempotency`, `audit`) using timestamped files and reports which ones were missing.
+
+9. Start local HTTP API (for phone/glasses/bridge clients):
 
 ```bash
 novaadapt serve \
@@ -183,7 +191,7 @@ When token auth is enabled, browser dashboard usage supports:
 The page will reuse that token for `/dashboard/data` polling.
 Dashboard now includes one-click controls for pending plan approval/rejection, job cancellation, and plan undo marking.
 
-9. Run full local smoke test (core + bridge):
+10. Run full local smoke test (core + bridge):
 
 ```bash
 make smoke

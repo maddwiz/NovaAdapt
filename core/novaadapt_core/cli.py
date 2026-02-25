@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 
+from .backup import backup_databases
 from .benchmark import run_benchmark
 from .mcp_server import NovaAdaptMCPServer
 from .server import run_server
@@ -21,8 +22,14 @@ def _default_config_path() -> Path:
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="novaadapt", description="NovaAdapt desktop orchestrator")
     sub = parser.add_subparsers(dest="command", required=True)
+    default_actions_db = Path.home() / ".novaadapt" / "actions.db"
     default_plans_db = Path(os.getenv("NOVAADAPT_PLANS_DB", str(Path.home() / ".novaadapt" / "plans.db")))
+    default_jobs_db = Path(os.getenv("NOVAADAPT_JOBS_DB", str(Path.home() / ".novaadapt" / "jobs.db")))
+    default_idempotency_db = Path(
+        os.getenv("NOVAADAPT_IDEMPOTENCY_DB", str(Path.home() / ".novaadapt" / "idempotency.db"))
+    )
     default_audit_db = Path(os.getenv("NOVAADAPT_AUDIT_DB", str(Path.home() / ".novaadapt" / "events.db")))
+    default_backup_dir = Path(os.getenv("NOVAADAPT_BACKUP_DIR", str(Path.home() / ".novaadapt" / "backups")))
 
     list_cmd = sub.add_parser("models", help="List configured model endpoints")
     list_cmd.add_argument("--config", type=Path, default=_default_config_path())
@@ -183,13 +190,41 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Optional output path for benchmark report JSON",
     )
 
+    backup_cmd = sub.add_parser("backup", help="Create timestamped SQLite backups for local NovaAdapt state")
+    backup_cmd.add_argument(
+        "--out-dir",
+        type=Path,
+        default=default_backup_dir,
+        help="Output directory for backup snapshots (default: ~/.novaadapt/backups)",
+    )
+    backup_cmd.add_argument(
+        "--timestamp",
+        default=None,
+        help="Optional UTC timestamp suffix used in backup filenames (YYYYMMDDTHHMMSSZ)",
+    )
+    backup_cmd.add_argument(
+        "--db-path",
+        type=Path,
+        default=default_actions_db,
+        help="Path to actions database",
+    )
+    backup_cmd.add_argument("--plans-db-path", type=Path, default=default_plans_db, help="Path to plans database")
+    backup_cmd.add_argument("--jobs-db-path", type=Path, default=default_jobs_db, help="Path to jobs database")
+    backup_cmd.add_argument(
+        "--idempotency-db-path",
+        type=Path,
+        default=default_idempotency_db,
+        help="Path to idempotency database",
+    )
+    backup_cmd.add_argument("--audit-db-path", type=Path, default=default_audit_db, help="Path to audit database")
+
     serve_cmd = sub.add_parser("serve", help="Run NovaAdapt HTTP API server")
     serve_cmd.add_argument("--config", type=Path, default=_default_config_path())
     serve_cmd.add_argument("--db-path", type=Path, default=None)
     serve_cmd.add_argument(
         "--jobs-db-path",
         type=Path,
-        default=Path(os.getenv("NOVAADAPT_JOBS_DB", str(Path.home() / ".novaadapt" / "jobs.db"))),
+        default=default_jobs_db,
         help="Path to persisted async jobs SQLite database",
     )
     serve_cmd.add_argument(
@@ -201,7 +236,7 @@ def _build_parser() -> argparse.ArgumentParser:
     serve_cmd.add_argument(
         "--idempotency-db-path",
         type=Path,
-        default=Path(os.getenv("NOVAADAPT_IDEMPOTENCY_DB", str(Path.home() / ".novaadapt" / "idempotency.db"))),
+        default=default_idempotency_db,
         help="Path to idempotency key SQLite database",
     )
     serve_cmd.add_argument(
@@ -435,6 +470,21 @@ def main() -> None:
                 run_fn=service.run,
                 suite_path=args.suite,
                 output_path=args.out,
+            )
+            print(json.dumps(result, indent=2))
+            return
+
+        if args.command == "backup":
+            result = backup_databases(
+                out_dir=args.out_dir,
+                timestamp=args.timestamp,
+                databases={
+                    "actions": args.db_path,
+                    "plans": args.plans_db_path,
+                    "jobs": args.jobs_db_path,
+                    "idempotency": args.idempotency_db_path,
+                    "audit": args.audit_db_path,
+                },
             )
             print(json.dumps(result, indent=2))
             return
