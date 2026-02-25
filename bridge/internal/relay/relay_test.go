@@ -177,6 +177,11 @@ func TestForwardArrayWithAuthAndRequestID(t *testing.T) {
 		case "/plans/plan1/approve_async":
 			w.WriteHeader(http.StatusAccepted)
 			_, _ = w.Write([]byte(`{"job_id":"plan-job-1","status":"queued","kind":"plan_approval"}`))
+		case "/plans/plan1/retry_failed":
+			_, _ = w.Write([]byte(`{"id":"plan1","status":"executed"}`))
+		case "/plans/plan1/retry_failed_async":
+			w.WriteHeader(http.StatusAccepted)
+			_, _ = w.Write([]byte(`{"job_id":"plan-job-retry-1","status":"queued","kind":"plan_retry_failed"}`))
 		case "/plans/plan1/reject":
 			_, _ = w.Write([]byte(`{"id":"plan1","status":"rejected"}`))
 		case "/plans/plan1/undo":
@@ -370,6 +375,30 @@ func TestForwardArrayWithAuthAndRequestID(t *testing.T) {
 	h.ServeHTTP(rrApprovePlanAsync, reqApprovePlanAsync)
 	if rrApprovePlanAsync.Code != http.StatusAccepted {
 		t.Fatalf("expected 202 got %d body=%s", rrApprovePlanAsync.Code, rrApprovePlanAsync.Body.String())
+	}
+
+	rrRetryFailedPlan := httptest.NewRecorder()
+	reqRetryFailedPlan := httptest.NewRequest(
+		http.MethodPost,
+		"/plans/plan1/retry_failed",
+		strings.NewReader(`{"allow_dangerous":true}`),
+	)
+	reqRetryFailedPlan.Header.Set("Authorization", "Bearer bridge")
+	h.ServeHTTP(rrRetryFailedPlan, reqRetryFailedPlan)
+	if rrRetryFailedPlan.Code != http.StatusOK {
+		t.Fatalf("expected 200 got %d body=%s", rrRetryFailedPlan.Code, rrRetryFailedPlan.Body.String())
+	}
+
+	rrRetryFailedPlanAsync := httptest.NewRecorder()
+	reqRetryFailedPlanAsync := httptest.NewRequest(
+		http.MethodPost,
+		"/plans/plan1/retry_failed_async",
+		strings.NewReader(`{"allow_dangerous":true}`),
+	)
+	reqRetryFailedPlanAsync.Header.Set("Authorization", "Bearer bridge")
+	h.ServeHTTP(rrRetryFailedPlanAsync, reqRetryFailedPlanAsync)
+	if rrRetryFailedPlanAsync.Code != http.StatusAccepted {
+		t.Fatalf("expected 202 got %d body=%s", rrRetryFailedPlanAsync.Code, rrRetryFailedPlanAsync.Body.String())
 	}
 
 	rrRejectPlan := httptest.NewRecorder()
