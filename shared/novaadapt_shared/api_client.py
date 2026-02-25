@@ -99,6 +99,28 @@ class NovaAdaptAPIClient:
             return payload
         raise APIClientError("Expected object payload from /plans/{id}/approve")
 
+    def retry_failed_plan(
+        self,
+        plan_id: str,
+        *,
+        allow_dangerous: bool = True,
+        action_retry_attempts: int = 2,
+        action_retry_backoff_seconds: float = 0.2,
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        payload = self.approve_plan(
+            plan_id=plan_id,
+            idempotency_key=idempotency_key,
+            execute=True,
+            retry_failed_only=True,
+            allow_dangerous=bool(allow_dangerous),
+            action_retry_attempts=max(0, int(action_retry_attempts)),
+            action_retry_backoff_seconds=max(0.0, float(action_retry_backoff_seconds)),
+        )
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from retry_failed_plan")
+
     def approve_plan_async(self, plan_id: str, idempotency_key: str | None = None, **kwargs: Any) -> dict[str, Any]:
         payload = self._post_json(
             f"/plans/{plan_id}/approve_async",

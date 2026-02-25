@@ -362,6 +362,7 @@ client = NovaAdaptAPIClient(base_url="http://127.0.0.1:8787", token="YOUR_CORE_T
 print(client.models())
 print(client.dashboard_data(plans_limit=10, jobs_limit=10, events_limit=10))
 print(client.run("Open browser and go to example.com"))
+print(client.retry_failed_plan("plan-id"))
 print(client.job_stream("job-id", timeout_seconds=10))
 print(client.plan_stream("plan-id", timeout_seconds=10))
 print(client.events(limit=20))

@@ -230,6 +230,7 @@ class APIClientTests(unittest.TestCase):
         self.assertEqual(client.plans(limit=3)[0]["id"], "plan-1")
         self.assertEqual(client.plan("plan-1")["status"], "pending")
         self.assertEqual(client.approve_plan("plan-1", execute=True)["status"], "executed")
+        self.assertEqual(client.retry_failed_plan("plan-1")["status"], "executed")
         self.assertEqual(client.approve_plan_async("plan-1", execute=True)["kind"], "plan_approval")
         self.assertEqual(client.reject_plan("plan-1", reason="nope")["status"], "rejected")
         self.assertEqual(client.undo_plan("plan-1", mark_only=True)["plan_id"], "plan-1")
