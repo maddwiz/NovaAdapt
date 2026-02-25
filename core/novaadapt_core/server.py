@@ -359,14 +359,15 @@ def _build_handler(
             if handler is not None:
                 return int(handler(query))
 
-            if path.startswith("/jobs/") and path.endswith("/stream"):
-                return int(self._get_job_stream(path, query))
-            if path.startswith("/jobs/"):
-                return int(self._get_job_item(path, query))
-            if path.startswith("/plans/") and path.endswith("/stream"):
-                return int(self._get_plan_stream(path, query))
-            if path.startswith("/plans/"):
-                return int(self._get_plan_item(path, query))
+            dynamic_routes: tuple[tuple[str, str, object], ...] = (
+                ("/jobs/", "/stream", self._get_job_stream),
+                ("/jobs/", "", self._get_job_item),
+                ("/plans/", "/stream", self._get_plan_stream),
+                ("/plans/", "", self._get_plan_item),
+            )
+            for prefix, suffix, route_handler in dynamic_routes:
+                if path.startswith(prefix) and (suffix == "" or path.endswith(suffix)):
+                    return int(route_handler(path, query))
 
             self._send_json(404, {"error": "Not found"})
             return 404
@@ -382,31 +383,29 @@ def _build_handler(
 
             payload = self._read_json_body()
 
-            if path == "/plans":
-                return self._post_create_plan(path, payload)
-            if path == "/run":
-                return self._post_run(path, payload)
-            if path == "/run_async":
-                return self._post_run_async(path, payload)
-            if path == "/undo":
-                return self._post_undo(path, payload)
-            if path == "/check":
-                return self._post_check(payload)
+            exact_routes: dict[str, object] = {
+                "/plans": lambda body: self._post_create_plan("/plans", body),
+                "/run": lambda body: self._post_run("/run", body),
+                "/run_async": lambda body: self._post_run_async("/run_async", body),
+                "/undo": lambda body: self._post_undo("/undo", body),
+                "/check": self._post_check,
+            }
+            handler = exact_routes.get(path)
+            if handler is not None:
+                return int(handler(payload))
 
-            if path.startswith("/jobs/") and path.endswith("/cancel"):
-                return self._post_cancel_job(path, payload)
-            if path.startswith("/plans/") and path.endswith("/approve_async"):
-                return self._post_plan_approve_async(path, payload)
-            if path.startswith("/plans/") and path.endswith("/retry_failed_async"):
-                return self._post_plan_retry_failed_async(path, payload)
-            if path.startswith("/plans/") and path.endswith("/retry_failed"):
-                return self._post_plan_retry_failed(path, payload)
-            if path.startswith("/plans/") and path.endswith("/approve"):
-                return self._post_plan_approve(path, payload)
-            if path.startswith("/plans/") and path.endswith("/reject"):
-                return self._post_plan_reject(path, payload)
-            if path.startswith("/plans/") and path.endswith("/undo"):
-                return self._post_plan_undo(path, payload)
+            dynamic_routes: tuple[tuple[str, str, object], ...] = (
+                ("/jobs/", "/cancel", self._post_cancel_job),
+                ("/plans/", "/approve_async", self._post_plan_approve_async),
+                ("/plans/", "/retry_failed_async", self._post_plan_retry_failed_async),
+                ("/plans/", "/retry_failed", self._post_plan_retry_failed),
+                ("/plans/", "/approve", self._post_plan_approve),
+                ("/plans/", "/reject", self._post_plan_reject),
+                ("/plans/", "/undo", self._post_plan_undo),
+            )
+            for prefix, suffix, route_handler in dynamic_routes:
+                if path.startswith(prefix) and path.endswith(suffix):
+                    return int(route_handler(path, payload))
 
             self._send_json(404, {"error": "Not found"})
             return 404
