@@ -7,7 +7,7 @@ Realtime companion console for NovaAdapt bridge WebSocket control.
 - `realtime_console.html`: single-file mobile-friendly UI.
   - Connects to bridge `/ws`.
   - Issues scoped session tokens via `/auth/session`.
-  - Revokes scoped session tokens via `/auth/session/revoke`.
+  - Revokes scoped sessions via `/auth/session/revoke` (token or `session_id`).
   - Streams live audit events.
   - Sends authenticated command requests (run/plan approve/job cancel/etc.).
   - Shows command responses and errors in a timestamped event log.

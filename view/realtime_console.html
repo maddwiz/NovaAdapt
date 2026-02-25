@@ -244,6 +244,16 @@
         </div>
         <div class="row">
           <div>
+            <label for="session-id">Session ID</label>
+            <input id="session-id" placeholder="auto-filled after issue; optional for revoke" />
+          </div>
+          <div>
+            <label for="revoke-expires-at">Revoke Expires At (unix)</label>
+            <input id="revoke-expires-at" type="number" value="" min="1" />
+          </div>
+        </div>
+        <div class="row">
+          <div>
             <label for="since-id">Since ID</label>
             <input id="since-id" type="number" value="0" min="0" />
           </div>
@@ -441,7 +451,11 @@
           return;
         }
         $("token").value = payload.token;
+        if (payload.session_id) {
+          $("session-id").value = payload.session_id;
+        }
         appendLog("session_issued", {
+          session_id: payload.session_id,
           subject: payload.subject,
           scopes: payload.scopes,
           device_id: payload.device_id,
@@ -459,6 +473,8 @@
       const bridgeURL = buildBridgeHTTPURL();
       const adminToken = $("admin-token").value.trim();
       const tokenToRevoke = $("token").value.trim();
+      const sessionID = $("session-id").value.trim();
+      const revokeExpiresAt = Number($("revoke-expires-at").value || 0);
 
       if (!bridgeURL) {
         appendLog("error", "bridge HTTP URL is required");
@@ -468,8 +484,8 @@
         appendLog("error", "admin token is required to revoke a session token");
         return;
       }
-      if (!tokenToRevoke) {
-        appendLog("error", "session token is required to revoke");
+      if (!tokenToRevoke && !sessionID) {
+        appendLog("error", "session token or session id is required to revoke");
         return;
       }
 
@@ -477,13 +493,23 @@
         "Authorization": `Bearer ${adminToken}`,
         "Content-Type": "application/json",
       };
+      const body = {};
+      if (tokenToRevoke) {
+        body.token = tokenToRevoke;
+      }
+      if (sessionID) {
+        body.session_id = sessionID;
+      }
+      if (Number.isFinite(revokeExpiresAt) && revokeExpiresAt > 0) {
+        body.expires_at = Math.floor(revokeExpiresAt);
+      }
 
-      appendLog("session_revoke_request", { bridgeURL });
+      appendLog("session_revoke_request", { bridgeURL, body });
       try {
         const response = await fetch(`${bridgeURL}/auth/session/revoke`, {
           method: "POST",
           headers,
-          body: JSON.stringify({ token: tokenToRevoke }),
+          body: JSON.stringify(body),
         });
         const raw = await response.text();
         let payload = { raw };

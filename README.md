@@ -284,7 +284,7 @@ python3 -m http.server 8088
 ```
 
 Open `http://127.0.0.1:8088/realtime_console.html`.
-The console can mint scoped bridge session tokens via `POST /auth/session` and use them for websocket control.
+The console can mint scoped bridge session tokens via `POST /auth/session`, revoke by token/session ID, and use sessions for websocket control.
 
 One-command local operator stack (core + bridge + optional view server):
 
