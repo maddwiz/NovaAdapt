@@ -152,6 +152,9 @@ func TestWebSocketCommandAndEventStreaming(t *testing.T) {
 				_, _ = w.Write([]byte(`{"error":"missing execute true"}`))
 				return
 			}
+			w.Header().Set("X-Request-ID", "core-rid-1")
+			w.Header().Set("Idempotency-Key", r.Header.Get("Idempotency-Key"))
+			w.Header().Set("X-Idempotency-Replayed", "false")
 			w.WriteHeader(http.StatusAccepted)
 			_, _ = w.Write([]byte(`{"job_id":"plan-job-1","status":"queued","kind":"plan_approval"}`))
 		default:
@@ -224,6 +227,15 @@ func TestWebSocketCommandAndEventStreaming(t *testing.T) {
 	payload, ok := result["payload"].(map[string]any)
 	if !ok || payload["job_id"] != "plan-job-1" {
 		t.Fatalf("unexpected command payload: %#v", result["payload"])
+	}
+	if result["idempotency_key"] != "idem-ws-1" {
+		t.Fatalf("expected idempotency key in command result, got %#v", result["idempotency_key"])
+	}
+	if result["core_request_id"] != "core-rid-1" {
+		t.Fatalf("expected core request id in command result, got %#v", result["core_request_id"])
+	}
+	if replayed, ok := result["replayed"].(bool); !ok || replayed {
+		t.Fatalf("expected replayed=false, got %#v", result["replayed"])
 	}
 
 	if err := conn.WriteJSON(map[string]any{"type": "set_since_id", "id": "cursor-1", "since_id": 1}); err != nil {

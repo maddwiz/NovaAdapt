@@ -44,7 +44,7 @@ Server-to-client message types:
 
 - `hello` - initial handshake metadata.
 - `event` - forwarded audit events from core (`/events/stream`).
-- `command_result` - response for an issued command.
+- `command_result` - response for an issued command (includes `core_request_id`, `idempotency_key`, `replayed`).
 - `ack`, `pong`, `error`.
 
 Client-to-server message types:

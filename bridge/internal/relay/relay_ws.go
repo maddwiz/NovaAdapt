@@ -246,7 +246,7 @@ func (h *Handler) handleWSCommand(writer *wsJSONWriter, requestID string, msg ws
 	}
 
 	commandRequestID := normalizeRequestID("")
-	statusCode, payload, err := h.coreJSONRequest(
+	coreResult, err := h.coreJSONRequest(
 		method,
 		path,
 		query,
@@ -266,12 +266,15 @@ func (h *Handler) handleWSCommand(writer *wsJSONWriter, requestID string, msg ws
 	}
 	return writer.write(
 		map[string]any{
-			"type":         "command_result",
-			"id":           msg.ID,
-			"status":       statusCode,
-			"payload":      payload,
-			"core_request": commandRequestID,
-			"request_id":   requestID,
+			"type":            "command_result",
+			"id":              msg.ID,
+			"status":          coreResult.StatusCode,
+			"payload":         coreResult.Payload,
+			"core_request":    commandRequestID,
+			"core_request_id": coreResult.CoreRequestID,
+			"idempotency_key": coreResult.IdempotencyKey,
+			"replayed":        coreResult.ReplayDetected,
+			"request_id":      requestID,
 		},
 	)
 }
@@ -311,6 +314,14 @@ func (h *Handler) pollAuditEvents(
 	return out, nextSinceID, nil
 }
 
+type coreJSONResult struct {
+	StatusCode     int
+	Payload        any
+	CoreRequestID  string
+	IdempotencyKey string
+	ReplayDetected bool
+}
+
 func (h *Handler) coreJSONRequest(
 	method string,
 	corePath string,
@@ -318,10 +329,10 @@ func (h *Handler) coreJSONRequest(
 	requestID string,
 	idempotencyKey string,
 	body map[string]any,
-) (int, any, error) {
+) (coreJSONResult, error) {
 	target, err := joinURL(h.cfg.CoreBaseURL, corePath, rawQuery)
 	if err != nil {
-		return http.StatusBadGateway, nil, fmt.Errorf("failed to build core URL: %w", err)
+		return coreJSONResult{StatusCode: http.StatusBadGateway}, fmt.Errorf("failed to build core URL: %w", err)
 	}
 
 	var reqBody io.Reader
@@ -331,14 +342,14 @@ func (h *Handler) coreJSONRequest(
 		}
 		encoded, err := json.Marshal(body)
 		if err != nil {
-			return http.StatusBadRequest, nil, fmt.Errorf("failed to encode command body: %w", err)
+			return coreJSONResult{StatusCode: http.StatusBadRequest}, fmt.Errorf("failed to encode command body: %w", err)
 		}
 		reqBody = bytes.NewReader(encoded)
 	}
 
 	req, err := http.NewRequest(method, target, reqBody)
 	if err != nil {
-		return http.StatusBadGateway, nil, fmt.Errorf("failed to create core request: %w", err)
+		return coreJSONResult{StatusCode: http.StatusBadGateway}, fmt.Errorf("failed to create core request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Request-ID", requestID)
@@ -351,13 +362,13 @@ func (h *Handler) coreJSONRequest(
 
 	resp, err := h.client.Do(req)
 	if err != nil {
-		return http.StatusBadGateway, nil, fmt.Errorf("core API unreachable: %w", err)
+		return coreJSONResult{StatusCode: http.StatusBadGateway}, fmt.Errorf("core API unreachable: %w", err)
 	}
 	defer resp.Body.Close()
 
 	raw, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return http.StatusBadGateway, nil, fmt.Errorf("failed to read core response: %w", err)
+		return coreJSONResult{StatusCode: http.StatusBadGateway}, fmt.Errorf("failed to read core response: %w", err)
 	}
 
 	payload, ok := decodeAnyJSON(raw)
@@ -366,7 +377,14 @@ func (h *Handler) coreJSONRequest(
 	} else {
 		payload = attachRequestID(payload, requestID)
 	}
-	return resp.StatusCode, payload, nil
+	result := coreJSONResult{
+		StatusCode:     resp.StatusCode,
+		Payload:        payload,
+		CoreRequestID:  strings.TrimSpace(resp.Header.Get("X-Request-ID")),
+		IdempotencyKey: strings.TrimSpace(resp.Header.Get("Idempotency-Key")),
+		ReplayDetected: strings.EqualFold(strings.TrimSpace(resp.Header.Get("X-Idempotency-Replayed")), "true"),
+	}
+	return result, nil
 }
 
 func (h *Handler) coreRawRequest(
