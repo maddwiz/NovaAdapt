@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from pathlib import Path
 from typing import Any, Callable
 
@@ -342,6 +343,37 @@ class NovaAdaptService:
             entity_id=entity_id,
             since_id=(int(since_id) if since_id is not None else None),
         )
+
+    def events_wait(
+        self,
+        *,
+        timeout_seconds: float = 30.0,
+        interval_seconds: float = 0.25,
+        limit: int = 100,
+        category: str | None = None,
+        entity_type: str | None = None,
+        entity_id: str | None = None,
+        since_id: int | None = None,
+    ) -> list[dict[str, Any]]:
+        timeout = min(300.0, max(0.1, float(timeout_seconds)))
+        interval = min(5.0, max(0.01, float(interval_seconds)))
+        deadline = time.monotonic() + timeout
+        marker = int(since_id) if since_id is not None else None
+
+        while True:
+            rows = self.events(
+                limit=max(1, int(limit)),
+                category=category,
+                entity_type=entity_type,
+                entity_id=entity_id,
+                since_id=marker,
+            )
+            if rows:
+                # events() returns descending; watchers generally want oldest-first.
+                return list(reversed(rows))
+            if time.monotonic() >= deadline:
+                return []
+            time.sleep(interval)
 
     @staticmethod
     def _as_name_list(value: object) -> list[str]:

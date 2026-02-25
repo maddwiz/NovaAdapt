@@ -78,6 +78,22 @@ class NovaAdaptMCPServer:
                 },
             ),
             MCPTool(
+                name="novaadapt_events_wait",
+                description="Wait for new audit events and return when available or timeout",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "timeout_seconds": {"type": "number"},
+                        "interval_seconds": {"type": "number"},
+                        "limit": {"type": "integer"},
+                        "category": {"type": "string"},
+                        "entity_type": {"type": "string"},
+                        "entity_id": {"type": "string"},
+                        "since_id": {"type": "integer"},
+                    },
+                },
+            ),
+            MCPTool(
                 name="novaadapt_plan_create",
                 description="Create a pending approval plan from objective",
                 input_schema={
@@ -218,6 +234,16 @@ class NovaAdaptMCPServer:
             return self.service.history(limit=limit)
         if tool_name == "novaadapt_events":
             return self.service.events(
+                limit=int(arguments.get("limit", 100)),
+                category=str(arguments.get("category")).strip() if arguments.get("category") else None,
+                entity_type=str(arguments.get("entity_type")).strip() if arguments.get("entity_type") else None,
+                entity_id=str(arguments.get("entity_id")).strip() if arguments.get("entity_id") else None,
+                since_id=int(arguments.get("since_id")) if arguments.get("since_id") is not None else None,
+            )
+        if tool_name == "novaadapt_events_wait":
+            return self.service.events_wait(
+                timeout_seconds=float(arguments.get("timeout_seconds", 30.0)),
+                interval_seconds=float(arguments.get("interval_seconds", 0.25)),
                 limit=int(arguments.get("limit", 100)),
                 category=str(arguments.get("category")).strip() if arguments.get("category") else None,
                 entity_type=str(arguments.get("entity_type")).strip() if arguments.get("entity_type") else None,

@@ -72,6 +72,16 @@ def _build_parser() -> argparse.ArgumentParser:
     events_cmd.add_argument("--since-id", type=int, default=None)
     events_cmd.add_argument("--audit-db-path", type=Path, default=default_audit_db)
 
+    events_watch_cmd = sub.add_parser("events-watch", help="Wait for new audit events")
+    events_watch_cmd.add_argument("--timeout-seconds", type=float, default=30.0)
+    events_watch_cmd.add_argument("--interval-seconds", type=float, default=0.25)
+    events_watch_cmd.add_argument("--limit", type=int, default=100)
+    events_watch_cmd.add_argument("--category", default=None)
+    events_watch_cmd.add_argument("--entity-type", default=None)
+    events_watch_cmd.add_argument("--entity-id", default=None)
+    events_watch_cmd.add_argument("--since-id", type=int, default=None)
+    events_watch_cmd.add_argument("--audit-db-path", type=Path, default=default_audit_db)
+
     undo_cmd = sub.add_parser("undo", help="Undo a recorded action")
     undo_cmd.add_argument("--id", type=int, default=None, help="Specific action log id to undo")
     undo_cmd.add_argument(
@@ -351,6 +361,27 @@ def main() -> None:
             print(
                 json.dumps(
                     service.events(
+                        limit=max(1, args.limit),
+                        category=(str(args.category).strip() if args.category else None),
+                        entity_type=(str(args.entity_type).strip() if args.entity_type else None),
+                        entity_id=(str(args.entity_id).strip() if args.entity_id else None),
+                        since_id=args.since_id,
+                    ),
+                    indent=2,
+                )
+            )
+            return
+
+        if args.command == "events-watch":
+            service = NovaAdaptService(
+                default_config=_default_config_path(),
+                audit_db_path=args.audit_db_path,
+            )
+            print(
+                json.dumps(
+                    service.events_wait(
+                        timeout_seconds=float(args.timeout_seconds),
+                        interval_seconds=float(args.interval_seconds),
                         limit=max(1, args.limit),
                         category=(str(args.category).strip() if args.category else None),
                         entity_type=(str(args.entity_type).strip() if args.entity_type else None),

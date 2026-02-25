@@ -101,6 +101,7 @@ Inspect persisted audit events:
 ```bash
 novaadapt events --limit 20
 novaadapt events --category plans --entity-type plan
+novaadapt events-watch --since-id 120 --timeout-seconds 10
 ```
 
 6. Create and manage approval plans:
@@ -214,6 +215,7 @@ Exposed tools:
 - `novaadapt_check`
 - `novaadapt_history`
 - `novaadapt_events`
+- `novaadapt_events_wait`
 - `novaadapt_plan_create`
 - `novaadapt_plans`
 - `novaadapt_plan_get`

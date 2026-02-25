@@ -28,6 +28,29 @@ class _StubService:
             }
         ]
 
+    def events_wait(
+        self,
+        timeout_seconds=30.0,
+        interval_seconds=0.25,
+        limit=100,
+        category=None,
+        entity_type=None,
+        entity_id=None,
+        since_id=None,
+    ):
+        return [
+            {
+                "id": 11,
+                "category": category or "run",
+                "timeout_seconds": timeout_seconds,
+                "interval_seconds": interval_seconds,
+                "entity_type": entity_type,
+                "entity_id": entity_id,
+                "since_id": since_id,
+                "limit": limit,
+            }
+        ]
+
     def create_plan(self, payload):
         return {"id": "plan-1", "objective": payload.get("objective"), "status": "pending"}
 
@@ -62,6 +85,7 @@ class MCPServerTests(unittest.TestCase):
         self.assertIn("novaadapt_run", names)
         self.assertIn("novaadapt_models", names)
         self.assertIn("novaadapt_events", names)
+        self.assertIn("novaadapt_events_wait", names)
         self.assertIn("novaadapt_plan_create", names)
         self.assertIn("novaadapt_plan_approve", names)
         self.assertIn("novaadapt_plan_undo", names)
@@ -111,6 +135,21 @@ class MCPServerTests(unittest.TestCase):
         events_payload = events_resp["result"]["content"][0]["json"]
         self.assertEqual(events_payload[0]["category"], "plans")
         self.assertEqual(events_payload[0]["since_id"], 9)
+
+        events_wait_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 42,
+                "method": "tools/call",
+                "params": {
+                    "name": "novaadapt_events_wait",
+                    "arguments": {"timeout_seconds": 2.0, "interval_seconds": 0.1, "entity_type": "plan"},
+                },
+            }
+        )
+        events_wait_payload = events_wait_resp["result"]["content"][0]["json"]
+        self.assertEqual(events_wait_payload[0]["entity_type"], "plan")
+        self.assertEqual(events_wait_payload[0]["timeout_seconds"], 2.0)
 
         plan_create_resp = server.handle_request(
             {

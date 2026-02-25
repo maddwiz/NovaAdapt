@@ -202,6 +202,39 @@ class ServiceTests(unittest.TestCase):
             self.assertEqual(len(newer_events), 1)
             self.assertEqual(newer_events[0]["category"], "plans")
 
+    def test_events_wait_returns_new_rows_or_timeout(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            events_db = Path(tmp) / "events.db"
+            store = AuditStore(events_db)
+            first = store.append(
+                category="run",
+                action="run_async",
+                status="ok",
+                entity_type="job",
+                entity_id="job-1",
+            )
+            second = store.append(
+                category="plans",
+                action="approve",
+                status="ok",
+                entity_type="plan",
+                entity_id="plan-1",
+            )
+
+            service = NovaAdaptService(
+                default_config=Path("unused.json"),
+                audit_db_path=events_db,
+                router_loader=lambda _path: _StubRouter(),
+                directshell_factory=_StubDirectShell,
+            )
+
+            rows = service.events_wait(since_id=first["id"], timeout_seconds=0.2, interval_seconds=0.01)
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0]["id"], second["id"])
+
+            timed_out = service.events_wait(since_id=second["id"], timeout_seconds=0.1, interval_seconds=0.01)
+            self.assertEqual(timed_out, [])
+
 
 if __name__ == "__main__":
     unittest.main()
