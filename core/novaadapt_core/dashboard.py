@@ -92,7 +92,7 @@ def render_dashboard_html() -> str:
 <body>
   <div class=\"wrap\">
     <h1>NovaAdapt Core Dashboard</h1>
-    <div class=\"sub\">Live operational view for health, metrics, and async jobs.</div>
+    <div class=\"sub\">Live operational view for health, metrics, jobs, plans, and audit events.</div>
 
     <div class=\"grid\" id=\"summary\"></div>
 
@@ -132,6 +132,22 @@ def render_dashboard_html() -> str:
           <tbody id=\"plans\"></tbody>
         </table>
       </div>
+      <div>
+        <div class=\"section-title\">Audit Events</div>
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Category</th>
+              <th>Action</th>
+              <th>Status</th>
+              <th>Entity</th>
+              <th>Time</th>
+            </tr>
+          </thead>
+          <tbody id=\"events\"></tbody>
+        </table>
+      </div>
     </div>
   </div>
 
@@ -159,20 +175,23 @@ def render_dashboard_html() -> str:
 
     async function refresh(){
       try {
-        const data = await fetchJSON('/dashboard/data?jobs_limit=25&plans_limit=25');
+        const data = await fetchJSON('/dashboard/data?jobs_limit=25&plans_limit=25&events_limit=25');
         const health = data.health || {};
         const jobs = data.jobs || [];
         const plans = data.plans || [];
+        const events = data.events || [];
         const metrics = data.metrics || {};
         const modelsCount = Number(data.models_count || 0);
         const pendingPlans = plans.filter(item => item.status === 'pending').length;
         const runningJobs = jobs.filter(item => item.status === 'running').length;
+        const failedAudits = events.filter(item => item.status === 'error' || item.status === 'failed').length;
 
         const summary = [
           { label: 'Service', value: health.ok ? 'Healthy' : 'Unhealthy', cls: health.ok ? 'ok' : 'bad' },
           { label: 'Configured Models', value: modelsCount, cls: '' },
           { label: 'Running Jobs', value: runningJobs, cls: runningJobs > 0 ? 'warn' : 'ok' },
           { label: 'Pending Plans', value: pendingPlans, cls: pendingPlans > 0 ? 'warn' : 'ok' },
+          { label: 'Failed Audits', value: failedAudits, cls: metricColor(failedAudits, 0) },
           { label: 'Requests Total', value: metrics.novaadapt_core_requests_total ?? 0, cls: '' },
           { label: 'Unauthorized', value: metrics.novaadapt_core_unauthorized_total ?? 0, cls: metricColor(metrics.novaadapt_core_unauthorized_total ?? 0, 0) },
           { label: 'Rate Limited', value: metrics.novaadapt_core_rate_limited_total ?? 0, cls: metricColor(metrics.novaadapt_core_rate_limited_total ?? 0, 0) },
@@ -205,6 +224,17 @@ def render_dashboard_html() -> str:
             <td>${plan.created_at || ''}</td>
           </tr>
         `).join('');
+
+        document.getElementById('events').innerHTML = (events || []).map(event => `
+          <tr>
+            <td class=\"mono\">${event.id ?? ''}</td>
+            <td>${event.category || ''}</td>
+            <td>${event.action || ''}</td>
+            <td>${event.status || ''}</td>
+            <td class=\"mono\">${event.entity_type && event.entity_id ? `${event.entity_type}:${event.entity_id}` : ''}</td>
+            <td>${event.created_at || ''}</td>
+          </tr>
+        `).join('');
       } catch (err) {
         document.getElementById('summary').innerHTML = `
           <div class=\"card\">
@@ -214,6 +244,7 @@ def render_dashboard_html() -> str:
         `;
         document.getElementById('jobs').innerHTML = '';
         document.getElementById('plans').innerHTML = '';
+        document.getElementById('events').innerHTML = '';
       }
     }
 

@@ -212,6 +212,7 @@ def _build_handler(
                         return
                     jobs_limit = int(_single(query, "jobs_limit") or 25)
                     plans_limit = int(_single(query, "plans_limit") or 25)
+                    events_limit = int(_single(query, "events_limit") or 25)
                     config = _single(query, "config")
                     status_code = 200
                     self._send_json(
@@ -221,6 +222,11 @@ def _build_handler(
                             "metrics": metrics.snapshot(),
                             "jobs": job_manager.list(limit=max(1, jobs_limit)),
                             "plans": service.list_plans(limit=max(1, plans_limit)),
+                            "events": (
+                                audit_store.list(limit=max(1, events_limit))
+                                if audit_store is not None
+                                else []
+                            ),
                             "models_count": len(service.models(config_path=_to_path(config))),
                         },
                     )

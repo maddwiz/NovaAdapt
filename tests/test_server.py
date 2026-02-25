@@ -84,6 +84,7 @@ class ServerTests(unittest.TestCase):
                 self.assertIn("metrics", dashboard_data)
                 self.assertIn("jobs", dashboard_data)
                 self.assertIn("plans", dashboard_data)
+                self.assertIn("events", dashboard_data)
 
                 openapi, _ = _get_json_with_headers(f"http://{host}:{port}/openapi.json")
                 self.assertEqual(openapi["openapi"], "3.1.0")
@@ -194,6 +195,7 @@ class ServerTests(unittest.TestCase):
                 dashboard_data = _get_json(f"http://{host}:{port}/dashboard/data?token=secret")
                 self.assertTrue(dashboard_data["health"]["ok"])
                 self.assertIn("metrics", dashboard_data)
+                self.assertIn("events", dashboard_data)
 
                 with self.assertRaises(error.HTTPError) as err:
                     _get_json(f"http://{host}:{port}/events")
