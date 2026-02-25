@@ -1,6 +1,8 @@
 import tempfile
 import unittest
+from contextlib import closing
 from pathlib import Path
+import sqlite3
 
 from novaadapt_core.plan_store import PlanStore
 
@@ -73,6 +75,27 @@ class PlanStoreTests(unittest.TestCase):
             self.assertIsNotNone(failed)
             self.assertEqual(failed["status"], "failed")
             self.assertEqual(failed["execution_error"], "boom")
+
+    def test_prune_older_than_only_removes_terminal_rows(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = PlanStore(Path(tmp) / "plans.db")
+
+            old_terminal = store.create({"objective": "old done", "actions": []})
+            old_active = store.create({"objective": "old active", "actions": []})
+            store.approve(old_terminal["id"], execution_results=[], action_log_ids=[], status="executed")
+
+            # Force both plans to look stale; prune must only remove terminal statuses.
+            with closing(sqlite3.connect(store.db_path)) as conn:
+                conn.execute(
+                    "UPDATE plans SET updated_at = '2000-01-01T00:00:00+00:00' WHERE id IN (?, ?)",
+                    (old_terminal["id"], old_active["id"]),
+                )
+                conn.commit()
+
+            removed = store.prune_older_than(older_than_seconds=1)
+            self.assertEqual(removed, 1)
+            self.assertIsNone(store.get(old_terminal["id"]))
+            self.assertIsNotNone(store.get(old_active["id"]))
 
 
 if __name__ == "__main__":

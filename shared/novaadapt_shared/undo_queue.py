@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from contextlib import contextmanager
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -131,6 +132,23 @@ class UndoQueue:
             ).fetchall()
 
         return [self._row_to_dict(row) for row in rows]
+
+    def prune_older_than(self, older_than_seconds: int) -> int:
+        retention = max(0, int(older_than_seconds))
+        if retention <= 0:
+            return 0
+        cutoff = datetime.now(timezone.utc) - timedelta(seconds=retention)
+        cutoff_text = cutoff.strftime("%Y-%m-%d %H:%M:%S")
+        with self._connection() as conn:
+            cursor = conn.execute(
+                """
+                DELETE FROM action_log
+                WHERE datetime(created_at) < datetime(?)
+                """,
+                (cutoff_text,),
+            )
+            conn.commit()
+            return int(cursor.rowcount or 0)
 
     def _row_to_dict(self, row: tuple[Any, ...]) -> dict[str, Any]:
         undo_payload = row[2]

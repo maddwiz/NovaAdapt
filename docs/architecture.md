@@ -56,6 +56,7 @@ The bridge additionally exposes `/metrics` for request and error counters.
 - Benchmark runner (`novaadapt benchmark`) provides repeatable success-rate measurement from task suites.
 - MCP-compatible stdio server (`novaadapt mcp`) exposes core operations as tools for external agents.
 - Backup command (`novaadapt backup`) snapshots SQLite state for rollback-safe upgrades.
+- Prune command (`novaadapt prune`) removes stale terminal/local rows for bounded SQLite growth.
 
 ## Reliability Track
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from contextlib import contextmanager
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -110,6 +111,24 @@ class JobStore:
                 (max(1, int(limit)),),
             ).fetchall()
         return [self._row_to_dict(row) for row in rows]
+
+    def prune_older_than(self, older_than_seconds: int) -> int:
+        retention = max(0, int(older_than_seconds))
+        if retention <= 0:
+            return 0
+        cutoff = datetime.now(timezone.utc) - timedelta(seconds=retention)
+        cutoff_iso = cutoff.isoformat()
+        with self._connection() as conn:
+            cursor = conn.execute(
+                """
+                DELETE FROM async_jobs
+                WHERE status IN ('succeeded', 'failed', 'canceled')
+                  AND datetime(COALESCE(finished_at, created_at)) < datetime(?)
+                """,
+                (cutoff_iso,),
+            )
+            conn.commit()
+            return int(cursor.rowcount or 0)
 
     @staticmethod
     def _row_to_dict(row: tuple[Any, ...]) -> dict[str, Any]:

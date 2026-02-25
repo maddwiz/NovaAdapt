@@ -130,7 +130,20 @@ novaadapt backup --out-dir ~/.novaadapt/backups
 
 The command snapshots local SQLite stores (`actions`, `plans`, `jobs`, `idempotency`, `audit`) using timestamped files and reports which ones were missing.
 
-9. Start local HTTP API (for phone/glasses/bridge clients):
+9. Prune stale local state rows (recommended for long-running installs):
+
+```bash
+novaadapt prune \
+  --actions-retention-seconds 2592000 \
+  --plans-retention-seconds 2592000 \
+  --jobs-retention-seconds 2592000 \
+  --idempotency-retention-seconds 604800 \
+  --audit-retention-seconds 2592000
+```
+
+`novaadapt prune` only removes terminal plan/job rows and rows older than the configured retention windows.
+
+10. Start local HTTP API (for phone/glasses/bridge clients):
 
 ```bash
 novaadapt serve \
@@ -194,7 +207,7 @@ When token auth is enabled, browser dashboard usage supports:
 The page will reuse that token for `/dashboard/data` polling.
 Dashboard now includes one-click controls for pending plan approval/rejection, job cancellation, and plan undo marking.
 
-10. Run full local smoke test (core + bridge):
+11. Run full local smoke test (core + bridge):
 
 ```bash
 make smoke
@@ -328,6 +341,7 @@ make run-local
 Optional env vars:
 - `NOVAADAPT_CORE_TOKEN`
 - `NOVAADAPT_CORE_TRUSTED_PROXY_CIDRS` (trusted proxy CIDRs/IPs for core forwarded client IP handling)
+- `NOVAADAPT_ACTION_RETENTION_SECONDS` / `NOVAADAPT_PLANS_RETENTION_SECONDS` / `NOVAADAPT_JOBS_RETENTION_SECONDS`
 - `NOVAADAPT_IDEMPOTENCY_RETENTION_SECONDS` / `NOVAADAPT_IDEMPOTENCY_CLEANUP_INTERVAL_SECONDS`
 - `NOVAADAPT_AUDIT_RETENTION_SECONDS` / `NOVAADAPT_AUDIT_CLEANUP_INTERVAL_SECONDS`
 - `NOVAADAPT_BRIDGE_TOKEN`
@@ -421,6 +435,7 @@ Environment variables:
 - Core API request logging redacts sensitive query params (for example `token`) before writing access logs.
 - Core API supports persisted idempotency keys on `serve` (`--idempotency-db-path`) to prevent duplicate mutations on retries.
 - Core API supports persisted audit retention controls on `serve` (`--audit-retention-seconds`, `--audit-cleanup-interval-seconds`) to cap event-store growth.
+- CLI `novaadapt prune` provides explicit housekeeping for stale rows across actions/plans/jobs/idempotency/audit stores.
 - Async job records can be persisted to SQLite (`--jobs-db-path`) for restart-safe history.
 - Plan approval records can be persisted to SQLite (`--plans-db-path`) for restart-safe approvals/audits.
 

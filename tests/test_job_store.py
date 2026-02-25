@@ -38,6 +38,41 @@ class JobStoreTests(unittest.TestCase):
             listed = store.list(limit=5)
             self.assertEqual(len(listed), 1)
 
+    def test_prune_older_than_only_removes_terminal_rows(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "jobs.db"
+            store = JobStore(db)
+
+            store.upsert(
+                {
+                    "id": "job-old-done",
+                    "status": "succeeded",
+                    "created_at": "2000-01-01T00:00:00+00:00",
+                    "started_at": "2000-01-01T00:00:01+00:00",
+                    "finished_at": "2000-01-01T00:00:02+00:00",
+                    "result": {"ok": True},
+                    "error": None,
+                    "cancel_requested": False,
+                }
+            )
+            store.upsert(
+                {
+                    "id": "job-old-running",
+                    "status": "running",
+                    "created_at": "2000-01-01T00:00:00+00:00",
+                    "started_at": "2000-01-01T00:00:01+00:00",
+                    "finished_at": None,
+                    "result": None,
+                    "error": None,
+                    "cancel_requested": False,
+                }
+            )
+
+            removed = store.prune_older_than(older_than_seconds=1)
+            self.assertEqual(removed, 1)
+            self.assertIsNone(store.get("job-old-done"))
+            self.assertIsNotNone(store.get("job-old-running"))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -4,7 +4,7 @@ import json
 import sqlite3
 import uuid
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -363,6 +363,24 @@ class PlanStore:
             )
             conn.commit()
         return self.get(plan_id)
+
+    def prune_older_than(self, older_than_seconds: int) -> int:
+        retention = max(0, int(older_than_seconds))
+        if retention <= 0:
+            return 0
+        cutoff = datetime.now(timezone.utc) - timedelta(seconds=retention)
+        cutoff_iso = cutoff.isoformat()
+        with self._connection() as conn:
+            cursor = conn.execute(
+                """
+                DELETE FROM plans
+                WHERE status IN ('approved', 'executed', 'rejected', 'failed')
+                  AND datetime(updated_at) < datetime(?)
+                """,
+                (cutoff_iso,),
+            )
+            conn.commit()
+            return int(cursor.rowcount or 0)
 
     @staticmethod
     def _row_to_dict(row: tuple[Any, ...]) -> dict[str, Any]:

@@ -1,6 +1,8 @@
 import tempfile
 import unittest
+from contextlib import closing
 from pathlib import Path
+import sqlite3
 
 from novaadapt_shared.undo_queue import UndoQueue
 
@@ -35,6 +37,22 @@ class UndoQueueTests(unittest.TestCase):
 
             next_latest = queue.latest_pending()
             self.assertEqual(next_latest["id"], first)
+
+    def test_prune_older_than_removes_stale_rows(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "actions.db"
+            queue = UndoQueue(db_path=db)
+            stale = queue.record(action={"type": "click", "target": "A"}, status="ok")
+            fresh = queue.record(action={"type": "click", "target": "B"}, status="ok")
+
+            with closing(sqlite3.connect(db)) as conn:
+                conn.execute("UPDATE action_log SET created_at = '2000-01-01 00:00:00' WHERE id = ?", (stale,))
+                conn.commit()
+
+            removed = queue.prune_older_than(older_than_seconds=1)
+            self.assertEqual(removed, 1)
+            self.assertIsNone(queue.get(stale))
+            self.assertIsNotNone(queue.get(fresh))
 
 
 if __name__ == "__main__":

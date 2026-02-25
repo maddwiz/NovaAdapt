@@ -7,6 +7,7 @@ from pathlib import Path
 
 from .backup import backup_databases
 from .benchmark import run_benchmark
+from .cleanup import prune_local_state
 from .mcp_server import NovaAdaptMCPServer
 from .server import run_server
 from .service import NovaAdaptService
@@ -217,6 +218,48 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Path to idempotency database",
     )
     backup_cmd.add_argument("--audit-db-path", type=Path, default=default_audit_db, help="Path to audit database")
+
+    prune_cmd = sub.add_parser("prune", help="Prune stale SQLite records from local NovaAdapt state")
+    prune_cmd.add_argument("--db-path", type=Path, default=default_actions_db, help="Path to actions database")
+    prune_cmd.add_argument("--plans-db-path", type=Path, default=default_plans_db, help="Path to plans database")
+    prune_cmd.add_argument("--jobs-db-path", type=Path, default=default_jobs_db, help="Path to jobs database")
+    prune_cmd.add_argument(
+        "--idempotency-db-path",
+        type=Path,
+        default=default_idempotency_db,
+        help="Path to idempotency database",
+    )
+    prune_cmd.add_argument("--audit-db-path", type=Path, default=default_audit_db, help="Path to audit database")
+    prune_cmd.add_argument(
+        "--actions-retention-seconds",
+        type=int,
+        default=int(os.getenv("NOVAADAPT_ACTION_RETENTION_SECONDS", str(30 * 24 * 60 * 60))),
+        help="Delete action-log rows older than this retention window (0 disables deletion)",
+    )
+    prune_cmd.add_argument(
+        "--plans-retention-seconds",
+        type=int,
+        default=int(os.getenv("NOVAADAPT_PLANS_RETENTION_SECONDS", str(30 * 24 * 60 * 60))),
+        help="Delete terminal plan rows older than this retention window (0 disables deletion)",
+    )
+    prune_cmd.add_argument(
+        "--jobs-retention-seconds",
+        type=int,
+        default=int(os.getenv("NOVAADAPT_JOBS_RETENTION_SECONDS", str(30 * 24 * 60 * 60))),
+        help="Delete terminal job rows older than this retention window (0 disables deletion)",
+    )
+    prune_cmd.add_argument(
+        "--idempotency-retention-seconds",
+        type=int,
+        default=int(os.getenv("NOVAADAPT_IDEMPOTENCY_RETENTION_SECONDS", str(7 * 24 * 60 * 60))),
+        help="Delete idempotency rows older than this retention window (0 disables deletion)",
+    )
+    prune_cmd.add_argument(
+        "--audit-retention-seconds",
+        type=int,
+        default=int(os.getenv("NOVAADAPT_AUDIT_RETENTION_SECONDS", str(30 * 24 * 60 * 60))),
+        help="Delete audit rows older than this retention window (0 disables deletion)",
+    )
 
     serve_cmd = sub.add_parser("serve", help="Run NovaAdapt HTTP API server")
     serve_cmd.add_argument("--config", type=Path, default=_default_config_path())
@@ -499,6 +542,22 @@ def main() -> None:
                     "idempotency": args.idempotency_db_path,
                     "audit": args.audit_db_path,
                 },
+            )
+            print(json.dumps(result, indent=2))
+            return
+
+        if args.command == "prune":
+            result = prune_local_state(
+                actions_db_path=args.db_path,
+                plans_db_path=args.plans_db_path,
+                jobs_db_path=args.jobs_db_path,
+                idempotency_db_path=args.idempotency_db_path,
+                audit_db_path=args.audit_db_path,
+                actions_retention_seconds=max(0, int(args.actions_retention_seconds)),
+                plans_retention_seconds=max(0, int(args.plans_retention_seconds)),
+                jobs_retention_seconds=max(0, int(args.jobs_retention_seconds)),
+                idempotency_retention_seconds=max(0, int(args.idempotency_retention_seconds)),
+                audit_retention_seconds=max(0, int(args.audit_retention_seconds)),
             )
             print(json.dumps(result, indent=2))
             return
