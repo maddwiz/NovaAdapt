@@ -83,6 +83,11 @@ func TestRequiredScopeForRetryFailedRoute(t *testing.T) {
 	if scope != scopeApprove {
 		t.Fatalf("expected %q scope, got %q", scopeApprove, scope)
 	}
+
+	scopeAsync := requiredScopeForRoute(http.MethodPost, "/plans/plan-1/retry_failed_async")
+	if scopeAsync != scopeApprove {
+		t.Fatalf("expected %q scope, got %q", scopeApprove, scopeAsync)
+	}
 }
 
 func TestSessionTokenCannotIssueSessionWithoutAdminScope(t *testing.T) {

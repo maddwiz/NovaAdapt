@@ -127,6 +127,7 @@ class _Handler(BaseHTTPRequestHandler):
             "/plans/plan-1/approve",
             "/plans/plan-1/approve_async",
             "/plans/plan-1/retry_failed",
+            "/plans/plan-1/retry_failed_async",
             "/plans/plan-1/reject",
             "/plans/plan-1/undo",
         }:
@@ -154,6 +155,8 @@ class _Handler(BaseHTTPRequestHandler):
                 self._send(202, {"job_id": "job-plan-1", "status": "queued", "kind": "plan_approval"})
             elif self.path == "/plans/plan-1/retry_failed":
                 self._send(200, {"id": "plan-1", "status": "executed"})
+            elif self.path == "/plans/plan-1/retry_failed_async":
+                self._send(202, {"job_id": "job-plan-1-retry", "status": "queued", "kind": "plan_retry_failed"})
             elif self.path == "/plans/plan-1/reject":
                 self._send(200, {"id": "plan-1", "status": "rejected"})
             elif self.path == "/plans/plan-1/undo":
@@ -235,6 +238,7 @@ class APIClientTests(unittest.TestCase):
         self.assertEqual(client.approve_plan("plan-1", execute=True)["status"], "executed")
         self.assertEqual(client.retry_failed_plan("plan-1")["status"], "executed")
         self.assertEqual(client.approve_plan_async("plan-1", execute=True)["kind"], "plan_approval")
+        self.assertEqual(client.retry_failed_plan_async("plan-1")["kind"], "plan_retry_failed")
         self.assertEqual(client.reject_plan("plan-1", reason="nope")["status"], "rejected")
         self.assertEqual(client.undo_plan("plan-1", mark_only=True)["plan_id"], "plan-1")
         plan_events = client.plan_stream("plan-1", timeout_seconds=2, interval_seconds=0.1)

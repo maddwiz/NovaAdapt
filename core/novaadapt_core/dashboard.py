@@ -265,12 +265,12 @@ def render_dashboard_html() -> str:
           await postJSON(`/plans/${encodeURIComponent(id)}/undo`, { mark_only: true });
           setActionStatus(`Marked plan ${id} action logs as undone`, true);
         } else if (action === 'retry-failed-plan') {
-          await postJSON(`/plans/${encodeURIComponent(id)}/retry_failed`, {
+          const out = await postJSON(`/plans/${encodeURIComponent(id)}/retry_failed_async`, {
             allow_dangerous: true,
             action_retry_attempts: 2,
             action_retry_backoff_seconds: 0.2,
           });
-          setActionStatus(`Retried failed actions for plan ${id}`, true);
+          setActionStatus(`Queued failed-action retry for plan ${id} (job ${out.job_id || 'n/a'})`, true);
         }
         await refresh();
       } catch (err) {

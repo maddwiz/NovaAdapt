@@ -134,6 +134,10 @@ async function approvePlan(planId, payload = { execute: true }) {
   return coreRequest("POST", `/plans/${encodeURIComponent(planId)}/approve`, payload);
 }
 
+async function retryFailedPlan(planId, payload) {
+  return coreRequest("POST", `/plans/${encodeURIComponent(planId)}/retry_failed_async`, payload);
+}
+
 async function rejectPlan(planId, reason) {
   return coreRequest("POST", `/plans/${encodeURIComponent(planId)}/reject`, {
     reason: reason || "Operator rejected",
@@ -258,10 +262,8 @@ function renderPlans(plans) {
             "Retry only failed/blocked actions for this plan with dangerous actions enabled?",
           );
           if (!confirmed) return;
-          await runAction("Retrying failed steps", () =>
-            approvePlan(plan.id, {
-              execute: true,
-              retry_failed_only: true,
+          await runAction("Queueing failed-step retry", () =>
+            retryFailedPlan(plan.id, {
               allow_dangerous: true,
               action_retry_attempts: 2,
               action_retry_backoff_seconds: 0.2,

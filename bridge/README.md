@@ -36,6 +36,7 @@ Secure relay service for remote clients (phone/glasses) to reach NovaAdapt core.
   - `POST /plans`
   - `POST /plans/{id}/approve`
   - `POST /plans/{id}/approve_async`
+  - `POST /plans/{id}/retry_failed_async`
   - `POST /plans/{id}/retry_failed`
   - `POST /plans/{id}/reject`
   - `POST /plans/{id}/undo`
@@ -81,7 +82,7 @@ Supported scopes:
 - `read` (GET routes + websocket connection)
 - `run` (`/run`, `/run_async`, `/check`, and other non-plan POST routes)
 - `plan` (`POST /plans`)
-- `approve` (`POST /plans/{id}/approve`, `POST /plans/{id}/approve_async`, `POST /plans/{id}/retry_failed`)
+- `approve` (`POST /plans/{id}/approve`, `POST /plans/{id}/approve_async`, `POST /plans/{id}/retry_failed_async`, `POST /plans/{id}/retry_failed`)
 - `reject` (`POST /plans/{id}/reject`)
 - `undo` (`POST /undo`, `POST /plans/{id}/undo`)
 - `cancel` (`POST /jobs/{id}/cancel`)

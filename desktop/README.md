@@ -10,7 +10,7 @@ Current scope:
 - Core API endpoint/token settings.
 - Objective console (`/run_async`, `/plans`) with strategy/candidate controls.
 - Live dashboard fetch (`/dashboard/data`) with auto-refresh.
-- Plan actions: approve/reject, retry failed-only actions, and plan undo controls.
+- Plan actions: approve/reject, async retry for failed-only actions, and plan undo controls.
 - Job actions: cancel queued/running jobs.
 - Recent audit event and metrics snapshot feed.
 

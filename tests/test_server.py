@@ -59,6 +59,18 @@ class _StubDirectShell:
         return ExecutionResult(action=action, status="preview" if dry_run else "ok", output="simulated")
 
 
+class _FlakyDirectShell:
+    attempts = 0
+
+    def execute_action(self, action, dry_run=True):
+        if dry_run:
+            return ExecutionResult(action=action, status="preview", output="simulated")
+        _FlakyDirectShell.attempts += 1
+        if _FlakyDirectShell.attempts == 1:
+            return ExecutionResult(action=action, status="failed", output="transient failure")
+        return ExecutionResult(action=action, status="ok", output="recovered")
+
+
 class ServerTests(unittest.TestCase):
     def test_http_endpoints(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -121,6 +133,7 @@ class ServerTests(unittest.TestCase):
                 self.assertIn("/plans/{id}/approve", openapi["paths"])
                 self.assertIn("/plans/{id}/approve_async", openapi["paths"])
                 self.assertIn("/plans/{id}/retry_failed", openapi["paths"])
+                self.assertIn("/plans/{id}/retry_failed_async", openapi["paths"])
                 self.assertIn("/plans/{id}/undo", openapi["paths"])
                 self.assertIn("/dashboard/data", openapi["paths"])
                 self.assertIn("/events", openapi["paths"])
@@ -332,6 +345,68 @@ class ServerTests(unittest.TestCase):
                 server2.shutdown()
                 server2.server_close()
                 thread2.join(timeout=2)
+
+    def test_retry_failed_async_route_queues_job(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _FlakyDirectShell.attempts = 0
+            service = NovaAdaptService(
+                default_config=Path("unused.json"),
+                db_path=Path(tmp) / "actions.db",
+                plans_db_path=Path(tmp) / "plans.db",
+                router_loader=lambda _path: _StubRouter(),
+                directshell_factory=_FlakyDirectShell,
+            )
+            server = create_server(
+                "127.0.0.1",
+                0,
+                service,
+                api_token="secret",
+                jobs_db_path=str(Path(tmp) / "jobs.db"),
+                audit_db_path=str(Path(tmp) / "events.db"),
+            )
+            host, port = server.server_address
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+
+            try:
+                created_plan = _post_json(
+                    f"http://{host}:{port}/plans",
+                    {"objective": "click ok"},
+                    token="secret",
+                )
+                plan_id = created_plan["id"]
+
+                failed_plan = _post_json(
+                    f"http://{host}:{port}/plans/{plan_id}/approve",
+                    {"execute": True},
+                    token="secret",
+                )
+                self.assertEqual(failed_plan["status"], "failed")
+
+                queued_retry = _post_json(
+                    f"http://{host}:{port}/plans/{plan_id}/retry_failed_async",
+                    {"allow_dangerous": True, "action_retry_attempts": 2, "action_retry_backoff_seconds": 0.0},
+                    token="secret",
+                )
+                self.assertEqual(queued_retry["status"], "queued")
+                self.assertEqual(queued_retry["kind"], "plan_retry_failed")
+                retry_job_id = queued_retry["job_id"]
+
+                terminal_retry_job = None
+                for _ in range(40):
+                    terminal_retry_job = _get_json(f"http://{host}:{port}/jobs/{retry_job_id}", token="secret")
+                    if terminal_retry_job["status"] in {"succeeded", "failed", "canceled"}:
+                        break
+                    time.sleep(0.02)
+                self.assertIsNotNone(terminal_retry_job)
+                self.assertEqual(terminal_retry_job["status"], "succeeded")
+
+                retried_plan = _get_json(f"http://{host}:{port}/plans/{plan_id}", token="secret")
+                self.assertEqual(retried_plan["status"], "executed")
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=2)
 
     def test_request_id_roundtrip(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -202,6 +202,7 @@ API endpoints:
 - `POST /plans` (create pending plan)
 - `POST /plans/{id}/approve` (execute on approval by default)
 - `POST /plans/{id}/approve_async` (queue approval/execution as async job)
+- `POST /plans/{id}/retry_failed_async` (queue retry of only failed/blocked actions as async job)
 - `POST /plans/{id}/retry_failed` (retry only failed/blocked actions from a previously failed execution)
 - `POST /plans/{id}/reject`
 - `POST /plans/{id}/undo` (reverse undo of recorded plan actions)
@@ -218,6 +219,7 @@ Plan records expose execution progress fields (`progress_completed`, `progress_t
 Plans finalize as `failed` when one or more actions are blocked or fail during execution.
 Plan approvals support optional transient retry controls: `action_retry_attempts` and `action_retry_backoff_seconds`.
 Plan approvals also support `retry_failed_only` to rerun only previously failed/blocked actions.
+Use `/plans/{id}/retry_failed_async` for non-blocking operator flows on desktop/mobile dashboards.
 
 When token auth is enabled, browser dashboard usage supports:
 
@@ -365,6 +367,7 @@ print(client.models())
 print(client.dashboard_data(plans_limit=10, jobs_limit=10, events_limit=10))
 print(client.run("Open browser and go to example.com"))
 print(client.retry_failed_plan("plan-id"))
+print(client.retry_failed_plan_async("plan-id"))
 print(client.job_stream("job-id", timeout_seconds=10))
 print(client.plan_stream("plan-id", timeout_seconds=10))
 print(client.events(limit=20))

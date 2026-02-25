@@ -105,7 +105,7 @@ Immediately after websocket upgrade, bridge emits:
 - `read`: `/health`, `/models`, `/history`, `/events`, websocket audit stream
 - `run`: `/run`, `/run_async`
 - `plan`: `/plans`, `/plans/{id}`
-- `approve`: `/plans/{id}/approve`, `/plans/{id}/approve_async`, `/plans/{id}/retry_failed`
+- `approve`: `/plans/{id}/approve`, `/plans/{id}/approve_async`, `/plans/{id}/retry_failed_async`, `/plans/{id}/retry_failed`
 - `reject`: `/plans/{id}/reject`
 - `undo`: `/undo`, `/plans/{id}/undo`
 - `cancel`: `/jobs/{id}/cancel`
