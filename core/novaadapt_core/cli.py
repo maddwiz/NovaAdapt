@@ -8,6 +8,7 @@ from pathlib import Path
 from .backup import backup_databases, restore_databases
 from .benchmark import run_benchmark
 from .cleanup import prune_local_state
+from .directshell import DirectShellClient
 from .mcp_server import NovaAdaptMCPServer
 from .server import run_server
 from .service import NovaAdaptService
@@ -178,6 +179,23 @@ def _build_parser() -> argparse.ArgumentParser:
         "--probe",
         default="Reply with: OK",
         help="Probe prompt text sent to each model",
+    )
+
+    directshell_check_cmd = sub.add_parser(
+        "directshell-check",
+        help="Probe DirectShell execution transport readiness",
+    )
+    directshell_check_cmd.add_argument(
+        "--transport",
+        choices=["subprocess", "http", "daemon"],
+        default=None,
+        help="Optional DirectShell transport override for probe",
+    )
+    directshell_check_cmd.add_argument(
+        "--timeout-seconds",
+        type=int,
+        default=5,
+        help="Probe timeout in seconds",
     )
 
     bench_cmd = sub.add_parser("benchmark", help="Run benchmark suite and report success metrics")
@@ -575,6 +593,14 @@ def main() -> None:
             service = NovaAdaptService(default_config=args.config)
             models = [name.strip() for name in args.models.split(",") if name.strip()]
             print(json.dumps(service.check(model_names=models or None, probe_prompt=args.probe), indent=2))
+            return
+
+        if args.command == "directshell-check":
+            client = DirectShellClient(
+                transport=args.transport,
+                timeout_seconds=max(1, int(args.timeout_seconds)),
+            )
+            print(json.dumps(client.probe(), indent=2))
             return
 
         if args.command == "benchmark":

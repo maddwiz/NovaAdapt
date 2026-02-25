@@ -79,3 +79,8 @@ The bridge additionally exposes `/metrics` for request and error counters.
 - Add first-party DirectShell gRPC schema/client once daemon API contract is finalized.
 - Add policy-driven bridge device trust registry management UI.
 - Expand Tauri/iOS/wearable scaffolds into signed production builds with full approval UX parity.
+
+## Current Constraints
+
+- Live desktop control depends on external DirectShell runtime availability.
+- Desktop/mobile/wearable modules are scaffolds and not yet shippable client products.

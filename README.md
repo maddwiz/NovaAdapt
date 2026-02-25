@@ -32,9 +32,9 @@ Implemented now:
 - `bridge` relay service in Go for secure remote forwarding into core API.
   - Includes realtime WebSocket control channel (`/ws`) for events + command relay.
 - `view` static realtime console UI for bridge operations (`view/realtime_console.html`).
-- `desktop` Tauri shell scaffold for first-party approval UX (`desktop/tauri-shell`).
-- `mobile` iOS SwiftUI companion scaffold (`mobile/ios/NovaAdaptCompanion`).
-- `wearables` Halo/Omi adapter scaffold (`wearables/halo_bridge.py`).
+- `desktop` Tauri shell scaffold for first-party approval UX (`desktop/tauri-shell`) (not production-ready).
+- `mobile` iOS SwiftUI companion scaffold (`mobile/ios/NovaAdaptCompanion`) (not production-ready).
+- `wearables` Halo/Omi adapter scaffold (`wearables/halo_bridge.py`) (not production-ready).
 
 Planned next:
 
@@ -491,6 +491,13 @@ novaadapt run \
 - `http`: sends `POST` to `DIRECTSHELL_HTTP_URL` with body `{"action": ...}`.
 - `daemon`: sends framed JSON RPC over DirectShell daemon socket/TCP (`DIRECTSHELL_DAEMON_SOCKET` or `DIRECTSHELL_DAEMON_HOST`/`DIRECTSHELL_DAEMON_PORT`).
 
+Execution dependency:
+
+- NovaAdapt execution requires a working DirectShell runtime for real GUI actions.
+- Without DirectShell, NovaAdapt still supports planning, approval workflows, and dry-run previews, but cannot perform live desktop control.
+- Use `novaadapt directshell-check` to verify the configured transport before running with `--execute`.
+- Full runtime contract: `docs/directshell_runtime.md`
+
 Environment variables:
 
 - `DIRECTSHELL_TRANSPORT` = `subprocess`, `http`, or `daemon`
@@ -498,6 +505,13 @@ Environment variables:
 - `DIRECTSHELL_HTTP_URL` (http mode, default `http://127.0.0.1:8765/execute`)
 - `DIRECTSHELL_DAEMON_SOCKET` (daemon Unix socket path, default `/tmp/directshell.sock`; set empty to force TCP)
 - `DIRECTSHELL_DAEMON_HOST` / `DIRECTSHELL_DAEMON_PORT` (daemon TCP endpoint, default `127.0.0.1:8766`)
+
+Readiness probe:
+
+```bash
+novaadapt directshell-check
+novaadapt directshell-check --transport daemon
+```
 
 ## Security Baseline
 
@@ -530,4 +544,4 @@ Environment variables:
 
 ## License
 
-MIT (inherit/update as needed for full product release).
+Proprietary (All Rights Reserved). See `LICENSE`.

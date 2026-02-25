@@ -7,6 +7,7 @@ import subprocess
 from dataclasses import dataclass
 from typing import Any
 from urllib import error, request
+from urllib.parse import urlparse
 
 
 @dataclass(frozen=True)
@@ -66,6 +67,21 @@ class DirectShellClient:
 
         return self._execute_subprocess(action)
 
+    def probe(self) -> dict[str, Any]:
+        transport = self.transport
+        if transport == "http":
+            return self._probe_http()
+        if transport == "daemon":
+            return self._probe_daemon()
+        if transport == "subprocess":
+            return self._probe_subprocess()
+        return {
+            "ok": False,
+            "transport": transport,
+            "error": "unsupported transport",
+            "supported_transports": ["subprocess", "http", "daemon"],
+        }
+
     def _execute_subprocess(self, action: dict[str, Any]) -> ExecutionResult:
         cmd = [self.binary, "exec", "--json", json.dumps(action, ensure_ascii=True)]
         try:
@@ -83,6 +99,40 @@ class DirectShellClient:
         status = "ok" if completed.returncode == 0 else "failed"
         output = (completed.stdout or completed.stderr).strip()
         return ExecutionResult(action=action, status=status, output=output)
+
+    def _probe_subprocess(self) -> dict[str, Any]:
+        cmd = [self.binary, "--help"]
+        try:
+            completed = subprocess.run(
+                cmd,
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=self.timeout_seconds,
+            )
+        except FileNotFoundError:
+            return {
+                "ok": False,
+                "transport": "subprocess",
+                "binary": self.binary,
+                "error": f"DirectShell binary '{self.binary}' not found",
+            }
+        except subprocess.TimeoutExpired:
+            return {
+                "ok": False,
+                "transport": "subprocess",
+                "binary": self.binary,
+                "error": f"DirectShell binary probe timed out after {self.timeout_seconds}s",
+            }
+
+        output = (completed.stdout or completed.stderr or "").strip()
+        return {
+            "ok": completed.returncode in {0, 1, 2},
+            "transport": "subprocess",
+            "binary": self.binary,
+            "returncode": completed.returncode,
+            "output": output,
+        }
 
     def _execute_http(self, action: dict[str, Any]) -> ExecutionResult:
         payload = json.dumps({"action": action}).encode("utf-8")
@@ -109,6 +159,46 @@ class DirectShellClient:
         except json.JSONDecodeError:
             return ExecutionResult(action=action, status="ok", output=raw_body.strip())
 
+    def _probe_http(self) -> dict[str, Any]:
+        parsed = urlparse(self.http_url)
+        if not parsed.scheme or not parsed.netloc:
+            return {
+                "ok": False,
+                "transport": "http",
+                "url": self.http_url,
+                "error": "invalid DIRECTSHELL_HTTP_URL",
+            }
+
+        health_url = f"{parsed.scheme}://{parsed.netloc}/health"
+        req = request.Request(url=health_url, method="GET")
+        try:
+            with request.urlopen(req, timeout=self.timeout_seconds) as response:
+                return {
+                    "ok": True,
+                    "transport": "http",
+                    "url": self.http_url,
+                    "health_url": health_url,
+                    "status_code": int(response.status),
+                }
+        except error.HTTPError as exc:
+            reachable = int(exc.code) < 500
+            return {
+                "ok": reachable,
+                "transport": "http",
+                "url": self.http_url,
+                "health_url": health_url,
+                "status_code": int(exc.code),
+                "error": f"HTTP {exc.code}",
+            }
+        except error.URLError as exc:
+            return {
+                "ok": False,
+                "transport": "http",
+                "url": self.http_url,
+                "health_url": health_url,
+                "error": f"HTTP transport error: {exc.reason}",
+            }
+
     def _execute_daemon(self, action: dict[str, Any]) -> ExecutionResult:
         payload = json.dumps({"action": action}, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
         framed = len(payload).to_bytes(4, byteorder="big") + payload
@@ -131,6 +221,28 @@ class DirectShellClient:
             return ExecutionResult(action=action, status=status, output=output)
         except json.JSONDecodeError:
             return ExecutionResult(action=action, status="failed", output=f"Daemon returned non-JSON response: {raw_body}")
+
+    def _probe_daemon(self) -> dict[str, Any]:
+        target = (
+            {"socket": str(self.daemon_socket or "").strip()}
+            if str(self.daemon_socket or "").strip()
+            else {"host": self.daemon_host, "port": self.daemon_port}
+        )
+        try:
+            with self._daemon_connection() as sock:
+                sock.settimeout(self.timeout_seconds)
+            return {
+                "ok": True,
+                "transport": "daemon",
+                **target,
+            }
+        except OSError as exc:
+            return {
+                "ok": False,
+                "transport": "daemon",
+                "error": f"Daemon transport error: {exc}",
+                **target,
+            }
 
     def _daemon_connection(self):
         socket_path = str(self.daemon_socket or "").strip()

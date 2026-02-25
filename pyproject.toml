@@ -7,6 +7,7 @@ name = "novaadapt"
 version = "0.1.0"
 description = "NovaAdapt desktop-first MVP with model-agnostic routing and DirectShell orchestration"
 readme = "README.md"
+license = { file = "LICENSE" }
 requires-python = ">=3.10"
 dependencies = []
 

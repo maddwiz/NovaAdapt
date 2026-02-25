@@ -8,6 +8,18 @@ from novaadapt_core.directshell import DirectShellClient
 
 
 class _Handler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path == "/health":
+            body = json.dumps({"ok": True}).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        self.send_response(404)
+        self.end_headers()
+
     def do_POST(self):
         length = int(self.headers.get("Content-Length", "0"))
         raw = self.rfile.read(length).decode("utf-8")
@@ -96,6 +108,51 @@ class DirectShellClientTests(unittest.TestCase):
 
         self.assertEqual(result.status, "ok")
         self.assertIn("daemon:type", result.output)
+
+    def test_probe_http_transport(self):
+        server = HTTPServer(("127.0.0.1", 0), _Handler)
+        port = server.server_port
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+
+        try:
+            client = DirectShellClient(transport="http", http_url=f"http://127.0.0.1:{port}/execute")
+            probe = client.probe()
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=2)
+
+        self.assertTrue(probe["ok"])
+        self.assertEqual(probe["transport"], "http")
+
+    def test_probe_daemon_transport(self):
+        server = _DaemonServer(("127.0.0.1", 0), _DaemonHandler)
+        port = server.server_address[1]
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+
+        try:
+            client = DirectShellClient(
+                transport="daemon",
+                daemon_socket="",
+                daemon_host="127.0.0.1",
+                daemon_port=port,
+            )
+            probe = client.probe()
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=2)
+
+        self.assertTrue(probe["ok"])
+        self.assertEqual(probe["transport"], "daemon")
+
+    def test_probe_subprocess_missing_binary(self):
+        client = DirectShellClient(transport="subprocess", binary="missing-directshell-binary")
+        probe = client.probe()
+        self.assertFalse(probe["ok"])
+        self.assertEqual(probe["transport"], "subprocess")
 
 
 if __name__ == "__main__":
