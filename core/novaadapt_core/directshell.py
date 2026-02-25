@@ -9,6 +9,8 @@ from typing import Any
 from urllib import error, request
 from urllib.parse import urlparse
 
+from .native_executor import NativeDesktopExecutor
+
 
 @dataclass(frozen=True)
 class ExecutionResult:
@@ -32,10 +34,11 @@ class DirectShellClient:
         daemon_socket: str | None = None,
         daemon_host: str | None = None,
         daemon_port: int | None = None,
+        native_executor: NativeDesktopExecutor | None = None,
         timeout_seconds: int = 30,
     ) -> None:
         self.binary = binary or os.getenv("DIRECTSHELL_BIN", "directshell")
-        self.transport = (transport or os.getenv("DIRECTSHELL_TRANSPORT", "subprocess")).lower()
+        self.transport = (transport or os.getenv("DIRECTSHELL_TRANSPORT", "native")).lower()
         self.http_url = http_url or os.getenv("DIRECTSHELL_HTTP_URL", "http://127.0.0.1:8765/execute")
         self.daemon_socket = (
             os.getenv("DIRECTSHELL_DAEMON_SOCKET", "/tmp/directshell.sock")
@@ -45,6 +48,7 @@ class DirectShellClient:
         self.daemon_host = daemon_host or os.getenv("DIRECTSHELL_DAEMON_HOST", "127.0.0.1")
         self.daemon_port = int(os.getenv("DIRECTSHELL_DAEMON_PORT", "8766")) if daemon_port is None else int(daemon_port)
         self.timeout_seconds = timeout_seconds
+        self.native_executor = native_executor or NativeDesktopExecutor(timeout_seconds=timeout_seconds)
 
     def execute_action(self, action: dict[str, Any], dry_run: bool = True) -> ExecutionResult:
         if dry_run:
@@ -60,15 +64,20 @@ class DirectShellClient:
         if self.transport == "daemon":
             return self._execute_daemon(action)
 
+        if self.transport == "native":
+            return self._execute_native(action)
+
         if self.transport != "subprocess":
             raise RuntimeError(
-                f"Unsupported DirectShell transport '{self.transport}'. Use 'subprocess', 'http', or 'daemon'."
+                f"Unsupported DirectShell transport '{self.transport}'. Use 'native', 'subprocess', 'http', or 'daemon'."
             )
 
         return self._execute_subprocess(action)
 
     def probe(self) -> dict[str, Any]:
         transport = self.transport
+        if transport == "native":
+            return self._probe_native()
         if transport == "http":
             return self._probe_http()
         if transport == "daemon":
@@ -79,8 +88,19 @@ class DirectShellClient:
             "ok": False,
             "transport": transport,
             "error": "unsupported transport",
-            "supported_transports": ["subprocess", "http", "daemon"],
+            "supported_transports": ["native", "subprocess", "http", "daemon"],
         }
+
+    def _execute_native(self, action: dict[str, Any]) -> ExecutionResult:
+        result = self.native_executor.execute_action(action)
+        return ExecutionResult(
+            action=action,
+            status=str(result.status),
+            output=str(result.output),
+        )
+
+    def _probe_native(self) -> dict[str, Any]:
+        return self.native_executor.probe()
 
     def _execute_subprocess(self, action: dict[str, Any]) -> ExecutionResult:
         cmd = [self.binary, "exec", "--json", json.dumps(action, ensure_ascii=True)]

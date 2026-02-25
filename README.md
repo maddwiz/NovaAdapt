@@ -39,7 +39,7 @@ Implemented now:
 Planned next:
 
 - Harden first-party desktop/mobile/wearable builds into signed release artifacts.
-- Add full DirectShell gRPC client once daemon contract is finalized.
+- Expand the built-in execution runtime with a richer gRPC backend for deterministic control.
 - Expand native clients from scaffold to production app-store ready deliverables.
 
 ## Monorepo Layout
@@ -488,20 +488,21 @@ novaadapt run \
 
 ## DirectShell Transport Modes
 
-- `subprocess` (default): runs `directshell exec --json ...` using `DIRECTSHELL_BIN`.
+- `native` (default): built-in NovaAdapt desktop executor (no external DirectShell binary required).
+- `subprocess`: runs `directshell exec --json ...` using `DIRECTSHELL_BIN`.
 - `http`: sends `POST` to `DIRECTSHELL_HTTP_URL` with body `{"action": ...}`.
 - `daemon`: sends framed JSON RPC over DirectShell daemon socket/TCP (`DIRECTSHELL_DAEMON_SOCKET` or `DIRECTSHELL_DAEMON_HOST`/`DIRECTSHELL_DAEMON_PORT`).
 
 Execution dependency:
 
-- NovaAdapt execution requires a working DirectShell runtime for real GUI actions.
-- Without DirectShell, NovaAdapt still supports planning, approval workflows, and dry-run previews, but cannot perform live desktop control.
+- NovaAdapt now includes a built-in native execution runtime for common desktop actions.
+- External DirectShell transports (`subprocess`, `http`, `daemon`) are optional for advanced or pre-existing deployments.
 - Use `novaadapt directshell-check` to verify the configured transport before running with `--execute`.
 - Full runtime contract: `docs/directshell_runtime.md`
 
 Environment variables:
 
-- `DIRECTSHELL_TRANSPORT` = `subprocess`, `http`, or `daemon`
+- `DIRECTSHELL_TRANSPORT` = `native`, `subprocess`, `http`, or `daemon`
 - `DIRECTSHELL_BIN` (subprocess mode)
 - `DIRECTSHELL_HTTP_URL` (http mode, default `http://127.0.0.1:8765/execute`)
 - `DIRECTSHELL_DAEMON_SOCKET` (daemon Unix socket path, default `/tmp/directshell.sock`; set empty to force TCP)
@@ -513,6 +514,18 @@ Readiness probe:
 novaadapt directshell-check
 novaadapt directshell-check --transport daemon
 ```
+
+Built-in native action types:
+
+- `open_app`
+- `open_url`
+- `type`
+- `key`
+- `hotkey`
+- `click` (coordinate target)
+- `wait`
+- `run_shell`
+- `note`
 
 ## Security Baseline
 

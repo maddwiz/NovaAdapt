@@ -6,7 +6,7 @@
 2. `ModelRouter` selects one model (`single`) with optional fallback chain, or collects multiple responses (`vote`).
 3. `NovaAdaptAgent` parses strict JSON action plans.
 4. `ActionPolicy` evaluates each action for risk before execution.
-5. `DirectShellClient` previews or executes each action (subprocess, HTTP, or daemon transport).
+5. `DirectShellClient` previews or executes each action (native, subprocess, HTTP, or daemon transport).
 6. `UndoQueue` stores every action, optional undo action, and status in local SQLite.
 7. Optional async runner (`/run_async`) executes long tasks through in-memory job manager.
 
@@ -77,11 +77,11 @@ The bridge additionally exposes `/metrics` for request and error counters.
 
 ## Next Integration Points
 
-- Add first-party DirectShell gRPC schema/client once daemon API contract is finalized.
+- Expand built-in execution with a richer gRPC backend for deterministic UI control.
 - Add policy-driven bridge device trust registry management UI.
 - Expand Tauri/iOS/wearable scaffolds into signed production builds with full approval UX parity.
 
 ## Current Constraints
 
-- Live desktop control depends on external DirectShell runtime availability.
+- Built-in native execution currently covers common action types; richer deterministic UI control is still planned via gRPC backend.
 - Desktop/mobile/wearable modules are scaffolds and not yet shippable client products.

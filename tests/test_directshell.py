@@ -65,6 +65,16 @@ class _DaemonServer(socketserver.ThreadingTCPServer):
 
 
 class DirectShellClientTests(unittest.TestCase):
+    def test_default_transport_is_native(self):
+        client = DirectShellClient()
+        self.assertEqual(client.transport, "native")
+
+    def test_native_transport_wait_action_executes(self):
+        client = DirectShellClient(transport="native")
+        result = client.execute_action({"type": "wait", "value": "0.001s"}, dry_run=False)
+        self.assertEqual(result.status, "ok")
+        self.assertIn("waited", result.output)
+
     def test_http_transport_executes_action(self):
         server = HTTPServer(("127.0.0.1", 0), _Handler)
         port = server.server_port

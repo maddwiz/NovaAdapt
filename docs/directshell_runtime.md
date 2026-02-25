@@ -1,23 +1,25 @@
 # DirectShell Runtime Contract
 
-NovaAdapt delegates live desktop action execution to DirectShell.
+NovaAdapt includes a built-in native desktop execution runtime.
+External DirectShell endpoints are still supported as optional transports.
 
-## What Works Without DirectShell
+## Built-In Runtime (Default)
 
-- Objective planning
-- Multi-model routing/voting
-- Plan approval/rejection workflows
-- Audit, idempotency, undo queue persistence
-- Dry-run previews (`--execute` omitted)
+Supported action types:
 
-## What Requires DirectShell
+- `open_app`
+- `open_url`
+- `type`
+- `key`
+- `hotkey`
+- `click` (coordinates)
+- `wait`
+- `run_shell`
+- `note`
 
-- Any real GUI action execution (`--execute`)
-- Plan approval execution (`/plans/{id}/approve` with `execute=true`)
-- Undo execution (`/undo` with `execute=true`)
+## Optional External Transports
 
-## Supported Transports
-
+- `native` (default): built-in NovaAdapt runtime
 - `subprocess`: invokes `directshell exec --json ...`
 - `http`: posts JSON action payloads to a DirectShell HTTP endpoint
 - `daemon`: framed JSON over Unix socket or TCP
@@ -38,8 +40,8 @@ For remote monitoring via core API:
 GET /health?deep=1&execution=1
 ```
 
-This returns `503` when DirectShell is not execution-ready.
+This returns `503` when the configured execution backend is not ready.
 
 ## Planned
 
-- Native gRPC DirectShell client once daemon API contract is finalized.
+- First-party gRPC execution backend for richer deterministic UI control.
