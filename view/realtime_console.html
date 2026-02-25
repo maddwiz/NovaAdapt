@@ -254,6 +254,7 @@
         </div>
         <div class="controls">
           <button id="issue-session-btn">Issue Session Token</button>
+          <button id="revoke-session-btn">Revoke Session Token</button>
           <button class="brand" id="connect-btn">Connect</button>
           <button class="warn" id="disconnect-btn">Disconnect</button>
           <button id="ping-btn">Ping</button>
@@ -454,6 +455,56 @@
       }
     }
 
+    async function revokeSessionToken() {
+      const bridgeURL = buildBridgeHTTPURL();
+      const adminToken = $("admin-token").value.trim();
+      const tokenToRevoke = $("token").value.trim();
+
+      if (!bridgeURL) {
+        appendLog("error", "bridge HTTP URL is required");
+        return;
+      }
+      if (!adminToken) {
+        appendLog("error", "admin token is required to revoke a session token");
+        return;
+      }
+      if (!tokenToRevoke) {
+        appendLog("error", "session token is required to revoke");
+        return;
+      }
+
+      const headers = {
+        "Authorization": `Bearer ${adminToken}`,
+        "Content-Type": "application/json",
+      };
+
+      appendLog("session_revoke_request", { bridgeURL });
+      try {
+        const response = await fetch(`${bridgeURL}/auth/session/revoke`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ token: tokenToRevoke }),
+        });
+        const raw = await response.text();
+        let payload = { raw };
+        try {
+          payload = raw ? JSON.parse(raw) : {};
+        } catch {
+          // Keep raw payload for log visibility.
+        }
+        if (!response.ok) {
+          appendLog("session_revoke_error", { status: response.status, payload });
+          setStatus(`Session revoke failed (${response.status})`, "bad");
+          return;
+        }
+        appendLog("session_revoked", payload);
+        setStatus("Session token revoked", "ok");
+      } catch (err) {
+        appendLog("session_revoke_error", String(err));
+        setStatus("Session revoke network error", "bad");
+      }
+    }
+
     function connect() {
       if (socket && socket.readyState === WebSocket.OPEN) {
         appendLog("info", "already connected");
@@ -501,6 +552,9 @@
 
     $("issue-session-btn").addEventListener("click", () => {
       issueSessionToken();
+    });
+    $("revoke-session-btn").addEventListener("click", () => {
+      revokeSessionToken();
     });
     $("connect-btn").addEventListener("click", connect);
     $("disconnect-btn").addEventListener("click", disconnect);

@@ -2,9 +2,11 @@ package relay
 
 import (
 	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -47,6 +49,7 @@ type authContext struct {
 	Authorized bool
 	TokenType  string
 	Subject    string
+	SessionID  string
 	DeviceID   string
 	Scopes     map[string]struct{}
 	ExpiresAt  int64
@@ -75,6 +78,7 @@ type sessionTokenClaims struct {
 	Sub      string   `json:"sub,omitempty"`
 	Scopes   []string `json:"scopes,omitempty"`
 	DeviceID string   `json:"device_id,omitempty"`
+	JTI      string   `json:"jti,omitempty"`
 	Exp      int64    `json:"exp"`
 	Iat      int64    `json:"iat,omitempty"`
 }
@@ -113,6 +117,9 @@ func (h *Handler) authenticate(r *http.Request) authContext {
 	if err != nil {
 		return authContext{}
 	}
+	if h.isSessionRevoked(claims.JTI, time.Now().Unix()) {
+		return authContext{}
+	}
 	deviceID, ok := h.resolveAndValidateDeviceID(r, claims.DeviceID)
 	if !ok {
 		return authContext{}
@@ -125,6 +132,7 @@ func (h *Handler) authenticate(r *http.Request) authContext {
 		Authorized: true,
 		TokenType:  "session",
 		Subject:    subject,
+		SessionID:  claims.JTI,
 		DeviceID:   deviceID,
 		Scopes:     scopeSet(claims.Scopes),
 		ExpiresAt:  claims.Exp,
@@ -154,10 +162,15 @@ func (h *Handler) issueSessionToken(
 	if ttl > 24*3600 {
 		ttl = 24 * 3600
 	}
+	sessionID, err := generateSessionID()
+	if err != nil {
+		return "", sessionTokenClaims{}, fmt.Errorf("failed to generate session id")
+	}
 	claims := sessionTokenClaims{
 		Sub:      strings.TrimSpace(subject),
 		Scopes:   normalizedScopes,
 		DeviceID: strings.TrimSpace(deviceID),
+		JTI:      sessionID,
 		Iat:      now,
 		Exp:      now + int64(ttl),
 	}
@@ -314,6 +327,14 @@ func validateScopes(scopes []string) error {
 	return fmt.Errorf("unknown scope(s): %s", strings.Join(unknown, ", "))
 }
 
+func generateSessionID() (string, error) {
+	buf := make([]byte, 12)
+	if _, err := rand.Read(buf); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(buf), nil
+}
+
 func signSessionBody(payloadB64 string, key string) string {
 	mac := hmac.New(sha256.New, []byte(key))
 	_, _ = mac.Write([]byte(payloadB64))
@@ -380,11 +401,44 @@ func (h *Handler) handleIssueSessionToken(body []byte, auth authContext, request
 		"token":      token,
 		"token_type": "session",
 		"subject":    claims.Sub,
+		"session_id": claims.JTI,
 		"scopes":     claims.Scopes,
 		"device_id":  claims.DeviceID,
 		"expires_at": claims.Exp,
 		"issued_at":  claims.Iat,
 		"request_id": requestID,
+	}, nil
+}
+
+func (h *Handler) handleRevokeSessionToken(body []byte, requestID string) (map[string]any, error) {
+	payload := map[string]any{}
+	if len(bytesTrimSpace(body)) > 0 {
+		if err := json.Unmarshal(body, &payload); err != nil {
+			return nil, fmt.Errorf("request body must be valid JSON object")
+		}
+	}
+	token := strings.TrimSpace(toString(payload["token"]))
+	if token == "" {
+		return nil, fmt.Errorf("'token' is required")
+	}
+
+	claims, err := h.verifySessionToken(token)
+	if err != nil {
+		return nil, fmt.Errorf("invalid session token")
+	}
+	sessionID := strings.TrimSpace(claims.JTI)
+	if sessionID == "" {
+		return nil, fmt.Errorf("session token is not revocable")
+	}
+	alreadyRevoked := h.revokeSession(sessionID, claims.Exp)
+
+	return map[string]any{
+		"revoked":         true,
+		"already_revoked": alreadyRevoked,
+		"session_id":      sessionID,
+		"subject":         claims.Sub,
+		"expires_at":      claims.Exp,
+		"request_id":      requestID,
 	}, nil
 }
 
@@ -438,4 +492,40 @@ func toInt(value any) int {
 
 func bytesTrimSpace(value []byte) []byte {
 	return []byte(strings.TrimSpace(string(value)))
+}
+
+func (h *Handler) revokeSession(sessionID string, expiresAt int64) bool {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return false
+	}
+	now := time.Now().Unix()
+	h.revokedSessionsMu.Lock()
+	defer h.revokedSessionsMu.Unlock()
+	currentExpiry, exists := h.revokedSessions[sessionID]
+	alreadyRevoked := exists && currentExpiry > now
+	h.revokedSessions[sessionID] = expiresAt
+	return alreadyRevoked
+}
+
+func (h *Handler) isSessionRevoked(sessionID string, now int64) bool {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return false
+	}
+	h.revokedSessionsMu.RLock()
+	expiresAt, exists := h.revokedSessions[sessionID]
+	h.revokedSessionsMu.RUnlock()
+	if !exists {
+		return false
+	}
+	if expiresAt > 0 && expiresAt <= now {
+		h.revokedSessionsMu.Lock()
+		if current, ok := h.revokedSessions[sessionID]; ok && current <= now {
+			delete(h.revokedSessions, sessionID)
+		}
+		h.revokedSessionsMu.Unlock()
+		return false
+	}
+	return true
 }

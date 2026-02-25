@@ -183,6 +183,109 @@ func TestSessionTokenRejectsUnknownScopes(t *testing.T) {
 	}
 }
 
+func TestSessionTokenRevocationBlocksFurtherAccess(t *testing.T) {
+	core := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/models" {
+			_, _ = w.Write([]byte(`[{"name":"local"}]`))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"error":"not found"}`))
+	}))
+	defer core.Close()
+
+	h, err := NewHandler(Config{
+		CoreBaseURL: core.URL,
+		BridgeToken: "bridge",
+		Timeout:     5 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("new handler: %v", err)
+	}
+
+	rrIssue := httptest.NewRecorder()
+	reqIssue := httptest.NewRequest(http.MethodPost, "/auth/session", strings.NewReader(`{"scopes":["read"]}`))
+	reqIssue.Header.Set("Authorization", "Bearer bridge")
+	h.ServeHTTP(rrIssue, reqIssue)
+	if rrIssue.Code != http.StatusOK {
+		t.Fatalf("issue session token failed: %d body=%s", rrIssue.Code, rrIssue.Body.String())
+	}
+	var issuePayload map[string]any
+	if err := json.Unmarshal(rrIssue.Body.Bytes(), &issuePayload); err != nil {
+		t.Fatalf("unmarshal issue payload: %v", err)
+	}
+	sessionToken := strings.TrimSpace(toString(issuePayload["token"]))
+	if sessionToken == "" {
+		t.Fatalf("expected issued session token")
+	}
+
+	rrRevoke := httptest.NewRecorder()
+	reqRevoke := httptest.NewRequest(http.MethodPost, "/auth/session/revoke", strings.NewReader(`{"token":"`+sessionToken+`"}`))
+	reqRevoke.Header.Set("Authorization", "Bearer bridge")
+	h.ServeHTTP(rrRevoke, reqRevoke)
+	if rrRevoke.Code != http.StatusOK {
+		t.Fatalf("revoke session token failed: %d body=%s", rrRevoke.Code, rrRevoke.Body.String())
+	}
+
+	rrModels := httptest.NewRecorder()
+	reqModels := httptest.NewRequest(http.MethodGet, "/models", nil)
+	reqModels.Header.Set("Authorization", "Bearer "+sessionToken)
+	h.ServeHTTP(rrModels, reqModels)
+	if rrModels.Code != http.StatusUnauthorized {
+		t.Fatalf("expected revoked token to be unauthorized, got %d body=%s", rrModels.Code, rrModels.Body.String())
+	}
+}
+
+func TestSessionTokenRevocationRequiresAdminScope(t *testing.T) {
+	h, err := NewHandler(Config{
+		CoreBaseURL: "http://example.com",
+		BridgeToken: "bridge",
+		Timeout:     5 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("new handler: %v", err)
+	}
+
+	adminToken, _, err := h.issueSessionToken("admin", []string{scopeAdmin}, "", 120)
+	if err != nil {
+		t.Fatalf("issue admin token: %v", err)
+	}
+	readToken, _, err := h.issueSessionToken("reader", []string{scopeRead}, "", 120)
+	if err != nil {
+		t.Fatalf("issue read token: %v", err)
+	}
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/auth/session/revoke", strings.NewReader(`{"token":"`+adminToken+`"}`))
+	req.Header.Set("Authorization", "Bearer "+readToken)
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for non-admin token on /auth/session/revoke, got %d body=%s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestSessionTokenRevocationRejectsInvalidToken(t *testing.T) {
+	h, err := NewHandler(Config{
+		CoreBaseURL: "http://example.com",
+		BridgeToken: "bridge",
+		Timeout:     5 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("new handler: %v", err)
+	}
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/auth/session/revoke", strings.NewReader(`{"token":"not-a-session-token"}`))
+	req.Header.Set("Authorization", "Bearer bridge")
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for invalid token, got %d body=%s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), "invalid session token") {
+		t.Fatalf("expected invalid session token error, got %s", rr.Body.String())
+	}
+}
+
 func TestWebSocketReadScopedTokenCannotRunCommand(t *testing.T) {
 	runCalls := 0
 	core := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

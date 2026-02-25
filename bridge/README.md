@@ -38,6 +38,7 @@ Secure relay service for remote clients (phone/glasses) to reach NovaAdapt core.
   - `POST /check`
 - `GET /ws` (WebSocket upgrade; requires bridge auth)
 - `POST /auth/session` (issue scoped short-lived bridge session token; admin only)
+- `POST /auth/session/revoke` (revoke a scoped session token; admin only)
 
 ## Auth Model
 
@@ -63,6 +64,7 @@ Request body (all fields optional):
 Response includes:
 
 - `token` (session bearer token)
+- `session_id` (token JTI; revocation handle)
 - `expires_at`, `issued_at`
 - normalized `scopes`, `subject`, `device_id`
 
@@ -78,6 +80,17 @@ Supported scopes:
 - `cancel` (`POST /jobs/{id}/cancel`)
 
 Unknown scopes are rejected at token-issue time with `400`.
+
+Session revocation:
+
+```json
+{
+  "token": "na1...."
+}
+```
+
+`POST /auth/session/revoke` adds the token `session_id` to an in-memory denylist until expiry.
+Revocations are process-local and reset on bridge restart.
 
 ## WebSocket Channel (`/ws`)
 

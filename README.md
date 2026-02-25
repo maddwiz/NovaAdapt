@@ -271,6 +271,7 @@ Bridge realtime control endpoint:
 - `GET /ws` (WebSocket; streams audit events and accepts authenticated command/approval requests)
 - Browser/native friendly auth query: `/ws?token=...` (and `/ws?...&device_id=...` when device allowlist is enabled)
 - `POST /auth/session` (issue scoped, expiring bridge session tokens for least-privilege clients)
+- `POST /auth/session/revoke` (admin revocation of scoped bridge session tokens)
 
 Realtime operator console:
 
@@ -360,6 +361,7 @@ Environment variables:
 - Bridge relay propagates `X-Request-ID` for traceability and supports deep health probing at `/health?deep=1`.
 - Bridge relay exposes `/metrics` for basic operational counters.
 - Bridge relay can issue short-lived scoped session tokens (`/auth/session`) so view/vibe clients can run with least privilege.
+- Bridge relay supports admin session revocation (`/auth/session/revoke`) with denylist enforcement for issued session IDs.
 - Bridge relay forwards `/openapi.json` so remote clients can discover contract shape.
 - Bridge relay forwards `/dashboard` HTML for secure remote browser access.
 - Core API supports configurable request rate limiting and max body size on `serve`.

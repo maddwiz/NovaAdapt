@@ -6,6 +6,8 @@ Realtime companion console for NovaAdapt bridge WebSocket control.
 
 - `realtime_console.html`: single-file mobile-friendly UI.
   - Connects to bridge `/ws`.
+  - Issues scoped session tokens via `/auth/session`.
+  - Revokes scoped session tokens via `/auth/session/revoke`.
   - Streams live audit events.
   - Sends authenticated command requests (run/plan approve/job cancel/etc.).
   - Shows command responses and errors in a timestamped event log.
@@ -29,7 +31,8 @@ Recommended bridge URL in the UI:
 
 If using query auth mode:
 
-- token: bridge token
+- token: scoped bridge session token (or static bridge token)
+- admin token: bridge admin token (or admin-scoped session token) for issue/revoke operations
 - device id: trusted `X-Device-ID` value when device allowlist is enabled
 
 ## Notes

@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"path"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -72,6 +73,8 @@ type Handler struct {
 	allowedDevices      map[string]struct{}
 	corsAllowedOrigins  map[string]struct{}
 	corsAllowAll        bool
+	revokedSessionsMu   sync.RWMutex
+	revokedSessions     map[string]int64
 }
 
 // NewHandler creates a configured bridge relay handler.
@@ -121,6 +124,7 @@ func NewHandler(cfg Config) (*Handler, error) {
 		allowedDevices:     allowedDevices,
 		corsAllowedOrigins: corsAllowedOrigins,
 		corsAllowAll:       corsAllowAll,
+		revokedSessions:    make(map[string]int64),
 	}, nil
 }
 
@@ -208,6 +212,33 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		statusCode = http.StatusOK
 		h.writeJSON(w, statusCode, issued)
+		return
+	}
+	if r.URL.Path == "/auth/session/revoke" {
+		if r.Method != http.MethodPost {
+			statusCode = http.StatusMethodNotAllowed
+			h.writeJSON(w, statusCode, map[string]any{"error": "Method not allowed", "request_id": requestID})
+			return
+		}
+		if !auth.hasScope(scopeAdmin) {
+			statusCode = http.StatusForbidden
+			h.writeJSON(w, statusCode, map[string]any{"error": "Forbidden", "request_id": requestID})
+			return
+		}
+		body, err := h.readBody(r)
+		if err != nil {
+			statusCode = http.StatusBadRequest
+			h.writeJSON(w, statusCode, map[string]any{"error": err.Error(), "request_id": requestID})
+			return
+		}
+		revoked, err := h.handleRevokeSessionToken(body, requestID)
+		if err != nil {
+			statusCode = http.StatusBadRequest
+			h.writeJSON(w, statusCode, map[string]any{"error": err.Error(), "request_id": requestID})
+			return
+		}
+		statusCode = http.StatusOK
+		h.writeJSON(w, statusCode, revoked)
 		return
 	}
 
