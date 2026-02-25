@@ -222,7 +222,7 @@ When token auth is enabled, browser dashboard usage supports:
 The page will reuse that token for `/dashboard/data` polling.
 Dashboard now includes one-click controls for pending plan approval/rejection, job cancellation, and plan undo marking.
 
-12. Run full local smoke test (core + bridge):
+12. Run full local smoke test (core + bridge + runtime transports):
 
 ```bash
 make smoke

@@ -15,6 +15,7 @@ build-bridge:
 
 smoke:
 	./scripts/smoke_bridge.sh
+	./scripts/smoke_runtime.sh
 
 run-local:
 	./installer/run_local_operator_stack.sh
