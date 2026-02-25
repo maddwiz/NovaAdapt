@@ -135,6 +135,10 @@ class NativeDesktopExecutor:
             "press": self._execute_key,
             "hotkey": self._execute_hotkey,
             "click": self._execute_click,
+            "right_click": self._execute_right_click,
+            "context_click": self._execute_right_click,
+            "double_click": self._execute_double_click,
+            "dblclick": self._execute_double_click,
             "run_shell": self._execute_run_shell,
             "shell": self._execute_run_shell,
             "terminal": self._execute_run_shell,
@@ -214,6 +218,8 @@ class NativeDesktopExecutor:
             "key",
             "hotkey",
             "click",
+            "right_click",
+            "double_click",
             "run_shell",
         ]
 
@@ -367,26 +373,67 @@ class NativeDesktopExecutor:
         )
 
     def _execute_click(self, action: dict[str, Any]) -> NativeExecutionResult:
+        return self._execute_pointer_click(action, button=1, clicks=1, action_name="click")
+
+    def _execute_right_click(self, action: dict[str, Any]) -> NativeExecutionResult:
+        return self._execute_pointer_click(action, button=3, clicks=1, action_name="right_click")
+
+    def _execute_double_click(self, action: dict[str, Any]) -> NativeExecutionResult:
+        return self._execute_pointer_click(action, button=1, clicks=2, action_name="double_click")
+
+    def _execute_pointer_click(
+        self,
+        action: dict[str, Any],
+        *,
+        button: int,
+        clicks: int,
+        action_name: str,
+    ) -> NativeExecutionResult:
         raw = str(action.get("target") or action.get("value") or "").strip()
         if not raw:
-            return NativeExecutionResult(status="failed", output="click action requires target or value")
+            return NativeExecutionResult(status="failed", output=f"{action_name} action requires target or value")
         coords = self._parse_coordinates(raw)
         if coords is None:
             return NativeExecutionResult(
                 status="failed",
-                output=f"click target must be coordinates, got '{raw}'. Expected 'x,y' or 'x=.. y=..'.",
+                output=f"{action_name} target must be coordinates, got '{raw}'. Expected 'x,y' or 'x=.. y=..'.",
             )
         x, y = coords
         if self._is_macos():
-            script = f'tell application "System Events" to click at {{{x}, {y}}}'
+            if button == 3:
+                script = (
+                    'tell application "System Events"\n'
+                    "key down control\n"
+                    f"repeat {max(1, clicks)} times\n"
+                    f"click at {{{x}, {y}}}\n"
+                    "end repeat\n"
+                    "key up control\n"
+                    "end tell"
+                )
+            else:
+                script = (
+                    'tell application "System Events"\n'
+                    f"repeat {max(1, clicks)} times\n"
+                    f"click at {{{x}, {y}}}\n"
+                    "end repeat\n"
+                    "end tell"
+                )
             completed = self._run_subprocess(["osascript", "-e", script], shell=False)
             return self._result_from_completed(completed)
         if self._is_linux():
             if not self._linux_has_xdotool():
-                return NativeExecutionResult(status="failed", output="click on linux requires 'xdotool' in PATH")
-            completed = self._run_subprocess(["xdotool", "mousemove", str(x), str(y), "click", "1"], shell=False)
+                return NativeExecutionResult(
+                    status="failed",
+                    output=f"{action_name} on linux requires 'xdotool' in PATH",
+                )
+            cmd: list[str] = ["xdotool", "mousemove", str(x), str(y), "click"]
+            if max(1, clicks) > 1:
+                cmd.extend(["--repeat", str(max(1, clicks))])
+            cmd.append(str(3 if button == 3 else 1))
+            completed = self._run_subprocess(cmd, shell=False)
             return self._result_from_completed(completed)
         if self._is_windows():
+            down_flag, up_flag = ("0x0008", "0x0010") if button == 3 else ("0x0002", "0x0004")
             completed = self._run_powershell_script(
                 (
                     "if (-not ('NativeMouse' -as [type])) { "
@@ -398,14 +445,19 @@ class NativeDesktopExecutor:
                     "}'; "
                     "} "
                     f"[NativeMouse]::SetCursorPos({x}, {y}) | Out-Null; "
-                    "[NativeMouse]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero); "
-                    "[NativeMouse]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero);"
+                    f"for ($i = 0; $i -lt {max(1, clicks)}; $i++) {{ "
+                    f"[NativeMouse]::mouse_event({down_flag}, 0, 0, 0, [UIntPtr]::Zero); "
+                    f"[NativeMouse]::mouse_event({up_flag}, 0, 0, 0, [UIntPtr]::Zero); "
+                    "}"
                 )
             )
             return self._result_from_completed(completed)
         return NativeExecutionResult(
             status="failed",
-            output=f"click is only implemented for macOS/linux/windows native runtime (platform={self.platform_name})",
+            output=(
+                f"{action_name} is only implemented for macOS/linux/windows native runtime "
+                f"(platform={self.platform_name})"
+            ),
         )
 
     def _execute_run_shell(self, action: dict[str, Any]) -> NativeExecutionResult:

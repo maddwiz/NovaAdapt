@@ -585,6 +585,8 @@ Built-in native action types:
 - `key`
 - `hotkey`
 - `click` (coordinate target)
+- `right_click` (coordinate target)
+- `double_click` (coordinate target)
 - `wait`
 - `run_shell`
 - `note`

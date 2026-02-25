@@ -80,6 +80,22 @@ class NativeExecutorTests(unittest.TestCase):
         self.assertEqual(cmd, ["xdotool", "mousemove", "120", "340", "click", "1"])
         self.assertFalse(shell)
 
+    def test_linux_right_click_uses_xdotool_button_three(self):
+        executor = _RecordingLinuxExecutor()
+        result = executor.execute_action({"type": "right_click", "target": "120,340"})
+        self.assertEqual(result.status, "ok")
+        cmd, shell = executor.calls[-1]
+        self.assertEqual(cmd, ["xdotool", "mousemove", "120", "340", "click", "3"])
+        self.assertFalse(shell)
+
+    def test_linux_double_click_uses_xdotool_repeat(self):
+        executor = _RecordingLinuxExecutor()
+        result = executor.execute_action({"type": "double_click", "target": "120,340"})
+        self.assertEqual(result.status, "ok")
+        cmd, shell = executor.calls[-1]
+        self.assertEqual(cmd, ["xdotool", "mousemove", "120", "340", "click", "--repeat", "2", "1"])
+        self.assertFalse(shell)
+
     def test_linux_probe_includes_xdotool_flag(self):
         class _NoToolExecutor(NativeDesktopExecutor):
             def _linux_has_xdotool(self) -> bool:
@@ -122,6 +138,23 @@ class NativeExecutorTests(unittest.TestCase):
         cmd, shell = executor.calls[-1]
         self.assertFalse(shell)
         self.assertIn("SetCursorPos(45, 90)", cmd[-1])
+
+    def test_windows_right_click_uses_user32_right_flags(self):
+        executor = _RecordingWindowsExecutor()
+        result = executor.execute_action({"type": "right_click", "target": "45,90"})
+        self.assertEqual(result.status, "ok")
+        cmd, shell = executor.calls[-1]
+        self.assertFalse(shell)
+        self.assertIn("mouse_event(0x0008", cmd[-1])
+        self.assertIn("mouse_event(0x0010", cmd[-1])
+
+    def test_windows_double_click_uses_repeat_loop(self):
+        executor = _RecordingWindowsExecutor()
+        result = executor.execute_action({"type": "double_click", "target": "45,90"})
+        self.assertEqual(result.status, "ok")
+        cmd, shell = executor.calls[-1]
+        self.assertFalse(shell)
+        self.assertIn("$i -lt 2", cmd[-1])
 
 
 if __name__ == "__main__":

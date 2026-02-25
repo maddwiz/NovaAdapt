@@ -13,6 +13,8 @@ Supported action types:
 - `key`
 - `hotkey`
 - `click` (coordinates)
+- `right_click` (coordinates)
+- `double_click` (coordinates)
 - `wait`
 - `run_shell`
 - `note`
