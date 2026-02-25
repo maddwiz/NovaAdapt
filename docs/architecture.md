@@ -67,7 +67,7 @@ The bridge additionally exposes `/metrics` for request and error counters.
 - Backup command (`novaadapt backup`) snapshots SQLite state for rollback-safe upgrades.
 - Restore command (`novaadapt restore`) rehydrates SQLite state from snapshots with pre-restore safety archives.
 - Prune command (`novaadapt prune`) removes stale terminal/local rows for bounded SQLite growth.
-- Release workflow (`.github/workflows/release.yml`) builds artifacts and publishes checksums on tag pushes.
+- Release workflow (`.github/workflows/release.yml`) builds artifacts on tag/manual triggers and publishes checksums for release-tag runs.
 
 ## Reliability Track
 

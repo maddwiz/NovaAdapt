@@ -38,9 +38,11 @@ If `--timestamp` is omitted, NovaAdapt restores the latest discovered snapshot a
 
 ## GitHub Releases
 
-Tag-based releases use `.github/workflows/release.yml`:
-- triggers on tags `v*`
-- runs tests
-- builds release artifacts
-- publishes checksums
+Release workflow `.github/workflows/release.yml`:
+- triggers on any git tag push (publishes GitHub release)
+- supports `workflow_dispatch` with optional `release_tag`
+  - with `release_tag`: publishes GitHub release for that tag
+  - without `release_tag`: builds and uploads workflow artifacts only
+- runs tests before building artifacts
+- builds release artifacts and checksums
 - optionally signs checksums when `COSIGN_PRIVATE_KEY`/`COSIGN_PASSWORD` are provided

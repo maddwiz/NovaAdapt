@@ -3,8 +3,13 @@ name: release
 on:
   push:
     tags:
-      - "v*"
+      - "*"
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Release tag to publish (example: v1.0.0). Leave empty to build artifacts only."
+        required: false
+        default: ""
 
 jobs:
   release:
@@ -18,6 +23,19 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Resolve release metadata
+        id: meta
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ github.event.inputs.release_tag }}" ]; then
+            release_tag="${{ github.event.inputs.release_tag }}"
+          elif [ "${{ github.ref_type }}" = "tag" ]; then
+            release_tag="${GITHUB_REF_NAME}"
+          else
+            release_tag="manual-${GITHUB_RUN_NUMBER}-${GITHUB_SHA::7}"
+          fi
+          echo "release_tag=${release_tag}" >> "${GITHUB_OUTPUT}"
+          echo "Using release tag: ${release_tag}"
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -35,7 +53,7 @@ jobs:
 
       - name: Build release artifacts
         run: |
-          ./installer/build_release_artifacts.sh "${GITHUB_REF_NAME}"
+          ./installer/build_release_artifacts.sh "${{ steps.meta.outputs.release_tag }}"
 
       - name: Optional checksum signing
         if: ${{ env.COSIGN_PRIVATE_KEY != '' }}
@@ -44,9 +62,19 @@ jobs:
           chmod +x /tmp/cosign
           /tmp/cosign sign-blob --key env://COSIGN_PRIVATE_KEY --output-signature dist/SHA256SUMS.sig dist/SHA256SUMS
 
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: novaadapt-release-${{ steps.meta.outputs.release_tag }}
+          path: |
+            dist/*
+          if-no-files-found: error
+
       - name: Publish release
+        if: ${{ github.ref_type == 'tag' || (github.event_name == 'workflow_dispatch' && github.event.inputs.release_tag != '') }}
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.meta.outputs.release_tag }}
           files: |
             dist/*
           draft: false
