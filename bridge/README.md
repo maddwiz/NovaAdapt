@@ -11,6 +11,7 @@ Secure relay service for remote clients (phone/glasses) to reach NovaAdapt core.
 - Optional cross-origin browser allowlist (`--cors-allowed-origins`)
 - Optional trusted proxy CIDR allowlist for `X-Forwarded-For` / `X-Forwarded-Proto` (`--trusted-proxy-cidrs`)
 - Optional per-client rate limiting (`--rate-limit-rps`, `--rate-limit-burst`)
+- Optional concurrent websocket connection cap (`--max-ws-connections`)
 - Optional persisted session-revocation store (`--revocation-store-path`)
 - Token-authenticated upstream calls to core API (core token)
 - Request-id tracing (`X-Request-ID`) propagated to core
@@ -178,6 +179,7 @@ Container build uses:
   --trusted-proxy-cidrs 127.0.0.1/32 \
   --rate-limit-rps 20 \
   --rate-limit-burst 20 \
+  --max-ws-connections 100 \
   --revocation-store-path ./data/revocations.json \
   --allowed-device-ids iphone-15-pro,halo-glasses-1 \
   --log-requests true
@@ -198,6 +200,7 @@ Environment variables are also supported:
 - `NOVAADAPT_BRIDGE_TRUSTED_PROXY_CIDRS` (comma-separated IP/CIDR list allowed to set `X-Forwarded-*` headers)
 - `NOVAADAPT_BRIDGE_RATE_LIMIT_RPS` (per-client requests/second; `<=0` disables)
 - `NOVAADAPT_BRIDGE_RATE_LIMIT_BURST` (per-client burst capacity)
+- `NOVAADAPT_BRIDGE_MAX_WS_CONNECTIONS` (max concurrent websocket sessions; `0` disables cap)
 - `NOVAADAPT_BRIDGE_REVOCATION_STORE_PATH` (optional persisted session revocation file)
 - `NOVAADAPT_BRIDGE_ALLOWED_DEVICE_IDS` (comma-separated trusted device IDs)
 - `NOVAADAPT_BRIDGE_TIMEOUT`

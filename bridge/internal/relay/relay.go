@@ -76,9 +76,11 @@ type Config struct {
 	RateLimitRPS float64
 	// RateLimitBurst configures token bucket burst size when RateLimitRPS is enabled.
 	RateLimitBurst int
-	Timeout        time.Duration
-	LogRequests    bool
-	Logger         *log.Logger
+	// MaxWSConnections limits concurrent websocket sessions. 0 disables limit.
+	MaxWSConnections int
+	Timeout          time.Duration
+	LogRequests      bool
+	Logger           *log.Logger
 }
 
 // Handler is an HTTP handler that secures and forwards requests to NovaAdapt core.
@@ -92,6 +94,8 @@ type Handler struct {
 	rateLimitedTotal    uint64
 	sessionIssuedTotal  uint64
 	sessionRevokedTotal uint64
+	wsRejectedTotal     uint64
+	wsActiveConnections int64
 	allowedDevices      map[string]struct{}
 	corsAllowedOrigins  map[string]struct{}
 	corsAllowAll        bool
@@ -112,6 +116,12 @@ func NewHandler(cfg Config) (*Handler, error) {
 	}
 	if cfg.RateLimitBurst <= 0 {
 		cfg.RateLimitBurst = 20
+	}
+	if cfg.MaxWSConnections < 0 {
+		cfg.MaxWSConnections = 0
+	}
+	if cfg.MaxWSConnections == 0 {
+		cfg.MaxWSConnections = 100
 	}
 	if cfg.SessionTokenTTL <= 0 {
 		cfg.SessionTokenTTL = 15 * time.Minute
@@ -403,6 +413,8 @@ func (h *Handler) bridgeHealthSnapshot() map[string]any {
 		"rate_limit_rps":        h.cfg.RateLimitRPS,
 		"rate_limit_burst":      h.cfg.RateLimitBurst,
 		"rate_limit_clients":    trackedClients,
+		"ws_max_connections":    h.cfg.MaxWSConnections,
+		"ws_active_connections": atomic.LoadInt64(&h.wsActiveConnections),
 		"revoked_sessions":      revokedCount,
 		"revocation_store_path": strings.TrimSpace(h.cfg.RevocationStorePath),
 	}
@@ -770,12 +782,16 @@ func (h *Handler) writeMetrics(w http.ResponseWriter) {
 			"novaadapt_bridge_rate_limited_total %d\n"+
 			"novaadapt_bridge_session_issued_total %d\n"+
 			"novaadapt_bridge_session_revoked_total %d\n"+
+			"novaadapt_bridge_ws_rejected_total %d\n"+
+			"novaadapt_bridge_ws_active_connections %d\n"+
 			"novaadapt_bridge_upstream_errors_total %d\n",
 		atomic.LoadUint64(&h.requestsTotal),
 		atomic.LoadUint64(&h.unauthorizedTotal),
 		atomic.LoadUint64(&h.rateLimitedTotal),
 		atomic.LoadUint64(&h.sessionIssuedTotal),
 		atomic.LoadUint64(&h.sessionRevokedTotal),
+		atomic.LoadUint64(&h.wsRejectedTotal),
+		atomic.LoadInt64(&h.wsActiveConnections),
 		atomic.LoadUint64(&h.upstreamErrorsTotal),
 	)
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4")

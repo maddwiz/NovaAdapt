@@ -64,6 +64,16 @@ func (h *Handler) handleWebSocket(w http.ResponseWriter, r *http.Request, reques
 		h.writeJSON(w, http.StatusForbidden, map[string]any{"error": "Forbidden", "request_id": requestID})
 		return http.StatusForbidden
 	}
+	if !h.tryAcquireWSConnection() {
+		atomic.AddUint64(&h.wsRejectedTotal, 1)
+		h.writeJSON(
+			w,
+			http.StatusTooManyRequests,
+			map[string]any{"error": "Too many websocket connections", "request_id": requestID},
+		)
+		return http.StatusTooManyRequests
+	}
+	defer h.releaseWSConnection()
 
 	conn, err := wsUpgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -115,6 +125,31 @@ func (h *Handler) handleWebSocket(w http.ResponseWriter, r *http.Request, reques
 	_ = conn.Close()
 	<-pumpDone
 	return http.StatusSwitchingProtocols
+}
+
+func (h *Handler) tryAcquireWSConnection() bool {
+	maxConnections := h.cfg.MaxWSConnections
+	if maxConnections <= 0 {
+		atomic.AddInt64(&h.wsActiveConnections, 1)
+		return true
+	}
+	for {
+		current := atomic.LoadInt64(&h.wsActiveConnections)
+		if current >= int64(maxConnections) {
+			return false
+		}
+		if atomic.CompareAndSwapInt64(&h.wsActiveConnections, current, current+1) {
+			return true
+		}
+	}
+}
+
+func (h *Handler) releaseWSConnection() {
+	next := atomic.AddInt64(&h.wsActiveConnections, -1)
+	if next >= 0 {
+		return
+	}
+	atomic.StoreInt64(&h.wsActiveConnections, 0)
 }
 
 func (h *Handler) wsAuditPump(

@@ -324,6 +324,7 @@ Optional env vars:
 - `NOVAADAPT_BRIDGE_TRUSTED_PROXY_CIDRS` (CIDRs/IPs allowed to set `X-Forwarded-For` / `X-Forwarded-Proto`)
 - `NOVAADAPT_BRIDGE_RATE_LIMIT_RPS` (`<=0` disables bridge per-client rate limiting)
 - `NOVAADAPT_BRIDGE_RATE_LIMIT_BURST` (bridge per-client burst capacity)
+- `NOVAADAPT_BRIDGE_MAX_WS_CONNECTIONS` (max concurrent bridge websocket sessions; `0` disables cap)
 - `NOVAADAPT_BRIDGE_REVOCATION_STORE_PATH` (persist bridge session revocations across restart)
 - `NOVAADAPT_BRIDGE_ADMIN_TOKEN` (for vibe session leasing)
 - `NOVAADAPT_BRIDGE_SESSION_SCOPES` (CSV scopes for leased vibe sessions)

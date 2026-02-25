@@ -20,6 +20,7 @@ BRIDGE_TLS_KEY_FILE="${NOVAADAPT_BRIDGE_TLS_KEY_FILE:-}"
 BRIDGE_TLS_INSECURE_SKIP_VERIFY="${NOVAADAPT_BRIDGE_TLS_INSECURE_SKIP_VERIFY:-1}"
 RATE_LIMIT_RPS="${NOVAADAPT_BRIDGE_RATE_LIMIT_RPS:-0}"
 RATE_LIMIT_BURST="${NOVAADAPT_BRIDGE_RATE_LIMIT_BURST:-20}"
+MAX_WS_CONNECTIONS="${NOVAADAPT_BRIDGE_MAX_WS_CONNECTIONS:-100}"
 LOG_DIR="${NOVAADAPT_LOCAL_LOG_DIR:-$ROOT_DIR/.novaadapt-local}"
 mkdir -p "$LOG_DIR"
 REVOCATION_STORE_PATH="${NOVAADAPT_BRIDGE_REVOCATION_STORE_PATH:-$LOG_DIR/revoked_sessions.json}"
@@ -121,6 +122,7 @@ if [[ -n "$BRIDGE_TLS_CERT_FILE" || -n "$BRIDGE_TLS_KEY_FILE" ]]; then
   bridge_cmd+=(--tls-cert-file "$BRIDGE_TLS_CERT_FILE" --tls-key-file "$BRIDGE_TLS_KEY_FILE")
 fi
 bridge_cmd+=(--rate-limit-rps "$RATE_LIMIT_RPS" --rate-limit-burst "$RATE_LIMIT_BURST")
+bridge_cmd+=(--max-ws-connections "$MAX_WS_CONNECTIONS")
 if [[ -n "$REVOCATION_STORE_PATH" ]]; then
   bridge_cmd+=(--revocation-store-path "$REVOCATION_STORE_PATH")
 fi
@@ -183,6 +185,7 @@ if [[ -n "$BRIDGE_TLS_CERT_FILE" && -n "$BRIDGE_TLS_KEY_FILE" ]]; then
 fi
 echo "Rate limit rps:   ${RATE_LIMIT_RPS}"
 echo "Rate limit burst: ${RATE_LIMIT_BURST}"
+echo "Max ws conns:     ${MAX_WS_CONNECTIONS}"
 echo "Revocation store: ${REVOCATION_STORE_PATH}"
 echo ""
 echo "Logs:"

@@ -259,6 +259,57 @@ func TestWebSocketCommandAndEventStreaming(t *testing.T) {
 	}
 }
 
+func TestWebSocketConnectionLimit(t *testing.T) {
+	core := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/events/stream" {
+			w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
+			_, _ = w.Write([]byte("event: timeout\ndata: {\"request_id\":\"rid\"}\n\n"))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"error":"not found"}`))
+	}))
+	defer core.Close()
+
+	h, err := NewHandler(
+		Config{
+			CoreBaseURL:      core.URL,
+			BridgeToken:      "bridge",
+			CoreToken:        "coresecret",
+			MaxWSConnections: 1,
+			Timeout:          5 * time.Second,
+		},
+	)
+	if err != nil {
+		t.Fatalf("new handler: %v", err)
+	}
+
+	server := httptest.NewServer(h)
+	defer server.Close()
+
+	wsURL := "ws" + strings.TrimPrefix(server.URL, "http") + "/ws?since_id=0"
+	headers := http.Header{}
+	headers.Set("Authorization", "Bearer bridge")
+
+	conn1, _, err := websocket.DefaultDialer.Dial(wsURL, headers)
+	if err != nil {
+		t.Fatalf("dial first websocket: %v", err)
+	}
+	defer conn1.Close()
+	_ = mustReadWSMessageByType(t, conn1, "hello", 2*time.Second)
+
+	_, resp, err := websocket.DefaultDialer.Dial(wsURL, headers)
+	if err == nil {
+		t.Fatalf("expected websocket limit error")
+	}
+	if resp == nil || resp.StatusCode != http.StatusTooManyRequests {
+		if resp == nil {
+			t.Fatalf("expected too many requests response status")
+		}
+		t.Fatalf("expected 429 got %d", resp.StatusCode)
+	}
+}
+
 func mustReadWSMessageByType(
 	t *testing.T,
 	conn *websocket.Conn,

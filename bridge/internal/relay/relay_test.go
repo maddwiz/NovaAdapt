@@ -462,6 +462,12 @@ func TestMetricsEndpoint(t *testing.T) {
 	if !strings.Contains(metrics, "novaadapt_bridge_session_revoked_total") {
 		t.Fatalf("expected session revoked metric, got: %s", metrics)
 	}
+	if !strings.Contains(metrics, "novaadapt_bridge_ws_rejected_total") {
+		t.Fatalf("expected ws rejected metric, got: %s", metrics)
+	}
+	if !strings.Contains(metrics, "novaadapt_bridge_ws_active_connections") {
+		t.Fatalf("expected ws active connections metric, got: %s", metrics)
+	}
 }
 
 func TestDeviceAllowlist(t *testing.T) {

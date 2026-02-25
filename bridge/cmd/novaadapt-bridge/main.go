@@ -72,6 +72,11 @@ func main() {
 		envOrDefaultInt("NOVAADAPT_BRIDGE_RATE_LIMIT_BURST", 20),
 		"Per-client bridge burst capacity for rate limit",
 	)
+	maxWSConnections := flag.Int(
+		"max-ws-connections",
+		envOrDefaultInt("NOVAADAPT_BRIDGE_MAX_WS_CONNECTIONS", 100),
+		"Maximum concurrent websocket sessions (0 disables limit)",
+	)
 	timeout := flag.Int("timeout", envOrDefaultInt("NOVAADAPT_BRIDGE_TIMEOUT", 30), "Core request timeout seconds")
 	logRequests := flag.Bool("log-requests", envOrDefaultBool("NOVAADAPT_BRIDGE_LOG_REQUESTS", true), "Enable per-request bridge logs")
 	flag.Parse()
@@ -88,6 +93,7 @@ func main() {
 		RevocationStorePath: strings.TrimSpace(*revocationStorePath),
 		RateLimitRPS:        *rateLimitRPS,
 		RateLimitBurst:      max(1, *rateLimitBurst),
+		MaxWSConnections:    *maxWSConnections,
 		Timeout:             time.Duration(max(1, *timeout)) * time.Second,
 		LogRequests:         *logRequests,
 		Logger:              log.Default(),
