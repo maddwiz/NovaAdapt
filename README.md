@@ -298,6 +298,9 @@ Optional env vars:
 - `NOVAADAPT_BRIDGE_CORS_ALLOWED_ORIGINS` (defaults to local view origin when `NOVAADAPT_WITH_VIEW=1`)
 - `NOVAADAPT_BRIDGE_RATE_LIMIT_RPS` (`<=0` disables bridge per-client rate limiting)
 - `NOVAADAPT_BRIDGE_RATE_LIMIT_BURST` (bridge per-client burst capacity)
+- `NOVAADAPT_BRIDGE_ADMIN_TOKEN` (for vibe session leasing)
+- `NOVAADAPT_BRIDGE_SESSION_SCOPES` (CSV scopes for leased vibe sessions)
+- `NOVAADAPT_BRIDGE_SESSION_TTL` (seconds for leased vibe sessions)
 - `NOVAADAPT_WITH_VIEW=0` (skip static view server)
 
 Wearable intent bridge prototype:
@@ -305,7 +308,7 @@ Wearable intent bridge prototype:
 ```bash
 PYTHONPATH=core:shared python3 vibe/vibe_terminal.py \
   --bridge-url http://127.0.0.1:9797 \
-  --token YOUR_BRIDGE_TOKEN \
+  --admin-token YOUR_BRIDGE_ADMIN_TOKEN \
   --objective "Open dashboard and summarize failed jobs" \
   --wait
 ```
