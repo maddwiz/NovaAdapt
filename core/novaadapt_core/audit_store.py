@@ -2,20 +2,33 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import time
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable, TypeVar
+
+T = TypeVar("T")
 
 
 class AuditStore:
     """SQLite-backed append-only audit event store."""
 
-    def __init__(self, db_path: str | Path | None = None) -> None:
+    def __init__(
+        self,
+        db_path: str | Path | None = None,
+        *,
+        retry_attempts: int = 3,
+        retry_backoff_seconds: float = 0.02,
+        sqlite_timeout_seconds: float = 5.0,
+    ) -> None:
         if db_path is None:
             db_path = Path.home() / ".novaadapt" / "events.db"
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        self.retry_attempts = max(1, int(retry_attempts))
+        self.retry_backoff_seconds = max(0.0, float(retry_backoff_seconds))
+        self.sqlite_timeout_seconds = max(0.1, float(sqlite_timeout_seconds))
         self._init()
 
     def append(
@@ -31,41 +44,25 @@ class AuditStore:
     ) -> dict[str, Any]:
         now = _now_iso()
         payload_json = json.dumps(payload) if payload is not None else None
-        with self._connection() as conn:
-            cur = conn.execute(
-                """
-                INSERT INTO audit_events(
-                    created_at, category, action, status, request_id, entity_type, entity_id, payload_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    now,
-                    str(category),
-                    str(action),
-                    str(status),
-                    request_id,
-                    entity_type,
-                    entity_id,
-                    payload_json,
-                ),
+        event_id = self._run_with_retry(
+            lambda: self._append_once(
+                now=now,
+                category=str(category),
+                action=str(action),
+                status=str(status),
+                request_id=request_id,
+                entity_type=entity_type,
+                entity_id=entity_id,
+                payload_json=payload_json,
             )
-            conn.commit()
-            event_id = int(cur.lastrowid)
+        )
         item = self.get(event_id)
         if item is None:
             raise RuntimeError("Failed to read appended audit event")
         return item
 
     def get(self, event_id: int) -> dict[str, Any] | None:
-        with self._connection() as conn:
-            row = conn.execute(
-                """
-                SELECT id, created_at, category, action, status, request_id, entity_type, entity_id, payload_json
-                FROM audit_events
-                WHERE id = ?
-                """,
-                (int(event_id),),
-            ).fetchone()
+        row = self._run_with_retry(lambda: self._get_row(int(event_id)))
         if row is None:
             return None
         return _row_to_dict(row)
@@ -95,21 +92,16 @@ class AuditStore:
             params.append(int(since_id))
 
         where_sql = f"WHERE {' AND '.join(clauses)}" if clauses else ""
-        params.append(max(1, int(limit)))
-        with self._connection() as conn:
-            rows = conn.execute(
-                f"""
-                SELECT id, created_at, category, action, status, request_id, entity_type, entity_id, payload_json
-                FROM audit_events
-                {where_sql}
-                ORDER BY id DESC
-                LIMIT ?
-                """,
-                tuple(params),
-            ).fetchall()
+        query_params = tuple([*params, max(1, int(limit))])
+        rows = self._run_with_retry(
+            lambda: self._list_rows(where_sql=where_sql, params=query_params),
+        )
         return [_row_to_dict(row) for row in rows]
 
     def _init(self) -> None:
+        self._run_with_retry(self._init_once)
+
+    def _init_once(self) -> None:
         with self._connection() as conn:
             conn.execute(
                 """
@@ -128,8 +120,69 @@ class AuditStore:
             )
             conn.commit()
 
+    def _append_once(
+        self,
+        *,
+        now: str,
+        category: str,
+        action: str,
+        status: str,
+        request_id: str | None,
+        entity_type: str | None,
+        entity_id: str | None,
+        payload_json: str | None,
+    ) -> int:
+        with self._connection() as conn:
+            cur = conn.execute(
+                """
+                INSERT INTO audit_events(
+                    created_at, category, action, status, request_id, entity_type, entity_id, payload_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    now,
+                    category,
+                    action,
+                    status,
+                    request_id,
+                    entity_type,
+                    entity_id,
+                    payload_json,
+                ),
+            )
+            conn.commit()
+            return int(cur.lastrowid)
+
+    def _get_row(self, event_id: int) -> tuple[Any, ...] | None:
+        with self._connection() as conn:
+            return conn.execute(
+                """
+                SELECT id, created_at, category, action, status, request_id, entity_type, entity_id, payload_json
+                FROM audit_events
+                WHERE id = ?
+                """,
+                (event_id,),
+            ).fetchone()
+
+    def _list_rows(self, *, where_sql: str, params: tuple[Any, ...]) -> list[tuple[Any, ...]]:
+        with self._connection() as conn:
+            return conn.execute(
+                f"""
+                SELECT id, created_at, category, action, status, request_id, entity_type, entity_id, payload_json
+                FROM audit_events
+                {where_sql}
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                params,
+            ).fetchall()
+
     def _connect(self) -> sqlite3.Connection:
-        return sqlite3.connect(self.db_path)
+        conn = sqlite3.connect(self.db_path, timeout=self.sqlite_timeout_seconds)
+        conn.execute(f"PRAGMA busy_timeout={int(self.sqlite_timeout_seconds * 1000)}")
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
+        return conn
 
     @contextmanager
     def _connection(self):
@@ -138,6 +191,18 @@ class AuditStore:
             yield conn
         finally:
             conn.close()
+
+    def _run_with_retry(self, operation: Callable[[], T]) -> T:
+        for attempt in range(self.retry_attempts):
+            try:
+                return operation()
+            except sqlite3.OperationalError as exc:
+                if not _is_retryable_sqlite_error(exc) or attempt >= self.retry_attempts - 1:
+                    raise
+                delay = self.retry_backoff_seconds * (2**attempt)
+                if delay > 0:
+                    time.sleep(delay)
+        raise RuntimeError("sqlite retry loop exhausted unexpectedly")
 
 
 def _row_to_dict(row: tuple[Any, ...]) -> dict[str, Any]:
@@ -156,3 +221,17 @@ def _row_to_dict(row: tuple[Any, ...]) -> dict[str, Any]:
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _is_retryable_sqlite_error(exc: sqlite3.OperationalError) -> bool:
+    message = str(exc).strip().lower()
+    if not message:
+        return False
+    retryable_fragments = (
+        "database is locked",
+        "database is busy",
+        "disk i/o error",
+        "database schema is locked",
+        "unable to open database file",
+    )
+    return any(fragment in message for fragment in retryable_fragments)
