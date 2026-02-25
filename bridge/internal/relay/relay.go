@@ -87,6 +87,8 @@ type Handler struct {
 	unauthorizedTotal   uint64
 	upstreamErrorsTotal uint64
 	rateLimitedTotal    uint64
+	sessionIssuedTotal  uint64
+	sessionRevokedTotal uint64
 	allowedDevices      map[string]struct{}
 	corsAllowedOrigins  map[string]struct{}
 	corsAllowAll        bool
@@ -245,6 +247,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		statusCode = http.StatusOK
+		atomic.AddUint64(&h.sessionIssuedTotal, 1)
 		h.writeJSON(w, statusCode, issued)
 		return
 	}
@@ -272,6 +275,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		statusCode = http.StatusOK
+		atomic.AddUint64(&h.sessionRevokedTotal, 1)
 		h.writeJSON(w, statusCode, revoked)
 		return
 	}
@@ -673,10 +677,14 @@ func (h *Handler) writeMetrics(w http.ResponseWriter) {
 		"novaadapt_bridge_requests_total %d\n"+
 			"novaadapt_bridge_unauthorized_total %d\n"+
 			"novaadapt_bridge_rate_limited_total %d\n"+
+			"novaadapt_bridge_session_issued_total %d\n"+
+			"novaadapt_bridge_session_revoked_total %d\n"+
 			"novaadapt_bridge_upstream_errors_total %d\n",
 		atomic.LoadUint64(&h.requestsTotal),
 		atomic.LoadUint64(&h.unauthorizedTotal),
 		atomic.LoadUint64(&h.rateLimitedTotal),
+		atomic.LoadUint64(&h.sessionIssuedTotal),
+		atomic.LoadUint64(&h.sessionRevokedTotal),
 		atomic.LoadUint64(&h.upstreamErrorsTotal),
 	)
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4")

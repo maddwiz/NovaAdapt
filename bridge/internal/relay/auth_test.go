@@ -382,6 +382,55 @@ func TestInvalidRevocationStoreFailsHandlerInit(t *testing.T) {
 	}
 }
 
+func TestSessionIssueAndRevokeMetricsIncrement(t *testing.T) {
+	h, err := NewHandler(Config{
+		CoreBaseURL: "http://example.com",
+		BridgeToken: "bridge",
+		Timeout:     5 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("new handler: %v", err)
+	}
+
+	rrIssue := httptest.NewRecorder()
+	reqIssue := httptest.NewRequest(http.MethodPost, "/auth/session", strings.NewReader(`{"scopes":["read"]}`))
+	reqIssue.Header.Set("Authorization", "Bearer bridge")
+	h.ServeHTTP(rrIssue, reqIssue)
+	if rrIssue.Code != http.StatusOK {
+		t.Fatalf("issue session token failed: %d body=%s", rrIssue.Code, rrIssue.Body.String())
+	}
+	var issuePayload map[string]any
+	if err := json.Unmarshal(rrIssue.Body.Bytes(), &issuePayload); err != nil {
+		t.Fatalf("unmarshal issue payload: %v", err)
+	}
+	sessionToken := strings.TrimSpace(toString(issuePayload["token"]))
+	if sessionToken == "" {
+		t.Fatalf("expected issued session token")
+	}
+
+	rrRevoke := httptest.NewRecorder()
+	reqRevoke := httptest.NewRequest(http.MethodPost, "/auth/session/revoke", strings.NewReader(`{"token":"`+sessionToken+`"}`))
+	reqRevoke.Header.Set("Authorization", "Bearer bridge")
+	h.ServeHTTP(rrRevoke, reqRevoke)
+	if rrRevoke.Code != http.StatusOK {
+		t.Fatalf("revoke session token failed: %d body=%s", rrRevoke.Code, rrRevoke.Body.String())
+	}
+
+	rrMetrics := httptest.NewRecorder()
+	reqMetrics := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	h.ServeHTTP(rrMetrics, reqMetrics)
+	if rrMetrics.Code != http.StatusOK {
+		t.Fatalf("metrics request failed: %d body=%s", rrMetrics.Code, rrMetrics.Body.String())
+	}
+	metrics := rrMetrics.Body.String()
+	if !strings.Contains(metrics, "novaadapt_bridge_session_issued_total 1") {
+		t.Fatalf("expected session issued metric count, got: %s", metrics)
+	}
+	if !strings.Contains(metrics, "novaadapt_bridge_session_revoked_total 1") {
+		t.Fatalf("expected session revoked metric count, got: %s", metrics)
+	}
+}
+
 func TestWebSocketReadScopedTokenCannotRunCommand(t *testing.T) {
 	runCalls := 0
 	core := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

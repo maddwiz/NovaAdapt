@@ -410,6 +410,12 @@ func TestMetricsEndpoint(t *testing.T) {
 	if !strings.Contains(metrics, "novaadapt_bridge_rate_limited_total") {
 		t.Fatalf("expected rate limited metric, got: %s", metrics)
 	}
+	if !strings.Contains(metrics, "novaadapt_bridge_session_issued_total") {
+		t.Fatalf("expected session issued metric, got: %s", metrics)
+	}
+	if !strings.Contains(metrics, "novaadapt_bridge_session_revoked_total") {
+		t.Fatalf("expected session revoked metric, got: %s", metrics)
+	}
 }
 
 func TestDeviceAllowlist(t *testing.T) {
