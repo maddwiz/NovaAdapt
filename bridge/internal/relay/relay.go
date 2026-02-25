@@ -377,8 +377,13 @@ func (h *Handler) healthPayload(requestID string, deep bool) (int, any) {
 		return http.StatusBadGateway, payload
 	}
 	defer resp.Body.Close()
-	payload["core"] = map[string]any{"reachable": resp.StatusCode < 500, "status": resp.StatusCode}
-	if resp.StatusCode >= 500 {
+	coreHealthy := resp.StatusCode >= 200 && resp.StatusCode < 300
+	payload["core"] = map[string]any{
+		"reachable": resp.StatusCode < 500,
+		"status":    resp.StatusCode,
+		"healthy":   coreHealthy,
+	}
+	if !coreHealthy {
 		payload["ok"] = false
 		return http.StatusBadGateway, payload
 	}

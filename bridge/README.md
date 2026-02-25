@@ -16,6 +16,7 @@ Secure relay service for remote clients (phone/glasses) to reach NovaAdapt core.
 - Request-id tracing (`X-Request-ID`) propagated to core
 - Idempotency key forwarding (`Idempotency-Key`) propagated to core
 - Optional deep health probe (`/health?deep=1`) to verify core reachability
+- Deep health requires upstream core `/health` to return `2xx` (non-2xx marks bridge unready)
 - Deep health payload includes bridge runtime state (rate-limit config, tracked clients, revoked session count)
 - Graceful shutdown on `SIGINT`/`SIGTERM`
 - Metrics endpoint (`/metrics`) for request/unauthorized/upstream-error counters

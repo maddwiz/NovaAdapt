@@ -60,12 +60,51 @@ func TestHealthDeepChecksCore(t *testing.T) {
 	if reachable, ok := corePayload["reachable"].(bool); !ok || !reachable {
 		t.Fatalf("expected core reachable true: %#v", corePayload)
 	}
+	if healthy, ok := corePayload["healthy"].(bool); !ok || !healthy {
+		t.Fatalf("expected core healthy true: %#v", corePayload)
+	}
 	bridgePayload, ok := payload["bridge"].(map[string]any)
 	if !ok {
 		t.Fatalf("expected bridge payload")
 	}
 	if _, ok := bridgePayload["revoked_sessions"]; !ok {
 		t.Fatalf("expected bridge revoked_sessions field: %#v", bridgePayload)
+	}
+}
+
+func TestHealthDeepFailsOnCoreUnauthorized(t *testing.T) {
+	core := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/health" {
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{"error":"unauthorized"}`))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer core.Close()
+
+	h, err := NewHandler(Config{CoreBaseURL: core.URL, BridgeToken: "secret", Timeout: 5 * time.Second})
+	if err != nil {
+		t.Fatalf("new handler: %v", err)
+	}
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/health?deep=1", nil)
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadGateway {
+		t.Fatalf("expected 502 got %d body=%s", rr.Code, rr.Body.String())
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	corePayload, ok := payload["core"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected core payload")
+	}
+	if healthy, ok := corePayload["healthy"].(bool); !ok || healthy {
+		t.Fatalf("expected core healthy false: %#v", corePayload)
 	}
 }
 
