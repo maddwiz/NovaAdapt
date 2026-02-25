@@ -11,6 +11,12 @@ This folder contains service units and startup wrappers for running NovaAdapt as
 - `core.env.example`
 - `bridge.env.example`
 
+Automated installer:
+
+```bash
+sudo ./installer/install_systemd_services.sh
+```
+
 ## Install steps
 
 1. Copy repo to `/opt/novaadapt` and create a runtime user:

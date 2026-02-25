@@ -249,11 +249,8 @@ Systemd units and env templates are included under:
 Quick install reference:
 
 ```bash
-sudo cp deploy/systemd/core.env.example /etc/novaadapt/core.env
-sudo cp deploy/systemd/bridge.env.example /etc/novaadapt/bridge.env
-sudo cp deploy/systemd/novaadapt-core.service /etc/systemd/system/
-sudo cp deploy/systemd/novaadapt-bridge.service /etc/systemd/system/
-sudo systemctl daemon-reload
+sudo ./installer/install_systemd_services.sh
+# edit /etc/novaadapt/core.env and /etc/novaadapt/bridge.env
 sudo systemctl enable --now novaadapt-core.service
 sudo systemctl enable --now novaadapt-bridge.service
 ```
