@@ -1,0 +1,54 @@
+groups:
+  - name: novaadapt-core-alerts
+    rules:
+      - alert: NovaAdaptCoreServerErrorsHigh
+        expr: increase(novaadapt_core_server_errors_total[5m]) > 5
+        for: 5m
+        labels:
+          severity: warning
+          service: core
+        annotations:
+          summary: NovaAdapt core is returning elevated 5xx errors
+          description: novaadapt_core_server_errors_total increased by more than 5 over 5 minutes.
+
+      - alert: NovaAdaptCoreRateLimitSpike
+        expr: increase(novaadapt_core_rate_limited_total[5m]) > 25
+        for: 10m
+        labels:
+          severity: warning
+          service: core
+        annotations:
+          summary: NovaAdapt core rate limiting spike
+          description: novaadapt_core_rate_limited_total increased by more than 25 over 5 minutes.
+
+  - name: novaadapt-bridge-alerts
+    rules:
+      - alert: NovaAdaptBridgeUpstreamErrorsHigh
+        expr: increase(novaadapt_bridge_upstream_errors_total[5m]) > 5
+        for: 5m
+        labels:
+          severity: warning
+          service: bridge
+        annotations:
+          summary: NovaAdapt bridge upstream errors are elevated
+          description: novaadapt_bridge_upstream_errors_total increased by more than 5 over 5 minutes.
+
+      - alert: NovaAdaptBridgeUnauthorizedSpike
+        expr: increase(novaadapt_bridge_unauthorized_total[5m]) > 50
+        for: 10m
+        labels:
+          severity: warning
+          service: bridge
+        annotations:
+          summary: NovaAdapt bridge unauthorized requests spike
+          description: novaadapt_bridge_unauthorized_total increased by more than 50 over 5 minutes.
+
+      - alert: NovaAdaptBridgeRateLimitSpike
+        expr: increase(novaadapt_bridge_rate_limited_total[5m]) > 25
+        for: 10m
+        labels:
+          severity: warning
+          service: bridge
+        annotations:
+          summary: NovaAdapt bridge rate limiting spike
+          description: novaadapt_bridge_rate_limited_total increased by more than 25 over 5 minutes.

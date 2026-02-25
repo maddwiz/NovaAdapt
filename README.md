@@ -273,6 +273,15 @@ novaadapt serve \
   --otel-exporter-endpoint http://127.0.0.1:4318/v1/traces
 ```
 
+Start Prometheus monitoring and alert evaluation for core + bridge:
+
+```bash
+cd deploy
+docker compose -f docker-compose.yml -f docker-compose.monitoring.yml up -d
+```
+
+Prometheus UI is available at `http://127.0.0.1:9090`.
+
 ## MCP Server
 
 ```bash
