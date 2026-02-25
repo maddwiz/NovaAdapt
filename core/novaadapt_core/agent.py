@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import hashlib
 import json
+import time
 from typing import Any
 
 from novaadapt_shared import ModelRouter, UndoQueue
 
 from .directshell import DirectShellClient
+from .memory import MemoryBackend, NoopMemoryBackend
 from .policy import ActionPolicy
 
 
@@ -25,11 +28,13 @@ class NovaAdaptAgent:
         directshell: DirectShellClient | None = None,
         undo_queue: UndoQueue | None = None,
         policy: ActionPolicy | None = None,
+        memory_backend: MemoryBackend | None = None,
     ) -> None:
         self.router = router
         self.directshell = directshell or DirectShellClient()
         self.undo_queue = undo_queue or UndoQueue()
         self.policy = policy or ActionPolicy()
+        self.memory_backend = memory_backend or NoopMemoryBackend()
 
     def run_objective(
         self,
@@ -43,8 +48,24 @@ class NovaAdaptAgent:
         allow_dangerous: bool = False,
         max_actions: int = 25,
     ) -> dict[str, Any]:
-        messages = [
-            {"role": "system", "content": SYSTEM_PROMPT},
+        messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+        memory_context = self.memory_backend.augment(
+            query=objective,
+            top_k=5,
+            min_score=0.005,
+            format_name="xml",
+        )
+        if memory_context:
+            messages.append(
+                {
+                    "role": "system",
+                    "content": (
+                        "Relevant long-term memory context for this objective:\n"
+                        f"{memory_context}"
+                    ),
+                }
+            )
+        messages.append(
             {
                 "role": "user",
                 "content": (
@@ -52,8 +73,8 @@ class NovaAdaptAgent:
                     f"{objective}\n\n"
                     "Only output JSON matching the schema, with no markdown."
                 ),
-            },
-        ]
+            }
+        )
 
         result = self.router.chat(
             messages=messages,
@@ -106,7 +127,7 @@ class NovaAdaptAgent:
                     )
                 )
 
-        return {
+        output = {
             "model": result.model_name,
             "model_id": result.model_id,
             "strategy": result.strategy,
@@ -118,6 +139,70 @@ class NovaAdaptAgent:
             "results": execution,
             "action_log_ids": action_log_ids,
         }
+        if memory_context:
+            output["memory_context"] = memory_context
+
+        self._persist_run_memory(
+            objective=objective,
+            strategy=strategy,
+            model=result.model_name,
+            model_id=result.model_id,
+            dry_run=dry_run,
+            actions=actions,
+            execution=execution,
+        )
+        return output
+
+    def _persist_run_memory(
+        self,
+        *,
+        objective: str,
+        strategy: str,
+        model: str,
+        model_id: str,
+        dry_run: bool,
+        actions: list[dict[str, Any]],
+        execution: list[dict[str, Any]],
+    ) -> None:
+        try:
+            status_counts: dict[str, int] = {}
+            for item in execution:
+                status = str(item.get("status", "")).strip().lower() or "unknown"
+                status_counts[status] = status_counts.get(status, 0) + 1
+            summary = {
+                "objective": objective,
+                "strategy": strategy,
+                "model": model,
+                "model_id": model_id,
+                "dry_run": dry_run,
+                "actions": [
+                    {
+                        "type": str(action.get("type", "")),
+                        "target": str(action.get("target", "")),
+                        "value": str(action.get("value", "")) if action.get("value") is not None else "",
+                    }
+                    for action in actions
+                ],
+                "status_counts": status_counts,
+            }
+            encoded = json.dumps(summary, ensure_ascii=True)
+            source_id = "novaadapt:run:" + hashlib.sha1(
+                f"{time.time()}:{objective}".encode("utf-8")
+            ).hexdigest()[:16]
+            self.memory_backend.ingest(
+                encoded,
+                source_id=source_id,
+                metadata={
+                    "type": "novaadapt_run",
+                    "objective": objective[:240],
+                    "strategy": strategy,
+                    "model": model,
+                    "dry_run": bool(dry_run),
+                },
+            )
+        except Exception:
+            # Memory persistence must never break core execution path.
+            return
 
     @staticmethod
     def _parse_actions(raw: str, max_actions: int = 25) -> list[dict[str, Any]]:

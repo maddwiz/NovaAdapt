@@ -41,6 +41,12 @@ class _Handler(BaseHTTPRequestHandler):
                 return
             self._send(200, [{"name": "local"}])
             return
+        if self.path == "/plugins":
+            self._send(200, [{"name": "novabridge"}, {"name": "novablox"}])
+            return
+        if self.path == "/plugins/novabridge/health":
+            self._send(200, {"plugin": "novabridge", "ok": True})
+            return
         if self.path == "/jobs/job-1/stream?timeout=2&interval=0.1":
             body = (
                 'event: job\n'
@@ -130,6 +136,8 @@ class _Handler(BaseHTTPRequestHandler):
             "/plans/plan-1/retry_failed_async",
             "/plans/plan-1/reject",
             "/plans/plan-1/undo",
+            "/plugins/novabridge/call",
+            "/feedback",
         }:
             length = int(self.headers.get("Content-Length", "0"))
             raw = self.rfile.read(length).decode("utf-8")
@@ -161,6 +169,18 @@ class _Handler(BaseHTTPRequestHandler):
                 self._send(200, {"id": "plan-1", "status": "rejected"})
             elif self.path == "/plans/plan-1/undo":
                 self._send(200, {"plan_id": "plan-1", "results": [{"id": 1, "ok": True}]})
+            elif self.path == "/plugins/novabridge/call":
+                self._send(
+                    200,
+                    {
+                        "plugin": "novabridge",
+                        "route": payload.get("route"),
+                        "method": payload.get("method"),
+                        "ok": True,
+                    },
+                )
+            elif self.path == "/feedback":
+                self._send(200, {"ok": True, "id": "feedback-1", "rating": payload.get("rating")})
             elif self.path == "/undo":
                 self._send(200, {"id": payload.get("id", 1), "status": "marked_undone"})
             elif self.path == "/auth/session":
@@ -224,6 +244,12 @@ class APIClientTests(unittest.TestCase):
         self.assertEqual(client.openapi()["openapi"], "3.1.0")
         self.assertEqual(client.dashboard_data()["models_count"], 1)
         self.assertEqual(client.models()[0]["name"], "local")
+        self.assertEqual(client.plugins()[0]["name"], "novabridge")
+        self.assertTrue(client.plugin_health("novabridge")["ok"])
+        self.assertEqual(
+            client.plugin_call("novabridge", route="/scene/list", method="GET")["plugin"],
+            "novabridge",
+        )
         self.assertEqual(client.run("demo", idempotency_key="idem-1")["idempotency"], "idem-1")
         self.assertEqual(client.run_async("demo")["status"], "queued")
         self.assertEqual(client.jobs(limit=5)[0]["id"], "job-1")
@@ -260,6 +286,9 @@ class APIClientTests(unittest.TestCase):
         self.assertTrue(revoke_payload["revoked"])
         revoke_by_id_payload = client.revoke_session_id("session-1", expires_at=9999999999)
         self.assertTrue(revoke_by_id_payload["revoked"])
+        feedback_payload = client.submit_feedback(rating=8, objective="demo", notes="good flow")
+        self.assertTrue(feedback_payload["ok"])
+        self.assertEqual(feedback_payload["rating"], 8)
         self.assertIn("novaadapt_core_requests_total", client.metrics_text())
 
     def test_error_without_token(self):

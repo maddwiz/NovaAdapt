@@ -28,6 +28,9 @@ Implemented now:
   - Enforces execution guardrails for destructive actions.
   - Sends actions to DirectShell (or dry-run preview).
   - Records each action in a local undo queue database.
+  - Integrates NovaSpine-compatible long-term memory for recall/augmentation + run/plan persistence.
+  - Exposes first-party plugin adapters (`novabridge`, `nova4d`, `novablox`) for external tool execution.
+  - Records operator feedback (`/feedback`) into memory for self-improvement loops.
   - Exposes HTTP API with optional bearer auth and async jobs.
 - `bridge` relay service in Go for secure remote forwarding into core API.
   - Includes realtime WebSocket control channel (`/ws`) for events + command relay.
@@ -131,7 +134,16 @@ novaadapt check --config config/models.local.json
 novaadapt check --config config/models.local.json --models local-qwen,openai-gpt
 ```
 
-8. Snapshot local state databases (recommended before upgrades):
+8. Probe plugin adapters and submit feedback:
+
+```bash
+novaadapt plugins
+novaadapt plugin-health --plugin novabridge
+novaadapt plugin-call --plugin novablox --route /health --method GET
+novaadapt feedback --rating 9 --objective "build dashboard" --notes "retry logic worked"
+```
+
+9. Snapshot local state databases (recommended before upgrades):
 
 ```bash
 novaadapt backup --out-dir ~/.novaadapt/backups
@@ -139,7 +151,7 @@ novaadapt backup --out-dir ~/.novaadapt/backups
 
 The command snapshots local SQLite stores (`actions`, `plans`, `jobs`, `idempotency`, `audit`) using timestamped files and reports which ones were missing.
 
-9. Restore local state from a snapshot (archives current DBs before overwrite):
+10. Restore local state from a snapshot (archives current DBs before overwrite):
 
 ```bash
 novaadapt restore --from-dir ~/.novaadapt/backups --timestamp 20260225T120000Z
@@ -147,7 +159,7 @@ novaadapt restore --from-dir ~/.novaadapt/backups --timestamp 20260225T120000Z
 
 If `--timestamp` is omitted, NovaAdapt restores the latest discovered snapshot in the backup directory.
 
-10. Prune stale local state rows (recommended for long-running installs):
+11. Prune stale local state rows (recommended for long-running installs):
 
 ```bash
 novaadapt prune \
@@ -160,7 +172,7 @@ novaadapt prune \
 
 `novaadapt prune` only removes terminal plan/job rows and rows older than the configured retention windows.
 
-11. Start local HTTP API (for phone/glasses/bridge clients):
+12. Start local HTTP API (for phone/glasses/bridge clients):
 
 ```bash
 novaadapt serve \
@@ -188,12 +200,16 @@ API endpoints:
 - `GET /dashboard` (auth-protected operational HTML dashboard)
 - `GET /dashboard/data` (auth-protected dashboard JSON: health, metrics, jobs, plans, events)
 - `GET /models`
+- `GET /plugins`
+- `GET /plugins/{name}/health`
 - `GET /history?limit=20`
 - `GET /metrics` (Prometheus-style counters, auth-protected when token is enabled)
 - `GET /events?limit=100` (audit log filters: `category`, `entity_type`, `entity_id`, `since_id`)
 - `GET /events/stream` (SSE audit stream, supports `timeout`, `interval`, `since_id`)
 - `POST /run` with JSON payload
 - `POST /run_async` with JSON payload (returns `job_id`)
+- `POST /plugins/{name}/call` with JSON payload
+- `POST /feedback` with JSON payload (`rating` 1-10 required)
 - `GET /jobs` and `GET /jobs/{id}`
 - `GET /jobs/{id}/stream` (SSE status updates)
 - `POST /jobs/{id}/cancel`
@@ -231,7 +247,7 @@ When token auth is enabled, browser dashboard usage supports:
 The page will reuse that token for `/dashboard/data` polling.
 Dashboard now includes one-click controls for pending plan approval/rejection, failed-plan retry, job cancellation, and plan undo marking.
 
-12. Run full local smoke test (core + bridge + runtime transports):
+13. Run full local smoke test (core + bridge + runtime transports):
 
 ```bash
 make smoke
@@ -259,6 +275,19 @@ PYTHONPATH=core:shared python3 -m novaadapt_core.cli benchmark \
 ```
 
 This produces pass/fail and success-rate metrics so reliability progress can be tracked objectively.
+
+Compare NovaAdapt against external benchmark reports:
+
+```bash
+PYTHONPATH=core:shared python3 -m novaadapt_core.cli benchmark-compare \
+  --primary results/benchmark.novaadapt.json \
+  --primary-name NovaAdapt \
+  --baseline OpenClaw=results/benchmark.openclaw.json \
+  --baseline ClaudeComputerUse=results/benchmark.claude-computer-use.json \
+  --out results/benchmark.compare.json
+```
+
+Benchmark publication workflow: `/Users/desmondpottle/Documents/New project/NovaAdapt/docs/benchmarks.md`.
 
 ## Observability
 
@@ -355,7 +384,7 @@ Build release artifacts (bridge binary, wheel/sdist, runtime bundle, checksums):
 
 GitHub release workflow behavior:
 
-- Push to `main`: runs release build/test as a dry artifact pipeline (no GitHub Release publish).
+- Push to any branch: runs release build/test as a dry artifact pipeline (no GitHub Release publish).
 - Push a tag or dispatch with `release_tag`: builds artifacts and publishes release assets.
 
 ## Python API Client

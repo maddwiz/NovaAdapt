@@ -56,6 +56,34 @@ class NovaAdaptMCPServer:
                 },
             ),
             MCPTool(
+                name="novaadapt_plugins",
+                description="List first-party plugin targets",
+                input_schema={"type": "object", "properties": {}},
+            ),
+            MCPTool(
+                name="novaadapt_plugin_health",
+                description="Check plugin target health",
+                input_schema={
+                    "type": "object",
+                    "properties": {"plugin": {"type": "string"}},
+                    "required": ["plugin"],
+                },
+            ),
+            MCPTool(
+                name="novaadapt_plugin_call",
+                description="Call plugin route via NovaAdapt plugin adapter",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "plugin": {"type": "string"},
+                        "route": {"type": "string"},
+                        "method": {"type": "string"},
+                        "payload": {"type": "object"},
+                    },
+                    "required": ["plugin", "route"],
+                },
+            ),
+            MCPTool(
                 name="novaadapt_history",
                 description="Get recent action history",
                 input_schema={
@@ -165,6 +193,21 @@ class NovaAdaptMCPServer:
                     "required": ["id"],
                 },
             ),
+            MCPTool(
+                name="novaadapt_feedback",
+                description="Record operator rating/feedback for self-improvement memory",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "rating": {"type": "integer", "minimum": 1, "maximum": 10},
+                        "objective": {"type": "string"},
+                        "notes": {"type": "string"},
+                        "metadata": {"type": "object"},
+                        "context": {"type": "object"},
+                    },
+                    "required": ["rating"],
+                },
+            ),
         ]
 
     def handle_request(self, request: dict[str, Any]) -> dict[str, Any]:
@@ -229,6 +272,30 @@ class NovaAdaptMCPServer:
             else:
                 models = None
             return self.service.check(model_names=models, probe_prompt=str(probe))
+        if tool_name == "novaadapt_plugins":
+            return self.service.plugins()
+        if tool_name == "novaadapt_plugin_health":
+            plugin_name = str(arguments.get("plugin", "")).strip()
+            if not plugin_name:
+                raise ValueError("'plugin' is required")
+            return self.service.plugin_health(plugin_name)
+        if tool_name == "novaadapt_plugin_call":
+            plugin_name = str(arguments.get("plugin", "")).strip()
+            if not plugin_name:
+                raise ValueError("'plugin' is required")
+            route = str(arguments.get("route", "")).strip()
+            if not route:
+                raise ValueError("'route' is required")
+            payload = arguments.get("payload")
+            call_payload: dict[str, Any] = {
+                "route": route,
+                "method": str(arguments.get("method", "POST")).strip().upper(),
+            }
+            if payload is not None:
+                if not isinstance(payload, dict):
+                    raise ValueError("'payload' must be an object when provided")
+                call_payload["payload"] = payload
+            return self.service.plugin_call(plugin_name, call_payload)
         if tool_name == "novaadapt_history":
             limit = int(arguments.get("limit", 20))
             return self.service.history(limit=limit)
@@ -288,6 +355,24 @@ class NovaAdaptMCPServer:
                 "mark_only": bool(arguments.get("mark_only", False)),
             }
             return self.service.undo_plan(plan_id, payload)
+        if tool_name == "novaadapt_feedback":
+            return self.service.record_feedback(
+                {
+                    "rating": int(arguments.get("rating")),
+                    "objective": (
+                        str(arguments.get("objective")).strip()
+                        if arguments.get("objective") is not None
+                        else None
+                    ),
+                    "notes": (
+                        str(arguments.get("notes")).strip()
+                        if arguments.get("notes") is not None
+                        else None
+                    ),
+                    "metadata": arguments.get("metadata"),
+                    "context": arguments.get("context"),
+                }
+            )
         raise ValueError(f"Unknown tool: {tool_name}")
 
     @staticmethod

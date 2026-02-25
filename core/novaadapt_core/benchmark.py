@@ -153,3 +153,77 @@ def run_benchmark(
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
         Path(output_path).write_text(json.dumps(result, indent=2))
     return result
+
+
+def load_benchmark_report(path: str | Path) -> dict[str, Any]:
+    payload = json.loads(Path(path).read_text())
+    if not isinstance(payload, dict):
+        raise ValueError(f"benchmark report is not an object: {path}")
+    summary = payload.get("summary")
+    if not isinstance(summary, dict):
+        raise ValueError(f"benchmark report missing summary object: {path}")
+    return payload
+
+
+def compare_benchmark_reports(
+    *,
+    primary_name: str,
+    primary_report: dict[str, Any],
+    baselines: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    def _metric(summary: dict[str, Any], key: str) -> float:
+        value = summary.get(key, 0.0)
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return 0.0
+
+    rows: list[dict[str, Any]] = []
+    primary_summary = primary_report.get("summary") if isinstance(primary_report, dict) else None
+    if not isinstance(primary_summary, dict):
+        raise ValueError("primary benchmark report missing summary")
+
+    def _row(name: str, report: dict[str, Any]) -> dict[str, Any]:
+        summary = report.get("summary")
+        if not isinstance(summary, dict):
+            raise ValueError(f"benchmark report for '{name}' missing summary")
+        return {
+            "name": name,
+            "total": int(summary.get("total", 0) or 0),
+            "passed": int(summary.get("passed", 0) or 0),
+            "failed": int(summary.get("failed", 0) or 0),
+            "success_rate": round(_metric(summary, "success_rate"), 4),
+            "first_try_success_rate": round(_metric(summary, "first_try_success_rate"), 4),
+            "avg_action_count": round(_metric(summary, "avg_action_count"), 3),
+            "blocked_count": int(summary.get("blocked_count", 0) or 0),
+        }
+
+    rows.append(_row(primary_name, primary_report))
+    for name in sorted(baselines.keys()):
+        rows.append(_row(name, baselines[name]))
+
+    rows.sort(key=lambda item: (item["success_rate"], item["first_try_success_rate"]), reverse=True)
+
+    primary_success = _metric(primary_summary, "success_rate")
+    deltas: dict[str, dict[str, float]] = {}
+    for name, report in baselines.items():
+        summary = report.get("summary")
+        if not isinstance(summary, dict):
+            continue
+        deltas[name] = {
+            "success_rate_delta_vs_primary": round(primary_success - _metric(summary, "success_rate"), 4),
+            "first_try_success_rate_delta_vs_primary": round(
+                _metric(primary_summary, "first_try_success_rate") - _metric(summary, "first_try_success_rate"),
+                4,
+            ),
+        }
+
+    return {
+        "summary": {
+            "primary": primary_name,
+            "competitors": sorted(baselines.keys()),
+            "ranked_by": "success_rate",
+        },
+        "table": rows,
+        "deltas": deltas,
+    }

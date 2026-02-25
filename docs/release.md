@@ -39,6 +39,7 @@ If `--timestamp` is omitted, NovaAdapt restores the latest discovered snapshot a
 ## GitHub Releases
 
 Release workflow `.github/workflows/release.yml`:
+- triggers on branch pushes (artifact validation only, no GitHub release publish)
 - triggers on any git tag push (publishes GitHub release)
 - supports `workflow_dispatch` with optional `release_tag`
   - with `release_tag`: publishes GitHub release for that tag

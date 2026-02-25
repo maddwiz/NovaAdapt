@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import json
 import time
+import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
@@ -9,8 +12,10 @@ from novaadapt_shared import ModelRouter, UndoQueue
 from .audit_store import AuditStore
 from .agent import NovaAdaptAgent
 from .directshell import DirectShellClient
+from .memory import MemoryBackend, build_memory_backend
 from .plan_store import PlanStore
 from .policy import ActionPolicy
+from .plugins import PluginRegistry, build_plugin_registry
 
 
 class NovaAdaptService:
@@ -24,6 +29,8 @@ class NovaAdaptService:
         audit_db_path: Path | None = None,
         router_loader: Callable[[Path], ModelRouter] | None = None,
         directshell_factory: Callable[[], DirectShellClient] | None = None,
+        memory_backend: MemoryBackend | None = None,
+        plugin_registry: PluginRegistry | None = None,
     ) -> None:
         self.default_config = default_config
         self.db_path = db_path
@@ -31,6 +38,8 @@ class NovaAdaptService:
         self.audit_db_path = audit_db_path
         self.router_loader = router_loader or ModelRouter.from_config_file
         self.directshell_factory = directshell_factory or DirectShellClient
+        self.memory_backend = memory_backend or build_memory_backend()
+        self.plugin_registry = plugin_registry or build_plugin_registry()
         self._plan_store: PlanStore | None = None
         self._audit_store: AuditStore | None = None
 
@@ -71,6 +80,88 @@ class NovaAdaptService:
             "error": "DirectShell probe returned invalid payload",
         }
 
+    def memory_status(self) -> dict[str, Any]:
+        status = self.memory_backend.status()
+        if isinstance(status, dict):
+            return status
+        return {
+            "ok": False,
+            "enabled": True,
+            "backend": "unknown",
+            "error": "Memory backend returned invalid status payload",
+        }
+
+    def plugins(self) -> list[dict[str, Any]]:
+        return self.plugin_registry.list_plugins()
+
+    def plugin_health(self, plugin_name: str) -> dict[str, Any]:
+        return self.plugin_registry.health(plugin_name)
+
+    def plugin_call(self, plugin_name: str, payload: dict[str, Any]) -> dict[str, Any]:
+        route = str(payload.get("route", "")).strip()
+        if not route:
+            raise ValueError("'route' is required")
+        method = str(payload.get("method", "POST")).strip().upper() or "POST"
+        raw_request_payload = payload.get("payload")
+        request_payload: dict[str, Any] | None = None
+        if raw_request_payload is not None:
+            if not isinstance(raw_request_payload, dict):
+                raise ValueError("'payload' must be an object when provided")
+            request_payload = raw_request_payload
+        return self.plugin_registry.call(
+            plugin_name=plugin_name,
+            route=route,
+            payload=request_payload,
+            method=method,
+        )
+
+    def record_feedback(self, payload: dict[str, Any]) -> dict[str, Any]:
+        objective = str(payload.get("objective") or "").strip()
+        notes = str(payload.get("notes") or "").strip()
+        metadata = payload.get("metadata")
+        context = payload.get("context")
+
+        raw_rating = payload.get("rating")
+        if raw_rating is None:
+            raise ValueError("'rating' is required")
+        try:
+            rating = int(raw_rating)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("'rating' must be an integer between 1 and 10") from exc
+        if rating < 1 or rating > 10:
+            raise ValueError("'rating' must be between 1 and 10")
+
+        feedback_id = uuid.uuid4().hex
+        created_at = datetime.now(timezone.utc).isoformat()
+
+        memory_payload = {
+            "type": "novaadapt_feedback",
+            "id": feedback_id,
+            "created_at": created_at,
+            "rating": rating,
+            "objective": objective,
+            "notes": notes,
+            "context": context if isinstance(context, dict) else {},
+            "metadata": metadata if isinstance(metadata, dict) else {},
+        }
+        self.memory_backend.ingest(
+            text=json.dumps(memory_payload, ensure_ascii=True),
+            source_id=f"novaadapt:feedback:{feedback_id}",
+            metadata={
+                "type": "novaadapt_feedback",
+                "rating": rating,
+                "objective": objective[:240],
+            },
+        )
+        return {
+            "ok": True,
+            "id": feedback_id,
+            "created_at": created_at,
+            "rating": rating,
+            "objective": objective,
+            "notes": notes,
+        }
+
     def run(self, payload: dict[str, Any]) -> dict[str, Any]:
         config_path = Path(payload.get("config") or self.default_config)
         objective = str(payload.get("objective", "")).strip()
@@ -92,6 +183,7 @@ class NovaAdaptService:
             router=router,
             directshell=self.directshell_factory(),
             undo_queue=queue,
+            memory_backend=self.memory_backend,
         )
         return agent.run_objective(
             objective=objective,
@@ -284,6 +376,14 @@ class NovaAdaptService:
                 progress_completed=len(execution_results),
                 progress_total=len(actions),
             )
+            self._persist_plan_memory(
+                plan_id=plan_id,
+                objective=str(plan.get("objective", "")),
+                status="failed",
+                actions=actions,
+                execution_results=execution_results,
+                execution_error=str(exc),
+            )
             raise
 
         failed_actions = [
@@ -302,6 +402,14 @@ class NovaAdaptService:
             )
             if failed is None:
                 raise ValueError("Plan not found")
+            self._persist_plan_memory(
+                plan_id=plan_id,
+                objective=str(plan.get("objective", "")),
+                status="failed",
+                actions=actions,
+                execution_results=execution_results,
+                execution_error=str(failed.get("execution_error", "")),
+            )
             return failed
 
         approved = self._plans().approve(
@@ -312,6 +420,14 @@ class NovaAdaptService:
         )
         if approved is None:
             raise ValueError("Plan not found")
+        self._persist_plan_memory(
+            plan_id=plan_id,
+            objective=str(plan.get("objective", "")),
+            status="executed",
+            actions=actions,
+            execution_results=execution_results,
+            execution_error="",
+        )
         return approved
 
     def reject_plan(self, plan_id: str, reason: str | None = None) -> dict[str, Any]:
@@ -455,6 +571,53 @@ class NovaAdaptService:
         if isinstance(value, list):
             return [str(item).strip() for item in value if str(item).strip()]
         return []
+
+    def _persist_plan_memory(
+        self,
+        *,
+        plan_id: str,
+        objective: str,
+        status: str,
+        actions: list[dict[str, Any]],
+        execution_results: list[dict[str, Any]],
+        execution_error: str,
+    ) -> None:
+        try:
+            payload = {
+                "type": "novaadapt_plan_execution",
+                "plan_id": plan_id,
+                "objective": objective,
+                "status": status,
+                "execution_error": execution_error,
+                "actions": [
+                    {
+                        "type": str(item.get("type", "")),
+                        "target": str(item.get("target", "")),
+                        "value": str(item.get("value", "")) if item.get("value") is not None else "",
+                    }
+                    for item in actions
+                ],
+                "results": [
+                    {
+                        "status": str(item.get("status", "")),
+                        "output": str(item.get("output", "")),
+                        "dangerous": bool(item.get("dangerous", False)),
+                    }
+                    for item in execution_results
+                ],
+            }
+            self.memory_backend.ingest(
+                text=json.dumps(payload, ensure_ascii=True),
+                source_id=f"novaadapt:plan:{plan_id}",
+                metadata={
+                    "type": "novaadapt_plan_execution",
+                    "plan_id": plan_id,
+                    "status": status,
+                    "objective": objective[:240],
+                },
+            )
+        except Exception:
+            return
 
     def _plans(self) -> PlanStore:
         if self._plan_store is None:

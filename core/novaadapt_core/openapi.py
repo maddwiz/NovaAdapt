@@ -58,6 +58,40 @@ def build_openapi_spec() -> dict:
                     "responses": {"200": {"description": "Health report"}},
                 }
             },
+            "/plugins": {
+                "get": {
+                    "summary": "List first-party plugin targets",
+                    "responses": {"200": {"description": "Plugin targets"}},
+                }
+            },
+            "/plugins/{name}/health": {
+                "get": {
+                    "summary": "Probe a plugin target health endpoint",
+                    "parameters": [
+                        {
+                            "name": "name",
+                            "in": "path",
+                            "required": True,
+                            "schema": {"type": "string"},
+                        }
+                    ],
+                    "responses": {"200": {"description": "Plugin health"}, "404": {"description": "Not found"}},
+                }
+            },
+            "/plugins/{name}/call": {
+                "post": {
+                    "summary": "Call a plugin route through the configured adapter",
+                    "parameters": [
+                        {
+                            "name": "name",
+                            "in": "path",
+                            "required": True,
+                            "schema": {"type": "string"},
+                        }
+                    ],
+                    "responses": {"200": {"description": "Plugin response"}, "404": {"description": "Not found"}},
+                }
+            },
             "/run": {
                 "post": {
                     "summary": "Execute objective synchronously",
@@ -274,6 +308,12 @@ def build_openapi_spec() -> dict:
                 "post": {
                     "summary": "Undo an action or mark as undone",
                     "responses": {"200": {"description": "Undo result"}},
+                }
+            },
+            "/feedback": {
+                "post": {
+                    "summary": "Record operator feedback for self-improvement memory",
+                    "responses": {"200": {"description": "Feedback recorded"}},
                 }
             },
             "/metrics": {

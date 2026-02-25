@@ -56,6 +56,66 @@ class NovaAdaptAPIClient:
         body = {"models": models or [], "probe": probe}
         return self._post_json("/check", body)
 
+    def plugins(self) -> list[dict[str, Any]]:
+        payload = self._get_json("/plugins")
+        if isinstance(payload, list):
+            return payload
+        raise APIClientError("Expected list payload from /plugins")
+
+    def plugin_health(self, plugin_name: str) -> dict[str, Any]:
+        payload = self._get_json(f"/plugins/{plugin_name}/health")
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /plugins/{name}/health")
+
+    def plugin_call(
+        self,
+        plugin_name: str,
+        *,
+        route: str,
+        payload: dict[str, Any] | None = None,
+        method: str = "POST",
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {
+            "route": route,
+            "method": str(method or "POST").upper(),
+        }
+        if payload is not None:
+            body["payload"] = payload
+        result = self._post_json(
+            f"/plugins/{plugin_name}/call",
+            body,
+            idempotency_key=idempotency_key,
+        )
+        if isinstance(result, dict):
+            return result
+        raise APIClientError("Expected object payload from /plugins/{name}/call")
+
+    def submit_feedback(
+        self,
+        *,
+        rating: int,
+        objective: str | None = None,
+        notes: str | None = None,
+        metadata: dict[str, Any] | None = None,
+        context: dict[str, Any] | None = None,
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {"rating": int(rating)}
+        if objective:
+            body["objective"] = objective
+        if notes:
+            body["notes"] = notes
+        if metadata is not None:
+            body["metadata"] = metadata
+        if context is not None:
+            body["context"] = context
+        payload = self._post_json("/feedback", body, idempotency_key=idempotency_key)
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /feedback")
+
     def run(self, objective: str, idempotency_key: str | None = None, **kwargs: Any) -> dict[str, Any]:
         body = {"objective": objective, **kwargs}
         payload = self._post_json("/run", body, idempotency_key=idempotency_key)

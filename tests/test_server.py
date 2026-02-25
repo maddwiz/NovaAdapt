@@ -138,6 +138,8 @@ class ServerTests(unittest.TestCase):
                 self.assertIn("checks", deep_health)
                 self.assertTrue(deep_health["checks"]["models"]["ok"])
                 self.assertTrue(deep_health["checks"]["audit_store"]["ok"])
+                self.assertIn("memory", deep_health["checks"])
+                self.assertIn("ok", deep_health["checks"]["memory"])
                 self.assertIn("metrics", deep_health)
 
                 with self.assertRaises(error.HTTPError) as err:
@@ -174,9 +176,20 @@ class ServerTests(unittest.TestCase):
                 self.assertIn("/dashboard/data", openapi["paths"])
                 self.assertIn("/events", openapi["paths"])
                 self.assertIn("/events/stream", openapi["paths"])
+                self.assertIn("/plugins", openapi["paths"])
+                self.assertIn("/plugins/{name}/health", openapi["paths"])
+                self.assertIn("/plugins/{name}/call", openapi["paths"])
+                self.assertIn("/feedback", openapi["paths"])
 
                 models, _ = _get_json_with_headers(f"http://{host}:{port}/models")
                 self.assertEqual(models[0]["name"], "local")
+
+                plugins, _ = _get_json_with_headers(f"http://{host}:{port}/plugins")
+                self.assertGreaterEqual(len(plugins), 1)
+                self.assertEqual(plugins[0]["name"], "nova4d")
+
+                plugin_health, _ = _get_json_with_headers(f"http://{host}:{port}/plugins/novabridge/health")
+                self.assertEqual(plugin_health["plugin"], "novabridge")
 
                 run, _ = _post_json_with_headers(
                     f"http://{host}:{port}/run",
@@ -185,9 +198,23 @@ class ServerTests(unittest.TestCase):
                 self.assertEqual(run["results"][0]["status"], "preview")
                 self.assertIn("request_id", run)
 
+                plugin_call, _ = _post_json_with_headers(
+                    f"http://{host}:{port}/plugins/novabridge/call",
+                    {"route": "/health", "method": "GET"},
+                )
+                self.assertEqual(plugin_call["plugin"], "novabridge")
+                self.assertIn("ok", plugin_call)
+
+                feedback, _ = _post_json_with_headers(
+                    f"http://{host}:{port}/feedback",
+                    {"rating": 8, "objective": "smoke", "notes": "good"},
+                )
+                self.assertTrue(feedback["ok"])
+                self.assertEqual(feedback["rating"], 8)
+
                 events, _ = _get_json_with_headers(f"http://{host}:{port}/events?limit=10")
                 self.assertGreaterEqual(len(events), 1)
-                self.assertEqual(events[0]["category"], "run")
+                self.assertTrue(any(item.get("category") == "run" for item in events))
 
                 history, _ = _get_json_with_headers(f"http://{host}:{port}/history?limit=5")
                 self.assertEqual(len(history), 1)
@@ -266,8 +293,15 @@ class ServerTests(unittest.TestCase):
                     _get_json(f"http://{host}:{port}/models")
                 self.assertEqual(err.exception.code, 401)
 
+                with self.assertRaises(error.HTTPError) as err:
+                    _get_json(f"http://{host}:{port}/plugins")
+                self.assertEqual(err.exception.code, 401)
+
                 models = _get_json(f"http://{host}:{port}/models", token="secret")
                 self.assertEqual(models[0]["name"], "local")
+
+                plugins = _get_json(f"http://{host}:{port}/plugins", token="secret")
+                self.assertGreaterEqual(len(plugins), 1)
 
                 dashboard_html = _get_text(f"http://{host}:{port}/dashboard", token="secret")
                 self.assertIn("NovaAdapt Core Dashboard", dashboard_html)

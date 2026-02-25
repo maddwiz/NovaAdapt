@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from novaadapt_core.benchmark import BenchmarkRunner, run_benchmark
+from novaadapt_core.benchmark import BenchmarkRunner, compare_benchmark_reports, load_benchmark_report, run_benchmark
 
 
 class BenchmarkTests(unittest.TestCase):
@@ -86,6 +86,53 @@ class BenchmarkTests(unittest.TestCase):
 
         self.assertEqual(result["summary"]["failed"], 1)
         self.assertIn("run_error", result["tasks"][0])
+
+    def test_load_and_compare_reports(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            primary_path = Path(tmp) / "primary.json"
+            baseline_path = Path(tmp) / "baseline.json"
+            primary_path.write_text(
+                json.dumps(
+                    {
+                        "summary": {
+                            "total": 10,
+                            "passed": 9,
+                            "failed": 1,
+                            "success_rate": 0.9,
+                            "first_try_success_rate": 0.9,
+                            "avg_action_count": 4.2,
+                            "blocked_count": 1,
+                        }
+                    }
+                )
+            )
+            baseline_path.write_text(
+                json.dumps(
+                    {
+                        "summary": {
+                            "total": 10,
+                            "passed": 6,
+                            "failed": 4,
+                            "success_rate": 0.6,
+                            "first_try_success_rate": 0.6,
+                            "avg_action_count": 5.0,
+                            "blocked_count": 2,
+                        }
+                    }
+                )
+            )
+
+            primary = load_benchmark_report(primary_path)
+            baseline = load_benchmark_report(baseline_path)
+            compared = compare_benchmark_reports(
+                primary_name="NovaAdapt",
+                primary_report=primary,
+                baselines={"OtherAgent": baseline},
+            )
+
+        self.assertEqual(compared["summary"]["primary"], "NovaAdapt")
+        self.assertEqual(compared["table"][0]["name"], "NovaAdapt")
+        self.assertGreater(compared["deltas"]["OtherAgent"]["success_rate_delta_vs_primary"], 0)
 
 
 if __name__ == "__main__":

@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 
 from .backup import backup_databases, restore_databases
-from .benchmark import run_benchmark
+from .benchmark import compare_benchmark_reports, load_benchmark_report, run_benchmark
 from .cleanup import prune_local_state
 from .directshell import DirectShellClient
 from .mcp_server import NovaAdaptMCPServer
@@ -231,6 +231,37 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Probe prompt text sent to each model",
     )
 
+    plugins_cmd = sub.add_parser("plugins", help="List configured first-party plugin adapters")
+    plugins_cmd.add_argument("--config", type=Path, default=_default_config_path())
+
+    plugin_health_cmd = sub.add_parser("plugin-health", help="Probe a plugin adapter health endpoint")
+    plugin_health_cmd.add_argument("--config", type=Path, default=_default_config_path())
+    plugin_health_cmd.add_argument("--plugin", required=True, help="Plugin name (novabridge, nova4d, novablox)")
+
+    plugin_call_cmd = sub.add_parser("plugin-call", help="Call a plugin route through NovaAdapt")
+    plugin_call_cmd.add_argument("--config", type=Path, default=_default_config_path())
+    plugin_call_cmd.add_argument("--plugin", required=True, help="Plugin name (novabridge, nova4d, novablox)")
+    plugin_call_cmd.add_argument("--route", required=True, help="Plugin route (must start with /)")
+    plugin_call_cmd.add_argument(
+        "--method",
+        default="POST",
+        choices=["GET", "POST", "PUT", "PATCH", "DELETE"],
+        help="HTTP method for plugin call",
+    )
+    plugin_call_cmd.add_argument(
+        "--payload",
+        default="",
+        help="Optional JSON object payload string",
+    )
+
+    feedback_cmd = sub.add_parser("feedback", help="Record operator feedback for self-improvement memory")
+    feedback_cmd.add_argument("--config", type=Path, default=_default_config_path())
+    feedback_cmd.add_argument("--rating", type=int, required=True, help="Operator rating 1-10")
+    feedback_cmd.add_argument("--objective", default=None, help="Optional objective this feedback refers to")
+    feedback_cmd.add_argument("--notes", default=None, help="Optional free-form notes")
+    feedback_cmd.add_argument("--metadata", default="", help="Optional JSON object string")
+    feedback_cmd.add_argument("--context", default="", help="Optional JSON object string")
+
     directshell_check_cmd = sub.add_parser(
         "directshell-check",
         help="Probe DirectShell execution transport readiness",
@@ -338,6 +369,34 @@ def _build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=None,
         help="Optional output path for benchmark report JSON",
+    )
+
+    bench_compare_cmd = sub.add_parser(
+        "benchmark-compare",
+        help="Compare benchmark reports (NovaAdapt vs other systems) and output ranked summary",
+    )
+    bench_compare_cmd.add_argument(
+        "--primary",
+        type=Path,
+        required=True,
+        help="Primary report JSON path (typically NovaAdapt)",
+    )
+    bench_compare_cmd.add_argument(
+        "--primary-name",
+        default="NovaAdapt",
+        help="Display name for primary report",
+    )
+    bench_compare_cmd.add_argument(
+        "--baseline",
+        action="append",
+        default=[],
+        help="Baseline pair formatted as NAME=PATH. Repeat for multiple baselines.",
+    )
+    bench_compare_cmd.add_argument(
+        "--out",
+        type=Path,
+        default=None,
+        help="Optional output JSON path for comparison report",
     )
 
     backup_cmd = sub.add_parser("backup", help="Create timestamped SQLite backups for local NovaAdapt state")
@@ -746,6 +805,53 @@ def main() -> None:
             print(json.dumps(service.check(model_names=models or None, probe_prompt=args.probe), indent=2))
             return
 
+        if args.command == "plugins":
+            service = NovaAdaptService(default_config=args.config)
+            print(json.dumps(service.plugins(), indent=2))
+            return
+
+        if args.command == "plugin-health":
+            service = NovaAdaptService(default_config=args.config)
+            print(json.dumps(service.plugin_health(args.plugin), indent=2))
+            return
+
+        if args.command == "plugin-call":
+            service = NovaAdaptService(default_config=args.config)
+            payload: dict[str, object] = {
+                "route": str(args.route),
+                "method": str(args.method).upper(),
+            }
+            raw_payload = str(args.payload or "").strip()
+            if raw_payload:
+                parsed_payload = json.loads(raw_payload)
+                if not isinstance(parsed_payload, dict):
+                    raise ValueError("--payload must be a JSON object")
+                payload["payload"] = parsed_payload
+            print(json.dumps(service.plugin_call(args.plugin, payload), indent=2))
+            return
+
+        if args.command == "feedback":
+            service = NovaAdaptService(default_config=args.config)
+            out_payload: dict[str, object] = {"rating": int(args.rating)}
+            if args.objective:
+                out_payload["objective"] = str(args.objective)
+            if args.notes:
+                out_payload["notes"] = str(args.notes)
+            raw_metadata = str(args.metadata or "").strip()
+            if raw_metadata:
+                parsed_metadata = json.loads(raw_metadata)
+                if not isinstance(parsed_metadata, dict):
+                    raise ValueError("--metadata must be a JSON object")
+                out_payload["metadata"] = parsed_metadata
+            raw_context = str(args.context or "").strip()
+            if raw_context:
+                parsed_context = json.loads(raw_context)
+                if not isinstance(parsed_context, dict):
+                    raise ValueError("--context must be a JSON object")
+                out_payload["context"] = parsed_context
+            print(json.dumps(service.record_feedback(out_payload), indent=2))
+            return
+
         if args.command == "directshell-check":
             client = DirectShellClient(
                 transport=args.transport,
@@ -786,6 +892,32 @@ def main() -> None:
                 suite_path=args.suite,
                 output_path=args.out,
             )
+            print(json.dumps(result, indent=2))
+            return
+
+        if args.command == "benchmark-compare":
+            primary_report = load_benchmark_report(args.primary)
+            baselines: dict[str, dict[str, object]] = {}
+            for raw in args.baseline:
+                text = str(raw or "").strip()
+                if not text:
+                    continue
+                if "=" not in text:
+                    raise ValueError("--baseline must be NAME=PATH")
+                name, path_text = text.split("=", 1)
+                baseline_name = name.strip()
+                baseline_path = path_text.strip()
+                if not baseline_name or not baseline_path:
+                    raise ValueError("--baseline must be NAME=PATH")
+                baselines[baseline_name] = load_benchmark_report(Path(baseline_path))
+            result = compare_benchmark_reports(
+                primary_name=str(args.primary_name).strip() or "NovaAdapt",
+                primary_report=primary_report,
+                baselines=baselines,
+            )
+            if args.out is not None:
+                args.out.parent.mkdir(parents=True, exist_ok=True)
+                args.out.write_text(json.dumps(result, indent=2))
             print(json.dumps(result, indent=2))
             return
 

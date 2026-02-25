@@ -354,6 +354,7 @@ def _build_handler(
                 "/history": self._get_history,
                 "/jobs": self._get_jobs,
                 "/plans": self._get_plans,
+                "/plugins": self._get_plugins,
             }
             handler = private_exact.get(path)
             if handler is not None:
@@ -364,6 +365,7 @@ def _build_handler(
                 ("/jobs/", "", self._get_job_item),
                 ("/plans/", "/stream", self._get_plan_stream),
                 ("/plans/", "", self._get_plan_item),
+                ("/plugins/", "/health", self._get_plugin_health),
             )
             for prefix, suffix, route_handler in dynamic_routes:
                 if path.startswith(prefix) and (suffix == "" or path.endswith(suffix)):
@@ -389,6 +391,7 @@ def _build_handler(
                 "/run_async": lambda body: self._post_run_async("/run_async", body),
                 "/undo": lambda body: self._post_undo("/undo", body),
                 "/check": self._post_check,
+                "/feedback": lambda body: self._post_feedback("/feedback", body),
             }
             handler = exact_routes.get(path)
             if handler is not None:
@@ -396,6 +399,7 @@ def _build_handler(
 
             dynamic_routes: tuple[tuple[str, str, object], ...] = (
                 ("/jobs/", "/cancel", self._post_cancel_job),
+                ("/plugins/", "/call", self._post_plugin_call),
                 ("/plans/", "/approve_async", self._post_plan_approve_async),
                 ("/plans/", "/retry_failed_async", self._post_plan_retry_failed_async),
                 ("/plans/", "/retry_failed", self._post_plan_retry_failed),
@@ -446,6 +450,14 @@ def _build_handler(
                 checks["action_log"] = {"ok": True, "recent_count": len(service.history(limit=1))}
             except Exception as exc:
                 checks["action_log"] = {"ok": False, "error": str(exc)}
+                health_payload["ok"] = False
+
+            try:
+                checks["memory"] = service.memory_status()
+                if not bool(checks["memory"].get("ok", False)) and bool(checks["memory"].get("enabled", True)):
+                    health_payload["ok"] = False
+            except Exception as exc:
+                checks["memory"] = {"ok": False, "error": str(exc)}
                 health_payload["ok"] = False
 
             if include_execution_check:
@@ -584,6 +596,18 @@ def _build_handler(
         def _get_plans(self, query: dict[str, list[str]]) -> int:
             limit = int(_single(query, "limit") or 50)
             self._send_json(200, service.list_plans(limit=limit))
+            return 200
+
+        def _get_plugins(self, _query: dict[str, list[str]]) -> int:
+            self._send_json(200, service.plugins())
+            return 200
+
+        def _get_plugin_health(self, path: str, _query: dict[str, list[str]]) -> int:
+            plugin_name = path.removeprefix("/plugins/").removesuffix("/health").strip("/")
+            if not plugin_name:
+                self._send_json(404, {"error": "Not found"})
+                return 404
+            self._send_json(200, service.plugin_health(plugin_name))
             return 200
 
         def _get_plan_stream(self, path: str, query: dict[str, list[str]]) -> int:
@@ -799,6 +823,32 @@ def _build_handler(
             self._send_json(200, out)
             return 200
 
+        def _post_plugin_call(self, path: str, payload: dict[str, object]) -> int:
+            plugin_name = path.removeprefix("/plugins/").removesuffix("/call").strip("/")
+            if not plugin_name:
+                self._send_json(404, {"error": "Not found"})
+                return 404
+            return self._respond_idempotent(
+                path=path,
+                payload=payload,
+                operation=lambda: (200, service.plugin_call(plugin_name, payload)),
+                category="plugins",
+                action="call",
+                entity_type="plugin",
+                entity_id=plugin_name,
+            )
+
+        def _post_feedback(self, path: str, payload: dict[str, object]) -> int:
+            return self._respond_idempotent(
+                path=path,
+                payload=payload,
+                operation=lambda: (200, service.record_feedback(payload)),
+                category="feedback",
+                action="record",
+                entity_type="feedback",
+                entity_id_key="id",
+            )
+
         def _respond_idempotent(
             self,
             *,
@@ -948,7 +998,11 @@ def _build_handler(
         def _is_idempotent_route(path: str) -> bool:
             if path in {"/run", "/run_async", "/undo", "/plans"}:
                 return True
+            if path in {"/feedback"}:
+                return True
             if path.startswith("/jobs/") and path.endswith("/cancel"):
+                return True
+            if path.startswith("/plugins/") and path.endswith("/call"):
                 return True
             if path.startswith("/plans/") and (
                 path.endswith("/approve")

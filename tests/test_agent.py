@@ -10,6 +10,7 @@ from novaadapt_shared.undo_queue import UndoQueue
 class _StubRouter:
     def __init__(self, content: str):
         self._content = content
+        self.last_messages = None
 
     def chat(
         self,
@@ -19,6 +20,7 @@ class _StubRouter:
         candidate_models=None,
         fallback_models=None,
     ):
+        self.last_messages = messages
         return RouterResult(
             model_name=model_name or "stub",
             model_id="stub-model",
@@ -43,6 +45,29 @@ class _StubDirectShell:
         result.status = "preview" if dry_run else "ok"
         result.output = "simulated"
         return result
+
+
+class _StubMemoryBackend:
+    def __init__(self):
+        self.augment_calls: list[dict[str, object]] = []
+        self.ingest_calls: list[dict[str, object]] = []
+
+    def status(self):
+        return {"ok": True, "enabled": True, "backend": "stub"}
+
+    def recall(self, query: str, top_k: int = 10):
+        _ = (query, top_k)
+        return []
+
+    def augment(self, query: str, top_k: int = 5, *, min_score: float = 0.005, format_name: str = "xml"):
+        self.augment_calls.append(
+            {"query": query, "top_k": top_k, "min_score": min_score, "format_name": format_name}
+        )
+        return "<relevant-memories><user>Use dark mode</user></relevant-memories>"
+
+    def ingest(self, text: str, *, source_id: str = "", metadata=None):
+        self.ingest_calls.append({"text": text, "source_id": source_id, "metadata": metadata or {}})
+        return {"count": 1}
 
 
 class AgentSafetyTests(unittest.TestCase):
@@ -88,6 +113,27 @@ class AgentSafetyTests(unittest.TestCase):
 
             out = agent.run_objective(objective="Any objective", dry_run=True)
             self.assertEqual(out["actions"][0]["type"], "note")
+
+    def test_memory_context_is_injected_and_run_is_persisted(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            queue = UndoQueue(db_path=Path(tmp) / "actions.db")
+            directshell = _StubDirectShell()
+            router = _StubRouter('{"actions": [{"type": "note", "target": "memo"}]}')
+            memory = _StubMemoryBackend()
+            agent = NovaAdaptAgent(
+                router=router,
+                directshell=directshell,
+                undo_queue=queue,
+                memory_backend=memory,
+            )
+
+            out = agent.run_objective(objective="Remember my ui preference", dry_run=True)
+            self.assertEqual(out["actions"][0]["type"], "note")
+            self.assertTrue(memory.augment_calls)
+            self.assertTrue(memory.ingest_calls)
+            self.assertIsNotNone(router.last_messages)
+            memory_messages = [item for item in router.last_messages if "Relevant long-term memory context" in str(item.get("content", ""))]
+            self.assertEqual(len(memory_messages), 1)
 
 
 if __name__ == "__main__":

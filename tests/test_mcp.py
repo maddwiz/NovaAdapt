@@ -13,6 +13,15 @@ class _StubService:
     def check(self, model_names=None, probe_prompt="Reply with: OK"):
         return [{"name": "local", "ok": True, "probe": probe_prompt, "models": model_names}]
 
+    def plugins(self):
+        return [{"name": "novabridge"}, {"name": "novablox"}]
+
+    def plugin_health(self, plugin_name):
+        return {"plugin": plugin_name, "ok": True}
+
+    def plugin_call(self, plugin_name, payload):
+        return {"plugin": plugin_name, "route": payload.get("route"), "ok": True}
+
     def history(self, limit=20):
         return [{"id": 1, "limit": limit}]
 
@@ -71,6 +80,9 @@ class _StubService:
     def undo_plan(self, plan_id, payload):
         return {"plan_id": plan_id, "executed": payload.get("execute", False), "results": [{"id": 1, "ok": True}]}
 
+    def record_feedback(self, payload):
+        return {"ok": True, "id": "feedback-1", "rating": payload.get("rating")}
+
 
 class MCPServerTests(unittest.TestCase):
     def test_initialize_and_tools(self):
@@ -84,11 +96,15 @@ class MCPServerTests(unittest.TestCase):
         names = [item["name"] for item in tools["result"]["tools"]]
         self.assertIn("novaadapt_run", names)
         self.assertIn("novaadapt_models", names)
+        self.assertIn("novaadapt_plugins", names)
+        self.assertIn("novaadapt_plugin_health", names)
+        self.assertIn("novaadapt_plugin_call", names)
         self.assertIn("novaadapt_events", names)
         self.assertIn("novaadapt_events_wait", names)
         self.assertIn("novaadapt_plan_create", names)
         self.assertIn("novaadapt_plan_approve", names)
         self.assertIn("novaadapt_plan_undo", names)
+        self.assertIn("novaadapt_feedback", names)
 
     def test_tools_call(self):
         server = NovaAdaptMCPServer(service=_StubService())
@@ -120,6 +136,48 @@ class MCPServerTests(unittest.TestCase):
         )
         history_payload = history_resp["result"]["content"][0]["json"]
         self.assertEqual(history_payload[0]["limit"], 7)
+
+        plugins_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 401,
+                "method": "tools/call",
+                "params": {
+                    "name": "novaadapt_plugins",
+                    "arguments": {},
+                },
+            }
+        )
+        plugins_payload = plugins_resp["result"]["content"][0]["json"]
+        self.assertEqual(plugins_payload[0]["name"], "novabridge")
+
+        plugin_health_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 402,
+                "method": "tools/call",
+                "params": {
+                    "name": "novaadapt_plugin_health",
+                    "arguments": {"plugin": "novabridge"},
+                },
+            }
+        )
+        plugin_health_payload = plugin_health_resp["result"]["content"][0]["json"]
+        self.assertTrue(plugin_health_payload["ok"])
+
+        plugin_call_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 403,
+                "method": "tools/call",
+                "params": {
+                    "name": "novaadapt_plugin_call",
+                    "arguments": {"plugin": "novablox", "route": "/health", "method": "GET"},
+                },
+            }
+        )
+        plugin_call_payload = plugin_call_resp["result"]["content"][0]["json"]
+        self.assertEqual(plugin_call_payload["plugin"], "novablox")
 
         events_resp = server.handle_request(
             {
@@ -206,6 +264,20 @@ class MCPServerTests(unittest.TestCase):
         )
         plan_undo_payload = plan_undo_resp["result"]["content"][0]["json"]
         self.assertEqual(plan_undo_payload["plan_id"], "plan-1")
+
+        feedback_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 9,
+                "method": "tools/call",
+                "params": {
+                    "name": "novaadapt_feedback",
+                    "arguments": {"rating": 9, "objective": "demo", "notes": "solid"},
+                },
+            }
+        )
+        feedback_payload = feedback_resp["result"]["content"][0]["json"]
+        self.assertEqual(feedback_payload["rating"], 9)
 
     def test_unknown_method_returns_error(self):
         server = NovaAdaptMCPServer(service=_StubService())

@@ -10,7 +10,8 @@
    Daemon transport can target the built-in `novaadapt native-daemon` endpoint or an external DirectShell daemon.
    HTTP transport can target the built-in `novaadapt native-http` endpoint or an external DirectShell HTTP runtime.
 6. `UndoQueue` stores every action, optional undo action, and status in local SQLite.
-7. Optional async runner (`/run_async`) executes long tasks through in-memory job manager.
+7. NovaSpine-compatible memory backend augments prompts and persists run/plan/feedback artifacts for long-horizon behavior.
+8. Optional async runner (`/run_async`) executes long tasks through in-memory job manager.
 
 ## API Surface
 
@@ -18,6 +19,8 @@
 
 - `POST /run` for objective execution.
 - `POST /run_async` for queued objective execution.
+- `GET /plugins`, `GET /plugins/{name}/health`, and `POST /plugins/{name}/call` for first-party tool adapters (`novabridge`, `nova4d`, `novablox`).
+- `POST /feedback` for operator ratings/notes persisted into memory.
 - `GET /jobs` and `GET /jobs/{id}` for job polling.
 - `GET /jobs/{id}/stream` for server-sent event job updates.
 - `GET /plans/{id}/stream` for server-sent event plan updates.
@@ -65,10 +68,11 @@ The bridge additionally exposes `/metrics` for request and error counters.
 - Token rotation helper `installer/rotate_tokens.sh` updates core/bridge env files for secret rollover.
 - Benchmark runner (`novaadapt benchmark`) provides repeatable success-rate measurement from task suites.
 - MCP-compatible stdio server (`novaadapt mcp`) exposes core operations as tools for external agents.
+- Plugin adapter layer provides direct route-calling support for NovaBridge/Nova4D/NovaBlox workflows.
 - Backup command (`novaadapt backup`) snapshots SQLite state for rollback-safe upgrades.
 - Restore command (`novaadapt restore`) rehydrates SQLite state from snapshots with pre-restore safety archives.
 - Prune command (`novaadapt prune`) removes stale terminal/local rows for bounded SQLite growth.
-- Release workflow (`.github/workflows/release.yml`) builds artifacts on tag/manual triggers and publishes checksums for release-tag runs.
+- Release workflow (`.github/workflows/release.yml`) runs artifact validation on branch pushes and publishes release assets/checksums on tag/manual release-tag runs.
 
 ## Reliability Track
 

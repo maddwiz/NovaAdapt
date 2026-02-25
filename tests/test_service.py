@@ -114,6 +114,43 @@ class _StubDirectShellWithProbe(_StubDirectShell):
         return {"ok": True, "transport": "stub"}
 
 
+class _RecordingMemoryBackend:
+    def __init__(self):
+        self.ingest_calls: list[dict[str, object]] = []
+
+    def status(self):
+        return {"ok": True, "enabled": True, "backend": "stub-memory"}
+
+    def recall(self, query: str, top_k: int = 10):
+        _ = (query, top_k)
+        return []
+
+    def augment(self, query: str, top_k: int = 5, *, min_score: float = 0.005, format_name: str = "xml"):
+        _ = (query, top_k, min_score, format_name)
+        return ""
+
+    def ingest(self, text: str, *, source_id: str = "", metadata=None):
+        self.ingest_calls.append({"text": text, "source_id": source_id, "metadata": metadata or {}})
+        return {"count": 1}
+
+
+class _StubPluginRegistry:
+    def list_plugins(self):
+        return [{"name": "novabridge"}, {"name": "novablox"}]
+
+    def health(self, plugin_name):
+        return {"plugin": plugin_name, "ok": True}
+
+    def call(self, plugin_name, *, route, payload=None, method="POST"):
+        return {
+            "plugin": plugin_name,
+            "route": route,
+            "method": method,
+            "payload": payload or {},
+            "ok": True,
+        }
+
+
 class ServiceTests(unittest.TestCase):
     def test_models_and_check(self):
         service = NovaAdaptService(
@@ -460,6 +497,70 @@ class ServiceTests(unittest.TestCase):
 
             timed_out = service.events_wait(since_id=second["id"], timeout_seconds=0.1, interval_seconds=0.01)
             self.assertEqual(timed_out, [])
+
+    def test_memory_status_and_plan_execution_persists_memory_record(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            memory = _RecordingMemoryBackend()
+            service = NovaAdaptService(
+                default_config=Path("unused.json"),
+                db_path=Path(tmp) / "actions.db",
+                plans_db_path=Path(tmp) / "plans.db",
+                router_loader=lambda _path: _StubRouter(),
+                directshell_factory=_StubDirectShell,
+                memory_backend=memory,
+            )
+
+            status = service.memory_status()
+            self.assertTrue(status["ok"])
+            self.assertEqual(status["backend"], "stub-memory")
+
+            created = service.create_plan({"objective": "click ok"})
+            executed = service.approve_plan(created["id"], {"execute": True, "allow_dangerous": True})
+            self.assertEqual(executed["status"], "executed")
+            self.assertTrue(memory.ingest_calls)
+            self.assertTrue(any("novaadapt:plan:" in str(item["source_id"]) for item in memory.ingest_calls))
+
+    def test_plugin_registry_passthrough(self):
+        service = NovaAdaptService(
+            default_config=Path("unused.json"),
+            router_loader=lambda _path: _StubRouter(),
+            directshell_factory=_StubDirectShell,
+            plugin_registry=_StubPluginRegistry(),
+        )
+        plugins = service.plugins()
+        self.assertEqual(plugins[0]["name"], "novabridge")
+        health = service.plugin_health("novabridge")
+        self.assertTrue(health["ok"])
+        called = service.plugin_call(
+            "novabridge",
+            {
+                "route": "/scene/list",
+                "method": "GET",
+            },
+        )
+        self.assertEqual(called["route"], "/scene/list")
+        self.assertEqual(called["method"], "GET")
+
+    def test_record_feedback_writes_memory(self):
+        memory = _RecordingMemoryBackend()
+        service = NovaAdaptService(
+            default_config=Path("unused.json"),
+            router_loader=lambda _path: _StubRouter(),
+            directshell_factory=_StubDirectShell,
+            memory_backend=memory,
+        )
+        out = service.record_feedback(
+            {
+                "rating": 9,
+                "objective": "ship MVP",
+                "notes": "action retry worked",
+                "metadata": {"channel": "desktop"},
+            }
+        )
+        self.assertTrue(out["ok"])
+        self.assertEqual(out["rating"], 9)
+        self.assertTrue(memory.ingest_calls)
+        self.assertTrue(any("novaadapt:feedback:" in str(item["source_id"]) for item in memory.ingest_calls))
 
 
 if __name__ == "__main__":
