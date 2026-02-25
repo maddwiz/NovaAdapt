@@ -64,6 +64,20 @@ class NovaAdaptMCPServer:
                 },
             ),
             MCPTool(
+                name="novaadapt_events",
+                description="List recent audit events",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "limit": {"type": "integer"},
+                        "category": {"type": "string"},
+                        "entity_type": {"type": "string"},
+                        "entity_id": {"type": "string"},
+                        "since_id": {"type": "integer"},
+                    },
+                },
+            ),
+            MCPTool(
                 name="novaadapt_plan_create",
                 description="Create a pending approval plan from objective",
                 input_schema={
@@ -202,6 +216,14 @@ class NovaAdaptMCPServer:
         if tool_name == "novaadapt_history":
             limit = int(arguments.get("limit", 20))
             return self.service.history(limit=limit)
+        if tool_name == "novaadapt_events":
+            return self.service.events(
+                limit=int(arguments.get("limit", 100)),
+                category=str(arguments.get("category")).strip() if arguments.get("category") else None,
+                entity_type=str(arguments.get("entity_type")).strip() if arguments.get("entity_type") else None,
+                entity_id=str(arguments.get("entity_id")).strip() if arguments.get("entity_id") else None,
+                since_id=int(arguments.get("since_id")) if arguments.get("since_id") is not None else None,
+            )
         if tool_name == "novaadapt_plan_create":
             return self.service.create_plan(arguments)
         if tool_name == "novaadapt_plans":

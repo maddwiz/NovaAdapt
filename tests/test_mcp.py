@@ -16,6 +16,18 @@ class _StubService:
     def history(self, limit=20):
         return [{"id": 1, "limit": limit}]
 
+    def events(self, limit=100, category=None, entity_type=None, entity_id=None, since_id=None):
+        return [
+            {
+                "id": 10,
+                "category": category or "run",
+                "entity_type": entity_type,
+                "entity_id": entity_id,
+                "since_id": since_id,
+                "limit": limit,
+            }
+        ]
+
     def create_plan(self, payload):
         return {"id": "plan-1", "objective": payload.get("objective"), "status": "pending"}
 
@@ -49,6 +61,7 @@ class MCPServerTests(unittest.TestCase):
         names = [item["name"] for item in tools["result"]["tools"]]
         self.assertIn("novaadapt_run", names)
         self.assertIn("novaadapt_models", names)
+        self.assertIn("novaadapt_events", names)
         self.assertIn("novaadapt_plan_create", names)
         self.assertIn("novaadapt_plan_approve", names)
         self.assertIn("novaadapt_plan_undo", names)
@@ -83,6 +96,21 @@ class MCPServerTests(unittest.TestCase):
         )
         history_payload = history_resp["result"]["content"][0]["json"]
         self.assertEqual(history_payload[0]["limit"], 7)
+
+        events_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 41,
+                "method": "tools/call",
+                "params": {
+                    "name": "novaadapt_events",
+                    "arguments": {"limit": 5, "category": "plans", "since_id": 9},
+                },
+            }
+        )
+        events_payload = events_resp["result"]["content"][0]["json"]
+        self.assertEqual(events_payload[0]["category"], "plans")
+        self.assertEqual(events_payload[0]["since_id"], 9)
 
         plan_create_resp = server.handle_request(
             {

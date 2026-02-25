@@ -5,6 +5,7 @@ from typing import Any, Callable
 
 from novaadapt_shared import ModelRouter, UndoQueue
 
+from .audit_store import AuditStore
 from .agent import NovaAdaptAgent
 from .directshell import DirectShellClient
 from .plan_store import PlanStore
@@ -19,15 +20,18 @@ class NovaAdaptService:
         default_config: Path,
         db_path: Path | None = None,
         plans_db_path: Path | None = None,
+        audit_db_path: Path | None = None,
         router_loader: Callable[[Path], ModelRouter] | None = None,
         directshell_factory: Callable[[], DirectShellClient] | None = None,
     ) -> None:
         self.default_config = default_config
         self.db_path = db_path
         self.plans_db_path = plans_db_path
+        self.audit_db_path = audit_db_path
         self.router_loader = router_loader or ModelRouter.from_config_file
         self.directshell_factory = directshell_factory or DirectShellClient
         self._plan_store: PlanStore | None = None
+        self._audit_store: AuditStore | None = None
 
     def models(self, config_path: Path | None = None) -> list[dict[str, Any]]:
         router = self.router_loader(config_path or self.default_config)
@@ -323,6 +327,22 @@ class NovaAdaptService:
             "marked_undone": marked,
         }
 
+    def events(
+        self,
+        limit: int = 100,
+        category: str | None = None,
+        entity_type: str | None = None,
+        entity_id: str | None = None,
+        since_id: int | None = None,
+    ) -> list[dict[str, Any]]:
+        return self._audits().list(
+            limit=max(1, int(limit)),
+            category=category,
+            entity_type=entity_type,
+            entity_id=entity_id,
+            since_id=(int(since_id) if since_id is not None else None),
+        )
+
     @staticmethod
     def _as_name_list(value: object) -> list[str]:
         if value is None:
@@ -337,3 +357,8 @@ class NovaAdaptService:
         if self._plan_store is None:
             self._plan_store = PlanStore(self.plans_db_path)
         return self._plan_store
+
+    def _audits(self) -> AuditStore:
+        if self._audit_store is None:
+            self._audit_store = AuditStore(self.audit_db_path)
+        return self._audit_store

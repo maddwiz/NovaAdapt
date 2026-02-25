@@ -2,6 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from novaadapt_core.audit_store import AuditStore
 from novaadapt_core.directshell import ExecutionResult
 from novaadapt_core.service import NovaAdaptService
 from novaadapt_shared.model_router import RouterResult
@@ -166,6 +167,40 @@ class ServiceTests(unittest.TestCase):
 
             with self.assertRaises(ValueError):
                 service.approve_plan(created_2["id"], {"execute": True})
+
+    def test_events_reads_filtered_audit_log(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            events_db = Path(tmp) / "events.db"
+            store = AuditStore(events_db)
+            first = store.append(
+                category="run",
+                action="run_async",
+                status="ok",
+                entity_type="job",
+                entity_id="job-1",
+            )
+            store.append(
+                category="plans",
+                action="approve",
+                status="ok",
+                entity_type="plan",
+                entity_id="plan-1",
+            )
+
+            service = NovaAdaptService(
+                default_config=Path("unused.json"),
+                audit_db_path=events_db,
+                router_loader=lambda _path: _StubRouter(),
+                directshell_factory=_StubDirectShell,
+            )
+
+            plan_events = service.events(limit=10, category="plans")
+            self.assertEqual(len(plan_events), 1)
+            self.assertEqual(plan_events[0]["entity_id"], "plan-1")
+
+            newer_events = service.events(limit=10, since_id=first["id"])
+            self.assertEqual(len(newer_events), 1)
+            self.assertEqual(newer_events[0]["category"], "plans")
 
 
 if __name__ == "__main__":

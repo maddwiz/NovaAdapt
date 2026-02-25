@@ -22,6 +22,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="novaadapt", description="NovaAdapt desktop orchestrator")
     sub = parser.add_subparsers(dest="command", required=True)
     default_plans_db = Path(os.getenv("NOVAADAPT_PLANS_DB", str(Path.home() / ".novaadapt" / "plans.db")))
+    default_audit_db = Path(os.getenv("NOVAADAPT_AUDIT_DB", str(Path.home() / ".novaadapt" / "events.db")))
 
     list_cmd = sub.add_parser("models", help="List configured model endpoints")
     list_cmd.add_argument("--config", type=Path, default=_default_config_path())
@@ -62,6 +63,14 @@ def _build_parser() -> argparse.ArgumentParser:
     history_cmd = sub.add_parser("history", help="Show recent action history")
     history_cmd.add_argument("--limit", type=int, default=20)
     history_cmd.add_argument("--db-path", type=Path, default=None)
+
+    events_cmd = sub.add_parser("events", help="Show recent audit events")
+    events_cmd.add_argument("--limit", type=int, default=100)
+    events_cmd.add_argument("--category", default=None)
+    events_cmd.add_argument("--entity-type", default=None)
+    events_cmd.add_argument("--entity-id", default=None)
+    events_cmd.add_argument("--since-id", type=int, default=None)
+    events_cmd.add_argument("--audit-db-path", type=Path, default=default_audit_db)
 
     undo_cmd = sub.add_parser("undo", help="Undo a recorded action")
     undo_cmd.add_argument("--id", type=int, default=None, help="Specific action log id to undo")
@@ -188,7 +197,7 @@ def _build_parser() -> argparse.ArgumentParser:
     serve_cmd.add_argument(
         "--audit-db-path",
         type=Path,
-        default=Path(os.getenv("NOVAADAPT_AUDIT_DB", str(Path.home() / ".novaadapt" / "events.db"))),
+        default=default_audit_db,
         help="Path to audit events SQLite database",
     )
     serve_cmd.add_argument("--host", default="127.0.0.1")
@@ -225,6 +234,7 @@ def _build_parser() -> argparse.ArgumentParser:
     mcp_cmd = sub.add_parser("mcp", help="Run MCP-compatible stdio server")
     mcp_cmd.add_argument("--config", type=Path, default=_default_config_path())
     mcp_cmd.add_argument("--db-path", type=Path, default=None)
+    mcp_cmd.add_argument("--audit-db-path", type=Path, default=default_audit_db)
 
     return parser
 
@@ -333,6 +343,25 @@ def main() -> None:
             print(json.dumps(service.history(limit=max(1, args.limit)), indent=2))
             return
 
+        if args.command == "events":
+            service = NovaAdaptService(
+                default_config=_default_config_path(),
+                audit_db_path=args.audit_db_path,
+            )
+            print(
+                json.dumps(
+                    service.events(
+                        limit=max(1, args.limit),
+                        category=(str(args.category).strip() if args.category else None),
+                        entity_type=(str(args.entity_type).strip() if args.entity_type else None),
+                        entity_id=(str(args.entity_id).strip() if args.entity_id else None),
+                        since_id=args.since_id,
+                    ),
+                    indent=2,
+                )
+            )
+            return
+
         if args.command == "undo":
             service = NovaAdaptService(default_config=_default_config_path(), db_path=args.db_path)
             payload = {
@@ -360,7 +389,11 @@ def main() -> None:
             return
 
         if args.command == "mcp":
-            service = NovaAdaptService(default_config=args.config, db_path=args.db_path)
+            service = NovaAdaptService(
+                default_config=args.config,
+                db_path=args.db_path,
+                audit_db_path=args.audit_db_path,
+            )
             server = NovaAdaptMCPServer(service=service)
             server.serve_stdio()
             return

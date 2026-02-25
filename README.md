@@ -96,6 +96,13 @@ novaadapt undo --id 12
 novaadapt undo --id 12 --execute
 ```
 
+Inspect persisted audit events:
+
+```bash
+novaadapt events --limit 20
+novaadapt events --category plans --entity-type plan
+```
+
 6. Create and manage approval plans:
 
 ```bash
@@ -206,6 +213,7 @@ Exposed tools:
 - `novaadapt_models`
 - `novaadapt_check`
 - `novaadapt_history`
+- `novaadapt_events`
 - `novaadapt_plan_create`
 - `novaadapt_plans`
 - `novaadapt_plan_get`
