@@ -10,6 +10,7 @@ from .benchmark import run_benchmark
 from .cleanup import prune_local_state
 from .directshell import DirectShellClient
 from .mcp_server import NovaAdaptMCPServer
+from .native_daemon import NativeExecutionDaemon
 from .server import run_server
 from .service import NovaAdaptService
 
@@ -202,6 +203,33 @@ def _build_parser() -> argparse.ArgumentParser:
         type=int,
         default=5,
         help="Probe timeout in seconds",
+    )
+
+    native_daemon_cmd = sub.add_parser(
+        "native-daemon",
+        help="Run built-in Native DirectShell-compatible daemon",
+    )
+    native_daemon_cmd.add_argument(
+        "--socket",
+        default=os.getenv("DIRECTSHELL_DAEMON_SOCKET", "/tmp/directshell.sock"),
+        help="Unix socket path (set empty string to use TCP mode)",
+    )
+    native_daemon_cmd.add_argument(
+        "--host",
+        default=os.getenv("DIRECTSHELL_DAEMON_HOST", "127.0.0.1"),
+        help="TCP host when --socket is empty",
+    )
+    native_daemon_cmd.add_argument(
+        "--port",
+        type=int,
+        default=int(os.getenv("DIRECTSHELL_DAEMON_PORT", "8766")),
+        help="TCP port when --socket is empty",
+    )
+    native_daemon_cmd.add_argument(
+        "--timeout-seconds",
+        type=int,
+        default=30,
+        help="Per-connection timeout in seconds",
     )
 
     bench_cmd = sub.add_parser("benchmark", help="Run benchmark suite and report success metrics")
@@ -608,6 +636,16 @@ def main() -> None:
                 timeout_seconds=max(1, int(args.timeout_seconds)),
             )
             print(json.dumps(client.probe(), indent=2))
+            return
+
+        if args.command == "native-daemon":
+            daemon = NativeExecutionDaemon(
+                socket_path=str(args.socket or ""),
+                host=str(args.host or "127.0.0.1"),
+                port=max(1, int(args.port)),
+                timeout_seconds=max(1, int(args.timeout_seconds)),
+            )
+            daemon.serve_forever()
             return
 
         if args.command == "benchmark":

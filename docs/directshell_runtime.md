@@ -24,6 +24,11 @@ Supported action types:
 - `http`: posts JSON action payloads to a DirectShell HTTP endpoint
 - `daemon`: framed JSON over Unix socket or TCP
 
+`daemon` can point to:
+
+- external DirectShell daemon endpoint
+- built-in NovaAdapt daemon (`novaadapt native-daemon`)
+
 ## Runtime Readiness Probe
 
 Use the built-in check before enabling live execution:
@@ -44,6 +49,27 @@ novaadapt directshell-check --transport native --native-fallback-transport http
 ```
 
 Fallback transport executes only when native action execution returns a non-`ok` status.
+
+## Built-In Daemon Endpoint
+
+Expose native runtime over DirectShell-compatible framed JSON:
+
+```bash
+novaadapt native-daemon --socket /tmp/directshell.sock
+```
+
+Or TCP mode:
+
+```bash
+novaadapt native-daemon --socket '' --host 127.0.0.1 --port 8766
+```
+
+Then configure core execution transport:
+
+```bash
+export DIRECTSHELL_TRANSPORT=daemon
+export DIRECTSHELL_DAEMON_SOCKET=/tmp/directshell.sock
+```
 
 For remote monitoring via core API:
 

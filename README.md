@@ -491,7 +491,7 @@ novaadapt run \
 - `native` (default): built-in NovaAdapt desktop executor (no external DirectShell binary required).
 - `subprocess`: runs `directshell exec --json ...` using `DIRECTSHELL_BIN`.
 - `http`: sends `POST` to `DIRECTSHELL_HTTP_URL` with body `{"action": ...}`.
-- `daemon`: sends framed JSON RPC over DirectShell daemon socket/TCP (`DIRECTSHELL_DAEMON_SOCKET` or `DIRECTSHELL_DAEMON_HOST`/`DIRECTSHELL_DAEMON_PORT`).
+- `daemon`: sends framed JSON RPC over daemon socket/TCP (`DIRECTSHELL_DAEMON_SOCKET` or `DIRECTSHELL_DAEMON_HOST`/`DIRECTSHELL_DAEMON_PORT`). Can target external DirectShell or NovaAdapt's built-in daemon (`novaadapt native-daemon`).
 
 Execution dependency:
 
@@ -515,6 +515,14 @@ Readiness probe:
 novaadapt directshell-check
 novaadapt directshell-check --transport native --native-fallback-transport http
 novaadapt directshell-check --transport daemon
+```
+
+Run built-in daemon transport endpoint:
+
+```bash
+novaadapt native-daemon --socket /tmp/directshell.sock
+# or TCP mode
+novaadapt native-daemon --socket '' --host 127.0.0.1 --port 8766
 ```
 
 Built-in native action types:
