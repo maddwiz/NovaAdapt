@@ -4,22 +4,36 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DIST_DIR="$ROOT_DIR/dist"
 VERSION="${1:-dev}"
+TARGET_GOOS="${GOOS:-$(go env GOOS)}"
+TARGET_GOARCH="${GOARCH:-$(go env GOARCH)}"
+BUILD_VENV="$(mktemp -d)"
+PKG_BUILD_DIR="$ROOT_DIR/build"
+
+cleanup() {
+  rm -rf "$BUILD_VENV"
+  rm -rf "$PKG_BUILD_DIR"
+  find "$ROOT_DIR" -maxdepth 1 -type d -name "*.egg-info" -exec rm -rf {} +
+}
+trap cleanup EXIT
 
 mkdir -p "$DIST_DIR"
 rm -f "$DIST_DIR"/SHA256SUMS
+rm -rf "$PKG_BUILD_DIR"
+find "$ROOT_DIR" -maxdepth 1 -type d -name "*.egg-info" -exec rm -rf {} +
 
 echo "[release] building bridge binary"
 (
   cd "$ROOT_DIR/bridge"
-  GOOS="${GOOS:-$(go env GOOS)}" GOARCH="${GOARCH:-$(go env GOARCH)}" \
-    go build -o "$DIST_DIR/novaadapt-bridge-${VERSION}-$(go env GOOS)-$(go env GOARCH)" ./cmd/novaadapt-bridge
+  GOOS="$TARGET_GOOS" GOARCH="$TARGET_GOARCH" \
+    go build -o "$DIST_DIR/novaadapt-bridge-${VERSION}-${TARGET_GOOS}-${TARGET_GOARCH}" ./cmd/novaadapt-bridge
 )
 
 echo "[release] building python wheel/sdist"
-python3 -m pip install --upgrade build >/dev/null
+python3 -m venv "$BUILD_VENV"
+"$BUILD_VENV/bin/python" -m pip install --upgrade pip build >/dev/null
 (
   cd "$ROOT_DIR"
-  python3 -m build --sdist --wheel --outdir "$DIST_DIR"
+  "$BUILD_VENV/bin/python" -m build --sdist --wheel --outdir "$DIST_DIR"
 )
 
 echo "[release] packaging runtime configs"
