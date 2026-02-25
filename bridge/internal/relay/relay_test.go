@@ -60,6 +60,13 @@ func TestHealthDeepChecksCore(t *testing.T) {
 	if reachable, ok := corePayload["reachable"].(bool); !ok || !reachable {
 		t.Fatalf("expected core reachable true: %#v", corePayload)
 	}
+	bridgePayload, ok := payload["bridge"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected bridge payload")
+	}
+	if _, ok := bridgePayload["revoked_sessions"]; !ok {
+		t.Fatalf("expected bridge revoked_sessions field: %#v", bridgePayload)
+	}
 }
 
 func TestUnauthorized(t *testing.T) {

@@ -341,6 +341,7 @@ func (h *Handler) healthPayload(requestID string, deep bool) (int, any) {
 		"service":    "novaadapt-bridge-go",
 		"request_id": requestID,
 	}
+	payload["bridge"] = h.bridgeHealthSnapshot()
 	if !deep {
 		return http.StatusOK, payload
 	}
@@ -373,6 +374,24 @@ func (h *Handler) healthPayload(requestID string, deep bool) (int, any) {
 		return http.StatusBadGateway, payload
 	}
 	return http.StatusOK, payload
+}
+
+func (h *Handler) bridgeHealthSnapshot() map[string]any {
+	h.revokedSessionsMu.RLock()
+	revokedCount := len(h.revokedSessions)
+	h.revokedSessionsMu.RUnlock()
+
+	h.rateLimitMu.Lock()
+	trackedClients := len(h.rateLimiters)
+	h.rateLimitMu.Unlock()
+
+	return map[string]any{
+		"rate_limit_rps":        h.cfg.RateLimitRPS,
+		"rate_limit_burst":      h.cfg.RateLimitBurst,
+		"rate_limit_clients":    trackedClients,
+		"revoked_sessions":      revokedCount,
+		"revocation_store_path": strings.TrimSpace(h.cfg.RevocationStorePath),
+	}
 }
 
 func isForwardedPath(p string) bool {
