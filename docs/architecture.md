@@ -6,7 +6,7 @@
 2. `ModelRouter` selects one model (`single`) with optional fallback chain, or collects multiple responses (`vote`).
 3. `NovaAdaptAgent` parses strict JSON action plans.
 4. `ActionPolicy` evaluates each action for risk before execution.
-5. `DirectShellClient` previews or executes each action (subprocess or HTTP transport).
+5. `DirectShellClient` previews or executes each action (subprocess, HTTP, or daemon transport).
 6. `UndoQueue` stores every action, optional undo action, and status in local SQLite.
 7. Optional async runner (`/run_async`) executes long tasks through in-memory job manager.
 
@@ -39,6 +39,8 @@ Audit events are persisted with retention-based cleanup to bound audit-store gro
 Async job records are persisted to SQLite when `--jobs-db-path` is configured.
 Core rate limiting is per-client and can trust `X-Forwarded-For` only from configured trusted proxy CIDRs.
 Core state stores apply hot-path SQLite indexes to keep list/filter/read operations efficient as rows grow.
+Core state stores also track schema upgrades through `schema_migrations` to keep DB evolution deterministic.
+Core can emit OpenTelemetry traces (OTLP HTTP) when `--otel-enabled` is configured.
 
 ## Relay Layer
 
@@ -54,10 +56,12 @@ The bridge additionally exposes `/metrics` for request and error counters.
 - A local smoke script (`scripts/smoke_bridge.sh`) validates auth and tracing across core + bridge.
 - Container deployment assets live under `deploy/` (core + bridge images and compose stack).
 - Token bootstrap helper `installer/gen_dev_tokens.sh` writes `deploy/.env` for local stack auth.
+- Token rotation helper `installer/rotate_tokens.sh` updates core/bridge env files for secret rollover.
 - Benchmark runner (`novaadapt benchmark`) provides repeatable success-rate measurement from task suites.
 - MCP-compatible stdio server (`novaadapt mcp`) exposes core operations as tools for external agents.
 - Backup command (`novaadapt backup`) snapshots SQLite state for rollback-safe upgrades.
 - Prune command (`novaadapt prune`) removes stale terminal/local rows for bounded SQLite growth.
+- Release workflow (`.github/workflows/release.yml`) builds artifacts and publishes checksums on tag pushes.
 
 ## Reliability Track
 
@@ -69,6 +73,6 @@ The bridge additionally exposes `/metrics` for request and error counters.
 
 ## Next Integration Points
 
-- Replace subprocess DirectShell call with daemon/gRPC API once available.
-- Add bridge auth channel and device trust registry.
-- Add Tauri desktop approval panel for action preview and one-tap undo.
+- Add first-party DirectShell gRPC schema/client once daemon API contract is finalized.
+- Add policy-driven bridge device trust registry management UI.
+- Expand Tauri/iOS/wearable scaffolds into signed production builds with full approval UX parity.

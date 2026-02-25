@@ -8,6 +8,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+from novaadapt_shared.sqlite_migrations import SQLiteMigration, apply_sqlite_migrations
+
 
 class PlanStore:
     """Persists generated action plans for explicit approve/reject workflows."""
@@ -42,33 +44,54 @@ class PlanStore:
 
     def _init(self) -> None:
         with self._connection() as conn:
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS plans (
-                    id TEXT PRIMARY KEY,
-                    objective TEXT NOT NULL,
-                    strategy TEXT NOT NULL,
-                    model TEXT,
-                    model_id TEXT,
-                    actions_json TEXT NOT NULL,
-                    votes_json TEXT,
-                    model_errors_json TEXT,
-                    attempted_models_json TEXT,
-                    status TEXT NOT NULL,
-                    created_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL,
-                    approved_at TEXT,
-                    rejected_at TEXT,
-                    executed_at TEXT,
-                    execution_started_at TEXT,
-                    reject_reason TEXT,
-                    execution_results_json TEXT,
-                    action_log_ids_json TEXT,
-                    progress_completed INTEGER NOT NULL DEFAULT 0,
-                    progress_total INTEGER NOT NULL DEFAULT 0,
-                    execution_error TEXT
-                )
-                """
+            apply_sqlite_migrations(
+                conn,
+                (
+                    SQLiteMigration(
+                        migration_id="plan_store_0001_create_plans",
+                        statements=(
+                            """
+                            CREATE TABLE IF NOT EXISTS plans (
+                                id TEXT PRIMARY KEY,
+                                objective TEXT NOT NULL,
+                                strategy TEXT NOT NULL,
+                                model TEXT,
+                                model_id TEXT,
+                                actions_json TEXT NOT NULL,
+                                votes_json TEXT,
+                                model_errors_json TEXT,
+                                attempted_models_json TEXT,
+                                status TEXT NOT NULL,
+                                created_at TEXT NOT NULL,
+                                updated_at TEXT NOT NULL,
+                                approved_at TEXT,
+                                rejected_at TEXT,
+                                executed_at TEXT,
+                                execution_started_at TEXT,
+                                reject_reason TEXT,
+                                execution_results_json TEXT,
+                                action_log_ids_json TEXT,
+                                progress_completed INTEGER NOT NULL DEFAULT 0,
+                                progress_total INTEGER NOT NULL DEFAULT 0,
+                                execution_error TEXT
+                            )
+                            """,
+                        ),
+                    ),
+                    SQLiteMigration(
+                        migration_id="plan_store_0002_add_hot_path_indexes",
+                        statements=(
+                            """
+                            CREATE INDEX IF NOT EXISTS idx_plans_created_at
+                            ON plans(created_at DESC)
+                            """,
+                            """
+                            CREATE INDEX IF NOT EXISTS idx_plans_status_updated_at
+                            ON plans(status, updated_at)
+                            """,
+                        ),
+                    ),
+                ),
             )
             columns = {
                 row[1]
@@ -82,18 +105,6 @@ class PlanStore:
                 conn.execute("ALTER TABLE plans ADD COLUMN progress_total INTEGER NOT NULL DEFAULT 0")
             if "execution_error" not in columns:
                 conn.execute("ALTER TABLE plans ADD COLUMN execution_error TEXT")
-            conn.execute(
-                """
-                CREATE INDEX IF NOT EXISTS idx_plans_created_at
-                ON plans(created_at DESC)
-                """
-            )
-            conn.execute(
-                """
-                CREATE INDEX IF NOT EXISTS idx_plans_status_updated_at
-                ON plans(status, updated_at)
-                """
-            )
             conn.commit()
 
     def create(self, payload: dict[str, Any]) -> dict[str, Any]:

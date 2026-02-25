@@ -7,6 +7,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+from novaadapt_shared.sqlite_migrations import SQLiteMigration, apply_sqlite_migrations
+
 
 class JobStore:
     """Persists async job records in SQLite for restart-safe history."""
@@ -41,33 +43,41 @@ class JobStore:
 
     def _init(self) -> None:
         with self._connection() as conn:
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS async_jobs (
-                    id TEXT PRIMARY KEY,
-                    status TEXT NOT NULL,
-                    created_at TEXT NOT NULL,
-                    started_at TEXT,
-                    finished_at TEXT,
-                    result_json TEXT,
-                    error TEXT,
-                    cancel_requested INTEGER NOT NULL DEFAULT 0
-                )
-                """
+            apply_sqlite_migrations(
+                conn,
+                (
+                    SQLiteMigration(
+                        migration_id="job_store_0001_create_async_jobs",
+                        statements=(
+                            """
+                            CREATE TABLE IF NOT EXISTS async_jobs (
+                                id TEXT PRIMARY KEY,
+                                status TEXT NOT NULL,
+                                created_at TEXT NOT NULL,
+                                started_at TEXT,
+                                finished_at TEXT,
+                                result_json TEXT,
+                                error TEXT,
+                                cancel_requested INTEGER NOT NULL DEFAULT 0
+                            )
+                            """,
+                        ),
+                    ),
+                    SQLiteMigration(
+                        migration_id="job_store_0002_add_hot_path_indexes",
+                        statements=(
+                            """
+                            CREATE INDEX IF NOT EXISTS idx_async_jobs_created_at
+                            ON async_jobs(created_at DESC)
+                            """,
+                            """
+                            CREATE INDEX IF NOT EXISTS idx_async_jobs_status_finished_at
+                            ON async_jobs(status, finished_at)
+                            """,
+                        ),
+                    ),
+                ),
             )
-            conn.execute(
-                """
-                CREATE INDEX IF NOT EXISTS idx_async_jobs_created_at
-                ON async_jobs(created_at DESC)
-                """
-            )
-            conn.execute(
-                """
-                CREATE INDEX IF NOT EXISTS idx_async_jobs_status_finished_at
-                ON async_jobs(status, finished_at)
-                """
-            )
-            conn.commit()
 
     def upsert(self, record: dict[str, Any]) -> None:
         with self._connection() as conn:

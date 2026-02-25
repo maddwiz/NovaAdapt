@@ -1,6 +1,6 @@
 PYTHONPATH := core:shared
 
-.PHONY: test test-py test-go build-bridge smoke run-local
+.PHONY: test test-py test-go build-bridge smoke run-local release-artifacts rotate-tokens-dry-run
 
 test: test-py test-go
 
@@ -18,3 +18,9 @@ smoke:
 
 run-local:
 	./installer/run_local_operator_stack.sh
+
+release-artifacts:
+	./installer/build_release_artifacts.sh
+
+rotate-tokens-dry-run:
+	./installer/rotate_tokens.sh --dry-run

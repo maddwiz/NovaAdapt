@@ -9,3 +9,6 @@ __pycache__/
 config/models.local.json
 bridge/bin/
 deploy/.env
+dist/
+desktop/tauri-shell/node_modules/
+desktop/tauri-shell/src-tauri/target/

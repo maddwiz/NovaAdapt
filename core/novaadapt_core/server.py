@@ -15,6 +15,7 @@ from .dashboard import render_dashboard_html
 from .idempotency_store import IdempotencyStore
 from .job_store import JobStore
 from .jobs import JobManager
+from .observability import configure_tracing, start_span
 from .openapi import build_openapi_spec
 from .service import NovaAdaptService
 
@@ -139,6 +140,9 @@ def create_server(
     idempotency_cleanup_interval_seconds: float = 60.0,
     audit_retention_seconds: int = 30 * 24 * 60 * 60,
     audit_cleanup_interval_seconds: float = 60.0,
+    otel_enabled: bool = False,
+    otel_service_name: str = "novaadapt-core",
+    otel_exporter_endpoint: str | None = None,
     max_request_body_bytes: int = DEFAULT_MAX_REQUEST_BODY_BYTES,
     jobs_db_path: str | None = None,
     idempotency_db_path: str | None = None,
@@ -160,6 +164,11 @@ def create_server(
         cleanup_interval_seconds=audit_cleanup_interval_seconds,
     )
     metrics = _RequestMetrics()
+    configure_tracing(
+        enabled=otel_enabled,
+        service_name=otel_service_name,
+        exporter_endpoint=otel_exporter_endpoint,
+    )
 
     limiter = None
     if rate_limit_rps > 0:
@@ -197,6 +206,9 @@ def run_server(
     idempotency_cleanup_interval_seconds: float = 60.0,
     audit_retention_seconds: int = 30 * 24 * 60 * 60,
     audit_cleanup_interval_seconds: float = 60.0,
+    otel_enabled: bool = False,
+    otel_service_name: str = "novaadapt-core",
+    otel_exporter_endpoint: str | None = None,
     max_request_body_bytes: int = DEFAULT_MAX_REQUEST_BODY_BYTES,
     jobs_db_path: str | None = None,
     idempotency_db_path: str | None = None,
@@ -216,6 +228,9 @@ def run_server(
         idempotency_cleanup_interval_seconds=idempotency_cleanup_interval_seconds,
         audit_retention_seconds=audit_retention_seconds,
         audit_cleanup_interval_seconds=audit_cleanup_interval_seconds,
+        otel_enabled=otel_enabled,
+        otel_service_name=otel_service_name,
+        otel_exporter_endpoint=otel_exporter_endpoint,
         max_request_body_bytes=max_request_body_bytes,
         jobs_db_path=jobs_db_path,
         idempotency_db_path=idempotency_db_path,
@@ -254,249 +269,259 @@ def _build_handler(
             path = parsed.path
             query = parse_qs(parsed.query)
 
-            try:
-                if path == "/health":
-                    deep = (_single(query, "deep") or "0") == "1"
-                    if not deep:
+            with start_span(
+                "core.http.get",
+                attributes={
+                    "http.method": "GET",
+                    "http.path": path,
+                    "http.request_id": self._request_id,
+                },
+            ) as span:
+                try:
+                    if path == "/health":
+                        deep = (_single(query, "deep") or "0") == "1"
+                        if not deep:
+                            status_code = 200
+                            self._send_json(status_code, {"ok": True, "service": "novaadapt"})
+                            return
+                        health_payload = {"ok": True, "service": "novaadapt", "checks": {}, "metrics": metrics.snapshot()}
+                        checks = health_payload["checks"]
+
+                        config = _to_path(_single(query, "config"))
+                        try:
+                            checks["models"] = {"ok": True, "count": len(service.models(config_path=config))}
+                        except Exception as exc:
+                            checks["models"] = {"ok": False, "error": str(exc)}
+                            health_payload["ok"] = False
+
+                        try:
+                            checks["audit_store"] = {
+                                "ok": True,
+                                "recent_count": len(audit_store.list(limit=1)) if audit_store is not None else 0,
+                            }
+                        except Exception as exc:
+                            checks["audit_store"] = {"ok": False, "error": str(exc)}
+                            health_payload["ok"] = False
+
+                        try:
+                            checks["plan_store"] = {"ok": True, "recent_count": len(service.list_plans(limit=1))}
+                        except Exception as exc:
+                            checks["plan_store"] = {"ok": False, "error": str(exc)}
+                            health_payload["ok"] = False
+
+                        try:
+                            checks["action_log"] = {"ok": True, "recent_count": len(service.history(limit=1))}
+                        except Exception as exc:
+                            checks["action_log"] = {"ok": False, "error": str(exc)}
+                            health_payload["ok"] = False
+
+                        status_code = 200 if health_payload["ok"] else 503
+                        self._send_json(status_code, health_payload)
+                        return
+
+                    if path == "/dashboard":
+                        if not self._check_auth(path, query):
+                            status_code = 401
+                            return
                         status_code = 200
-                        self._send_json(status_code, {"ok": True, "service": "novaadapt"})
+                        self._send_html(status_code, render_dashboard_html())
                         return
-                    health_payload = {"ok": True, "service": "novaadapt", "checks": {}, "metrics": metrics.snapshot()}
-                    checks = health_payload["checks"]
 
-                    config = _to_path(_single(query, "config"))
-                    try:
-                        checks["models"] = {"ok": True, "count": len(service.models(config_path=config))}
-                    except Exception as exc:
-                        checks["models"] = {"ok": False, "error": str(exc)}
-                        health_payload["ok"] = False
-
-                    try:
-                        checks["audit_store"] = {
-                            "ok": True,
-                            "recent_count": len(audit_store.list(limit=1)) if audit_store is not None else 0,
-                        }
-                    except Exception as exc:
-                        checks["audit_store"] = {"ok": False, "error": str(exc)}
-                        health_payload["ok"] = False
-
-                    try:
-                        checks["plan_store"] = {"ok": True, "recent_count": len(service.list_plans(limit=1))}
-                    except Exception as exc:
-                        checks["plan_store"] = {"ok": False, "error": str(exc)}
-                        health_payload["ok"] = False
-
-                    try:
-                        checks["action_log"] = {"ok": True, "recent_count": len(service.history(limit=1))}
-                    except Exception as exc:
-                        checks["action_log"] = {"ok": False, "error": str(exc)}
-                        health_payload["ok"] = False
-
-                    status_code = 200 if health_payload["ok"] else 503
-                    self._send_json(status_code, health_payload)
-                    return
-
-                if path == "/dashboard":
-                    if not self._check_auth(path, query):
-                        status_code = 401
-                        return
-                    status_code = 200
-                    self._send_html(status_code, render_dashboard_html())
-                    return
-
-                if path == "/dashboard/data":
-                    if not self._check_auth(path, query):
-                        status_code = 401
-                        return
-                    jobs_limit = int(_single(query, "jobs_limit") or 25)
-                    plans_limit = int(_single(query, "plans_limit") or 25)
-                    events_limit = int(_single(query, "events_limit") or 25)
-                    config = _single(query, "config")
-                    status_code = 200
-                    self._send_json(
-                        status_code,
-                        {
-                            "health": {"ok": True, "service": "novaadapt"},
-                            "metrics": metrics.snapshot(),
-                            "jobs": job_manager.list(limit=max(1, jobs_limit)),
-                            "plans": service.list_plans(limit=max(1, plans_limit)),
-                            "events": (
-                                audit_store.list(limit=max(1, events_limit))
-                                if audit_store is not None
-                                else []
-                            ),
-                            "models_count": len(service.models(config_path=_to_path(config))),
-                        },
-                    )
-                    return
-
-                if path == "/openapi.json":
-                    status_code = 200
-                    self._send_json(status_code, build_openapi_spec())
-                    return
-
-                if path == "/metrics":
-                    if not self._check_auth(path, query):
-                        status_code = 401
-                        return
-                    status_code = 200
-                    self._send_metrics(status_code)
-                    return
-
-                if path == "/events":
-                    if not self._check_auth(path, query):
-                        status_code = 401
-                        return
-                    limit = int(_single(query, "limit") or 100)
-                    category = _single(query, "category")
-                    entity_type = _single(query, "entity_type")
-                    entity_id = _single(query, "entity_id")
-                    since_id = _single(query, "since_id")
-                    status_code = 200
-                    self._send_json(
-                        status_code,
-                        audit_store.list(
-                            limit=max(1, limit),
-                            category=category,
-                            entity_type=entity_type,
-                            entity_id=entity_id,
-                            since_id=int(since_id) if since_id is not None else None,
+                    if path == "/dashboard/data":
+                        if not self._check_auth(path, query):
+                            status_code = 401
+                            return
+                        jobs_limit = int(_single(query, "jobs_limit") or 25)
+                        plans_limit = int(_single(query, "plans_limit") or 25)
+                        events_limit = int(_single(query, "events_limit") or 25)
+                        config = _single(query, "config")
+                        status_code = 200
+                        self._send_json(
+                            status_code,
+                            {
+                                "health": {"ok": True, "service": "novaadapt"},
+                                "metrics": metrics.snapshot(),
+                                "jobs": job_manager.list(limit=max(1, jobs_limit)),
+                                "plans": service.list_plans(limit=max(1, plans_limit)),
+                                "events": (
+                                    audit_store.list(limit=max(1, events_limit))
+                                    if audit_store is not None
+                                    else []
+                                ),
+                                "models_count": len(service.models(config_path=_to_path(config))),
+                            },
                         )
-                        if audit_store is not None
-                        else [],
-                    )
-                    return
+                        return
 
-                if path == "/events/stream":
+                    if path == "/openapi.json":
+                        status_code = 200
+                        self._send_json(status_code, build_openapi_spec())
+                        return
+
+                    if path == "/metrics":
+                        if not self._check_auth(path, query):
+                            status_code = 401
+                            return
+                        status_code = 200
+                        self._send_metrics(status_code)
+                        return
+
+                    if path == "/events":
+                        if not self._check_auth(path, query):
+                            status_code = 401
+                            return
+                        limit = int(_single(query, "limit") or 100)
+                        category = _single(query, "category")
+                        entity_type = _single(query, "entity_type")
+                        entity_id = _single(query, "entity_id")
+                        since_id = _single(query, "since_id")
+                        status_code = 200
+                        self._send_json(
+                            status_code,
+                            audit_store.list(
+                                limit=max(1, limit),
+                                category=category,
+                                entity_type=entity_type,
+                                entity_id=entity_id,
+                                since_id=int(since_id) if since_id is not None else None,
+                            )
+                            if audit_store is not None
+                            else [],
+                        )
+                        return
+
+                    if path == "/events/stream":
+                        if not self._check_auth(path, query):
+                            status_code = 401
+                            return
+                        timeout_seconds = float(_single(query, "timeout") or 30.0)
+                        interval_seconds = float(_single(query, "interval") or 0.25)
+                        since_id = int(_single(query, "since_id") or 0)
+                        timeout_seconds = min(300.0, max(1.0, timeout_seconds))
+                        interval_seconds = min(5.0, max(0.05, interval_seconds))
+                        status_code = 200
+                        self._stream_audit_events(
+                            timeout_seconds=timeout_seconds,
+                            interval_seconds=interval_seconds,
+                            since_id=since_id,
+                        )
+                        return
+
+                    if self._is_rate_limited(path):
+                        status_code = 429
+                        metrics.inc("rate_limited_total")
+                        self._send_json(status_code, {"error": "Rate limit exceeded"})
+                        return
+
                     if not self._check_auth(path, query):
                         status_code = 401
                         return
-                    timeout_seconds = float(_single(query, "timeout") or 30.0)
-                    interval_seconds = float(_single(query, "interval") or 0.25)
-                    since_id = int(_single(query, "since_id") or 0)
-                    timeout_seconds = min(300.0, max(1.0, timeout_seconds))
-                    interval_seconds = min(5.0, max(0.05, interval_seconds))
-                    status_code = 200
-                    self._stream_audit_events(
-                        timeout_seconds=timeout_seconds,
-                        interval_seconds=interval_seconds,
-                        since_id=since_id,
-                    )
-                    return
 
-                if self._is_rate_limited(path):
-                    status_code = 429
-                    metrics.inc("rate_limited_total")
-                    self._send_json(status_code, {"error": "Rate limit exceeded"})
-                    return
-
-                if not self._check_auth(path, query):
-                    status_code = 401
-                    return
-
-                if path == "/models":
-                    config = _single(query, "config")
-                    out = service.models(config_path=_to_path(config))
-                    status_code = 200
-                    self._send_json(status_code, out)
-                    return
-
-                if path == "/history":
-                    limit = int(_single(query, "limit") or 20)
-                    status_code = 200
-                    self._send_json(status_code, service.history(limit=limit))
-                    return
-
-                if path == "/jobs":
-                    limit = int(_single(query, "limit") or 50)
-                    status_code = 200
-                    self._send_json(status_code, job_manager.list(limit=limit))
-                    return
-
-                if path.startswith("/jobs/") and path.endswith("/stream"):
-                    job_id = path.removeprefix("/jobs/").removesuffix("/stream").strip("/")
-                    if not job_id:
-                        status_code = 404
-                        self._send_json(status_code, {"error": "Not found"})
+                    if path == "/models":
+                        config = _single(query, "config")
+                        out = service.models(config_path=_to_path(config))
+                        status_code = 200
+                        self._send_json(status_code, out)
                         return
-                    timeout_seconds = float(_single(query, "timeout") or 30.0)
-                    interval_seconds = float(_single(query, "interval") or 0.25)
-                    timeout_seconds = min(300.0, max(1.0, timeout_seconds))
-                    interval_seconds = min(5.0, max(0.05, interval_seconds))
-                    status_code = 200
-                    self._stream_job_events(
-                        job_id=job_id,
-                        timeout_seconds=timeout_seconds,
-                        interval_seconds=interval_seconds,
-                    )
-                    return
 
-                if path.startswith("/jobs/"):
-                    job_id = path.removeprefix("/jobs/").strip()
-                    if not job_id:
-                        status_code = 404
-                        self._send_json(status_code, {"error": "Not found"})
+                    if path == "/history":
+                        limit = int(_single(query, "limit") or 20)
+                        status_code = 200
+                        self._send_json(status_code, service.history(limit=limit))
                         return
-                    item = job_manager.get(job_id)
-                    if item is None:
-                        status_code = 404
-                        self._send_json(status_code, {"error": "Job not found"})
-                        return
-                    status_code = 200
-                    self._send_json(status_code, item)
-                    return
 
-                if path == "/plans":
-                    limit = int(_single(query, "limit") or 50)
-                    status_code = 200
-                    self._send_json(status_code, service.list_plans(limit=limit))
-                    return
-
-                if path.startswith("/plans/") and path.endswith("/stream"):
-                    plan_id = path.removeprefix("/plans/").removesuffix("/stream").strip("/")
-                    if not plan_id:
-                        status_code = 404
-                        self._send_json(status_code, {"error": "Not found"})
+                    if path == "/jobs":
+                        limit = int(_single(query, "limit") or 50)
+                        status_code = 200
+                        self._send_json(status_code, job_manager.list(limit=limit))
                         return
-                    timeout_seconds = float(_single(query, "timeout") or 30.0)
-                    interval_seconds = float(_single(query, "interval") or 0.25)
-                    timeout_seconds = min(300.0, max(1.0, timeout_seconds))
-                    interval_seconds = min(5.0, max(0.05, interval_seconds))
-                    status_code = 200
-                    self._stream_plan_events(
-                        plan_id=plan_id,
-                        timeout_seconds=timeout_seconds,
-                        interval_seconds=interval_seconds,
-                    )
-                    return
 
-                if path.startswith("/plans/"):
-                    plan_id = path.removeprefix("/plans/").strip("/")
-                    if not plan_id:
-                        status_code = 404
-                        self._send_json(status_code, {"error": "Not found"})
+                    if path.startswith("/jobs/") and path.endswith("/stream"):
+                        job_id = path.removeprefix("/jobs/").removesuffix("/stream").strip("/")
+                        if not job_id:
+                            status_code = 404
+                            self._send_json(status_code, {"error": "Not found"})
+                            return
+                        timeout_seconds = float(_single(query, "timeout") or 30.0)
+                        interval_seconds = float(_single(query, "interval") or 0.25)
+                        timeout_seconds = min(300.0, max(1.0, timeout_seconds))
+                        interval_seconds = min(5.0, max(0.05, interval_seconds))
+                        status_code = 200
+                        self._stream_job_events(
+                            job_id=job_id,
+                            timeout_seconds=timeout_seconds,
+                            interval_seconds=interval_seconds,
+                        )
                         return
-                    item = service.get_plan(plan_id)
-                    if item is None:
-                        status_code = 404
-                        self._send_json(status_code, {"error": "Plan not found"})
-                        return
-                    status_code = 200
-                    self._send_json(status_code, item)
-                    return
 
-                status_code = 404
-                self._send_json(status_code, {"error": "Not found"})
-            except ValueError as exc:
-                status_code = 400
-                metrics.inc("bad_request_total")
-                self._send_json(status_code, {"error": str(exc)})
-            except Exception as exc:  # pragma: no cover - defensive server boundary
-                status_code = 500
-                metrics.inc("server_errors_total")
-                self._send_json(status_code, {"error": str(exc)})
-            finally:
-                self._log_request(status_code, started)
+                    if path.startswith("/jobs/"):
+                        job_id = path.removeprefix("/jobs/").strip()
+                        if not job_id:
+                            status_code = 404
+                            self._send_json(status_code, {"error": "Not found"})
+                            return
+                        item = job_manager.get(job_id)
+                        if item is None:
+                            status_code = 404
+                            self._send_json(status_code, {"error": "Job not found"})
+                            return
+                        status_code = 200
+                        self._send_json(status_code, item)
+                        return
+
+                    if path == "/plans":
+                        limit = int(_single(query, "limit") or 50)
+                        status_code = 200
+                        self._send_json(status_code, service.list_plans(limit=limit))
+                        return
+
+                    if path.startswith("/plans/") and path.endswith("/stream"):
+                        plan_id = path.removeprefix("/plans/").removesuffix("/stream").strip("/")
+                        if not plan_id:
+                            status_code = 404
+                            self._send_json(status_code, {"error": "Not found"})
+                            return
+                        timeout_seconds = float(_single(query, "timeout") or 30.0)
+                        interval_seconds = float(_single(query, "interval") or 0.25)
+                        timeout_seconds = min(300.0, max(1.0, timeout_seconds))
+                        interval_seconds = min(5.0, max(0.05, interval_seconds))
+                        status_code = 200
+                        self._stream_plan_events(
+                            plan_id=plan_id,
+                            timeout_seconds=timeout_seconds,
+                            interval_seconds=interval_seconds,
+                        )
+                        return
+
+                    if path.startswith("/plans/"):
+                        plan_id = path.removeprefix("/plans/").strip("/")
+                        if not plan_id:
+                            status_code = 404
+                            self._send_json(status_code, {"error": "Not found"})
+                            return
+                        item = service.get_plan(plan_id)
+                        if item is None:
+                            status_code = 404
+                            self._send_json(status_code, {"error": "Plan not found"})
+                            return
+                        status_code = 200
+                        self._send_json(status_code, item)
+                        return
+
+                    status_code = 404
+                    self._send_json(status_code, {"error": "Not found"})
+                except ValueError as exc:
+                    status_code = 400
+                    metrics.inc("bad_request_total")
+                    self._send_json(status_code, {"error": str(exc)})
+                except Exception as exc:  # pragma: no cover - defensive server boundary
+                    status_code = 500
+                    metrics.inc("server_errors_total")
+                    self._send_json(status_code, {"error": str(exc)})
+                finally:
+                    if span is not None:
+                        span.set_attribute("http.status_code", int(status_code))
+                    self._log_request(status_code, started)
 
         def do_POST(self) -> None:
             started = time.perf_counter()
@@ -506,283 +531,301 @@ def _build_handler(
             parsed = urlparse(self.path)
             path = parsed.path
 
-            if self._is_rate_limited(path):
-                status_code = 429
-                metrics.inc("rate_limited_total")
-                self._send_json(status_code, {"error": "Rate limit exceeded"})
-                self._log_request(status_code, started)
-                return
+            with start_span(
+                "core.http.post",
+                attributes={
+                    "http.method": "POST",
+                    "http.path": path,
+                    "http.request_id": self._request_id,
+                },
+            ) as span:
+                if self._is_rate_limited(path):
+                    status_code = 429
+                    metrics.inc("rate_limited_total")
+                    self._send_json(status_code, {"error": "Rate limit exceeded"})
+                    self._log_request(status_code, started)
+                    if span is not None:
+                        span.set_attribute("http.status_code", int(status_code))
+                    return
 
-            if not self._check_auth(path):
-                status_code = 401
-                self._log_request(status_code, started)
-                return
+                if not self._check_auth(path):
+                    status_code = 401
+                    self._log_request(status_code, started)
+                    if span is not None:
+                        span.set_attribute("http.status_code", int(status_code))
+                    return
 
-            try:
-                payload = self._read_json_body()
+                try:
+                    payload = self._read_json_body()
 
-                if path.startswith("/jobs/") and path.endswith("/cancel"):
-                    job_id = path.removeprefix("/jobs/").removesuffix("/cancel").strip("/")
-                    if not job_id:
-                        status_code = 404
-                        self._send_json(status_code, {"error": "Not found"})
+                    if path.startswith("/jobs/") and path.endswith("/cancel"):
+                        job_id = path.removeprefix("/jobs/").removesuffix("/cancel").strip("/")
+                        if not job_id:
+                            status_code = 404
+                            self._send_json(status_code, {"error": "Not found"})
+                            return
+                        status_code, response_payload, replayed = self._execute_idempotent(
+                            path,
+                            payload,
+                            lambda: self._cancel_job(job_id),
+                        )
+                        self._audit_event(
+                            category="jobs",
+                            action="cancel",
+                            status="replayed" if replayed else ("ok" if status_code < 400 else "error"),
+                            entity_type="job",
+                            entity_id=job_id,
+                            payload=response_payload if isinstance(response_payload, dict) else None,
+                        )
+                        self._send_json(
+                            status_code,
+                            response_payload,
+                            replayed=replayed,
+                            idempotency_key=self._idempotency_key(),
+                        )
                         return
-                    status_code, response_payload, replayed = self._execute_idempotent(
-                        path,
-                        payload,
-                        lambda: self._cancel_job(job_id),
-                    )
-                    self._audit_event(
-                        category="jobs",
-                        action="cancel",
-                        status="replayed" if replayed else ("ok" if status_code < 400 else "error"),
-                        entity_type="job",
-                        entity_id=job_id,
-                        payload=response_payload if isinstance(response_payload, dict) else None,
-                    )
-                    self._send_json(
-                        status_code,
-                        response_payload,
-                        replayed=replayed,
-                        idempotency_key=self._idempotency_key(),
-                    )
-                    return
 
-                if path == "/plans":
-                    status_code, response_payload, replayed = self._execute_idempotent(
-                        path,
-                        payload,
-                        lambda: (201, service.create_plan(payload)),
-                    )
-                    self._audit_event(
-                        category="plans",
-                        action="create",
-                        status="replayed" if replayed else ("ok" if status_code < 400 else "error"),
-                        entity_type="plan",
-                        entity_id=str(response_payload.get("id")) if isinstance(response_payload, dict) else None,
-                        payload=response_payload if isinstance(response_payload, dict) else None,
-                    )
-                    self._send_json(
-                        status_code,
-                        response_payload,
-                        replayed=replayed,
-                        idempotency_key=self._idempotency_key(),
-                    )
-                    return
-
-                if path.startswith("/plans/") and path.endswith("/approve"):
-                    plan_id = path.removeprefix("/plans/").removesuffix("/approve").strip("/")
-                    if not plan_id:
-                        status_code = 404
-                        self._send_json(status_code, {"error": "Not found"})
+                    if path == "/plans":
+                        status_code, response_payload, replayed = self._execute_idempotent(
+                            path,
+                            payload,
+                            lambda: (201, service.create_plan(payload)),
+                        )
+                        self._audit_event(
+                            category="plans",
+                            action="create",
+                            status="replayed" if replayed else ("ok" if status_code < 400 else "error"),
+                            entity_type="plan",
+                            entity_id=str(response_payload.get("id")) if isinstance(response_payload, dict) else None,
+                            payload=response_payload if isinstance(response_payload, dict) else None,
+                        )
+                        self._send_json(
+                            status_code,
+                            response_payload,
+                            replayed=replayed,
+                            idempotency_key=self._idempotency_key(),
+                        )
                         return
-                    status_code, response_payload, replayed = self._execute_idempotent(
-                        path,
-                        payload,
-                        lambda: (200, service.approve_plan(plan_id, payload)),
-                    )
-                    self._audit_event(
-                        category="plans",
-                        action="approve",
-                        status="replayed" if replayed else ("ok" if status_code < 400 else "error"),
-                        entity_type="plan",
-                        entity_id=plan_id,
-                        payload=response_payload if isinstance(response_payload, dict) else None,
-                    )
-                    self._send_json(
-                        status_code,
-                        response_payload,
-                        replayed=replayed,
-                        idempotency_key=self._idempotency_key(),
-                    )
-                    return
 
-                if path.startswith("/plans/") and path.endswith("/approve_async"):
-                    plan_id = path.removeprefix("/plans/").removesuffix("/approve_async").strip("/")
-                    if not plan_id:
-                        status_code = 404
-                        self._send_json(status_code, {"error": "Not found"})
+                    if path.startswith("/plans/") and path.endswith("/approve"):
+                        plan_id = path.removeprefix("/plans/").removesuffix("/approve").strip("/")
+                        if not plan_id:
+                            status_code = 404
+                            self._send_json(status_code, {"error": "Not found"})
+                            return
+                        status_code, response_payload, replayed = self._execute_idempotent(
+                            path,
+                            payload,
+                            lambda: (200, service.approve_plan(plan_id, payload)),
+                        )
+                        self._audit_event(
+                            category="plans",
+                            action="approve",
+                            status="replayed" if replayed else ("ok" if status_code < 400 else "error"),
+                            entity_type="plan",
+                            entity_id=plan_id,
+                            payload=response_payload if isinstance(response_payload, dict) else None,
+                        )
+                        self._send_json(
+                            status_code,
+                            response_payload,
+                            replayed=replayed,
+                            idempotency_key=self._idempotency_key(),
+                        )
                         return
-                    status_code, response_payload, replayed = self._execute_idempotent(
-                        path,
-                        payload,
-                        lambda: (
-                            202,
-                            {
-                                "job_id": job_manager.submit(service.approve_plan, plan_id, payload),
-                                "status": "queued",
-                                "kind": "plan_approval",
-                            },
-                        ),
-                    )
-                    self._audit_event(
-                        category="plans",
-                        action="approve_async",
-                        status="replayed" if replayed else ("ok" if status_code < 400 else "error"),
-                        entity_type="plan",
-                        entity_id=plan_id,
-                        payload=response_payload if isinstance(response_payload, dict) else None,
-                    )
-                    self._send_json(
-                        status_code,
-                        response_payload,
-                        replayed=replayed,
-                        idempotency_key=self._idempotency_key(),
-                    )
-                    return
 
-                if path.startswith("/plans/") and path.endswith("/reject"):
-                    plan_id = path.removeprefix("/plans/").removesuffix("/reject").strip("/")
-                    if not plan_id:
-                        status_code = 404
-                        self._send_json(status_code, {"error": "Not found"})
+                    if path.startswith("/plans/") and path.endswith("/approve_async"):
+                        plan_id = path.removeprefix("/plans/").removesuffix("/approve_async").strip("/")
+                        if not plan_id:
+                            status_code = 404
+                            self._send_json(status_code, {"error": "Not found"})
+                            return
+                        status_code, response_payload, replayed = self._execute_idempotent(
+                            path,
+                            payload,
+                            lambda: (
+                                202,
+                                {
+                                    "job_id": job_manager.submit(service.approve_plan, plan_id, payload),
+                                    "status": "queued",
+                                    "kind": "plan_approval",
+                                },
+                            ),
+                        )
+                        self._audit_event(
+                            category="plans",
+                            action="approve_async",
+                            status="replayed" if replayed else ("ok" if status_code < 400 else "error"),
+                            entity_type="plan",
+                            entity_id=plan_id,
+                            payload=response_payload if isinstance(response_payload, dict) else None,
+                        )
+                        self._send_json(
+                            status_code,
+                            response_payload,
+                            replayed=replayed,
+                            idempotency_key=self._idempotency_key(),
+                        )
                         return
-                    reason = payload.get("reason")
-                    status_code, response_payload, replayed = self._execute_idempotent(
-                        path,
-                        payload,
-                        lambda: (
-                            200,
-                            service.reject_plan(plan_id, reason=str(reason) if reason is not None else None),
-                        ),
-                    )
-                    self._audit_event(
-                        category="plans",
-                        action="reject",
-                        status="replayed" if replayed else ("ok" if status_code < 400 else "error"),
-                        entity_type="plan",
-                        entity_id=plan_id,
-                        payload=response_payload if isinstance(response_payload, dict) else None,
-                    )
-                    self._send_json(
-                        status_code,
-                        response_payload,
-                        replayed=replayed,
-                        idempotency_key=self._idempotency_key(),
-                    )
-                    return
 
-                if path.startswith("/plans/") and path.endswith("/undo"):
-                    plan_id = path.removeprefix("/plans/").removesuffix("/undo").strip("/")
-                    if not plan_id:
-                        status_code = 404
-                        self._send_json(status_code, {"error": "Not found"})
+                    if path.startswith("/plans/") and path.endswith("/reject"):
+                        plan_id = path.removeprefix("/plans/").removesuffix("/reject").strip("/")
+                        if not plan_id:
+                            status_code = 404
+                            self._send_json(status_code, {"error": "Not found"})
+                            return
+                        reason = payload.get("reason")
+                        status_code, response_payload, replayed = self._execute_idempotent(
+                            path,
+                            payload,
+                            lambda: (200, service.reject_plan(plan_id, reason=reason)),
+                        )
+                        self._audit_event(
+                            category="plans",
+                            action="reject",
+                            status="replayed" if replayed else ("ok" if status_code < 400 else "error"),
+                            entity_type="plan",
+                            entity_id=plan_id,
+                            payload=response_payload if isinstance(response_payload, dict) else None,
+                        )
+                        self._send_json(
+                            status_code,
+                            response_payload,
+                            replayed=replayed,
+                            idempotency_key=self._idempotency_key(),
+                        )
                         return
-                    status_code, response_payload, replayed = self._execute_idempotent(
-                        path,
-                        payload,
-                        lambda: (200, service.undo_plan(plan_id, payload)),
-                    )
-                    self._audit_event(
-                        category="plans",
-                        action="undo",
-                        status="replayed" if replayed else ("ok" if status_code < 400 else "error"),
-                        entity_type="plan",
-                        entity_id=plan_id,
-                        payload=response_payload if isinstance(response_payload, dict) else None,
-                    )
-                    self._send_json(
-                        status_code,
-                        response_payload,
-                        replayed=replayed,
-                        idempotency_key=self._idempotency_key(),
-                    )
-                    return
 
-                if path == "/run":
-                    status_code, response_payload, replayed = self._execute_idempotent(
-                        path,
-                        payload,
-                        lambda: (200, service.run(payload)),
-                    )
-                    self._audit_event(
-                        category="run",
-                        action="run",
-                        status="replayed" if replayed else ("ok" if status_code < 400 else "error"),
-                        payload=response_payload if isinstance(response_payload, dict) else None,
-                    )
-                    self._send_json(
-                        status_code,
-                        response_payload,
-                        replayed=replayed,
-                        idempotency_key=self._idempotency_key(),
-                    )
-                    return
+                    if path.startswith("/plans/") and path.endswith("/undo"):
+                        plan_id = path.removeprefix("/plans/").removesuffix("/undo").strip("/")
+                        if not plan_id:
+                            status_code = 404
+                            self._send_json(status_code, {"error": "Not found"})
+                            return
+                        status_code, response_payload, replayed = self._execute_idempotent(
+                            path,
+                            payload,
+                            lambda: (200, service.undo_plan(plan_id, payload)),
+                        )
+                        self._audit_event(
+                            category="plans",
+                            action="undo",
+                            status="replayed" if replayed else ("ok" if status_code < 400 else "error"),
+                            entity_type="plan",
+                            entity_id=plan_id,
+                            payload=response_payload if isinstance(response_payload, dict) else None,
+                        )
+                        self._send_json(
+                            status_code,
+                            response_payload,
+                            replayed=replayed,
+                            idempotency_key=self._idempotency_key(),
+                        )
+                        return
 
-                if path == "/run_async":
-                    status_code, response_payload, replayed = self._execute_idempotent(
-                        path,
-                        payload,
-                        lambda: (
-                            202,
-                            {"job_id": job_manager.submit(service.run, payload), "status": "queued"},
-                        ),
-                    )
-                    self._audit_event(
-                        category="run",
-                        action="run_async",
-                        status="replayed" if replayed else ("ok" if status_code < 400 else "error"),
-                        entity_type="job",
-                        entity_id=str(response_payload.get("job_id")) if isinstance(response_payload, dict) else None,
-                        payload=response_payload if isinstance(response_payload, dict) else None,
-                    )
-                    self._send_json(
-                        status_code,
-                        response_payload,
-                        replayed=replayed,
-                        idempotency_key=self._idempotency_key(),
-                    )
-                    return
+                    if path == "/run":
+                        status_code, response_payload, replayed = self._execute_idempotent(
+                            path,
+                            payload,
+                            lambda: (200, service.run(payload)),
+                        )
+                        self._audit_event(
+                            category="run",
+                            action="run",
+                            status="replayed" if replayed else ("ok" if status_code < 400 else "error"),
+                            entity_type=None,
+                            entity_id=None,
+                            payload=response_payload if isinstance(response_payload, dict) else None,
+                        )
+                        self._send_json(
+                            status_code,
+                            response_payload,
+                            replayed=replayed,
+                            idempotency_key=self._idempotency_key(),
+                        )
+                        return
 
-                if path == "/undo":
-                    status_code, response_payload, replayed = self._execute_idempotent(
-                        path,
-                        payload,
-                        lambda: (200, service.undo(payload)),
-                    )
-                    self._audit_event(
-                        category="undo",
-                        action="undo",
-                        status="replayed" if replayed else ("ok" if status_code < 400 else "error"),
-                        payload=response_payload if isinstance(response_payload, dict) else None,
-                    )
-                    self._send_json(
-                        status_code,
-                        response_payload,
-                        replayed=replayed,
-                        idempotency_key=self._idempotency_key(),
-                    )
-                    return
+                    if path == "/run_async":
+                        status_code, response_payload, replayed = self._execute_idempotent(
+                            path,
+                            payload,
+                            lambda: (
+                                202,
+                                {
+                                    "job_id": job_manager.submit(service.run, payload),
+                                    "status": "queued",
+                                },
+                            ),
+                        )
+                        self._audit_event(
+                            category="run",
+                            action="run_async",
+                            status="replayed" if replayed else ("ok" if status_code < 400 else "error"),
+                            entity_type="job",
+                            entity_id=str(response_payload.get("job_id")) if isinstance(response_payload, dict) else None,
+                            payload=response_payload if isinstance(response_payload, dict) else None,
+                        )
+                        self._send_json(
+                            status_code,
+                            response_payload,
+                            replayed=replayed,
+                            idempotency_key=self._idempotency_key(),
+                        )
+                        return
 
-                if path == "/check":
-                    config = _to_path(payload.get("config"))
-                    models = payload.get("models")
-                    probe = str(payload.get("probe", "Reply with: OK"))
-                    out = service.check(config_path=config, model_names=service._as_name_list(models), probe_prompt=probe)
-                    status_code = 200
-                    self._send_json(status_code, out)
-                    return
+                    if path == "/undo":
+                        status_code, response_payload, replayed = self._execute_idempotent(
+                            path,
+                            payload,
+                            lambda: (200, service.undo(payload)),
+                        )
+                        self._audit_event(
+                            category="undo",
+                            action="undo",
+                            status="replayed" if replayed else ("ok" if status_code < 400 else "error"),
+                            entity_type="action",
+                            entity_id=str(response_payload.get("id")) if isinstance(response_payload, dict) else None,
+                            payload=response_payload if isinstance(response_payload, dict) else None,
+                        )
+                        self._send_json(
+                            status_code,
+                            response_payload,
+                            replayed=replayed,
+                            idempotency_key=self._idempotency_key(),
+                        )
+                        return
 
-                status_code = 404
-                self._send_json(status_code, {"error": "Not found"})
-            except PayloadTooLargeError as exc:
-                status_code = 413
-                metrics.inc("bad_request_total")
-                self._send_json(status_code, {"error": str(exc)})
-            except ValueError as exc:
-                status_code = 400
-                metrics.inc("bad_request_total")
-                self._send_json(status_code, {"error": str(exc)})
-            except json.JSONDecodeError:
-                status_code = 400
-                metrics.inc("bad_request_total")
-                self._send_json(status_code, {"error": "Request body must be valid JSON"})
-            except Exception as exc:  # pragma: no cover - defensive server boundary
-                status_code = 500
-                metrics.inc("server_errors_total")
-                self._send_json(status_code, {"error": str(exc)})
-            finally:
-                self._log_request(status_code, started)
+                    if path == "/check":
+                        status_code = 200
+                        model_names = _parse_name_list(payload.get("models"))
+                        probe_prompt = str(payload.get("probe") or "Reply with: OK")
+                        out = service.check(
+                            config_path=_to_path(payload.get("config")),
+                            model_names=model_names or None,
+                            probe_prompt=probe_prompt,
+                        )
+                        self._send_json(status_code, out)
+                        return
+
+                    status_code = 404
+                    self._send_json(status_code, {"error": "Not found"})
+                except PayloadTooLargeError as exc:
+                    status_code = 413
+                    metrics.inc("bad_request_total")
+                    self._send_json(status_code, {"error": str(exc)})
+                except ValueError as exc:
+                    status_code = 400
+                    metrics.inc("bad_request_total")
+                    self._send_json(status_code, {"error": str(exc)})
+                except Exception as exc:  # pragma: no cover - defensive server boundary
+                    status_code = 500
+                    metrics.inc("server_errors_total")
+                    self._send_json(status_code, {"error": str(exc)})
+                finally:
+                    if span is not None:
+                        span.set_attribute("http.status_code", int(status_code))
+                    self._log_request(status_code, started)
+
 
         def _is_rate_limited(self, path: str) -> bool:
             if limiter is None:

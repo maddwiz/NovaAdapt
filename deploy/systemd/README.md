@@ -65,4 +65,10 @@ curl -fsS http://127.0.0.1:9797/health?deep=1
 
 If bridge TLS is enabled, use `https://` and either trusted certs or `curl -k`.
 
-`core.env` also exposes `NOVAADAPT_AUDIT_RETENTION_SECONDS` and `NOVAADAPT_AUDIT_CLEANUP_INTERVAL_SECONDS` to bound audit log growth in long-running deployments.
+`core.env` also exposes `NOVAADAPT_AUDIT_RETENTION_SECONDS` and `NOVAADAPT_AUDIT_CLEANUP_INTERVAL_SECONDS` to bound audit log growth in long-running deployments, plus `NOVAADAPT_OTEL_*` settings for OTLP trace export.
+
+Token rotation helper:
+
+```bash
+/opt/novaadapt/installer/rotate_tokens.sh --core-env /etc/novaadapt/core.env --bridge-env /etc/novaadapt/bridge.env --restart-systemd
+```

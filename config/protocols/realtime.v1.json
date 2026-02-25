@@ -1,0 +1,12 @@
+{
+  "version": "v1",
+  "ws_path": "/ws",
+  "message_types": {
+    "client": ["ping", "command", "seek"],
+    "server": ["ack", "result", "audit", "error"]
+  },
+  "auth": {
+    "header": "Authorization: Bearer <token>",
+    "query": "token"
+  }
+}

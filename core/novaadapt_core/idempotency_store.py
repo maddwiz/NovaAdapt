@@ -10,6 +10,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from novaadapt_shared.sqlite_migrations import SQLiteMigration, apply_sqlite_migrations
+
 
 class IdempotencyStore:
     """SQLite-backed idempotency key store for mutating API routes."""
@@ -115,29 +117,39 @@ class IdempotencyStore:
 
     def _init(self) -> None:
         with self._connection() as conn:
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS idempotency_entries (
-                    key TEXT NOT NULL,
-                    method TEXT NOT NULL,
-                    path TEXT NOT NULL,
-                    payload_hash TEXT NOT NULL,
-                    status TEXT NOT NULL,
-                    status_code INTEGER,
-                    response_json TEXT,
-                    created_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL,
-                    PRIMARY KEY (key, method, path)
-                )
-                """
+            apply_sqlite_migrations(
+                conn,
+                (
+                    SQLiteMigration(
+                        migration_id="idempotency_store_0001_create_entries",
+                        statements=(
+                            """
+                            CREATE TABLE IF NOT EXISTS idempotency_entries (
+                                key TEXT NOT NULL,
+                                method TEXT NOT NULL,
+                                path TEXT NOT NULL,
+                                payload_hash TEXT NOT NULL,
+                                status TEXT NOT NULL,
+                                status_code INTEGER,
+                                response_json TEXT,
+                                created_at TEXT NOT NULL,
+                                updated_at TEXT NOT NULL,
+                                PRIMARY KEY (key, method, path)
+                            )
+                            """,
+                        ),
+                    ),
+                    SQLiteMigration(
+                        migration_id="idempotency_store_0002_add_updated_at_index",
+                        statements=(
+                            """
+                            CREATE INDEX IF NOT EXISTS idx_idempotency_entries_updated_at
+                            ON idempotency_entries(updated_at)
+                            """,
+                        ),
+                    ),
+                ),
             )
-            conn.execute(
-                """
-                CREATE INDEX IF NOT EXISTS idx_idempotency_entries_updated_at
-                ON idempotency_entries(updated_at)
-                """
-            )
-            conn.commit()
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.db_path, timeout=self.sqlite_timeout_seconds)

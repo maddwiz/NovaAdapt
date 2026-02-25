@@ -21,6 +21,9 @@ BRIDGE_TLS_INSECURE_SKIP_VERIFY="${NOVAADAPT_BRIDGE_TLS_INSECURE_SKIP_VERIFY:-1}
 RATE_LIMIT_RPS="${NOVAADAPT_BRIDGE_RATE_LIMIT_RPS:-0}"
 RATE_LIMIT_BURST="${NOVAADAPT_BRIDGE_RATE_LIMIT_BURST:-20}"
 MAX_WS_CONNECTIONS="${NOVAADAPT_BRIDGE_MAX_WS_CONNECTIONS:-100}"
+CORE_OTEL_ENABLED="${NOVAADAPT_OTEL_ENABLED:-0}"
+CORE_OTEL_SERVICE_NAME="${NOVAADAPT_OTEL_SERVICE_NAME:-novaadapt-core}"
+CORE_OTEL_EXPORTER_ENDPOINT="${NOVAADAPT_OTEL_EXPORTER_ENDPOINT:-}"
 LOG_DIR="${NOVAADAPT_LOCAL_LOG_DIR:-$ROOT_DIR/.novaadapt-local}"
 mkdir -p "$LOG_DIR"
 REVOCATION_STORE_PATH="${NOVAADAPT_BRIDGE_REVOCATION_STORE_PATH:-$LOG_DIR/revoked_sessions.json}"
@@ -86,6 +89,12 @@ core_cmd=(
 )
 if [[ -n "$CORE_TRUSTED_PROXY_CIDRS" ]]; then
   core_cmd+=(--trusted-proxy-cidrs "$CORE_TRUSTED_PROXY_CIDRS")
+fi
+if [[ "$CORE_OTEL_ENABLED" == "1" || "$CORE_OTEL_ENABLED" == "true" ]]; then
+  core_cmd+=(--otel-enabled --otel-service-name "$CORE_OTEL_SERVICE_NAME")
+  if [[ -n "$CORE_OTEL_EXPORTER_ENDPOINT" ]]; then
+    core_cmd+=(--otel-exporter-endpoint "$CORE_OTEL_EXPORTER_ENDPOINT")
+  fi
 fi
 PYTHONPATH=core:shared "${core_cmd[@]}" >"$LOG_DIR/core.log" 2>&1 &
 CORE_PID="$!"
@@ -169,6 +178,12 @@ echo "Core token:       ${CORE_TOKEN}"
 echo "Bridge token:     ${BRIDGE_TOKEN}"
 if [[ -n "$CORE_TRUSTED_PROXY_CIDRS" ]]; then
   echo "Core trusted proxies: ${CORE_TRUSTED_PROXY_CIDRS}"
+fi
+if [[ "$CORE_OTEL_ENABLED" == "1" || "$CORE_OTEL_ENABLED" == "true" ]]; then
+  echo "Core tracing:     enabled (${CORE_OTEL_SERVICE_NAME})"
+  if [[ -n "$CORE_OTEL_EXPORTER_ENDPOINT" ]]; then
+    echo "OTLP endpoint:    ${CORE_OTEL_EXPORTER_ENDPOINT}"
+  fi
 fi
 if [[ -n "$ALLOWED_DEVICE_IDS" ]]; then
   echo "Allowed devices:  ${ALLOWED_DEVICE_IDS}"

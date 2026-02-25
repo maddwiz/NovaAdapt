@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>NovaAdapt Desktop</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="app">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">NovaAdapt Desktop</p>
+          <h1>Approval Control Surface</h1>
+          <p class="subtitle">Review live plans, approve/reject safely, and keep execution under operator control.</p>
+        </div>
+        <button id="refreshBtn" class="primary">Refresh</button>
+      </header>
+
+      <section class="card settings">
+        <h2>Core API</h2>
+        <div class="grid">
+          <label>
+            <span>Base URL</span>
+            <input id="baseUrl" type="text" placeholder="http://127.0.0.1:8787" />
+          </label>
+          <label>
+            <span>API Token</span>
+            <input id="token" type="password" placeholder="optional" />
+          </label>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="section-head">
+          <h2>Pending Plans</h2>
+          <span id="planCount" class="badge">0</span>
+        </div>
+        <div id="plans" class="plans"></div>
+      </section>
+
+      <section class="card">
+        <h2>System Snapshot</h2>
+        <pre id="summary" class="summary">No data loaded.</pre>
+      </section>
+    </main>
+
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>

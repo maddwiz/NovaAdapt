@@ -9,6 +9,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, TypeVar
 
+from novaadapt_shared.sqlite_migrations import SQLiteMigration, apply_sqlite_migrations
+
 T = TypeVar("T")
 
 
@@ -113,40 +115,46 @@ class AuditStore:
 
     def _init_once(self) -> None:
         with self._connection() as conn:
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS audit_events (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    created_at TEXT NOT NULL,
-                    category TEXT NOT NULL,
-                    action TEXT NOT NULL,
-                    status TEXT NOT NULL,
-                    request_id TEXT,
-                    entity_type TEXT,
-                    entity_id TEXT,
-                    payload_json TEXT
-                )
-                """
+            apply_sqlite_migrations(
+                conn,
+                (
+                    SQLiteMigration(
+                        migration_id="audit_store_0001_create_audit_events",
+                        statements=(
+                            """
+                            CREATE TABLE IF NOT EXISTS audit_events (
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                created_at TEXT NOT NULL,
+                                category TEXT NOT NULL,
+                                action TEXT NOT NULL,
+                                status TEXT NOT NULL,
+                                request_id TEXT,
+                                entity_type TEXT,
+                                entity_id TEXT,
+                                payload_json TEXT
+                            )
+                            """,
+                        ),
+                    ),
+                    SQLiteMigration(
+                        migration_id="audit_store_0002_add_hot_path_indexes",
+                        statements=(
+                            """
+                            CREATE INDEX IF NOT EXISTS idx_audit_events_category_id
+                            ON audit_events(category, id DESC)
+                            """,
+                            """
+                            CREATE INDEX IF NOT EXISTS idx_audit_events_entity_type_entity_id_id
+                            ON audit_events(entity_type, entity_id, id DESC)
+                            """,
+                            """
+                            CREATE INDEX IF NOT EXISTS idx_audit_events_created_at
+                            ON audit_events(created_at)
+                            """,
+                        ),
+                    ),
+                ),
             )
-            conn.execute(
-                """
-                CREATE INDEX IF NOT EXISTS idx_audit_events_category_id
-                ON audit_events(category, id DESC)
-                """
-            )
-            conn.execute(
-                """
-                CREATE INDEX IF NOT EXISTS idx_audit_events_entity_type_entity_id_id
-                ON audit_events(entity_type, entity_id, id DESC)
-                """
-            )
-            conn.execute(
-                """
-                CREATE INDEX IF NOT EXISTS idx_audit_events_created_at
-                ON audit_events(created_at)
-                """
-            )
-            conn.commit()
 
     def _append_once(
         self,

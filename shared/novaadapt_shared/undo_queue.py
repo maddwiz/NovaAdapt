@@ -7,6 +7,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+from .sqlite_migrations import SQLiteMigration, apply_sqlite_migrations
+
 
 class UndoQueue:
     """Simple local action log for previews, execution tracking, and undo workflows."""
@@ -41,17 +43,38 @@ class UndoQueue:
 
     def _initialize(self) -> None:
         with self._connection() as conn:
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS action_log (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    action_json TEXT NOT NULL,
-                    undo_action_json TEXT,
-                    status TEXT NOT NULL,
-                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    undone INTEGER NOT NULL DEFAULT 0
-                )
-                """
+            apply_sqlite_migrations(
+                conn,
+                (
+                    SQLiteMigration(
+                        migration_id="undo_queue_0001_create_action_log",
+                        statements=(
+                            """
+                            CREATE TABLE IF NOT EXISTS action_log (
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                action_json TEXT NOT NULL,
+                                undo_action_json TEXT,
+                                status TEXT NOT NULL,
+                                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                                undone INTEGER NOT NULL DEFAULT 0
+                            )
+                            """,
+                        ),
+                    ),
+                    SQLiteMigration(
+                        migration_id="undo_queue_0002_add_hot_path_indexes",
+                        statements=(
+                            """
+                            CREATE INDEX IF NOT EXISTS idx_action_log_undone_id
+                            ON action_log(undone, id DESC)
+                            """,
+                            """
+                            CREATE INDEX IF NOT EXISTS idx_action_log_created_at
+                            ON action_log(created_at)
+                            """,
+                        ),
+                    ),
+                ),
             )
             columns = {
                 row[1]
@@ -59,18 +82,6 @@ class UndoQueue:
             }
             if "undo_action_json" not in columns:
                 conn.execute("ALTER TABLE action_log ADD COLUMN undo_action_json TEXT")
-            conn.execute(
-                """
-                CREATE INDEX IF NOT EXISTS idx_action_log_undone_id
-                ON action_log(undone, id DESC)
-                """
-            )
-            conn.execute(
-                """
-                CREATE INDEX IF NOT EXISTS idx_action_log_created_at
-                ON action_log(created_at)
-                """
-            )
             conn.commit()
 
     def record(

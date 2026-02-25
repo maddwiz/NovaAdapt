@@ -347,6 +347,22 @@ def _build_parser() -> argparse.ArgumentParser:
         default=int(os.getenv("NOVAADAPT_MAX_BODY_BYTES", str(1 << 20))),
         help="Maximum HTTP request body size in bytes",
     )
+    serve_cmd.add_argument(
+        "--otel-enabled",
+        action="store_true",
+        default=str(os.getenv("NOVAADAPT_OTEL_ENABLED", "")).strip().lower() in {"1", "true", "yes"},
+        help="Enable OpenTelemetry tracing export from core API",
+    )
+    serve_cmd.add_argument(
+        "--otel-service-name",
+        default=os.getenv("NOVAADAPT_OTEL_SERVICE_NAME", "novaadapt-core"),
+        help="OpenTelemetry service.name value when tracing is enabled",
+    )
+    serve_cmd.add_argument(
+        "--otel-exporter-endpoint",
+        default=os.getenv("NOVAADAPT_OTEL_EXPORTER_ENDPOINT", ""),
+        help="Optional OTLP HTTP exporter endpoint (for example http://127.0.0.1:4318/v1/traces)",
+    )
 
     mcp_cmd = sub.add_parser("mcp", help="Run MCP-compatible stdio server")
     mcp_cmd.add_argument("--config", type=Path, default=_default_config_path())
@@ -380,6 +396,9 @@ def main() -> None:
                 idempotency_cleanup_interval_seconds=max(0.0, float(args.idempotency_cleanup_interval_seconds)),
                 audit_retention_seconds=max(0, int(args.audit_retention_seconds)),
                 audit_cleanup_interval_seconds=max(0.0, float(args.audit_cleanup_interval_seconds)),
+                otel_enabled=bool(args.otel_enabled),
+                otel_service_name=str(args.otel_service_name or "novaadapt-core"),
+                otel_exporter_endpoint=(str(args.otel_exporter_endpoint).strip() or None),
                 max_request_body_bytes=max(1, int(args.max_body_bytes)),
                 jobs_db_path=str(args.jobs_db_path),
                 idempotency_db_path=str(args.idempotency_db_path),

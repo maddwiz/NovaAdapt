@@ -7,7 +7,7 @@ Contains:
 - CLI (`novaadapt`) entrypoint.
 - Model-plan-to-action agent loop.
 - Action safety policy and execution gating.
-- DirectShell adapter for preview and execution.
+- DirectShell adapter for preview and execution (`subprocess`, `http`, `daemon`).
 - History/undo command support via shared SQLite queue.
 - Audit log query command support (`novaadapt events`).
 - Audit event watch support (`novaadapt events-watch`).
@@ -25,5 +25,7 @@ Contains:
 - Optional idempotency key store for mutating POST routes.
 - Optional audit retention cleanup for persisted event logs.
 - Hot-path SQLite indexes for list/filter/prune operations at scale.
+- Versioned SQLite schema migrations for deterministic DB upgrades.
 - Core metrics endpoint (`/metrics`) for API counters.
+- Optional OpenTelemetry trace export for request spans.
 - Dashboard JSON endpoint (`/dashboard/data`) for live UI polling.

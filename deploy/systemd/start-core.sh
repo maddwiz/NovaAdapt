@@ -13,6 +13,8 @@ set -euo pipefail
 : "${NOVAADAPT_CORE_RATE_LIMIT_BURST:=20}"
 : "${NOVAADAPT_CORE_MAX_BODY_BYTES:=1048576}"
 : "${NOVAADAPT_CORE_LOG_REQUESTS:=1}"
+: "${NOVAADAPT_OTEL_ENABLED:=0}"
+: "${NOVAADAPT_OTEL_SERVICE_NAME:=novaadapt-core}"
 
 cmd=(
   "$NOVAADAPT_CORE_PYTHON"
@@ -36,6 +38,12 @@ if [[ -n "${NOVAADAPT_CORE_TOKEN:-}" ]]; then
 fi
 if [[ "$NOVAADAPT_CORE_LOG_REQUESTS" == "1" || "$NOVAADAPT_CORE_LOG_REQUESTS" == "true" ]]; then
   cmd+=(--log-requests)
+fi
+if [[ "$NOVAADAPT_OTEL_ENABLED" == "1" || "$NOVAADAPT_OTEL_ENABLED" == "true" ]]; then
+  cmd+=(--otel-enabled --otel-service-name "$NOVAADAPT_OTEL_SERVICE_NAME")
+  if [[ -n "${NOVAADAPT_OTEL_EXPORTER_ENDPOINT:-}" ]]; then
+    cmd+=(--otel-exporter-endpoint "$NOVAADAPT_OTEL_EXPORTER_ENDPOINT")
+  fi
 fi
 if [[ -n "${NOVAADAPT_CORE_EXTRA_ARGS:-}" ]]; then
   # shellcheck disable=SC2206

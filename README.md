@@ -13,7 +13,7 @@ NovaAdapt is a universal AI adapter designed to control desktop software through
 
 Implemented now:
 
-- Monorepo scaffold (`core`, `vibe`, `view`, `bridge`, `shared`, `installer`).
+- Monorepo scaffold (`core`, `vibe`, `view`, `bridge`, `shared`, `installer`, `desktop`, `mobile`, `wearables`).
 - `shared` Python model router with:
   - OpenAI-compatible endpoint support (Ollama, OpenAI, Anthropic-compatible proxies, vLLM, Together, Fireworks, etc.).
   - Optional LiteLLM execution path when `litellm` is installed.
@@ -32,20 +32,26 @@ Implemented now:
 - `bridge` relay service in Go for secure remote forwarding into core API.
   - Includes realtime WebSocket control channel (`/ws`) for events + command relay.
 - `view` static realtime console UI for bridge operations (`view/realtime_console.html`).
+- `desktop` Tauri shell scaffold for first-party approval UX (`desktop/tauri-shell`).
+- `mobile` iOS SwiftUI companion scaffold (`mobile/ios/NovaAdaptCompanion`).
+- `wearables` Halo/Omi adapter scaffold (`wearables/halo_bridge.py`).
 
 Planned next:
 
-- Tauri desktop UI.
-- Real DirectShell daemon connection for richer structured control.
-- Native glasses + iPhone apps (initial terminal/web operator tooling now included).
+- Harden first-party desktop/mobile/wearable builds into signed release artifacts.
+- Add full DirectShell gRPC client once daemon contract is finalized.
+- Expand native clients from scaffold to production app-store ready deliverables.
 
 ## Monorepo Layout
 
 ```text
 NovaAdapt/
 ├── core/          # Desktop orchestrator + DirectShell adapter
+├── desktop/       # Tauri desktop shell scaffold
 ├── vibe/          # Wearable intent bridge prototype (`vibe_terminal.py`)
 ├── view/          # Realtime operator console + iPhone module seed
+├── mobile/        # Native mobile companion scaffolds
+├── wearables/     # Wearable device adapter scaffolds
 ├── bridge/        # Secure relay server (Go, production-ready)
 ├── shared/        # Model router + memory/security primitives
 ├── installer/     # Desktop setup scripts
@@ -220,6 +226,8 @@ make test      # Python + Go tests
 make test-py   # Python tests only
 make test-go   # Go bridge tests only
 make build-bridge
+make release-artifacts      # Build dist artifacts (bridge + python + runtime bundle)
+make rotate-tokens-dry-run  # Preview token rotation updates
 ```
 
 ## Benchmarking
@@ -232,6 +240,30 @@ PYTHONPATH=core:shared python3 -m novaadapt_core.cli benchmark \
 ```
 
 This produces pass/fail and success-rate metrics so reliability progress can be tracked objectively.
+
+## Observability
+
+Install optional tracing deps:
+
+```bash
+pip install -e '.[observability]'
+```
+
+Start local collector:
+
+```bash
+cd deploy
+docker compose -f docker-compose.observability.yml up -d
+```
+
+Run core with OTLP tracing:
+
+```bash
+novaadapt serve \
+  --otel-enabled \
+  --otel-service-name novaadapt-core \
+  --otel-exporter-endpoint http://127.0.0.1:4318/v1/traces
+```
 
 ## MCP Server
 
@@ -278,6 +310,19 @@ sudo ./installer/install_systemd_services.sh
 # edit /etc/novaadapt/core.env and /etc/novaadapt/bridge.env
 sudo systemctl enable --now novaadapt-core.service
 sudo systemctl enable --now novaadapt-bridge.service
+```
+
+Rotate long-lived core/bridge tokens:
+
+```bash
+./installer/rotate_tokens.sh --dry-run
+./installer/rotate_tokens.sh --restart-systemd
+```
+
+Build release artifacts (bridge binary, wheel/sdist, runtime bundle, checksums):
+
+```bash
+./installer/build_release_artifacts.sh v0.1.0
 ```
 
 ## Python API Client
@@ -344,6 +389,7 @@ Optional env vars:
 - `NOVAADAPT_ACTION_RETENTION_SECONDS` / `NOVAADAPT_PLANS_RETENTION_SECONDS` / `NOVAADAPT_JOBS_RETENTION_SECONDS`
 - `NOVAADAPT_IDEMPOTENCY_RETENTION_SECONDS` / `NOVAADAPT_IDEMPOTENCY_CLEANUP_INTERVAL_SECONDS`
 - `NOVAADAPT_AUDIT_RETENTION_SECONDS` / `NOVAADAPT_AUDIT_CLEANUP_INTERVAL_SECONDS`
+- `NOVAADAPT_OTEL_ENABLED` / `NOVAADAPT_OTEL_SERVICE_NAME` / `NOVAADAPT_OTEL_EXPORTER_ENDPOINT`
 - `NOVAADAPT_BRIDGE_TOKEN`
 - `NOVAADAPT_BRIDGE_ALLOWED_DEVICE_IDS`
 - `NOVAADAPT_BRIDGE_CORS_ALLOWED_ORIGINS` (defaults to local view origin when `NOVAADAPT_WITH_VIEW=1`)
@@ -368,6 +414,20 @@ PYTHONPATH=core:shared python3 vibe/vibe_terminal.py \
   --objective "Open dashboard and summarize failed jobs" \
   --wait
 ```
+
+Desktop Tauri shell scaffold:
+
+```bash
+cd desktop/tauri-shell
+npm install
+npm run dev
+```
+
+Native iOS scaffold and wearable adapter prototypes:
+
+- `mobile/ios/NovaAdaptCompanion` (SwiftUI source scaffold)
+- `wearables/halo_bridge.py` (normalized wearable intent submission helper)
+- `docs/realtime_protocol.md` + `config/protocols/realtime.v1.json` (shared realtime contract)
 
 ## Model-Agnostic Design
 
@@ -405,12 +465,15 @@ novaadapt run \
 
 - `subprocess` (default): runs `directshell exec --json ...` using `DIRECTSHELL_BIN`.
 - `http`: sends `POST` to `DIRECTSHELL_HTTP_URL` with body `{"action": ...}`.
+- `daemon`: sends framed JSON RPC over DirectShell daemon socket/TCP (`DIRECTSHELL_DAEMON_SOCKET` or `DIRECTSHELL_DAEMON_HOST`/`DIRECTSHELL_DAEMON_PORT`).
 
 Environment variables:
 
-- `DIRECTSHELL_TRANSPORT` = `subprocess` or `http`
+- `DIRECTSHELL_TRANSPORT` = `subprocess`, `http`, or `daemon`
 - `DIRECTSHELL_BIN` (subprocess mode)
 - `DIRECTSHELL_HTTP_URL` (http mode, default `http://127.0.0.1:8765/execute`)
+- `DIRECTSHELL_DAEMON_SOCKET` (daemon Unix socket path, default `/tmp/directshell.sock`; set empty to force TCP)
+- `DIRECTSHELL_DAEMON_HOST` / `DIRECTSHELL_DAEMON_PORT` (daemon TCP endpoint, default `127.0.0.1:8766`)
 
 ## Security Baseline
 
@@ -420,6 +483,7 @@ Environment variables:
 - Plans are capped by `--max-actions` (default `25`) to reduce runaway execution.
 - Every action is logged in SQLite (`~/.novaadapt/actions.db`) for audit/undo workflows.
 - SQLite-backed state stores (plans/jobs/idempotency/audit/action log) run with WAL + busy-timeout defaults and hot-path indexes for safer concurrent access at higher throughput.
+- SQLite stores now apply explicit schema migrations recorded in `schema_migrations` for deterministic upgrades across releases.
 - Core API can require bearer auth via `--api-token` / `NOVAADAPT_API_TOKEN`.
 - Bridge relay enforces independent ingress token and forwards with a separate core token.
 - Bridge relay propagates `X-Request-ID` for traceability and supports deep health probing at `/health?deep=1`.
