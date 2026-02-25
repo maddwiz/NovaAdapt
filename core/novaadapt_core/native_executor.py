@@ -61,6 +61,38 @@ _XDOTOOL_KEY_ALIASES = {
     "shift": "shift",
 }
 
+_WINDOWS_SENDKEY_ALIASES = {
+    "enter": "{ENTER}",
+    "return": "{ENTER}",
+    "tab": "{TAB}",
+    "space": " ",
+    "esc": "{ESC}",
+    "escape": "{ESC}",
+    "delete": "{DEL}",
+    "backspace": "{BACKSPACE}",
+    "up": "{UP}",
+    "down": "{DOWN}",
+    "left": "{LEFT}",
+    "right": "{RIGHT}",
+    "home": "{HOME}",
+    "end": "{END}",
+    "pageup": "{PGUP}",
+    "pagedown": "{PGDN}",
+    "insert": "{INS}",
+}
+
+_WINDOWS_HOTKEY_MODIFIERS = {
+    "ctrl": "^",
+    "control": "^",
+    "alt": "%",
+    "option": "%",
+    "shift": "+",
+    "cmd": "^",
+    "command": "^",
+    "win": "^",
+    "windows": "^",
+}
+
 
 @dataclass(frozen=True)
 class NativeExecutionResult:
@@ -157,7 +189,10 @@ class NativeDesktopExecutor:
                 "transport": "native",
                 "platform": self.platform_name,
                 "capabilities": capabilities,
-                "output": "windows native execution available (open_url/open_app/run_shell/wait fully supported)",
+                "output": (
+                    "windows native execution available "
+                    "(open_url/open_app/run_shell/wait/type/key/hotkey/click)"
+                ),
             }
 
         return {
@@ -239,9 +274,16 @@ class NativeDesktopExecutor:
                 return NativeExecutionResult(status="failed", output="type on linux requires 'xdotool' in PATH")
             completed = self._run_subprocess(["xdotool", "type", "--delay", "1", "--", text], shell=False)
             return self._result_from_completed(completed)
+        if self._is_windows():
+            sequence = self._windows_sendkeys_for_text(text)
+            completed = self._run_powershell_script(
+                f"Add-Type -AssemblyName System.Windows.Forms; "
+                f"[System.Windows.Forms.SendKeys]::SendWait('{sequence}')"
+            )
+            return self._result_from_completed(completed)
         return NativeExecutionResult(
             status="failed",
-            output=f"type is only implemented for macOS/linux native runtime (platform={self.platform_name})",
+            output=f"type is only implemented for macOS/linux/windows native runtime (platform={self.platform_name})",
         )
 
     def _execute_key(self, action: dict[str, Any]) -> NativeExecutionResult:
@@ -258,9 +300,18 @@ class NativeDesktopExecutor:
             resolved_key = self._xdotool_key_name(key)
             completed = self._run_subprocess(["xdotool", "key", resolved_key], shell=False)
             return self._result_from_completed(completed)
+        if self._is_windows():
+            key_token = self._windows_key_token(key)
+            if key_token is None:
+                return NativeExecutionResult(status="failed", output=f"unsupported key '{key}' for windows")
+            completed = self._run_powershell_script(
+                f"Add-Type -AssemblyName System.Windows.Forms; "
+                f"[System.Windows.Forms.SendKeys]::SendWait('{key_token}')"
+            )
+            return self._result_from_completed(completed)
         return NativeExecutionResult(
             status="failed",
-            output=f"key is only implemented for macOS/linux native runtime (platform={self.platform_name})",
+            output=f"key is only implemented for macOS/linux/windows native runtime (platform={self.platform_name})",
         )
 
     def _execute_hotkey(self, action: dict[str, Any]) -> NativeExecutionResult:
@@ -285,9 +336,34 @@ class NativeDesktopExecutor:
             resolved = [self._xdotool_key_name(item.lower()) for item in parts]
             completed = self._run_subprocess(["xdotool", "key", "+".join(resolved)], shell=False)
             return self._result_from_completed(completed)
+        if self._is_windows():
+            parts = [item.strip() for item in chord.split("+") if item.strip()]
+            if not parts:
+                return NativeExecutionResult(status="failed", output=f"invalid hotkey: {chord}")
+            modifier_tokens: list[str] = []
+            for token in parts[:-1]:
+                modifier = _WINDOWS_HOTKEY_MODIFIERS.get(token)
+                if modifier is None:
+                    return NativeExecutionResult(
+                        status="failed",
+                        output=f"unsupported hotkey modifier '{token}' for windows",
+                    )
+                modifier_tokens.append(modifier)
+            key_token = self._windows_key_token(parts[-1])
+            if key_token is None:
+                return NativeExecutionResult(
+                    status="failed",
+                    output=f"unsupported hotkey key '{parts[-1]}' for windows",
+                )
+            chord_token = "".join(modifier_tokens) + key_token
+            completed = self._run_powershell_script(
+                f"Add-Type -AssemblyName System.Windows.Forms; "
+                f"[System.Windows.Forms.SendKeys]::SendWait('{chord_token}')"
+            )
+            return self._result_from_completed(completed)
         return NativeExecutionResult(
             status="failed",
-            output=f"hotkey is only implemented for macOS/linux native runtime (platform={self.platform_name})",
+            output=f"hotkey is only implemented for macOS/linux/windows native runtime (platform={self.platform_name})",
         )
 
     def _execute_click(self, action: dict[str, Any]) -> NativeExecutionResult:
@@ -310,9 +386,26 @@ class NativeDesktopExecutor:
                 return NativeExecutionResult(status="failed", output="click on linux requires 'xdotool' in PATH")
             completed = self._run_subprocess(["xdotool", "mousemove", str(x), str(y), "click", "1"], shell=False)
             return self._result_from_completed(completed)
+        if self._is_windows():
+            completed = self._run_powershell_script(
+                (
+                    "if (-not ('NativeMouse' -as [type])) { "
+                    "Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; "
+                    "public static class NativeMouse { "
+                    "[DllImport(\"user32.dll\")] public static extern bool SetCursorPos(int X, int Y); "
+                    "[DllImport(\"user32.dll\")] public static extern void mouse_event("
+                    "uint dwFlags, uint dx, uint dy, uint dwData, UIntPtr dwExtraInfo); "
+                    "}'; "
+                    "} "
+                    f"[NativeMouse]::SetCursorPos({x}, {y}) | Out-Null; "
+                    "[NativeMouse]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero); "
+                    "[NativeMouse]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero);"
+                )
+            )
+            return self._result_from_completed(completed)
         return NativeExecutionResult(
             status="failed",
-            output=f"click is only implemented for macOS/linux native runtime (platform={self.platform_name})",
+            output=f"click is only implemented for macOS/linux/windows native runtime (platform={self.platform_name})",
         )
 
     def _execute_run_shell(self, action: dict[str, Any]) -> NativeExecutionResult:
@@ -404,3 +497,50 @@ class NativeDesktopExecutor:
         if len(key) == 1:
             return key
         return _XDOTOOL_KEY_ALIASES.get(key, key)
+
+    @staticmethod
+    def _windows_sendkey_escape_char(ch: str) -> str:
+        if ch == "{":
+            return "{{}"
+        if ch == "}":
+            return "{}}"
+        if ch in {"+", "^", "%", "~", "(", ")", "[", "]"}:
+            return f"{{{ch}}}"
+        if ch == "'":
+            return "''"
+        return ch
+
+    @classmethod
+    def _windows_sendkeys_for_text(cls, text: str) -> str:
+        out: list[str] = []
+        for ch in text:
+            if ch == "\r":
+                continue
+            if ch == "\n":
+                out.append("{ENTER}")
+                continue
+            out.append(cls._windows_sendkey_escape_char(ch))
+        return "".join(out)
+
+    @classmethod
+    def _windows_key_token(cls, key: str) -> str | None:
+        normalized = str(key or "").strip().lower()
+        if not normalized:
+            return None
+        alias = _WINDOWS_SENDKEY_ALIASES.get(normalized)
+        if alias is not None:
+            return alias
+        if len(normalized) == 1:
+            return cls._windows_sendkey_escape_char(normalized)
+        if re.fullmatch(r"f([1-9]|1[0-2])", normalized):
+            return "{" + normalized.upper() + "}"
+        return None
+
+    def _run_powershell_script(self, script: str) -> subprocess.CompletedProcess[str]:
+        powershell = shutil.which("powershell") or shutil.which("pwsh")
+        if not powershell:
+            raise RuntimeError("windows native actions require powershell or pwsh in PATH")
+        return self._run_subprocess(
+            [powershell, "-NoProfile", "-NonInteractive", "-Command", script],
+            shell=False,
+        )

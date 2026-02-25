@@ -20,6 +20,9 @@ Supported action types:
 Linux note:
 - `type`, `key`, `hotkey`, and `click` use `xdotool`; install it for full Linux desktop action support.
 
+Windows note:
+- `type`, `key`, `hotkey`, and `click` use PowerShell (`powershell` or `pwsh`) with `System.Windows.Forms.SendKeys`.
+
 ## Optional External Transports
 
 - `native` (default): built-in NovaAdapt runtime

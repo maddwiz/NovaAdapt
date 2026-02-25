@@ -591,6 +591,7 @@ Built-in native action types:
 
 Platform notes:
 - Linux `type`/`key`/`hotkey`/`click` require `xdotool` installed and available in `PATH`.
+- Windows `type`/`key`/`hotkey`/`click` use PowerShell + `System.Windows.Forms.SendKeys` (or `pwsh`) from `PATH`.
 
 ## Security Baseline
 
