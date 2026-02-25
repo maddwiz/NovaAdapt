@@ -3,7 +3,7 @@ import socket
 import threading
 import time
 import unittest
-from urllib import request
+from urllib import error, request
 
 from novaadapt_core.directshell import DirectShellClient
 from novaadapt_core.native_executor import NativeDesktopExecutor
@@ -14,6 +14,23 @@ def _pick_free_tcp_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.bind(("127.0.0.1", 0))
         return int(sock.getsockname()[1])
+
+
+def _wait_for_http_health(port: int, *, token: str | None = None, timeout_seconds: float = 2.0) -> None:
+    deadline = time.time() + max(0.1, float(timeout_seconds))
+    while time.time() < deadline:
+        headers = {}
+        if token:
+            headers["X-DirectShell-Token"] = token
+        req = request.Request(f"http://127.0.0.1:{port}/health", method="GET", headers=headers)
+        try:
+            with request.urlopen(req, timeout=0.5) as response:
+                if int(response.status) in {200, 401, 403}:
+                    return
+        except error.URLError:
+            pass
+        time.sleep(0.05)
+    raise AssertionError(f"native HTTP server not ready on port {port}")
 
 
 class NativeHTTPServerTests(unittest.TestCase):
@@ -29,6 +46,7 @@ class NativeHTTPServerTests(unittest.TestCase):
         thread.start()
 
         try:
+            _wait_for_http_health(port)
             client = DirectShellClient(
                 transport="http",
                 http_url=f"http://127.0.0.1:{port}/execute",
@@ -64,6 +82,7 @@ class NativeHTTPServerTests(unittest.TestCase):
         thread.start()
 
         try:
+            _wait_for_http_health(port, token="secret-http")
             unauth_client = DirectShellClient(
                 transport="http",
                 http_url=f"http://127.0.0.1:{port}/execute",
@@ -110,6 +129,7 @@ class NativeHTTPServerTests(unittest.TestCase):
         thread.start()
 
         try:
+            _wait_for_http_health(port)
             with request.urlopen(f"http://127.0.0.1:{port}/health?deep=1", timeout=2) as response:
                 payload = json.loads(response.read().decode("utf-8"))
         finally:
