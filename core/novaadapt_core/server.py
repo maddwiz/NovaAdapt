@@ -412,6 +412,7 @@ def _build_handler(
             if not deep:
                 self._send_json(200, {"ok": True, "service": "novaadapt"})
                 return 200
+            include_execution_check = (_single(query, "execution") or "0") == "1"
 
             health_payload = {"ok": True, "service": "novaadapt", "checks": {}, "metrics": metrics.snapshot()}
             checks = health_payload["checks"]
@@ -443,6 +444,15 @@ def _build_handler(
             except Exception as exc:
                 checks["action_log"] = {"ok": False, "error": str(exc)}
                 health_payload["ok"] = False
+
+            if include_execution_check:
+                try:
+                    checks["directshell"] = service.directshell_probe()
+                    if not bool(checks["directshell"].get("ok")):
+                        health_payload["ok"] = False
+                except Exception as exc:
+                    checks["directshell"] = {"ok": False, "error": str(exc)}
+                    health_payload["ok"] = False
 
             status_code = 200 if health_payload["ok"] else 503
             self._send_json(status_code, health_payload)

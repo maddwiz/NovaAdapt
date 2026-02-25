@@ -180,6 +180,7 @@ API endpoints:
 
 - `GET /health` (liveness)
 - `GET /health?deep=1` (readiness snapshot: models + SQLite-backed stores + metrics)
+- `GET /health?deep=1&execution=1` (includes DirectShell readiness check; fails if execution backend is not ready)
 - `GET /openapi.json`
 - `GET /dashboard` (auth-protected operational HTML dashboard)
 - `GET /dashboard/data` (auth-protected dashboard JSON: health, metrics, jobs, plans, events)

@@ -55,6 +55,22 @@ class NovaAdaptService:
         router = self.router_loader(config_path or self.default_config)
         return router.health_check(model_names=model_names, probe_prompt=probe_prompt)
 
+    def directshell_probe(self) -> dict[str, Any]:
+        client = self.directshell_factory()
+        probe_fn = getattr(client, "probe", None)
+        if not callable(probe_fn):
+            return {
+                "ok": False,
+                "error": "DirectShell probe is not implemented by current directshell_factory",
+            }
+        result = probe_fn()
+        if isinstance(result, dict):
+            return result
+        return {
+            "ok": False,
+            "error": "DirectShell probe returned invalid payload",
+        }
+
     def run(self, payload: dict[str, Any]) -> dict[str, Any]:
         config_path = Path(payload.get("config") or self.default_config)
         objective = str(payload.get("objective", "")).strip()

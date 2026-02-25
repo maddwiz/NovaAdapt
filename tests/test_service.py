@@ -59,6 +59,11 @@ class _StubDirectShell:
         )
 
 
+class _StubDirectShellWithProbe(_StubDirectShell):
+    def probe(self):
+        return {"ok": True, "transport": "stub"}
+
+
 class ServiceTests(unittest.TestCase):
     def test_models_and_check(self):
         service = NovaAdaptService(
@@ -72,6 +77,26 @@ class ServiceTests(unittest.TestCase):
 
         check = service.check()
         self.assertTrue(check[0]["ok"])
+
+    def test_directshell_probe(self):
+        service = NovaAdaptService(
+            default_config=Path("unused.json"),
+            router_loader=lambda _path: _StubRouter(),
+            directshell_factory=_StubDirectShellWithProbe,
+        )
+        probe = service.directshell_probe()
+        self.assertTrue(probe["ok"])
+        self.assertEqual(probe["transport"], "stub")
+
+    def test_directshell_probe_handles_missing_probe_method(self):
+        service = NovaAdaptService(
+            default_config=Path("unused.json"),
+            router_loader=lambda _path: _StubRouter(),
+            directshell_factory=_StubDirectShell,
+        )
+        probe = service.directshell_probe()
+        self.assertFalse(probe["ok"])
+        self.assertIn("not implemented", probe["error"])
 
     def test_run_records_history_and_undo_mark_only(self):
         with tempfile.TemporaryDirectory() as tmp:

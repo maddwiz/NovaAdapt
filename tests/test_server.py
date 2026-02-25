@@ -92,6 +92,14 @@ class ServerTests(unittest.TestCase):
                 self.assertTrue(deep_health["checks"]["audit_store"]["ok"])
                 self.assertIn("metrics", deep_health)
 
+                with self.assertRaises(error.HTTPError) as err:
+                    _get_json(f"http://{host}:{port}/health?deep=1&execution=1")
+                self.assertEqual(err.exception.code, 503)
+                execution_health = json.loads(err.exception.read().decode("utf-8"))
+                self.assertFalse(execution_health["ok"])
+                self.assertIn("directshell", execution_health["checks"])
+                self.assertFalse(execution_health["checks"]["directshell"]["ok"])
+
                 dashboard_html = _get_text(f"http://{host}:{port}/dashboard")
                 self.assertIn("NovaAdapt Core Dashboard", dashboard_html)
                 self.assertIn("Approve Async", dashboard_html)

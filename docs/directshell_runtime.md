@@ -32,6 +32,14 @@ novaadapt directshell-check
 
 Outputs include `ok`, selected transport, and transport-specific diagnostics.
 
+For remote monitoring via core API:
+
+```text
+GET /health?deep=1&execution=1
+```
+
+This returns `503` when DirectShell is not execution-ready.
+
 ## Planned
 
 - Native gRPC DirectShell client once daemon API contract is finalized.
