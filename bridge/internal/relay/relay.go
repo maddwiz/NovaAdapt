@@ -18,6 +18,14 @@ import (
 
 const maxRequestBodyBytes = 1 << 20 // 1 MiB
 
+type corsState int
+
+const (
+	corsNotApplicable corsState = iota
+	corsAllowed
+	corsDenied
+)
+
 var allowedPaths = map[string]struct{}{
 	"/models":         {},
 	"/openapi.json":   {},
@@ -45,9 +53,12 @@ type Config struct {
 	// AllowedDeviceIDs optionally restricts requests to known device IDs via X-Device-ID.
 	// Empty means device allowlisting is disabled.
 	AllowedDeviceIDs []string
-	Timeout          time.Duration
-	LogRequests      bool
-	Logger           *log.Logger
+	// CORSAllowedOrigins controls which browser origins may call cross-origin bridge APIs.
+	// Empty keeps cross-origin requests blocked; same-origin requests are always allowed.
+	CORSAllowedOrigins []string
+	Timeout            time.Duration
+	LogRequests        bool
+	Logger             *log.Logger
 }
 
 // Handler is an HTTP handler that secures and forwards requests to NovaAdapt core.
@@ -59,6 +70,8 @@ type Handler struct {
 	unauthorizedTotal   uint64
 	upstreamErrorsTotal uint64
 	allowedDevices      map[string]struct{}
+	corsAllowedOrigins  map[string]struct{}
+	corsAllowAll        bool
 }
 
 // NewHandler creates a configured bridge relay handler.
@@ -87,12 +100,27 @@ func NewHandler(cfg Config) (*Handler, error) {
 		}
 		allowedDevices[trimmed] = struct{}{}
 	}
+	corsAllowedOrigins := make(map[string]struct{})
+	corsAllowAll := false
+	for _, item := range cfg.CORSAllowedOrigins {
+		trimmed := strings.TrimSpace(item)
+		if trimmed == "" {
+			continue
+		}
+		if trimmed == "*" {
+			corsAllowAll = true
+			continue
+		}
+		corsAllowedOrigins[canonicalOrigin(trimmed)] = struct{}{}
+	}
 	return &Handler{
 		cfg: cfg,
 		client: &http.Client{
 			Timeout: cfg.Timeout,
 		},
-		allowedDevices: allowedDevices,
+		allowedDevices:     allowedDevices,
+		corsAllowedOrigins: corsAllowedOrigins,
+		corsAllowAll:       corsAllowAll,
 	}, nil
 }
 
@@ -117,6 +145,18 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			)
 		}
 	}()
+
+	corsState := h.applyCORSHeaders(w, r)
+	if corsState == corsDenied {
+		statusCode = http.StatusForbidden
+		h.writeJSON(w, statusCode, map[string]any{"error": "CORS origin not allowed", "request_id": requestID})
+		return
+	}
+	if r.Method == http.MethodOptions && corsState == corsAllowed {
+		statusCode = http.StatusNoContent
+		w.WriteHeader(statusCode)
+		return
+	}
 
 	if r.URL.Path == "/health" {
 		statusCode, payload := h.healthPayload(requestID, r.URL.Query().Get("deep") == "1")
@@ -439,6 +479,60 @@ func normalizeRequestID(current string) string {
 		return fmt.Sprintf("rid-%d", time.Now().UnixNano())
 	}
 	return hex.EncodeToString(buf)
+}
+
+func (h *Handler) applyCORSHeaders(w http.ResponseWriter, r *http.Request) corsState {
+	origin := strings.TrimSpace(r.Header.Get("Origin"))
+	if origin == "" {
+		return corsNotApplicable
+	}
+	if !h.isOriginAllowed(r, origin) {
+		return corsDenied
+	}
+	w.Header().Set("Vary", "Origin")
+	w.Header().Set("Access-Control-Allow-Origin", origin)
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, X-Device-ID, X-Request-ID, Idempotency-Key")
+	w.Header().Set("Access-Control-Expose-Headers", "X-Request-ID, Idempotency-Key, X-Idempotency-Replayed")
+	w.Header().Set("Access-Control-Max-Age", "600")
+	return corsAllowed
+}
+
+func (h *Handler) isOriginAllowed(r *http.Request, origin string) bool {
+	if isSameOrigin(r, origin) {
+		return true
+	}
+	if h.corsAllowAll {
+		return true
+	}
+	_, ok := h.corsAllowedOrigins[canonicalOrigin(origin)]
+	return ok
+}
+
+func isSameOrigin(r *http.Request, origin string) bool {
+	expectedOrigin := requestScheme(r) + "://" + r.Host
+	return canonicalOrigin(origin) == canonicalOrigin(expectedOrigin)
+}
+
+func requestScheme(r *http.Request) string {
+	forwarded := strings.TrimSpace(r.Header.Get("X-Forwarded-Proto"))
+	if forwarded != "" {
+		if idx := strings.Index(forwarded, ","); idx >= 0 {
+			forwarded = forwarded[:idx]
+		}
+		candidate := strings.ToLower(strings.TrimSpace(forwarded))
+		if candidate == "http" || candidate == "https" {
+			return candidate
+		}
+	}
+	if r.TLS != nil {
+		return "https"
+	}
+	return "http"
+}
+
+func canonicalOrigin(origin string) string {
+	return strings.TrimRight(strings.ToLower(strings.TrimSpace(origin)), "/")
 }
 
 func (h *Handler) writeJSON(w http.ResponseWriter, status int, payload any) {

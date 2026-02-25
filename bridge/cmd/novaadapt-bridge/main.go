@@ -37,20 +37,26 @@ func main() {
 		envOrDefault("NOVAADAPT_BRIDGE_ALLOWED_DEVICE_IDS", ""),
 		"Comma-separated trusted X-Device-ID values (optional)",
 	)
+	corsAllowedOrigins := flag.String(
+		"cors-allowed-origins",
+		envOrDefault("NOVAADAPT_BRIDGE_CORS_ALLOWED_ORIGINS", ""),
+		"Comma-separated allowed CORS origins for browser clients (use * to allow any)",
+	)
 	timeout := flag.Int("timeout", envOrDefaultInt("NOVAADAPT_BRIDGE_TIMEOUT", 30), "Core request timeout seconds")
 	logRequests := flag.Bool("log-requests", envOrDefaultBool("NOVAADAPT_BRIDGE_LOG_REQUESTS", true), "Enable per-request bridge logs")
 	flag.Parse()
 
 	handler, err := relay.NewHandler(relay.Config{
-		CoreBaseURL:       *coreURL,
-		BridgeToken:       *bridgeToken,
-		CoreToken:         *coreToken,
-		SessionSigningKey: *sessionSigningKey,
-		SessionTokenTTL:   time.Duration(max(60, *sessionTokenTTL)) * time.Second,
-		AllowedDeviceIDs:  parseCSV(*allowedDeviceIDs),
-		Timeout:           time.Duration(max(1, *timeout)) * time.Second,
-		LogRequests:       *logRequests,
-		Logger:            log.Default(),
+		CoreBaseURL:        *coreURL,
+		BridgeToken:        *bridgeToken,
+		CoreToken:          *coreToken,
+		SessionSigningKey:  *sessionSigningKey,
+		SessionTokenTTL:    time.Duration(max(60, *sessionTokenTTL)) * time.Second,
+		AllowedDeviceIDs:   parseCSV(*allowedDeviceIDs),
+		CORSAllowedOrigins: parseCSV(*corsAllowedOrigins),
+		Timeout:            time.Duration(max(1, *timeout)) * time.Second,
+		LogRequests:        *logRequests,
+		Logger:             log.Default(),
 	})
 	if err != nil {
 		log.Fatalf("failed to initialize relay: %v", err)

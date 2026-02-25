@@ -214,12 +214,32 @@
         </div>
         <div class="row">
           <div>
-            <label for="token">Bridge Token (query)</label>
-            <input id="token" placeholder="optional if using auth header in native client" />
+            <label for="token">WebSocket Token (query)</label>
+            <input id="token" placeholder="session or static token" />
           </div>
           <div>
             <label for="device-id">Device ID (query)</label>
             <input id="device-id" placeholder="required if allowlist enabled" />
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label for="bridge-http-url">Bridge HTTP URL</label>
+            <input id="bridge-http-url" value="http://127.0.0.1:9797" />
+          </div>
+          <div>
+            <label for="admin-token">Admin Token (for /auth/session)</label>
+            <input id="admin-token" placeholder="static bridge token or admin-scoped session token" />
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label for="session-scopes">Session Scopes</label>
+            <input id="session-scopes" value="read,run,plan,approve,reject,undo,cancel" />
+          </div>
+          <div>
+            <label for="session-ttl">Session TTL (s)</label>
+            <input id="session-ttl" type="number" value="900" min="60" max="86400" />
           </div>
         </div>
         <div class="row">
@@ -233,6 +253,7 @@
           </div>
         </div>
         <div class="controls">
+          <button id="issue-session-btn">Issue Session Token</button>
           <button class="brand" id="connect-btn">Connect</button>
           <button class="warn" id="disconnect-btn">Disconnect</button>
           <button id="ping-btn">Ping</button>
@@ -314,6 +335,31 @@
       statusEl.className = `status ${cls}`.trim();
     }
 
+    function guessBridgeHTTPURLFromWS(rawWSURL) {
+      try {
+        const url = new URL(rawWSURL);
+        if (url.protocol === "wss:") {
+          url.protocol = "https:";
+        } else {
+          url.protocol = "http:";
+        }
+        url.pathname = "";
+        url.search = "";
+        url.hash = "";
+        return url.toString().replace(/\/$/, "");
+      } catch {
+        return "";
+      }
+    }
+
+    function buildBridgeHTTPURL() {
+      const explicit = $("bridge-http-url").value.trim();
+      if (explicit) {
+        return explicit.replace(/\/$/, "");
+      }
+      return guessBridgeHTTPURLFromWS($("ws-url").value.trim());
+    }
+
     function buildWSURL() {
       const raw = $("ws-url").value.trim();
       const token = $("token").value.trim();
@@ -328,6 +374,84 @@
       if (token) url.searchParams.set("token", token);
       if (deviceID) url.searchParams.set("device_id", deviceID);
       return url.toString();
+    }
+
+    async function issueSessionToken() {
+      const bridgeURL = buildBridgeHTTPURL();
+      const adminToken = $("admin-token").value.trim() || $("token").value.trim();
+      const deviceID = $("device-id").value.trim();
+      const ttl = Math.max(60, Math.min(86400, Number($("session-ttl").value || 900)));
+      const scopes = $("session-scopes").value
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean);
+
+      if (!bridgeURL) {
+        appendLog("error", "bridge HTTP URL is required");
+        return;
+      }
+      if (!adminToken) {
+        appendLog("error", "admin token is required to issue a scoped session token");
+        return;
+      }
+      if (scopes.length === 0) {
+        appendLog("error", "at least one scope is required");
+        return;
+      }
+
+      const headers = {
+        "Authorization": `Bearer ${adminToken}`,
+        "Content-Type": "application/json",
+      };
+      if (deviceID) {
+        headers["X-Device-ID"] = deviceID;
+      }
+
+      const body = {
+        scopes,
+        ttl_seconds: ttl,
+      };
+      if (deviceID) {
+        body.device_id = deviceID;
+      }
+
+      appendLog("session_issue_request", { bridgeURL, scopes, ttl_seconds: ttl, device_id: deviceID || null });
+      try {
+        const response = await fetch(`${bridgeURL}/auth/session`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(body),
+        });
+        const raw = await response.text();
+        let payload = { raw };
+        try {
+          payload = raw ? JSON.parse(raw) : {};
+        } catch {
+          // Keep raw payload for log visibility.
+        }
+        if (!response.ok) {
+          appendLog("session_issue_error", { status: response.status, payload });
+          setStatus(`Session issue failed (${response.status})`, "bad");
+          return;
+        }
+        if (!payload.token) {
+          appendLog("session_issue_error", { status: response.status, payload });
+          setStatus("Session issue failed (missing token)", "bad");
+          return;
+        }
+        $("token").value = payload.token;
+        appendLog("session_issued", {
+          subject: payload.subject,
+          scopes: payload.scopes,
+          device_id: payload.device_id,
+          expires_at: payload.expires_at,
+          issued_at: payload.issued_at,
+        });
+        setStatus("Session token issued", "ok");
+      } catch (err) {
+        appendLog("session_issue_error", String(err));
+        setStatus("Session issue network error", "bad");
+      }
     }
 
     function connect() {
@@ -375,6 +499,9 @@
       appendLog("send", obj);
     }
 
+    $("issue-session-btn").addEventListener("click", () => {
+      issueSessionToken();
+    });
     $("connect-btn").addEventListener("click", connect);
     $("disconnect-btn").addEventListener("click", disconnect);
 
@@ -410,6 +537,13 @@
       if (idem) msg.idempotency_key = idem;
       if (body !== null) msg.body = body;
       send(msg);
+    });
+
+    $("ws-url").addEventListener("change", () => {
+      const guessed = guessBridgeHTTPURLFromWS($("ws-url").value.trim());
+      if (guessed && !$("bridge-http-url").value.trim()) {
+        $("bridge-http-url").value = guessed;
+      }
     });
 
     appendLog("ready", "Console loaded");

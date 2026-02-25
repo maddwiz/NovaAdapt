@@ -280,6 +280,7 @@ python3 -m http.server 8088
 ```
 
 Open `http://127.0.0.1:8088/realtime_console.html`.
+The console can mint scoped bridge session tokens via `POST /auth/session` and use them for websocket control.
 
 One-command local operator stack (core + bridge + optional view server):
 
@@ -291,6 +292,7 @@ Optional env vars:
 - `NOVAADAPT_CORE_TOKEN`
 - `NOVAADAPT_BRIDGE_TOKEN`
 - `NOVAADAPT_BRIDGE_ALLOWED_DEVICE_IDS`
+- `NOVAADAPT_BRIDGE_CORS_ALLOWED_ORIGINS` (defaults to local view origin when `NOVAADAPT_WITH_VIEW=1`)
 - `NOVAADAPT_WITH_VIEW=0` (skip static view server)
 
 Wearable intent bridge prototype:

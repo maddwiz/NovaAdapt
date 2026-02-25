@@ -8,6 +8,7 @@ Secure relay service for remote clients (phone/glasses) to reach NovaAdapt core.
 - Token-authenticated ingress (bridge token)
 - Optional scoped session token issuance (`POST /auth/session`) for least-privilege clients
 - Optional trusted-device allowlist via `X-Device-ID`
+- Optional cross-origin browser allowlist (`--cors-allowed-origins`)
 - Token-authenticated upstream calls to core API (core token)
 - Request-id tracing (`X-Request-ID`) propagated to core
 - Idempotency key forwarding (`Idempotency-Key`) propagated to core
@@ -46,6 +47,7 @@ Bridge supports two token modes:
 - Signed session token (`na1.<payload>.<sig>`): scoped and time-limited.
 
 `POST /auth/session` requires admin auth (static token, or session token with `admin` scope).
+For cross-origin browser clients, set `--cors-allowed-origins` (or `NOVAADAPT_BRIDGE_CORS_ALLOWED_ORIGINS`).
 
 Request body (all fields optional):
 
@@ -143,6 +145,7 @@ Container build uses:
   --core-token your_core_api_token \
   --session-signing-key your_session_hmac_key \
   --session-token-ttl-seconds 900 \
+  --cors-allowed-origins http://127.0.0.1:8088 \
   --allowed-device-ids iphone-15-pro,halo-glasses-1 \
   --log-requests true
 ```
@@ -156,6 +159,7 @@ Environment variables are also supported:
 - `NOVAADAPT_CORE_TOKEN`
 - `NOVAADAPT_BRIDGE_SESSION_SIGNING_KEY` (defaults to bridge token when unset)
 - `NOVAADAPT_BRIDGE_SESSION_TTL_SECONDS` (default issued session TTL)
+- `NOVAADAPT_BRIDGE_CORS_ALLOWED_ORIGINS` (comma-separated browser origins; `*` to allow any)
 - `NOVAADAPT_BRIDGE_ALLOWED_DEVICE_IDS` (comma-separated trusted device IDs)
 - `NOVAADAPT_BRIDGE_TIMEOUT`
 - `NOVAADAPT_BRIDGE_LOG_REQUESTS`

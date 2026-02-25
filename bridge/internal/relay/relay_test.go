@@ -459,3 +459,75 @@ func TestDeviceAllowlist(t *testing.T) {
 		t.Fatalf("expected 200 for allowed device id, got %d body=%s", rrAllowed.Code, rrAllowed.Body.String())
 	}
 }
+
+func TestCORSPreflightAllowedOrigin(t *testing.T) {
+	h, err := NewHandler(
+		Config{
+			CoreBaseURL:        "http://example.com",
+			BridgeToken:        "secret",
+			CORSAllowedOrigins: []string{"http://127.0.0.1:8088"},
+			Timeout:            5 * time.Second,
+		},
+	)
+	if err != nil {
+		t.Fatalf("new handler: %v", err)
+	}
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodOptions, "/auth/session", nil)
+	req.Host = "127.0.0.1:9797"
+	req.Header.Set("Origin", "http://127.0.0.1:8088")
+	req.Header.Set("Access-Control-Request-Method", "POST")
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusNoContent {
+		t.Fatalf("expected 204 got %d body=%s", rr.Code, rr.Body.String())
+	}
+	if rr.Header().Get("Access-Control-Allow-Origin") != "http://127.0.0.1:8088" {
+		t.Fatalf("expected allow origin header, got %s", rr.Header().Get("Access-Control-Allow-Origin"))
+	}
+	if !strings.Contains(rr.Header().Get("Access-Control-Allow-Methods"), "POST") {
+		t.Fatalf("expected POST allowed method, got %s", rr.Header().Get("Access-Control-Allow-Methods"))
+	}
+}
+
+func TestCORSBlocksDisallowedOrigin(t *testing.T) {
+	h, err := NewHandler(
+		Config{
+			CoreBaseURL:        "http://example.com",
+			BridgeToken:        "secret",
+			CORSAllowedOrigins: []string{"http://127.0.0.1:8088"},
+			Timeout:            5 * time.Second,
+		},
+	)
+	if err != nil {
+		t.Fatalf("new handler: %v", err)
+	}
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	req.Host = "127.0.0.1:9797"
+	req.Header.Set("Origin", "http://evil.example")
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 got %d body=%s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestCORSSameOriginAllowedWithoutConfig(t *testing.T) {
+	h, err := NewHandler(Config{CoreBaseURL: "http://example.com", BridgeToken: "secret", Timeout: 5 * time.Second})
+	if err != nil {
+		t.Fatalf("new handler: %v", err)
+	}
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	req.Host = "bridge.local:9797"
+	req.Header.Set("Origin", "http://bridge.local:9797")
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 got %d body=%s", rr.Code, rr.Body.String())
+	}
+}

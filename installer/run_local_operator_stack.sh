@@ -12,8 +12,13 @@ VIEW_PORT="${NOVAADAPT_VIEW_PORT:-8088}"
 MODEL_CONFIG="${NOVAADAPT_MODEL_CONFIG:-config/models.example.json}"
 WITH_VIEW="${NOVAADAPT_WITH_VIEW:-1}"
 ALLOWED_DEVICE_IDS="${NOVAADAPT_BRIDGE_ALLOWED_DEVICE_IDS:-}"
+CORS_ALLOWED_ORIGINS="${NOVAADAPT_BRIDGE_CORS_ALLOWED_ORIGINS:-}"
 LOG_DIR="${NOVAADAPT_LOCAL_LOG_DIR:-$ROOT_DIR/.novaadapt-local}"
 mkdir -p "$LOG_DIR"
+
+if [[ -z "$CORS_ALLOWED_ORIGINS" && "$WITH_VIEW" == "1" ]]; then
+  CORS_ALLOWED_ORIGINS="http://127.0.0.1:${VIEW_PORT}"
+fi
 
 random_token() {
   python3 - <<'PY'
@@ -81,6 +86,9 @@ bridge_cmd=(
 if [[ -n "$ALLOWED_DEVICE_IDS" ]]; then
   bridge_cmd+=(--allowed-device-ids "$ALLOWED_DEVICE_IDS")
 fi
+if [[ -n "$CORS_ALLOWED_ORIGINS" ]]; then
+  bridge_cmd+=(--cors-allowed-origins "$CORS_ALLOWED_ORIGINS")
+fi
 "${bridge_cmd[@]}" >"$LOG_DIR/bridge.log" 2>&1 &
 BRIDGE_PID="$!"
 
@@ -112,6 +120,9 @@ echo "Core token:       ${CORE_TOKEN}"
 echo "Bridge token:     ${BRIDGE_TOKEN}"
 if [[ -n "$ALLOWED_DEVICE_IDS" ]]; then
   echo "Allowed devices:  ${ALLOWED_DEVICE_IDS}"
+fi
+if [[ -n "$CORS_ALLOWED_ORIGINS" ]]; then
+  echo "CORS origins:     ${CORS_ALLOWED_ORIGINS}"
 fi
 echo ""
 echo "Logs:"
