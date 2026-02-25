@@ -1,0 +1,418 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>NovaAdapt Realtime Console</title>
+  <style>
+    :root {
+      --bg: #f3f0e9;
+      --panel: #fffaf1;
+      --panel-2: #f8eed9;
+      --ink: #1f1a14;
+      --muted: #685f53;
+      --line: #c9b89d;
+      --brand: #1f6f5f;
+      --brand-2: #2f8f7c;
+      --warn: #a34f2f;
+      --ok: #1b7f52;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: "Avenir Next", "Trebuchet MS", "Gill Sans", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 5% -10%, #e7d9bf 0%, transparent 38%),
+        radial-gradient(circle at 100% 0%, #d8e6e0 0%, transparent 36%),
+        linear-gradient(180deg, #f6f1e8 0%, #efe6d8 100%);
+      min-height: 100vh;
+      padding: 18px;
+    }
+
+    .shell {
+      max-width: 1120px;
+      margin: 0 auto;
+      display: grid;
+      gap: 14px;
+    }
+
+    .header {
+      border: 1px solid var(--line);
+      background: linear-gradient(145deg, #fff9ee 0%, #f9efd9 100%);
+      border-radius: 14px;
+      padding: 14px 16px;
+      box-shadow: 0 10px 24px rgba(59, 44, 27, 0.08);
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 22px;
+      letter-spacing: 0.02em;
+    }
+
+    .sub {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .grid {
+      display: grid;
+      gap: 14px;
+      grid-template-columns: 1.05fr 1fr;
+    }
+
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--panel);
+      padding: 14px;
+      box-shadow: 0 8px 18px rgba(59, 44, 27, 0.06);
+    }
+
+    .card h2 {
+      margin: 0 0 10px;
+      font-size: 14px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+    }
+
+    .row {
+      display: grid;
+      gap: 8px;
+      grid-template-columns: 1fr 1fr;
+      margin-bottom: 8px;
+    }
+
+    .row.single {
+      grid-template-columns: 1fr;
+    }
+
+    label {
+      display: block;
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    input, select, textarea {
+      width: 100%;
+      border: 1px solid var(--line);
+      background: #fffdf8;
+      color: var(--ink);
+      border-radius: 10px;
+      padding: 10px;
+      font: inherit;
+      font-size: 13px;
+    }
+
+    textarea {
+      min-height: 132px;
+      resize: vertical;
+      font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+      font-size: 12px;
+    }
+
+    .controls {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 8px;
+    }
+
+    button {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 9px 12px;
+      font: inherit;
+      font-size: 13px;
+      cursor: pointer;
+      background: #fff8eb;
+      color: var(--ink);
+      transition: transform 120ms ease, border-color 120ms ease, background 120ms ease;
+    }
+
+    button:hover {
+      transform: translateY(-1px);
+      border-color: var(--brand);
+      background: #fff2d9;
+    }
+
+    button.brand {
+      background: linear-gradient(145deg, var(--brand), var(--brand-2));
+      border-color: transparent;
+      color: #f8fffd;
+    }
+
+    button.warn {
+      background: #f8ebe6;
+      border-color: #debaa9;
+      color: #7b2e13;
+    }
+
+    .status {
+      margin-top: 8px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .status.ok { color: var(--ok); }
+    .status.bad { color: var(--warn); }
+
+    .log {
+      border: 1px solid var(--line);
+      background: var(--panel-2);
+      border-radius: 12px;
+      padding: 10px;
+      min-height: 320px;
+      max-height: 560px;
+      overflow: auto;
+      font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+      font-size: 12px;
+      line-height: 1.45;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .hint {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    @media (max-width: 900px) {
+      .grid {
+        grid-template-columns: 1fr;
+      }
+      .row {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <section class="header">
+      <h1>NovaAdapt Realtime Console</h1>
+      <div class="sub">Bridge WebSocket control plane: live events, plan approvals, and command relay.</div>
+    </section>
+
+    <div class="grid">
+      <section class="card">
+        <h2>Connection</h2>
+        <div class="row single">
+          <div>
+            <label for="ws-url">WebSocket URL</label>
+            <input id="ws-url" value="ws://127.0.0.1:9797/ws" />
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label for="token">Bridge Token (query)</label>
+            <input id="token" placeholder="optional if using auth header in native client" />
+          </div>
+          <div>
+            <label for="device-id">Device ID (query)</label>
+            <input id="device-id" placeholder="required if allowlist enabled" />
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label for="since-id">Since ID</label>
+            <input id="since-id" type="number" value="0" min="0" />
+          </div>
+          <div>
+            <label for="poll-timeout">Poll Timeout (s)</label>
+            <input id="poll-timeout" type="number" value="20" min="1" />
+          </div>
+        </div>
+        <div class="controls">
+          <button class="brand" id="connect-btn">Connect</button>
+          <button class="warn" id="disconnect-btn">Disconnect</button>
+          <button id="ping-btn">Ping</button>
+        </div>
+        <div class="status" id="status">Disconnected</div>
+      </section>
+
+      <section class="card">
+        <h2>Command</h2>
+        <div class="row">
+          <div>
+            <label for="command-id">Command ID</label>
+            <input id="command-id" value="cmd-1" />
+          </div>
+          <div>
+            <label for="command-method">Method</label>
+            <select id="command-method">
+              <option>POST</option>
+              <option>GET</option>
+            </select>
+          </div>
+        </div>
+        <div class="row single">
+          <div>
+            <label for="command-path">Path</label>
+            <input id="command-path" value="/plans/plan1/approve_async" />
+          </div>
+        </div>
+        <div class="row single">
+          <div>
+            <label for="command-body">Body JSON</label>
+            <textarea id="command-body">{"execute": true}</textarea>
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label for="idem-key">Idempotency Key</label>
+            <input id="idem-key" value="" placeholder="optional" />
+          </div>
+          <div>
+            <label for="cursor-id">Set Since ID</label>
+            <input id="cursor-id" type="number" value="0" min="0" />
+          </div>
+        </div>
+        <div class="controls">
+          <button class="brand" id="send-command-btn">Send Command</button>
+          <button id="set-since-btn">Set Cursor</button>
+        </div>
+        <div class="hint">Use paths supported by bridge relay (e.g. `/run_async`, `/plans/{id}/approve_async`, `/jobs/{id}/cancel`).</div>
+      </section>
+    </div>
+
+    <section class="card">
+      <h2>Event Log</h2>
+      <div class="log" id="log"></div>
+    </section>
+  </div>
+
+  <script>
+    let socket = null;
+    let commandCounter = 1;
+
+    const $ = (id) => document.getElementById(id);
+    const logEl = $("log");
+    const statusEl = $("status");
+
+    function nowTime() {
+      return new Date().toISOString().replace("T", " ").replace("Z", "");
+    }
+
+    function appendLog(label, payload) {
+      const body = typeof payload === "string" ? payload : JSON.stringify(payload, null, 2);
+      logEl.textContent += `[${nowTime()}] ${label}\n${body}\n\n`;
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    function setStatus(text, cls = "") {
+      statusEl.textContent = text;
+      statusEl.className = `status ${cls}`.trim();
+    }
+
+    function buildWSURL() {
+      const raw = $("ws-url").value.trim();
+      const token = $("token").value.trim();
+      const deviceID = $("device-id").value.trim();
+      const sinceID = Math.max(0, Number($("since-id").value || 0));
+      const pollTimeout = Math.max(1, Number($("poll-timeout").value || 20));
+
+      const url = new URL(raw);
+      url.searchParams.set("since_id", String(sinceID));
+      url.searchParams.set("poll_timeout", String(pollTimeout));
+      url.searchParams.set("poll_interval", "0.25");
+      if (token) url.searchParams.set("token", token);
+      if (deviceID) url.searchParams.set("device_id", deviceID);
+      return url.toString();
+    }
+
+    function connect() {
+      if (socket && socket.readyState === WebSocket.OPEN) {
+        appendLog("info", "already connected");
+        return;
+      }
+
+      const wsURL = buildWSURL();
+      appendLog("connect", { wsURL });
+      socket = new WebSocket(wsURL);
+
+      socket.onopen = () => {
+        setStatus("Connected", "ok");
+      };
+      socket.onclose = (event) => {
+        setStatus(`Disconnected (${event.code})`, "bad");
+        appendLog("close", { code: event.code, reason: event.reason });
+      };
+      socket.onerror = () => {
+        setStatus("Connection error", "bad");
+      };
+      socket.onmessage = (event) => {
+        try {
+          const parsed = JSON.parse(event.data);
+          appendLog(parsed.type || "message", parsed);
+        } catch {
+          appendLog("message", event.data);
+        }
+      };
+    }
+
+    function disconnect() {
+      if (!socket) return;
+      socket.close(1000, "manual disconnect");
+      socket = null;
+    }
+
+    function send(obj) {
+      if (!socket || socket.readyState !== WebSocket.OPEN) {
+        appendLog("error", "not connected");
+        return;
+      }
+      socket.send(JSON.stringify(obj));
+      appendLog("send", obj);
+    }
+
+    $("connect-btn").addEventListener("click", connect);
+    $("disconnect-btn").addEventListener("click", disconnect);
+
+    $("ping-btn").addEventListener("click", () => {
+      send({ type: "ping", id: `ping-${Date.now()}` });
+    });
+
+    $("set-since-btn").addEventListener("click", () => {
+      const value = Math.max(0, Number($("cursor-id").value || 0));
+      send({ type: "set_since_id", id: `cursor-${Date.now()}`, since_id: value });
+      $("since-id").value = String(value);
+    });
+
+    $("send-command-btn").addEventListener("click", () => {
+      let body = null;
+      const rawBody = $("command-body").value.trim();
+      if (rawBody) {
+        try {
+          body = JSON.parse(rawBody);
+        } catch (err) {
+          appendLog("error", `invalid JSON body: ${String(err)}`);
+          return;
+        }
+      }
+
+      const msg = {
+        type: "command",
+        id: $("command-id").value.trim() || `cmd-${commandCounter++}`,
+        method: $("command-method").value.trim(),
+        path: $("command-path").value.trim(),
+      };
+      const idem = $("idem-key").value.trim();
+      if (idem) msg.idempotency_key = idem;
+      if (body !== null) msg.body = body;
+      send(msg);
+    });
+
+    appendLog("ready", "Console loaded");
+  </script>
+</body>
+</html>

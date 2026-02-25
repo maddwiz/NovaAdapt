@@ -30,6 +30,8 @@ Implemented now:
   - Records each action in a local undo queue database.
   - Exposes HTTP API with optional bearer auth and async jobs.
 - `bridge` relay service in Go for secure remote forwarding into core API.
+  - Includes realtime WebSocket control channel (`/ws`) for events + command relay.
+- `view` static realtime console UI for bridge operations (`view/realtime_console.html`).
 
 Planned next:
 
@@ -43,8 +45,8 @@ Planned next:
 NovaAdapt/
 ├── core/          # Desktop orchestrator + DirectShell adapter
 ├── vibe/          # Glasses bridge (placeholder for phase 2)
-├── view/          # iPhone companion app (placeholder for phase 3)
-├── bridge/        # Secure relay server (placeholder)
+├── view/          # Realtime operator console + iPhone module seed
+├── bridge/        # Secure relay server (Go, production-ready)
 ├── shared/        # Model router + memory/security primitives
 ├── installer/     # Desktop setup scripts
 ├── config/        # Example model and runtime configuration
@@ -267,6 +269,15 @@ Bridge realtime control endpoint:
 
 - `GET /ws` (WebSocket; streams audit events and accepts authenticated command/approval requests)
 - Browser/native friendly auth query: `/ws?token=...` (and `/ws?...&device_id=...` when device allowlist is enabled)
+
+Realtime operator console:
+
+```bash
+cd view
+python3 -m http.server 8088
+```
+
+Open `http://127.0.0.1:8088/realtime_console.html`.
 
 ## Model-Agnostic Design
 
