@@ -17,6 +17,9 @@ Supported action types:
 - `run_shell`
 - `note`
 
+Linux note:
+- `type`, `key`, `hotkey`, and `click` use `xdotool`; install it for full Linux desktop action support.
+
 ## Optional External Transports
 
 - `native` (default): built-in NovaAdapt runtime

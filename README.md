@@ -552,6 +552,9 @@ Built-in native action types:
 - `run_shell`
 - `note`
 
+Platform notes:
+- Linux `type`/`key`/`hotkey`/`click` require `xdotool` installed and available in `PATH`.
+
 ## Security Baseline
 
 - Dry-run by default.

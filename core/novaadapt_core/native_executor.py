@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 import shlex
+import shutil
 import subprocess
 import sys
 import time
@@ -36,6 +37,28 @@ _APPLE_KEY_CODES = {
     "down": 125,
     "left": 123,
     "right": 124,
+}
+
+_XDOTOOL_KEY_ALIASES = {
+    "enter": "Return",
+    "return": "Return",
+    "tab": "Tab",
+    "space": "space",
+    "esc": "Escape",
+    "escape": "Escape",
+    "delete": "BackSpace",
+    "backspace": "BackSpace",
+    "up": "Up",
+    "down": "Down",
+    "left": "Left",
+    "right": "Right",
+    "cmd": "super",
+    "command": "super",
+    "ctrl": "ctrl",
+    "control": "ctrl",
+    "alt": "alt",
+    "option": "alt",
+    "shift": "shift",
 }
 
 
@@ -114,12 +137,18 @@ class NativeDesktopExecutor:
             }
 
         if self._is_linux():
+            has_xdotool = self._linux_has_xdotool()
             return {
                 "ok": True,
                 "transport": "native",
                 "platform": self.platform_name,
                 "capabilities": capabilities,
-                "output": "linux native execution available (requires xdotool for click/key/hotkey)",
+                "output": (
+                    "linux native execution available"
+                    if has_xdotool
+                    else "linux native execution available (limited: install xdotool for type/key/hotkey/click)"
+                ),
+                "xdotool_available": has_xdotool,
             }
 
         if self._is_windows():
@@ -205,9 +234,14 @@ class NativeDesktopExecutor:
             script = f'tell application "System Events" to keystroke "{self._escape_applescript_string(text)}"'
             completed = self._run_subprocess(["osascript", "-e", script], shell=False)
             return self._result_from_completed(completed)
+        if self._is_linux():
+            if not self._linux_has_xdotool():
+                return NativeExecutionResult(status="failed", output="type on linux requires 'xdotool' in PATH")
+            completed = self._run_subprocess(["xdotool", "type", "--delay", "1", "--", text], shell=False)
+            return self._result_from_completed(completed)
         return NativeExecutionResult(
             status="failed",
-            output=f"type is only implemented for macOS native runtime (platform={self.platform_name})",
+            output=f"type is only implemented for macOS/linux native runtime (platform={self.platform_name})",
         )
 
     def _execute_key(self, action: dict[str, Any]) -> NativeExecutionResult:
@@ -218,9 +252,15 @@ class NativeDesktopExecutor:
             script = self._apple_key_script(key, modifiers=[])
             completed = self._run_subprocess(["osascript", "-e", script], shell=False)
             return self._result_from_completed(completed)
+        if self._is_linux():
+            if not self._linux_has_xdotool():
+                return NativeExecutionResult(status="failed", output="key on linux requires 'xdotool' in PATH")
+            resolved_key = self._xdotool_key_name(key)
+            completed = self._run_subprocess(["xdotool", "key", resolved_key], shell=False)
+            return self._result_from_completed(completed)
         return NativeExecutionResult(
             status="failed",
-            output=f"key is only implemented for macOS native runtime (platform={self.platform_name})",
+            output=f"key is only implemented for macOS/linux native runtime (platform={self.platform_name})",
         )
 
     def _execute_hotkey(self, action: dict[str, Any]) -> NativeExecutionResult:
@@ -236,9 +276,18 @@ class NativeDesktopExecutor:
             script = self._apple_key_script(key, modifiers=modifiers)
             completed = self._run_subprocess(["osascript", "-e", script], shell=False)
             return self._result_from_completed(completed)
+        if self._is_linux():
+            if not self._linux_has_xdotool():
+                return NativeExecutionResult(status="failed", output="hotkey on linux requires 'xdotool' in PATH")
+            parts = [item.strip() for item in chord.split("+") if item.strip()]
+            if not parts:
+                return NativeExecutionResult(status="failed", output=f"invalid hotkey: {chord}")
+            resolved = [self._xdotool_key_name(item.lower()) for item in parts]
+            completed = self._run_subprocess(["xdotool", "key", "+".join(resolved)], shell=False)
+            return self._result_from_completed(completed)
         return NativeExecutionResult(
             status="failed",
-            output=f"hotkey is only implemented for macOS native runtime (platform={self.platform_name})",
+            output=f"hotkey is only implemented for macOS/linux native runtime (platform={self.platform_name})",
         )
 
     def _execute_click(self, action: dict[str, Any]) -> NativeExecutionResult:
@@ -256,9 +305,14 @@ class NativeDesktopExecutor:
             script = f'tell application "System Events" to click at {{{x}, {y}}}'
             completed = self._run_subprocess(["osascript", "-e", script], shell=False)
             return self._result_from_completed(completed)
+        if self._is_linux():
+            if not self._linux_has_xdotool():
+                return NativeExecutionResult(status="failed", output="click on linux requires 'xdotool' in PATH")
+            completed = self._run_subprocess(["xdotool", "mousemove", str(x), str(y), "click", "1"], shell=False)
+            return self._result_from_completed(completed)
         return NativeExecutionResult(
             status="failed",
-            output=f"click is only implemented for macOS native runtime (platform={self.platform_name})",
+            output=f"click is only implemented for macOS/linux native runtime (platform={self.platform_name})",
         )
 
     def _execute_run_shell(self, action: dict[str, Any]) -> NativeExecutionResult:
@@ -341,3 +395,12 @@ class NativeDesktopExecutor:
 
     def _is_windows(self) -> bool:
         return self.platform_name.startswith("win")
+
+    def _linux_has_xdotool(self) -> bool:
+        return shutil.which("xdotool") is not None
+
+    @staticmethod
+    def _xdotool_key_name(key: str) -> str:
+        if len(key) == 1:
+            return key
+        return _XDOTOOL_KEY_ALIASES.get(key, key)
