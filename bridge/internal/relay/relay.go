@@ -272,6 +272,9 @@ func (h *Handler) forward(r *http.Request, requestID string, body []byte) (int, 
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Request-ID", requestID)
+	if idem := strings.TrimSpace(r.Header.Get("Idempotency-Key")); idem != "" {
+		req.Header.Set("Idempotency-Key", idem)
+	}
 	if strings.TrimSpace(h.cfg.CoreToken) != "" {
 		req.Header.Set("Authorization", "Bearer "+h.cfg.CoreToken)
 	}

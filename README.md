@@ -149,6 +149,7 @@ API endpoints:
 - `POST /check` with JSON payload
 
 Core API responses include `X-Request-ID` for tracing (and object responses also include `request_id` in JSON).
+Mutating POST routes support idempotency via `Idempotency-Key`; replayed responses return `X-Idempotency-Replayed: true`.
 
 When token auth is enabled, browser dashboard usage supports:
 
@@ -286,6 +287,7 @@ Environment variables:
 - Bridge relay forwards `/openapi.json` so remote clients can discover contract shape.
 - Bridge relay forwards `/dashboard` HTML for secure remote browser access.
 - Core API supports configurable request rate limiting and max body size on `serve`.
+- Core API supports persisted idempotency keys on `serve` (`--idempotency-db-path`) to prevent duplicate mutations on retries.
 - Async job records can be persisted to SQLite (`--jobs-db-path`) for restart-safe history.
 - Plan approval records can be persisted to SQLite (`--plans-db-path`) for restart-safe approvals/audits.
 

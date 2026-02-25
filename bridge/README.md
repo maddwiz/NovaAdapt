@@ -8,6 +8,7 @@ Secure relay service for remote clients (phone/glasses) to reach NovaAdapt core.
 - Token-authenticated ingress (bridge token)
 - Token-authenticated upstream calls to core API (core token)
 - Request-id tracing (`X-Request-ID`) propagated to core
+- Idempotency key forwarding (`Idempotency-Key`) propagated to core
 - Optional deep health probe (`/health?deep=1`) to verify core reachability
 - Graceful shutdown on `SIGINT`/`SIGTERM`
 - Metrics endpoint (`/metrics`) for request/unauthorized/upstream-error counters

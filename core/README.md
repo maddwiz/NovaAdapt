@@ -15,5 +15,6 @@ Contains:
 - Persisted approval-plan workflow (`/plans`, `approve`, `reject`).
 - Optional bearer auth guard on API routes.
 - Optional request rate limiting and max body-size enforcement.
+- Optional idempotency key store for mutating POST routes.
 - Core metrics endpoint (`/metrics`) for API counters.
 - Dashboard JSON endpoint (`/dashboard/data`) for live UI polling.

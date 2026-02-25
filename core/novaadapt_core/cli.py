@@ -179,6 +179,12 @@ def _build_parser() -> argparse.ArgumentParser:
         default=default_plans_db,
         help="Path to persisted approval plans SQLite database",
     )
+    serve_cmd.add_argument(
+        "--idempotency-db-path",
+        type=Path,
+        default=Path(os.getenv("NOVAADAPT_IDEMPOTENCY_DB", str(Path.home() / ".novaadapt" / "idempotency.db"))),
+        help="Path to idempotency key SQLite database",
+    )
     serve_cmd.add_argument("--host", default="127.0.0.1")
     serve_cmd.add_argument("--port", type=int, default=8787)
     serve_cmd.add_argument(
@@ -238,6 +244,7 @@ def main() -> None:
                 rate_limit_burst=args.rate_limit_burst,
                 max_request_body_bytes=max(1, int(args.max_body_bytes)),
                 jobs_db_path=str(args.jobs_db_path),
+                idempotency_db_path=str(args.idempotency_db_path),
             )
             return
 

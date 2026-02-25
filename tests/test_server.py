@@ -359,13 +359,74 @@ class ServerTests(unittest.TestCase):
                 server.server_close()
                 thread.join(timeout=2)
 
+    def test_idempotency_replay_and_conflict(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            service = NovaAdaptService(
+                default_config=Path("unused.json"),
+                db_path=Path(tmp) / "actions.db",
+                plans_db_path=Path(tmp) / "plans.db",
+                router_loader=lambda _path: _StubRouter(),
+                directshell_factory=_StubDirectShell,
+            )
+            server = create_server(
+                "127.0.0.1",
+                0,
+                service,
+                api_token="secret",
+                jobs_db_path=str(Path(tmp) / "jobs.db"),
+                idempotency_db_path=str(Path(tmp) / "idempotency.db"),
+            )
+            host, port = server.server_address
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+
+            try:
+                first, _ = _post_json_with_headers(
+                    f"http://{host}:{port}/run_async",
+                    {"objective": "click ok"},
+                    token="secret",
+                    idempotency_key="idem-1",
+                )
+                second, headers = _post_json_with_headers(
+                    f"http://{host}:{port}/run_async",
+                    {"objective": "click ok"},
+                    token="secret",
+                    idempotency_key="idem-1",
+                )
+                self.assertEqual(first["job_id"], second["job_id"])
+                self.assertEqual(headers.get("X-Idempotency-Replayed"), "true")
+                self.assertEqual(headers.get("Idempotency-Key"), "idem-1")
+
+                with self.assertRaises(error.HTTPError) as err:
+                    _post_json(
+                        f"http://{host}:{port}/run_async",
+                        {"objective": "different"},
+                        token="secret",
+                        idempotency_key="idem-1",
+                    )
+                self.assertEqual(err.exception.code, 409)
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=2)
+
 
 def _get_json(url: str, token: str | None = None):
     return _get_json_with_headers(url=url, token=token)[0]
 
 
-def _post_json(url: str, payload: dict, token: str | None = None):
-    return _post_json_with_headers(url=url, payload=payload, token=token)[0]
+def _post_json(
+    url: str,
+    payload: dict,
+    token: str | None = None,
+    idempotency_key: str | None = None,
+):
+    return _post_json_with_headers(
+        url=url,
+        payload=payload,
+        token=token,
+        idempotency_key=idempotency_key,
+    )[0]
 
 
 def _get_text(url: str, token: str | None = None):
@@ -394,6 +455,7 @@ def _post_json_with_headers(
     payload: dict,
     token: str | None = None,
     request_id: str | None = None,
+    idempotency_key: str | None = None,
 ):
     data = json.dumps(payload).encode("utf-8")
     headers = {"Content-Type": "application/json"}
@@ -401,6 +463,8 @@ def _post_json_with_headers(
         headers["Authorization"] = f"Bearer {token}"
     if request_id:
         headers["X-Request-ID"] = request_id
+    if idempotency_key:
+        headers["Idempotency-Key"] = idempotency_key
     req = request.Request(
         url=url,
         data=data,

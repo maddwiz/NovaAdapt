@@ -139,12 +139,25 @@ if [[ "$missing_plan_undo_status" != "400" ]]; then
   exit 1
 fi
 
+idem_key="smoke-idem-run-1"
 queued_job=$(curl -sS \
   -H "Authorization: Bearer ${BRIDGE_TOKEN}" \
+  -H "Idempotency-Key: ${idem_key}" \
   -H "Content-Type: application/json" \
   -d '{"objective":"Smoke test objective"}' \
   "http://127.0.0.1:${BRIDGE_PORT}/run_async")
 job_id=$(echo "$queued_job" | python3 -c 'import json,sys; data=json.load(sys.stdin); print(data["job_id"])')
+queued_job_replay=$(curl -sS \
+  -H "Authorization: Bearer ${BRIDGE_TOKEN}" \
+  -H "Idempotency-Key: ${idem_key}" \
+  -H "Content-Type: application/json" \
+  -d '{"objective":"Smoke test objective"}' \
+  "http://127.0.0.1:${BRIDGE_PORT}/run_async")
+job_id_replay=$(echo "$queued_job_replay" | python3 -c 'import json,sys; data=json.load(sys.stdin); print(data["job_id"])')
+if [[ "$job_id" != "$job_id_replay" ]]; then
+  echo "Expected idempotent replay job_id match, got $job_id vs $job_id_replay"
+  exit 1
+fi
 
 cancel_result=$(curl -sS \
   -H "Authorization: Bearer ${BRIDGE_TOKEN}" \

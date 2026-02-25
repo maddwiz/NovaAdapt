@@ -78,6 +78,7 @@ func TestUnauthorized(t *testing.T) {
 }
 
 func TestForwardArrayWithAuthAndRequestID(t *testing.T) {
+	lastIdempotencyKey := ""
 	core := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer coresecret" {
 			w.WriteHeader(http.StatusUnauthorized)
@@ -100,6 +101,7 @@ func TestForwardArrayWithAuthAndRequestID(t *testing.T) {
 		case "/dashboard/data":
 			_, _ = w.Write([]byte(`{"health":{"ok":true},"jobs":[],"plans":[]}`))
 		case "/run_async":
+			lastIdempotencyKey = r.Header.Get("Idempotency-Key")
 			w.WriteHeader(http.StatusAccepted)
 			_, _ = w.Write([]byte(`{"job_id":"abc123","status":"queued"}`))
 		case "/jobs/abc123/cancel":
@@ -206,6 +208,7 @@ func TestForwardArrayWithAuthAndRequestID(t *testing.T) {
 	rrRun := httptest.NewRecorder()
 	reqRun := httptest.NewRequest(http.MethodPost, "/run_async", strings.NewReader(`{"objective":"test"}`))
 	reqRun.Header.Set("Authorization", "Bearer bridge")
+	reqRun.Header.Set("Idempotency-Key", "idem-bridge-1")
 	h.ServeHTTP(rrRun, reqRun)
 	if rrRun.Code != http.StatusAccepted {
 		t.Fatalf("expected 202 got %d body=%s", rrRun.Code, rrRun.Body.String())
@@ -216,6 +219,9 @@ func TestForwardArrayWithAuthAndRequestID(t *testing.T) {
 	}
 	if runPayload["request_id"] == "" {
 		t.Fatalf("expected request_id in object payload")
+	}
+	if lastIdempotencyKey != "idem-bridge-1" {
+		t.Fatalf("expected idempotency key forwarded, got %q", lastIdempotencyKey)
 	}
 
 	rrCancel := httptest.NewRecorder()

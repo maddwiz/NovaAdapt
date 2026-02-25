@@ -89,7 +89,14 @@ class _Handler(BaseHTTPRequestHandler):
             raw = self.rfile.read(length).decode("utf-8")
             payload = json.loads(raw)
             if self.path == "/run":
-                self._send(200, {"status": "ok", "objective": payload.get("objective")})
+                self._send(
+                    200,
+                    {
+                        "status": "ok",
+                        "objective": payload.get("objective"),
+                        "idempotency": self.headers.get("Idempotency-Key"),
+                    },
+                )
             elif self.path == "/run_async":
                 self._send(202, {"job_id": "job-1", "status": "queued"})
             elif self.path == "/jobs/job-1/cancel":
@@ -143,7 +150,7 @@ class APIClientTests(unittest.TestCase):
         self.assertTrue(client.health()["ok"])
         self.assertEqual(client.openapi()["openapi"], "3.1.0")
         self.assertEqual(client.models()[0]["name"], "local")
-        self.assertEqual(client.run("demo")["status"], "ok")
+        self.assertEqual(client.run("demo", idempotency_key="idem-1")["idempotency"], "idem-1")
         self.assertEqual(client.run_async("demo")["status"], "queued")
         self.assertEqual(client.jobs(limit=5)[0]["id"], "job-1")
         self.assertEqual(client.job("job-1")["status"], "succeeded")

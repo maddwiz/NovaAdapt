@@ -37,23 +37,23 @@ class NovaAdaptAPIClient:
         body = {"models": models or [], "probe": probe}
         return self._post_json("/check", body)
 
-    def run(self, objective: str, **kwargs: Any) -> dict[str, Any]:
+    def run(self, objective: str, idempotency_key: str | None = None, **kwargs: Any) -> dict[str, Any]:
         body = {"objective": objective, **kwargs}
-        payload = self._post_json("/run", body)
+        payload = self._post_json("/run", body, idempotency_key=idempotency_key)
         if isinstance(payload, dict):
             return payload
         raise APIClientError("Expected object payload from /run")
 
-    def run_async(self, objective: str, **kwargs: Any) -> dict[str, Any]:
+    def run_async(self, objective: str, idempotency_key: str | None = None, **kwargs: Any) -> dict[str, Any]:
         body = {"objective": objective, **kwargs}
-        payload = self._post_json("/run_async", body)
+        payload = self._post_json("/run_async", body, idempotency_key=idempotency_key)
         if isinstance(payload, dict):
             return payload
         raise APIClientError("Expected object payload from /run_async")
 
-    def create_plan(self, objective: str, **kwargs: Any) -> dict[str, Any]:
+    def create_plan(self, objective: str, idempotency_key: str | None = None, **kwargs: Any) -> dict[str, Any]:
         body = {"objective": objective, **kwargs}
-        payload = self._post_json("/plans", body)
+        payload = self._post_json("/plans", body, idempotency_key=idempotency_key)
         if isinstance(payload, dict):
             return payload
         raise APIClientError("Expected object payload from /plans")
@@ -70,26 +70,47 @@ class NovaAdaptAPIClient:
             return payload
         raise APIClientError("Expected object payload from /plans/{id}")
 
-    def approve_plan(self, plan_id: str, **kwargs: Any) -> dict[str, Any]:
-        payload = self._post_json(f"/plans/{plan_id}/approve", kwargs)
+    def approve_plan(self, plan_id: str, idempotency_key: str | None = None, **kwargs: Any) -> dict[str, Any]:
+        payload = self._post_json(
+            f"/plans/{plan_id}/approve",
+            kwargs,
+            idempotency_key=idempotency_key,
+        )
         if isinstance(payload, dict):
             return payload
         raise APIClientError("Expected object payload from /plans/{id}/approve")
 
-    def approve_plan_async(self, plan_id: str, **kwargs: Any) -> dict[str, Any]:
-        payload = self._post_json(f"/plans/{plan_id}/approve_async", kwargs)
+    def approve_plan_async(self, plan_id: str, idempotency_key: str | None = None, **kwargs: Any) -> dict[str, Any]:
+        payload = self._post_json(
+            f"/plans/{plan_id}/approve_async",
+            kwargs,
+            idempotency_key=idempotency_key,
+        )
         if isinstance(payload, dict):
             return payload
         raise APIClientError("Expected object payload from /plans/{id}/approve_async")
 
-    def reject_plan(self, plan_id: str, reason: str | None = None) -> dict[str, Any]:
-        payload = self._post_json(f"/plans/{plan_id}/reject", {"reason": reason} if reason is not None else {})
+    def reject_plan(
+        self,
+        plan_id: str,
+        reason: str | None = None,
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        payload = self._post_json(
+            f"/plans/{plan_id}/reject",
+            {"reason": reason} if reason is not None else {},
+            idempotency_key=idempotency_key,
+        )
         if isinstance(payload, dict):
             return payload
         raise APIClientError("Expected object payload from /plans/{id}/reject")
 
-    def undo_plan(self, plan_id: str, **kwargs: Any) -> dict[str, Any]:
-        payload = self._post_json(f"/plans/{plan_id}/undo", kwargs)
+    def undo_plan(self, plan_id: str, idempotency_key: str | None = None, **kwargs: Any) -> dict[str, Any]:
+        payload = self._post_json(
+            f"/plans/{plan_id}/undo",
+            kwargs,
+            idempotency_key=idempotency_key,
+        )
         if isinstance(payload, dict):
             return payload
         raise APIClientError("Expected object payload from /plans/{id}/undo")
@@ -135,8 +156,12 @@ class NovaAdaptAPIClient:
                 current_event = "message"
         return events
 
-    def cancel_job(self, job_id: str) -> dict[str, Any]:
-        payload = self._post_json(f"/jobs/{job_id}/cancel", {})
+    def cancel_job(self, job_id: str, idempotency_key: str | None = None) -> dict[str, Any]:
+        payload = self._post_json(
+            f"/jobs/{job_id}/cancel",
+            {},
+            idempotency_key=idempotency_key,
+        )
         if isinstance(payload, dict):
             return payload
         raise APIClientError("Expected object payload from /jobs/{id}/cancel")
@@ -147,8 +172,8 @@ class NovaAdaptAPIClient:
             return payload
         raise APIClientError("Expected list payload from /history")
 
-    def undo(self, **kwargs: Any) -> dict[str, Any]:
-        payload = self._post_json("/undo", kwargs)
+    def undo(self, idempotency_key: str | None = None, **kwargs: Any) -> dict[str, Any]:
+        payload = self._post_json("/undo", kwargs, idempotency_key=idempotency_key)
         if isinstance(payload, dict):
             return payload
         raise APIClientError("Expected object payload from /undo")
@@ -159,12 +184,28 @@ class NovaAdaptAPIClient:
     def _get_json(self, path: str) -> Any:
         return self._request_json("GET", path, None)
 
-    def _post_json(self, path: str, body: dict[str, Any]) -> Any:
-        return self._request_json("POST", path, body)
+    def _post_json(
+        self,
+        path: str,
+        body: dict[str, Any],
+        idempotency_key: str | None = None,
+    ) -> Any:
+        return self._request_json("POST", path, body, idempotency_key=idempotency_key)
 
-    def _request_json(self, method: str, path: str, body: dict[str, Any] | None) -> Any:
+    def _request_json(
+        self,
+        method: str,
+        path: str,
+        body: dict[str, Any] | None,
+        idempotency_key: str | None = None,
+    ) -> Any:
         payload = None if body is None else json.dumps(body).encode("utf-8")
-        raw = self._perform_request_with_retries(method=method, path=path, payload=payload)
+        raw = self._perform_request_with_retries(
+            method=method,
+            path=path,
+            payload=payload,
+            idempotency_key=idempotency_key,
+        )
 
         try:
             return json.loads(raw)
@@ -174,11 +215,22 @@ class NovaAdaptAPIClient:
     def _request_text(self, method: str, path: str) -> str:
         return self._perform_request_with_retries(method=method, path=path, payload=None)
 
-    def _perform_request_with_retries(self, method: str, path: str, payload: bytes | None) -> str:
+    def _perform_request_with_retries(
+        self,
+        method: str,
+        path: str,
+        payload: bytes | None,
+        idempotency_key: str | None = None,
+    ) -> str:
         attempts = max(0, int(self.max_retries)) + 1
         last_error: Exception | None = None
         for attempt in range(attempts):
-            req = self._build_request(method=method, path=path, payload=payload)
+            req = self._build_request(
+                method=method,
+                path=path,
+                payload=payload,
+                idempotency_key=idempotency_key,
+            )
             try:
                 with request.urlopen(req, timeout=self.timeout_seconds) as response:
                     return response.read().decode("utf-8")
@@ -199,12 +251,20 @@ class NovaAdaptAPIClient:
 
         raise APIClientError(str(last_error) if last_error else "Request failed")
 
-    def _build_request(self, method: str, path: str, payload: bytes | None) -> request.Request:
+    def _build_request(
+        self,
+        method: str,
+        path: str,
+        payload: bytes | None,
+        idempotency_key: str | None = None,
+    ) -> request.Request:
         url = f"{self.base_url.rstrip('/')}{path}"
         headers = {
             "Content-Type": "application/json",
             "X-Request-ID": secrets.token_hex(12),
         }
+        if idempotency_key:
+            headers["Idempotency-Key"] = idempotency_key
         if self.token:
             headers["Authorization"] = f"Bearer {self.token}"
         return request.Request(url=url, data=payload, headers=headers, method=method)

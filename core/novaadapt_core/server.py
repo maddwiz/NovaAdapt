@@ -10,6 +10,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 from .dashboard import render_dashboard_html
+from .idempotency_store import IdempotencyStore
 from .job_store import JobStore
 from .jobs import JobManager
 from .openapi import build_openapi_spec
@@ -102,8 +103,10 @@ def create_server(
     rate_limit_burst: int | None = None,
     max_request_body_bytes: int = DEFAULT_MAX_REQUEST_BODY_BYTES,
     jobs_db_path: str | None = None,
+    idempotency_db_path: str | None = None,
 ) -> ThreadingHTTPServer:
     managed_jobs = job_manager or JobManager(store=JobStore(jobs_db_path) if jobs_db_path else None)
+    idempotency_store = IdempotencyStore(idempotency_db_path) if idempotency_db_path else None
     metrics = _RequestMetrics()
 
     limiter = None
@@ -118,6 +121,7 @@ def create_server(
         log_requests=log_requests,
         logger=logger or logging.getLogger("novaadapt.api"),
         limiter=limiter,
+        idempotency_store=idempotency_store,
         metrics=metrics,
         max_request_body_bytes=max(1, int(max_request_body_bytes)),
     )
@@ -135,6 +139,7 @@ def run_server(
     rate_limit_burst: int | None = None,
     max_request_body_bytes: int = DEFAULT_MAX_REQUEST_BODY_BYTES,
     jobs_db_path: str | None = None,
+    idempotency_db_path: str | None = None,
 ) -> None:
     server = create_server(
         host=host,
@@ -147,6 +152,7 @@ def run_server(
         rate_limit_burst=rate_limit_burst,
         max_request_body_bytes=max_request_body_bytes,
         jobs_db_path=jobs_db_path,
+        idempotency_db_path=idempotency_db_path,
     )
     try:
         server.serve_forever()
@@ -163,6 +169,7 @@ def _build_handler(
     log_requests: bool,
     logger: logging.Logger,
     limiter: _SlidingWindowRateLimiter | None,
+    idempotency_store: IdempotencyStore | None,
     metrics: _RequestMetrics,
     max_request_body_bytes: int,
 ):
@@ -350,19 +357,31 @@ def _build_handler(
                         status_code = 404
                         self._send_json(status_code, {"error": "Not found"})
                         return
-                    canceled = job_manager.cancel(job_id)
-                    if canceled is None:
-                        status_code = 404
-                        self._send_json(status_code, {"error": "Job not found"})
-                        return
-                    status_code = 200
-                    self._send_json(status_code, canceled)
+                    status_code, response_payload, replayed = self._execute_idempotent(
+                        path,
+                        payload,
+                        lambda: self._cancel_job(job_id),
+                    )
+                    self._send_json(
+                        status_code,
+                        response_payload,
+                        replayed=replayed,
+                        idempotency_key=self._idempotency_key(),
+                    )
                     return
 
                 if path == "/plans":
-                    created = service.create_plan(payload)
-                    status_code = 201
-                    self._send_json(status_code, created)
+                    status_code, response_payload, replayed = self._execute_idempotent(
+                        path,
+                        payload,
+                        lambda: (201, service.create_plan(payload)),
+                    )
+                    self._send_json(
+                        status_code,
+                        response_payload,
+                        replayed=replayed,
+                        idempotency_key=self._idempotency_key(),
+                    )
                     return
 
                 if path.startswith("/plans/") and path.endswith("/approve"):
@@ -371,8 +390,17 @@ def _build_handler(
                         status_code = 404
                         self._send_json(status_code, {"error": "Not found"})
                         return
-                    status_code = 200
-                    self._send_json(status_code, service.approve_plan(plan_id, payload))
+                    status_code, response_payload, replayed = self._execute_idempotent(
+                        path,
+                        payload,
+                        lambda: (200, service.approve_plan(plan_id, payload)),
+                    )
+                    self._send_json(
+                        status_code,
+                        response_payload,
+                        replayed=replayed,
+                        idempotency_key=self._idempotency_key(),
+                    )
                     return
 
                 if path.startswith("/plans/") and path.endswith("/approve_async"):
@@ -381,11 +409,23 @@ def _build_handler(
                         status_code = 404
                         self._send_json(status_code, {"error": "Not found"})
                         return
-                    job_id = job_manager.submit(service.approve_plan, plan_id, payload)
-                    status_code = 202
+                    status_code, response_payload, replayed = self._execute_idempotent(
+                        path,
+                        payload,
+                        lambda: (
+                            202,
+                            {
+                                "job_id": job_manager.submit(service.approve_plan, plan_id, payload),
+                                "status": "queued",
+                                "kind": "plan_approval",
+                            },
+                        ),
+                    )
                     self._send_json(
                         status_code,
-                        {"job_id": job_id, "status": "queued", "kind": "plan_approval"},
+                        response_payload,
+                        replayed=replayed,
+                        idempotency_key=self._idempotency_key(),
                     )
                     return
 
@@ -396,10 +436,19 @@ def _build_handler(
                         self._send_json(status_code, {"error": "Not found"})
                         return
                     reason = payload.get("reason")
-                    status_code = 200
+                    status_code, response_payload, replayed = self._execute_idempotent(
+                        path,
+                        payload,
+                        lambda: (
+                            200,
+                            service.reject_plan(plan_id, reason=str(reason) if reason is not None else None),
+                        ),
+                    )
                     self._send_json(
                         status_code,
-                        service.reject_plan(plan_id, reason=str(reason) if reason is not None else None),
+                        response_payload,
+                        replayed=replayed,
+                        idempotency_key=self._idempotency_key(),
                     )
                     return
 
@@ -409,24 +458,62 @@ def _build_handler(
                         status_code = 404
                         self._send_json(status_code, {"error": "Not found"})
                         return
-                    status_code = 200
-                    self._send_json(status_code, service.undo_plan(plan_id, payload))
+                    status_code, response_payload, replayed = self._execute_idempotent(
+                        path,
+                        payload,
+                        lambda: (200, service.undo_plan(plan_id, payload)),
+                    )
+                    self._send_json(
+                        status_code,
+                        response_payload,
+                        replayed=replayed,
+                        idempotency_key=self._idempotency_key(),
+                    )
                     return
 
                 if path == "/run":
-                    status_code = 200
-                    self._send_json(status_code, service.run(payload))
+                    status_code, response_payload, replayed = self._execute_idempotent(
+                        path,
+                        payload,
+                        lambda: (200, service.run(payload)),
+                    )
+                    self._send_json(
+                        status_code,
+                        response_payload,
+                        replayed=replayed,
+                        idempotency_key=self._idempotency_key(),
+                    )
                     return
 
                 if path == "/run_async":
-                    job_id = job_manager.submit(service.run, payload)
-                    status_code = 202
-                    self._send_json(status_code, {"job_id": job_id, "status": "queued"})
+                    status_code, response_payload, replayed = self._execute_idempotent(
+                        path,
+                        payload,
+                        lambda: (
+                            202,
+                            {"job_id": job_manager.submit(service.run, payload), "status": "queued"},
+                        ),
+                    )
+                    self._send_json(
+                        status_code,
+                        response_payload,
+                        replayed=replayed,
+                        idempotency_key=self._idempotency_key(),
+                    )
                     return
 
                 if path == "/undo":
-                    status_code = 200
-                    self._send_json(status_code, service.undo(payload))
+                    status_code, response_payload, replayed = self._execute_idempotent(
+                        path,
+                        payload,
+                        lambda: (200, service.undo(payload)),
+                    )
+                    self._send_json(
+                        status_code,
+                        response_payload,
+                        replayed=replayed,
+                        idempotency_key=self._idempotency_key(),
+                    )
                     return
 
                 if path == "/check":
@@ -498,7 +585,14 @@ def _build_handler(
                 return value
             raise ValueError("Request JSON body must be an object")
 
-        def _send_json(self, status_code: int, payload: object, unauthorized: bool = False) -> None:
+        def _send_json(
+            self,
+            status_code: int,
+            payload: object,
+            unauthorized: bool = False,
+            replayed: bool = False,
+            idempotency_key: str | None = None,
+        ) -> None:
             if isinstance(payload, dict):
                 payload = dict(payload)
                 payload.setdefault("request_id", self._request_id)
@@ -506,6 +600,10 @@ def _build_handler(
             self.send_response(status_code)
             self.send_header("Content-Type", "application/json")
             self.send_header("X-Request-ID", self._request_id)
+            if replayed:
+                self.send_header("X-Idempotency-Replayed", "true")
+            if idempotency_key:
+                self.send_header("Idempotency-Key", idempotency_key)
             if unauthorized:
                 self.send_header("WWW-Authenticate", "Bearer")
             self.send_header("Content-Length", str(len(encoded)))
@@ -529,6 +627,72 @@ def _build_handler(
             self.send_header("Content-Length", str(len(encoded)))
             self.end_headers()
             self.wfile.write(encoded)
+
+        def _cancel_job(self, job_id: str) -> tuple[int, object]:
+            canceled = job_manager.cancel(job_id)
+            if canceled is None:
+                return 404, {"error": "Job not found"}
+            return 200, canceled
+
+        def _idempotency_key(self) -> str | None:
+            value = self.headers.get("Idempotency-Key", "").strip()
+            if value:
+                return value
+            return None
+
+        @staticmethod
+        def _is_idempotent_route(path: str) -> bool:
+            if path in {"/run", "/run_async", "/undo", "/plans"}:
+                return True
+            if path.startswith("/jobs/") and path.endswith("/cancel"):
+                return True
+            if path.startswith("/plans/") and (
+                path.endswith("/approve")
+                or path.endswith("/approve_async")
+                or path.endswith("/reject")
+                or path.endswith("/undo")
+            ):
+                return True
+            return False
+
+        def _execute_idempotent(
+            self,
+            path: str,
+            payload: dict[str, object],
+            operation,
+        ) -> tuple[int, object, bool]:
+            key = self._idempotency_key()
+            if idempotency_store is None or key is None or not self._is_idempotent_route(path):
+                status_code, response_payload = operation()
+                return int(status_code), response_payload, False
+
+            state, record = idempotency_store.begin(
+                key=key,
+                method="POST",
+                path=path,
+                payload=payload,
+            )
+            if state == "replay":
+                replay_status = int(record["status_code"]) if record else 200
+                replay_payload = record["payload"] if record else {}
+                return replay_status, replay_payload, True
+            if state in {"conflict", "in_progress"}:
+                return 409, {"error": record["error"] if record else "Idempotency conflict"}, False
+
+            try:
+                status_code, response_payload = operation()
+            except Exception:
+                idempotency_store.clear(key=key, method="POST", path=path)
+                raise
+
+            idempotency_store.complete(
+                key=key,
+                method="POST",
+                path=path,
+                status_code=int(status_code),
+                payload=response_payload,
+            )
+            return int(status_code), response_payload, False
 
         def _stream_job_events(self, job_id: str, timeout_seconds: float, interval_seconds: float) -> None:
             current = job_manager.get(job_id)
