@@ -6,7 +6,7 @@
 2. `ModelRouter` selects one model (`single`) with optional fallback chain, or collects multiple responses (`vote`).
 3. `NovaAdaptAgent` parses strict JSON action plans.
 4. `ActionPolicy` evaluates each action for risk before execution.
-5. `DirectShellClient` previews or executes each action (native, subprocess, HTTP, or daemon transport).
+5. `DirectShellClient` previews or executes each action (native, subprocess, HTTP, or daemon transport), with optional native->external fallback.
 6. `UndoQueue` stores every action, optional undo action, and status in local SQLite.
 7. Optional async runner (`/run_async`) executes long tasks through in-memory job manager.
 

@@ -187,9 +187,15 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     directshell_check_cmd.add_argument(
         "--transport",
-        choices=["subprocess", "http", "daemon"],
+        choices=["native", "subprocess", "http", "daemon"],
         default=None,
         help="Optional DirectShell transport override for probe",
+    )
+    directshell_check_cmd.add_argument(
+        "--native-fallback-transport",
+        choices=["subprocess", "http", "daemon"],
+        default=None,
+        help="Fallback transport used when native transport action execution fails",
     )
     directshell_check_cmd.add_argument(
         "--timeout-seconds",
@@ -598,6 +604,7 @@ def main() -> None:
         if args.command == "directshell-check":
             client = DirectShellClient(
                 transport=args.transport,
+                native_fallback_transport=args.native_fallback_transport,
                 timeout_seconds=max(1, int(args.timeout_seconds)),
             )
             print(json.dumps(client.probe(), indent=2))

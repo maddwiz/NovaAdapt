@@ -5,6 +5,7 @@ import unittest
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 from novaadapt_core.directshell import DirectShellClient
+from novaadapt_core.native_executor import NativeDesktopExecutor
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -93,9 +94,34 @@ class DirectShellClientTests(unittest.TestCase):
         self.assertIn("received:click", result.output)
 
     def test_rejects_unknown_transport(self):
-        client = DirectShellClient(transport="invalid")
         with self.assertRaises(RuntimeError):
-            client.execute_action({"type": "click", "target": "OK"}, dry_run=False)
+            DirectShellClient(transport="invalid")
+
+    def test_rejects_unknown_native_fallback_transport(self):
+        with self.assertRaises(RuntimeError):
+            DirectShellClient(transport="native", native_fallback_transport="invalid")
+
+    def test_native_transport_falls_back_to_http(self):
+        server = HTTPServer(("127.0.0.1", 0), _Handler)
+        port = server.server_port
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+
+        try:
+            client = DirectShellClient(
+                transport="native",
+                native_fallback_transport="http",
+                http_url=f"http://127.0.0.1:{port}/execute",
+            )
+            result = client.execute_action({"type": "click", "target": "OK"}, dry_run=False)
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=2)
+
+        self.assertEqual(result.status, "ok")
+        self.assertIn("received:click", result.output)
+        self.assertIn("native fallback after:", result.output)
 
     def test_daemon_transport_executes_action(self):
         server = _DaemonServer(("127.0.0.1", 0), _DaemonHandler)
@@ -163,6 +189,31 @@ class DirectShellClientTests(unittest.TestCase):
         probe = client.probe()
         self.assertFalse(probe["ok"])
         self.assertEqual(probe["transport"], "subprocess")
+
+    def test_probe_native_includes_fallback_probe(self):
+        server = HTTPServer(("127.0.0.1", 0), _Handler)
+        port = server.server_port
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+
+        try:
+            client = DirectShellClient(
+                transport="native",
+                native_executor=NativeDesktopExecutor(platform_name="plan9"),
+                native_fallback_transport="http",
+                http_url=f"http://127.0.0.1:{port}/execute",
+            )
+            probe = client.probe()
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=2)
+
+        self.assertTrue(probe["ok"])
+        self.assertEqual(probe["transport"], "native")
+        self.assertEqual(probe["fallback_transport"], "http")
+        self.assertIn("fallback_probe", probe)
+        self.assertTrue(probe["fallback_probe"]["ok"])
 
 
 if __name__ == "__main__":

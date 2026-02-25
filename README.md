@@ -503,6 +503,7 @@ Execution dependency:
 Environment variables:
 
 - `DIRECTSHELL_TRANSPORT` = `native`, `subprocess`, `http`, or `daemon`
+- `DIRECTSHELL_NATIVE_FALLBACK_TRANSPORT` = `subprocess`, `http`, or `daemon` (optional; only used when primary transport is `native`)
 - `DIRECTSHELL_BIN` (subprocess mode)
 - `DIRECTSHELL_HTTP_URL` (http mode, default `http://127.0.0.1:8765/execute`)
 - `DIRECTSHELL_DAEMON_SOCKET` (daemon Unix socket path, default `/tmp/directshell.sock`; set empty to force TCP)
@@ -512,6 +513,7 @@ Readiness probe:
 
 ```bash
 novaadapt directshell-check
+novaadapt directshell-check --transport native --native-fallback-transport http
 novaadapt directshell-check --transport daemon
 ```
 

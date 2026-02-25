@@ -34,6 +34,7 @@ class DirectShellClient:
         daemon_socket: str | None = None,
         daemon_host: str | None = None,
         daemon_port: int | None = None,
+        native_fallback_transport: str | None = None,
         native_executor: NativeDesktopExecutor | None = None,
         timeout_seconds: int = 30,
     ) -> None:
@@ -47,8 +48,28 @@ class DirectShellClient:
         )
         self.daemon_host = daemon_host or os.getenv("DIRECTSHELL_DAEMON_HOST", "127.0.0.1")
         self.daemon_port = int(os.getenv("DIRECTSHELL_DAEMON_PORT", "8766")) if daemon_port is None else int(daemon_port)
+        raw_fallback = (
+            os.getenv("DIRECTSHELL_NATIVE_FALLBACK_TRANSPORT", "")
+            if native_fallback_transport is None
+            else str(native_fallback_transport)
+        )
+        fallback = raw_fallback.strip().lower()
+        self.native_fallback_transport = fallback or None
+        if self.native_fallback_transport == "native":
+            self.native_fallback_transport = None
         self.timeout_seconds = timeout_seconds
         self.native_executor = native_executor or NativeDesktopExecutor(timeout_seconds=timeout_seconds)
+        self._supported_transports = {"native", "subprocess", "http", "daemon"}
+        if self.transport not in self._supported_transports:
+            raise RuntimeError(
+                f"Unsupported DirectShell transport '{self.transport}'. "
+                "Use 'native', 'subprocess', 'http', or 'daemon'."
+            )
+        if self.native_fallback_transport and self.native_fallback_transport not in self._supported_transports:
+            raise RuntimeError(
+                f"Unsupported DirectShell native fallback transport '{self.native_fallback_transport}'. "
+                "Use 'subprocess', 'http', or 'daemon'."
+            )
 
     def execute_action(self, action: dict[str, Any], dry_run: bool = True) -> ExecutionResult:
         if dry_run:
@@ -57,27 +78,41 @@ class DirectShellClient:
                 status="preview",
                 output=f"Preview only: {json.dumps(action, ensure_ascii=True)}",
             )
-
-        if self.transport == "http":
-            return self._execute_http(action)
-
-        if self.transport == "daemon":
-            return self._execute_daemon(action)
-
-        if self.transport == "native":
-            return self._execute_native(action)
-
-        if self.transport != "subprocess":
-            raise RuntimeError(
-                f"Unsupported DirectShell transport '{self.transport}'. Use 'native', 'subprocess', 'http', or 'daemon'."
+        primary = self._execute_with_transport(self.transport, action)
+        if (
+            self.transport == "native"
+            and self.native_fallback_transport
+            and str(primary.status).lower() != "ok"
+        ):
+            fallback = self._execute_with_transport(self.native_fallback_transport, action)
+            if str(fallback.status).lower() == "ok":
+                output = str(fallback.output or "").strip()
+                native_error = str(primary.output or "").strip()
+                if native_error:
+                    output = f"{output} (native fallback after: {native_error})".strip()
+                return ExecutionResult(action=action, status=fallback.status, output=output)
+            return ExecutionResult(
+                action=action,
+                status="failed",
+                output=(
+                    f"Native execution failed: {primary.output}; "
+                    f"fallback '{self.native_fallback_transport}' failed: {fallback.output}"
+                ),
             )
-
-        return self._execute_subprocess(action)
+        return primary
 
     def probe(self) -> dict[str, Any]:
         transport = self.transport
         if transport == "native":
-            return self._probe_native()
+            native_probe = self._probe_native()
+            if not self.native_fallback_transport:
+                return native_probe
+            fallback_probe = self._probe_transport(self.native_fallback_transport)
+            probe = dict(native_probe)
+            probe["fallback_transport"] = self.native_fallback_transport
+            probe["fallback_probe"] = fallback_probe
+            probe["ok"] = bool(native_probe.get("ok")) or bool(fallback_probe.get("ok"))
+            return probe
         if transport == "http":
             return self._probe_http()
         if transport == "daemon":
@@ -90,6 +125,34 @@ class DirectShellClient:
             "error": "unsupported transport",
             "supported_transports": ["native", "subprocess", "http", "daemon"],
         }
+
+    def _probe_transport(self, transport: str) -> dict[str, Any]:
+        if transport == "native":
+            return self._probe_native()
+        if transport == "subprocess":
+            return self._probe_subprocess()
+        if transport == "http":
+            return self._probe_http()
+        if transport == "daemon":
+            return self._probe_daemon()
+        return {
+            "ok": False,
+            "transport": transport,
+            "error": "unsupported transport",
+        }
+
+    def _execute_with_transport(self, transport: str, action: dict[str, Any]) -> ExecutionResult:
+        if transport == "native":
+            return self._execute_native(action)
+        if transport == "subprocess":
+            return self._execute_subprocess(action)
+        if transport == "http":
+            return self._execute_http(action)
+        if transport == "daemon":
+            return self._execute_daemon(action)
+        raise RuntimeError(
+            f"Unsupported DirectShell transport '{transport}'. Use 'native', 'subprocess', 'http', or 'daemon'."
+        )
 
     def _execute_native(self, action: dict[str, Any]) -> ExecutionResult:
         result = self.native_executor.execute_action(action)
