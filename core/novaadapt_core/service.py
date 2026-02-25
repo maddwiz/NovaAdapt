@@ -91,6 +91,45 @@ class NovaAdaptService:
             "error": "Memory backend returned invalid status payload",
         }
 
+    def memory_recall(self, query: str, *, top_k: int = 10) -> dict[str, Any]:
+        normalized_query = str(query or "").strip()
+        if not normalized_query:
+            raise ValueError("'query' is required")
+        normalized_top_k = max(1, min(100, int(top_k)))
+        rows = self.memory_backend.recall(normalized_query, top_k=normalized_top_k)
+        if not isinstance(rows, list):
+            rows = []
+        return {
+            "query": normalized_query,
+            "top_k": normalized_top_k,
+            "count": len(rows),
+            "memories": rows,
+        }
+
+    def memory_ingest(
+        self,
+        text: str,
+        *,
+        source_id: str = "",
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        normalized_text = str(text or "").strip()
+        if not normalized_text:
+            raise ValueError("'text' is required")
+        normalized_source = str(source_id or "").strip()
+        normalized_metadata = metadata if isinstance(metadata, dict) else {}
+        response = self.memory_backend.ingest(
+            normalized_text,
+            source_id=normalized_source,
+            metadata=normalized_metadata,
+        )
+        return {
+            "ok": True,
+            "source_id": normalized_source,
+            "metadata": normalized_metadata,
+            "result": response if isinstance(response, dict) else {},
+        }
+
     def plugins(self) -> list[dict[str, Any]]:
         return self.plugin_registry.list_plugins()
 

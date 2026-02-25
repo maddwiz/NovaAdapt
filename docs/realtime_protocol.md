@@ -102,8 +102,8 @@ Immediately after websocket upgrade, bridge emits:
 
 ## Scope Mapping
 
-- `read`: `/health`, `/models`, `/history`, `/events`, websocket audit stream
-- `run`: `/run`, `/run_async`
+- `read`: `/health`, `/models`, `/history`, `/events`, `/plugins`, `/plugins/{name}/health`, `/memory/status`, `/memory/recall`, `/terminal/sessions`, `/terminal/sessions/{id}`, `/terminal/sessions/{id}/output`, websocket audit stream
+- `run`: `/run`, `/run_async`, `/swarm/run`, `/feedback`, `/memory/ingest`, `/terminal/sessions` (POST), `/terminal/sessions/{id}/input`, `/terminal/sessions/{id}/close`, `/plugins/{name}/call`
 - `plan`: `/plans`, `/plans/{id}`
 - `approve`: `/plans/{id}/approve`, `/plans/{id}/approve_async`, `/plans/{id}/retry_failed_async`, `/plans/{id}/retry_failed`
 - `reject`: `/plans/{id}/reject`

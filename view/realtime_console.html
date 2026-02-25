@@ -3,7 +3,10 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#1f6f5f" />
   <title>NovaAdapt Realtime Console</title>
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.5.0/css/xterm.min.css" />
   <style>
     :root {
       --bg: #f3f0e9;
@@ -16,6 +19,7 @@
       --brand-2: #2f8f7c;
       --warn: #a34f2f;
       --ok: #1b7f52;
+      --terminal-bg: #101712;
     }
 
     * { box-sizing: border-box; }
@@ -33,7 +37,7 @@
     }
 
     .shell {
-      max-width: 1120px;
+      max-width: 1280px;
       margin: 0 auto;
       display: grid;
       gap: 14px;
@@ -62,7 +66,7 @@
     .grid {
       display: grid;
       gap: 14px;
-      grid-template-columns: 1.05fr 1fr;
+      grid-template-columns: 1fr 1fr;
     }
 
     .card {
@@ -90,6 +94,10 @@
 
     .row.single {
       grid-template-columns: 1fr;
+    }
+
+    .row.triple {
+      grid-template-columns: 1fr 1fr 1fr;
     }
 
     label {
@@ -170,8 +178,8 @@
       background: var(--panel-2);
       border-radius: 12px;
       padding: 10px;
-      min-height: 320px;
-      max-height: 560px;
+      min-height: 240px;
+      max-height: 460px;
       overflow: auto;
       font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
       font-size: 12px;
@@ -186,12 +194,45 @@
       font-size: 12px;
     }
 
+    .terminal-wrap {
+      border: 1px solid #1b2d22;
+      border-radius: 12px;
+      background: var(--terminal-bg);
+      min-height: 320px;
+      overflow: hidden;
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+    }
+
+    #terminal {
+      width: 100%;
+      height: 360px;
+      padding: 6px;
+    }
+
+    .split {
+      display: grid;
+      gap: 14px;
+      grid-template-columns: 1.2fr 1fr;
+    }
+
+    @media (max-width: 1100px) {
+      .split {
+        grid-template-columns: 1fr;
+      }
+    }
+
     @media (max-width: 900px) {
       .grid {
         grid-template-columns: 1fr;
       }
       .row {
         grid-template-columns: 1fr;
+      }
+      .row.triple {
+        grid-template-columns: 1fr;
+      }
+      #terminal {
+        height: 300px;
       }
     }
   </style>
@@ -200,7 +241,7 @@
   <div class="shell">
     <section class="header">
       <h1>NovaAdapt Realtime Console</h1>
-      <div class="sub">Bridge WebSocket control plane: live events, plan approvals, and command relay.</div>
+      <div class="sub">Bridge WebSocket control plane plus live terminal stdin/stdout streaming.</div>
     </section>
 
     <div class="grid">
@@ -229,7 +270,7 @@
           </div>
           <div>
             <label for="admin-token">Admin Token (for /auth/session)</label>
-            <input id="admin-token" placeholder="static bridge token or admin-scoped session token" />
+            <input id="admin-token" placeholder="static bridge token or admin session token" />
           </div>
         </div>
         <div class="row">
@@ -313,23 +354,98 @@
           <button class="brand" id="send-command-btn">Send Command</button>
           <button id="set-since-btn">Set Cursor</button>
         </div>
-        <div class="hint">Use paths supported by bridge relay (e.g. `/run_async`, `/plans/{id}/approve_async`, `/plans/{id}/retry_failed_async`, `/jobs/{id}/cancel`).</div>
+        <div class="hint">Forwarded routes include `/run*`, `/plans/*`, `/jobs/*`, `/plugins/*`, `/memory/*`, and `/terminal/sessions*`.</div>
       </section>
     </div>
 
-    <section class="card">
-      <h2>Event Log</h2>
-      <div class="log" id="log"></div>
-    </section>
+    <div class="split">
+      <section class="card">
+        <h2>Remote Terminal</h2>
+        <div class="row">
+          <div>
+            <label for="terminal-session-id">Session ID</label>
+            <input id="terminal-session-id" placeholder="auto-filled after start" />
+          </div>
+          <div>
+            <label for="terminal-poll-ms">Poll Interval (ms)</label>
+            <input id="terminal-poll-ms" type="number" value="250" min="75" max="2000" />
+          </div>
+        </div>
+        <div class="row triple">
+          <div>
+            <label for="terminal-command">Startup Command (optional)</label>
+            <input id="terminal-command" placeholder="e.g. htop" />
+          </div>
+          <div>
+            <label for="terminal-cwd">Working Directory (optional)</label>
+            <input id="terminal-cwd" placeholder="/Users/desmondpottle/Documents" />
+          </div>
+          <div>
+            <label for="terminal-shell">Shell (optional)</label>
+            <input id="terminal-shell" placeholder="/bin/zsh" />
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label for="terminal-max-chunks">Max Chunks</label>
+            <input id="terminal-max-chunks" type="number" value="4000" min="200" max="20000" />
+          </div>
+          <div>
+            <label for="terminal-sessions-select">Attach Existing Session</label>
+            <select id="terminal-sessions-select"></select>
+          </div>
+        </div>
+        <div class="controls">
+          <button class="brand" id="terminal-start-btn">Start Session</button>
+          <button id="terminal-refresh-btn">Refresh Sessions</button>
+          <button id="terminal-attach-btn">Attach</button>
+          <button class="warn" id="terminal-stop-btn">Close Session</button>
+          <button id="terminal-clear-btn">Clear View</button>
+        </div>
+        <div class="row single">
+          <div>
+            <label for="terminal-input-line">Send Input (mobile fallback)</label>
+            <input id="terminal-input-line" placeholder="type command and press send" />
+          </div>
+        </div>
+        <div class="controls">
+          <button id="terminal-send-line-btn">Send Line</button>
+          <button id="terminal-send-ctrlc-btn">Send Ctrl+C</button>
+        </div>
+        <div class="terminal-wrap">
+          <div id="terminal"></div>
+        </div>
+        <div class="status" id="terminal-status">Terminal idle</div>
+      </section>
+
+      <section class="card">
+        <h2>Event Log</h2>
+        <div class="log" id="log"></div>
+      </section>
+    </div>
   </div>
 
+  <script src="https://cdn.jsdelivr.net/npm/xterm@5.5.0/lib/xterm.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.10.0/lib/xterm-addon-fit.min.js"></script>
   <script>
     let socket = null;
     let commandCounter = 1;
+    let commandSeq = 1;
+    const pendingCommands = new Map();
+
+    let terminal = null;
+    let terminalFit = null;
+    let terminalSessionID = "";
+    let terminalNextSeq = 0;
+    let terminalPollTimer = null;
+    let terminalPollInFlight = false;
+    let terminalInputBuffer = "";
+    let terminalInputFlushTimer = null;
 
     const $ = (id) => document.getElementById(id);
     const logEl = $("log");
     const statusEl = $("status");
+    const terminalStatusEl = $("terminal-status");
 
     function nowTime() {
       return new Date().toISOString().replace("T", " ").replace("Z", "");
@@ -346,14 +462,68 @@
       statusEl.className = `status ${cls}`.trim();
     }
 
+    function setTerminalStatus(text, cls = "") {
+      terminalStatusEl.textContent = text;
+      terminalStatusEl.className = `status ${cls}`.trim();
+    }
+
+    function isWSOpen() {
+      return socket && socket.readyState === WebSocket.OPEN;
+    }
+
+    function initTerminal() {
+      if (terminal) {
+        return;
+      }
+      if (!window.Terminal) {
+        appendLog("error", "xterm.js failed to load");
+        setTerminalStatus("xterm.js load failed", "bad");
+        return;
+      }
+
+      terminal = new window.Terminal({
+        cursorBlink: true,
+        fontSize: 13,
+        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace',
+        convertEol: true,
+        theme: {
+          background: "#101712",
+          foreground: "#e8f5ee",
+          cursor: "#7bf4ba",
+          selectionBackground: "#254738",
+        },
+        scrollback: 8000,
+      });
+
+      terminal.open($("terminal"));
+      if (window.FitAddon && window.FitAddon.FitAddon) {
+        terminalFit = new window.FitAddon.FitAddon();
+        terminal.loadAddon(terminalFit);
+        terminalFit.fit();
+      }
+
+      terminal.writeln("NovaAdapt remote terminal ready.");
+      terminal.writeln("Connect websocket, then start or attach a session.");
+      terminal.writeln("");
+
+      window.addEventListener("resize", () => {
+        if (terminalFit) {
+          terminalFit.fit();
+        }
+      });
+
+      terminal.onData((data) => {
+        if (!terminalSessionID) {
+          return;
+        }
+        queueTerminalInput(data);
+      });
+    }
+
     function guessBridgeHTTPURLFromWS(rawWSURL) {
       try {
         const url = new URL(rawWSURL);
-        if (url.protocol === "wss:") {
-          url.protocol = "https:";
-        } else {
-          url.protocol = "http:";
-        }
+        url.protocol = url.protocol === "wss:" ? "https:" : "http:";
         url.pathname = "";
         url.search = "";
         url.hash = "";
@@ -387,6 +557,77 @@
       return url.toString();
     }
 
+    function flushPendingCommandsOnDisconnect() {
+      for (const [id, pending] of pendingCommands.entries()) {
+        clearTimeout(pending.timeout);
+        pending.reject(new Error("websocket disconnected"));
+        pendingCommands.delete(id);
+      }
+    }
+
+    function consumePendingResult(parsed, isError) {
+      if (!parsed || typeof parsed !== "object") return false;
+      const id = typeof parsed.id === "string" ? parsed.id : "";
+      if (!id) return false;
+      const pending = pendingCommands.get(id);
+      if (!pending) return false;
+
+      clearTimeout(pending.timeout);
+      pendingCommands.delete(id);
+
+      if (isError) {
+        pending.reject(new Error(parsed.error || "command error"));
+        if (!pending.silentResponse) {
+          appendLog("command_error", parsed);
+        }
+      } else {
+        pending.resolve(parsed);
+        if (!pending.silentResponse) {
+          appendLog("command_result", parsed);
+        }
+      }
+      return true;
+    }
+
+    function send(obj, { log = true } = {}) {
+      if (!isWSOpen()) {
+        throw new Error("not connected");
+      }
+      socket.send(JSON.stringify(obj));
+      if (log) {
+        appendLog("send", obj);
+      }
+    }
+
+    function sendCommand(message, { timeoutMs = 15000, log = true, silentResponse = false } = {}) {
+      if (!isWSOpen()) {
+        return Promise.reject(new Error("websocket is not connected"));
+      }
+      const payload = { ...message };
+      if (!payload.id) {
+        payload.id = `cmd-${commandSeq++}`;
+      }
+
+      return new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          if (pendingCommands.has(payload.id)) {
+            pendingCommands.delete(payload.id);
+            reject(new Error("command timeout"));
+          }
+        }, timeoutMs);
+
+        pendingCommands.set(payload.id, { resolve, reject, timeout, silentResponse });
+
+        try {
+          send(payload, { log });
+        } catch (err) {
+          clearTimeout(timeout);
+          pendingCommands.delete(payload.id);
+          reject(err);
+        }
+      });
+    }
+
     async function issueSessionToken() {
       const bridgeURL = buildBridgeHTTPURL();
       const adminToken = $("admin-token").value.trim() || $("token").value.trim();
@@ -418,10 +659,7 @@
         headers["X-Device-ID"] = deviceID;
       }
 
-      const body = {
-        scopes,
-        ttl_seconds: ttl,
-      };
+      const body = { scopes, ttl_seconds: ttl };
       if (deviceID) {
         body.device_id = deviceID;
       }
@@ -532,7 +770,7 @@
     }
 
     function connect() {
-      if (socket && socket.readyState === WebSocket.OPEN) {
+      if (isWSOpen()) {
         appendLog("info", "already connected");
         return;
       }
@@ -543,21 +781,42 @@
 
       socket.onopen = () => {
         setStatus("Connected", "ok");
+        setTerminalStatus("WebSocket connected", "ok");
+        refreshTerminalSessions();
+        if (terminalSessionID) {
+          startTerminalPolling(true);
+        }
       };
       socket.onclose = (event) => {
+        stopTerminalPolling();
+        flushPendingCommandsOnDisconnect();
         setStatus(`Disconnected (${event.code})`, "bad");
+        setTerminalStatus("Terminal disconnected", "bad");
         appendLog("close", { code: event.code, reason: event.reason });
       };
       socket.onerror = () => {
         setStatus("Connection error", "bad");
       };
       socket.onmessage = (event) => {
+        let parsed = null;
         try {
-          const parsed = JSON.parse(event.data);
-          appendLog(parsed.type || "message", parsed);
+          parsed = JSON.parse(event.data);
         } catch {
           appendLog("message", event.data);
+          return;
         }
+
+        if (parsed.type === "command_result" && consumePendingResult(parsed, false)) {
+          return;
+        }
+        if (parsed.type === "error" && consumePendingResult(parsed, true)) {
+          return;
+        }
+        if ((parsed.type === "ack" || parsed.type === "pong") && consumePendingResult(parsed, false)) {
+          return;
+        }
+
+        appendLog(parsed.type || "message", parsed);
       };
     }
 
@@ -567,13 +826,258 @@
       socket = null;
     }
 
-    function send(obj) {
-      if (!socket || socket.readyState !== WebSocket.OPEN) {
-        appendLog("error", "not connected");
+    async function refreshTerminalSessions() {
+      if (!isWSOpen()) {
         return;
       }
-      socket.send(JSON.stringify(obj));
-      appendLog("send", obj);
+      try {
+        const response = await sendCommand(
+          {
+            type: "command",
+            method: "GET",
+            path: "/terminal/sessions",
+            id: `terminal-list-${Date.now()}`,
+          },
+          { log: false, silentResponse: true }
+        );
+        if (response.status < 200 || response.status >= 300) {
+          throw new Error(`status ${response.status}`);
+        }
+        const rows = Array.isArray(response.payload) ? response.payload : [];
+        const select = $("terminal-sessions-select");
+        select.innerHTML = "";
+        const empty = document.createElement("option");
+        empty.value = "";
+        empty.textContent = rows.length ? "Select session" : "No sessions";
+        select.appendChild(empty);
+        for (const row of rows) {
+          const id = String(row.id || "");
+          if (!id) continue;
+          const option = document.createElement("option");
+          option.value = id;
+          option.textContent = `${id}${row.open ? " (open)" : " (closed)"}`;
+          select.appendChild(option);
+        }
+      } catch (err) {
+        appendLog("terminal_sessions_error", String(err));
+      }
+    }
+
+    function attachTerminalSession(sessionID) {
+      const id = String(sessionID || "").trim();
+      if (!id) {
+        return;
+      }
+      terminalSessionID = id;
+      terminalNextSeq = 0;
+      $("terminal-session-id").value = id;
+      setTerminalStatus(`Attached to session ${id}`, "ok");
+      if (terminal) {
+        terminal.writeln(`\r\n[attached ${id}]`);
+      }
+      startTerminalPolling(true);
+    }
+
+    async function startTerminalSession() {
+      if (!isWSOpen()) {
+        setTerminalStatus("Connect websocket first", "bad");
+        return;
+      }
+      const body = {
+        max_chunks: Math.max(200, Math.min(20000, Number($("terminal-max-chunks").value || 4000))),
+      };
+      const command = $("terminal-command").value.trim();
+      const cwd = $("terminal-cwd").value.trim();
+      const shell = $("terminal-shell").value.trim();
+      if (command) body.command = command;
+      if (cwd) body.cwd = cwd;
+      if (shell) body.shell = shell;
+
+      try {
+        const response = await sendCommand(
+          {
+            type: "command",
+            method: "POST",
+            path: "/terminal/sessions",
+            body,
+            id: `terminal-start-${Date.now()}`,
+          },
+          { log: true }
+        );
+        if (response.status !== 201 && response.status !== 200) {
+          throw new Error(`terminal start failed: status ${response.status}`);
+        }
+        const payload = response.payload || {};
+        const id = String(payload.id || "").trim();
+        if (!id) {
+          throw new Error("terminal start response missing session id");
+        }
+        attachTerminalSession(id);
+        refreshTerminalSessions();
+      } catch (err) {
+        appendLog("terminal_start_error", String(err));
+        setTerminalStatus("Failed to start terminal session", "bad");
+      }
+    }
+
+    async function closeTerminalSession() {
+      if (!isWSOpen()) {
+        setTerminalStatus("Connect websocket first", "bad");
+        return;
+      }
+      const id = $("terminal-session-id").value.trim() || terminalSessionID;
+      if (!id) {
+        setTerminalStatus("No terminal session selected", "bad");
+        return;
+      }
+
+      try {
+        const response = await sendCommand(
+          {
+            type: "command",
+            method: "POST",
+            path: `/terminal/sessions/${encodeURIComponent(id)}/close`,
+            body: {},
+            id: `terminal-close-${Date.now()}`,
+          },
+          { log: true }
+        );
+        if (response.status < 200 || response.status >= 300) {
+          throw new Error(`status ${response.status}`);
+        }
+        setTerminalStatus(`Closed session ${id}`, "ok");
+        stopTerminalPolling();
+        terminalSessionID = "";
+        terminalNextSeq = 0;
+        $("terminal-session-id").value = "";
+        refreshTerminalSessions();
+      } catch (err) {
+        appendLog("terminal_close_error", String(err));
+        setTerminalStatus("Failed to close terminal session", "bad");
+      }
+    }
+
+    function stopTerminalPolling() {
+      if (terminalPollTimer) {
+        clearInterval(terminalPollTimer);
+        terminalPollTimer = null;
+      }
+      terminalPollInFlight = false;
+    }
+
+    function startTerminalPolling(runImmediately = false) {
+      stopTerminalPolling();
+      if (!terminalSessionID || !isWSOpen()) {
+        return;
+      }
+      const pollMs = Math.max(75, Math.min(2000, Number($("terminal-poll-ms").value || 250)));
+      if (runImmediately) {
+        pollTerminalOutput();
+      }
+      terminalPollTimer = setInterval(() => {
+        pollTerminalOutput();
+      }, pollMs);
+    }
+
+    async function pollTerminalOutput() {
+      if (!terminalSessionID || !isWSOpen() || terminalPollInFlight) {
+        return;
+      }
+      terminalPollInFlight = true;
+      try {
+        const response = await sendCommand(
+          {
+            type: "command",
+            method: "GET",
+            path: `/terminal/sessions/${encodeURIComponent(terminalSessionID)}/output?since_seq=${terminalNextSeq}&limit=600`,
+            id: `terminal-poll-${Date.now()}`,
+          },
+          { log: false, silentResponse: true, timeoutMs: 12000 }
+        );
+        if (response.status < 200 || response.status >= 300) {
+          throw new Error(`poll status ${response.status}`);
+        }
+
+        const payload = response.payload || {};
+        const chunks = Array.isArray(payload.chunks) ? payload.chunks : [];
+        for (const chunk of chunks) {
+          const seq = Number(chunk.seq || 0);
+          if (seq > terminalNextSeq) {
+            terminalNextSeq = seq;
+          }
+          if (terminal && typeof chunk.data === "string" && chunk.data.length) {
+            terminal.write(chunk.data);
+          }
+        }
+        if (payload.next_seq && Number(payload.next_seq) > terminalNextSeq) {
+          terminalNextSeq = Number(payload.next_seq);
+        }
+        const open = payload.open !== false;
+        const suffix = open ? "open" : `closed (${payload.exit_code ?? "?"})`;
+        setTerminalStatus(`Session ${terminalSessionID}: ${suffix}, seq ${terminalNextSeq}`, open ? "ok" : "bad");
+      } catch (err) {
+        setTerminalStatus(`Terminal poll error: ${String(err)}`, "bad");
+      } finally {
+        terminalPollInFlight = false;
+      }
+    }
+
+    function queueTerminalInput(data) {
+      terminalInputBuffer += data;
+      if (terminalInputFlushTimer) {
+        return;
+      }
+      terminalInputFlushTimer = setTimeout(() => {
+        flushTerminalInput();
+      }, 35);
+    }
+
+    async function flushTerminalInput() {
+      if (!terminalInputFlushTimer) {
+        return;
+      }
+      clearTimeout(terminalInputFlushTimer);
+      terminalInputFlushTimer = null;
+
+      if (!terminalInputBuffer || !terminalSessionID || !isWSOpen()) {
+        terminalInputBuffer = "";
+        return;
+      }
+      const payload = terminalInputBuffer;
+      terminalInputBuffer = "";
+
+      try {
+        const response = await sendCommand(
+          {
+            type: "command",
+            method: "POST",
+            path: `/terminal/sessions/${encodeURIComponent(terminalSessionID)}/input`,
+            body: { input: payload },
+            id: `terminal-input-${Date.now()}`,
+          },
+          { log: false, silentResponse: true }
+        );
+        if (response.status < 200 || response.status >= 300) {
+          throw new Error(`input status ${response.status}`);
+        }
+      } catch (err) {
+        appendLog("terminal_input_error", String(err));
+      }
+    }
+
+    async function sendTerminalLine() {
+      const value = $("terminal-input-line").value;
+      if (!value) {
+        return;
+      }
+      $("terminal-input-line").value = "";
+      queueTerminalInput(value + "\n");
+      await flushTerminalInput();
+    }
+
+    async function sendTerminalCtrlC() {
+      queueTerminalInput("\u0003");
+      await flushTerminalInput();
     }
 
     $("issue-session-btn").addEventListener("click", () => {
@@ -585,17 +1089,28 @@
     $("connect-btn").addEventListener("click", connect);
     $("disconnect-btn").addEventListener("click", disconnect);
 
-    $("ping-btn").addEventListener("click", () => {
-      send({ type: "ping", id: `ping-${Date.now()}` });
+    $("ping-btn").addEventListener("click", async () => {
+      try {
+        await sendCommand({ type: "ping", id: `ping-${Date.now()}` }, { log: true, silentResponse: false, timeoutMs: 5000 });
+      } catch (err) {
+        appendLog("ping_error", String(err));
+      }
     });
 
-    $("set-since-btn").addEventListener("click", () => {
+    $("set-since-btn").addEventListener("click", async () => {
       const value = Math.max(0, Number($("cursor-id").value || 0));
-      send({ type: "set_since_id", id: `cursor-${Date.now()}`, since_id: value });
-      $("since-id").value = String(value);
+      try {
+        await sendCommand(
+          { type: "set_since_id", id: `cursor-${Date.now()}`, since_id: value },
+          { log: true }
+        );
+        $("since-id").value = String(value);
+      } catch (err) {
+        appendLog("cursor_error", String(err));
+      }
     });
 
-    $("send-command-btn").addEventListener("click", () => {
+    $("send-command-btn").addEventListener("click", async () => {
       let body = null;
       const rawBody = $("command-body").value.trim();
       if (rawBody) {
@@ -616,7 +1131,12 @@
       const idem = $("idem-key").value.trim();
       if (idem) msg.idempotency_key = idem;
       if (body !== null) msg.body = body;
-      send(msg);
+
+      try {
+        await sendCommand(msg, { log: true });
+      } catch (err) {
+        appendLog("command_send_error", String(err));
+      }
     });
 
     $("ws-url").addEventListener("change", () => {
@@ -626,6 +1146,60 @@
       }
     });
 
+    $("terminal-start-btn").addEventListener("click", () => {
+      startTerminalSession();
+    });
+
+    $("terminal-refresh-btn").addEventListener("click", () => {
+      refreshTerminalSessions();
+    });
+
+    $("terminal-attach-btn").addEventListener("click", () => {
+      const selected = $("terminal-sessions-select").value.trim();
+      if (!selected) {
+        return;
+      }
+      attachTerminalSession(selected);
+    });
+
+    $("terminal-stop-btn").addEventListener("click", () => {
+      closeTerminalSession();
+    });
+
+    $("terminal-clear-btn").addEventListener("click", () => {
+      if (terminal) {
+        terminal.clear();
+      }
+    });
+
+    $("terminal-send-line-btn").addEventListener("click", () => {
+      sendTerminalLine();
+    });
+
+    $("terminal-send-ctrlc-btn").addEventListener("click", () => {
+      sendTerminalCtrlC();
+    });
+
+    $("terminal-poll-ms").addEventListener("change", () => {
+      if (terminalSessionID) {
+        startTerminalPolling(false);
+      }
+    });
+
+    $("terminal-session-id").addEventListener("change", () => {
+      const id = $("terminal-session-id").value.trim();
+      if (id) {
+        attachTerminalSession(id);
+      }
+    });
+
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("./service-worker.js").catch((err) => {
+        appendLog("sw_register_error", String(err));
+      });
+    }
+
+    initTerminal();
     appendLog("ready", "Console loaded");
   </script>
 </body>

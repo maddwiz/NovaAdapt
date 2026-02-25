@@ -322,6 +322,102 @@ def build_openapi_spec() -> dict:
                     "responses": {"200": {"description": "Feedback recorded"}},
                 }
             },
+            "/memory/status": {
+                "get": {
+                    "summary": "Get long-term memory backend readiness and configuration",
+                    "responses": {"200": {"description": "Memory backend status"}},
+                }
+            },
+            "/memory/recall": {
+                "post": {
+                    "summary": "Recall memory entries relevant to a query",
+                    "responses": {"200": {"description": "Memory recall results"}},
+                }
+            },
+            "/memory/ingest": {
+                "post": {
+                    "summary": "Ingest text into long-term memory store",
+                    "responses": {"200": {"description": "Memory ingest result"}},
+                }
+            },
+            "/terminal/sessions": {
+                "get": {
+                    "summary": "List terminal sessions",
+                    "responses": {"200": {"description": "Terminal sessions"}},
+                },
+                "post": {
+                    "summary": "Start a terminal session",
+                    "responses": {"201": {"description": "Session created"}},
+                },
+            },
+            "/terminal/sessions/{id}": {
+                "get": {
+                    "summary": "Get terminal session metadata",
+                    "parameters": [
+                        {
+                            "name": "id",
+                            "in": "path",
+                            "required": True,
+                            "schema": {"type": "string"},
+                        }
+                    ],
+                    "responses": {"200": {"description": "Session details"}, "404": {"description": "Not found"}},
+                }
+            },
+            "/terminal/sessions/{id}/output": {
+                "get": {
+                    "summary": "Read terminal output chunks",
+                    "parameters": [
+                        {
+                            "name": "id",
+                            "in": "path",
+                            "required": True,
+                            "schema": {"type": "string"},
+                        },
+                        {
+                            "name": "since_seq",
+                            "in": "query",
+                            "required": False,
+                            "schema": {"type": "integer", "minimum": 0},
+                        },
+                        {
+                            "name": "limit",
+                            "in": "query",
+                            "required": False,
+                            "schema": {"type": "integer", "minimum": 1},
+                        },
+                    ],
+                    "responses": {"200": {"description": "Terminal output"}, "404": {"description": "Not found"}},
+                }
+            },
+            "/terminal/sessions/{id}/input": {
+                "post": {
+                    "summary": "Write input to terminal session stdin",
+                    "parameters": [
+                        {
+                            "name": "id",
+                            "in": "path",
+                            "required": True,
+                            "schema": {"type": "string"},
+                        }
+                    ],
+                    "responses": {"200": {"description": "Input accepted"}, "404": {"description": "Not found"}},
+                }
+            },
+            "/terminal/sessions/{id}/close": {
+                "post": {
+                    "summary": "Close a terminal session",
+                    "parameters": [
+                        {
+                            "name": "id",
+                            "in": "path",
+                            "required": True,
+                            "schema": {"type": "string"},
+                        }
+                    ],
+                    "responses": {"200": {"description": "Session closed"}, "404": {"description": "Not found"}},
+                }
+            },
             "/metrics": {
                 "get": {
                     "summary": "Prometheus metrics",

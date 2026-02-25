@@ -267,7 +267,17 @@ func requiredScopeForRoute(method string, path string) string {
 		return ""
 	}
 	switch {
-	case path == "/run" || path == "/run_async" || path == "/check":
+	case path == "/run" || path == "/run_async" || path == "/swarm/run" || path == "/check":
+		return scopeRun
+	case path == "/feedback" || path == "/memory/ingest":
+		return scopeRun
+	case path == "/memory/recall":
+		return scopeRead
+	case path == "/terminal/sessions" || (strings.HasPrefix(path, "/terminal/sessions/") && strings.HasSuffix(path, "/input")):
+		return scopeRun
+	case strings.HasPrefix(path, "/terminal/sessions/") && strings.HasSuffix(path, "/close"):
+		return scopeRun
+	case strings.HasPrefix(path, "/plugins/") && strings.HasSuffix(path, "/call"):
 		return scopeRun
 	case path == "/plans":
 		return scopePlan

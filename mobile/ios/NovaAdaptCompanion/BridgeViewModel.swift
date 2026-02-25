@@ -25,6 +25,14 @@ struct AuditEventSummary: Identifiable {
     let createdAt: String
 }
 
+struct TerminalSessionSummary: Identifiable {
+    let id: String
+    let open: Bool
+    let command: String
+    let cwd: String
+    let lastSeq: Int
+}
+
 @MainActor
 final class BridgeViewModel: ObservableObject {
     @Published var apiBaseURL: String = "http://127.0.0.1:9797"
@@ -40,7 +48,19 @@ final class BridgeViewModel: ObservableObject {
     @Published var wsEvents: [String] = []
     @Published var status: String = "Idle"
 
+    @Published var terminalSessions: [TerminalSessionSummary] = []
+    @Published var terminalSessionID: String = ""
+    @Published var terminalCommand: String = ""
+    @Published var terminalCWD: String = ""
+    @Published var terminalShell: String = ""
+    @Published var terminalInput: String = ""
+    @Published var terminalOutput: String = ""
+    @Published var terminalPollIntervalMs: Int = 250
+
     private var socketTask: URLSessionWebSocketTask?
+    private var wsCommandResolvers: [String: (Result<[String: Any], Error>) -> Void] = [:]
+    private var terminalPollTask: Task<Void, Never>?
+    private var terminalNextSeq: Int = 0
 
     var pendingPlans: [PlanSummary] {
         plans.filter { $0.status.lowercased() == "pending" }
@@ -53,6 +73,10 @@ final class BridgeViewModel: ObservableObject {
         }
     }
 
+    var websocketConnected: Bool {
+        socketTask != nil
+    }
+
     func connect() {
         guard let url = URL(string: bridgeWSURL) else {
             status = "Invalid WebSocket URL"
@@ -63,7 +87,7 @@ final class BridgeViewModel: ObservableObject {
         if !bearer.isEmpty {
             request.setValue("Bearer \(bearer)", forHTTPHeaderField: "Authorization")
         }
-        socketTask?.cancel(with: .goingAway, reason: nil)
+        disconnect()
         socketTask = URLSession.shared.webSocketTask(with: request)
         socketTask?.resume()
         status = "WebSocket connected"
@@ -74,6 +98,8 @@ final class BridgeViewModel: ObservableObject {
         socketTask?.cancel(with: .goingAway, reason: nil)
         socketTask = nil
         status = "WebSocket disconnected"
+        stopTerminalPolling()
+        resolveAllWSCommands(error: NSError(domain: "NovaAdaptCompanion", code: -1, userInfo: [NSLocalizedDescriptionKey: "WebSocket disconnected"]))
     }
 
     func refreshDashboard() {
@@ -182,6 +208,124 @@ final class BridgeViewModel: ObservableObject {
         }
     }
 
+    func refreshTerminalSessions() {
+        Task {
+            do {
+                let result = try await wsCommand(method: "GET", path: "/terminal/sessions", body: nil, idPrefix: "term-list", timeoutSeconds: 10)
+                let payload = try parseCommandPayload(result)
+                let rows = payload as? [[String: Any]] ?? []
+                terminalSessions = parseTerminalSessions(rows)
+                status = "Terminal sessions refreshed"
+            } catch {
+                status = "Terminal sessions refresh failed: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    func startTerminalSession() {
+        Task {
+            do {
+                var body: [String: Any] = ["max_chunks": 4000]
+                let command = terminalCommand.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !command.isEmpty {
+                    body["command"] = command
+                }
+                let cwd = terminalCWD.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !cwd.isEmpty {
+                    body["cwd"] = cwd
+                }
+                let shell = terminalShell.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !shell.isEmpty {
+                    body["shell"] = shell
+                }
+
+                let result = try await wsCommand(method: "POST", path: "/terminal/sessions", body: body, idPrefix: "term-start", timeoutSeconds: 15)
+                guard let payload = try parseCommandPayload(result) as? [String: Any] else {
+                    throw NSError(domain: "NovaAdaptCompanion", code: -2, userInfo: [NSLocalizedDescriptionKey: "terminal start payload invalid"])
+                }
+                let sessionID = string(payload["id"])
+                guard !sessionID.isEmpty else {
+                    throw NSError(domain: "NovaAdaptCompanion", code: -2, userInfo: [NSLocalizedDescriptionKey: "terminal start missing session id"])
+                }
+
+                attachTerminalSession(sessionID)
+                refreshTerminalSessions()
+                status = "Terminal session started"
+            } catch {
+                status = "Terminal start failed: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    func attachTerminalSession(_ sessionID: String) {
+        terminalSessionID = sessionID
+        terminalNextSeq = 0
+        terminalOutput = ""
+        startTerminalPolling()
+    }
+
+    func closeTerminalSession() {
+        Task {
+            let id = terminalSessionID.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !id.isEmpty else {
+                status = "Terminal session id is empty"
+                return
+            }
+            do {
+                _ = try await wsCommand(
+                    method: "POST",
+                    path: "/terminal/sessions/\(id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? id)/close",
+                    body: [:],
+                    idPrefix: "term-close",
+                    timeoutSeconds: 10
+                )
+                stopTerminalPolling()
+                terminalSessionID = ""
+                terminalOutput = ""
+                terminalNextSeq = 0
+                refreshTerminalSessions()
+                status = "Terminal session closed"
+            } catch {
+                status = "Terminal close failed: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    func sendTerminalLine() {
+        Task {
+            guard !terminalSessionID.isEmpty else {
+                status = "Attach or start a terminal session first"
+                return
+            }
+            let line = terminalInput
+            terminalInput = ""
+            if line.isEmpty {
+                return
+            }
+            do {
+                _ = try await sendTerminalInput(line + "\n")
+                status = "Terminal input sent"
+            } catch {
+                status = "Terminal input failed: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    func sendTerminalCtrlC() {
+        Task {
+            guard !terminalSessionID.isEmpty else {
+                status = "Attach or start a terminal session first"
+                return
+            }
+            do {
+                _ = try await sendTerminalInput("\u{0003}")
+                status = "Ctrl+C sent"
+            } catch {
+                status = "Ctrl+C failed: \(error.localizedDescription)"
+            }
+        }
+    }
+
     private func receiveLoop() {
         socketTask?.receive { [weak self] result in
             Task { @MainActor in
@@ -189,21 +333,67 @@ final class BridgeViewModel: ObservableObject {
                 switch result {
                 case .failure(let error):
                     self.status = "WebSocket error: \(error.localizedDescription)"
+                    self.resolveAllWSCommands(error: error)
                 case .success(let message):
+                    var text: String
                     switch message {
-                    case .string(let text):
-                        self.wsEvents.insert(self.prettyJSON(text) ?? text, at: 0)
+                    case .string(let raw):
+                        text = raw
                     case .data(let data):
-                        let text = String(data: data, encoding: .utf8) ?? "<binary>"
-                        self.wsEvents.insert(self.prettyJSON(text) ?? text, at: 0)
+                        text = String(data: data, encoding: .utf8) ?? "<binary>"
                     @unknown default:
-                        self.wsEvents.insert("Unknown WebSocket message", at: 0)
+                        text = "Unknown WebSocket message"
                     }
-                    self.wsEvents = Array(self.wsEvents.prefix(60))
+
+                    let suppress = self.handleWSCommandResponse(text)
+                    if !suppress {
+                        self.wsEvents.insert(self.prettyJSON(text) ?? text, at: 0)
+                        self.wsEvents = Array(self.wsEvents.prefix(60))
+                    }
                     self.receiveLoop()
                 }
             }
         }
+    }
+
+    private func handleWSCommandResponse(_ rawText: String) -> Bool {
+        guard
+            let data = rawText.data(using: .utf8),
+            let object = try? JSONSerialization.jsonObject(with: data),
+            let payload = object as? [String: Any],
+            let type = payload["type"] as? String,
+            let id = payload["id"] as? String,
+            !id.isEmpty
+        else {
+            return false
+        }
+
+        if type == "command_result" {
+            resolveWSCommand(id: id, result: .success(payload))
+            return id.hasPrefix("term-poll") || id.hasPrefix("term-input") || id.hasPrefix("term-list")
+        }
+
+        if type == "error" {
+            let message = payload["error"] as? String ?? "command error"
+            resolveWSCommand(
+                id: id,
+                result: .failure(
+                    NSError(
+                        domain: "NovaAdaptCompanion",
+                        code: -1,
+                        userInfo: [NSLocalizedDescriptionKey: message]
+                    )
+                )
+            )
+            return id.hasPrefix("term-poll") || id.hasPrefix("term-input") || id.hasPrefix("term-list")
+        }
+
+        if type == "ack" || type == "pong" {
+            resolveWSCommand(id: id, result: .success(payload))
+            return true
+        }
+
+        return false
     }
 
     private func runAction(label: String, operation: @escaping () async throws -> Void) async {
@@ -225,6 +415,192 @@ final class BridgeViewModel: ObservableObject {
         plans = parsePlans(payload["plans"])
         jobs = parseJobs(payload["jobs"])
         events = parseEvents(payload["events"])
+    }
+
+    private func startTerminalPolling() {
+        stopTerminalPolling()
+        let session = terminalSessionID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !session.isEmpty else {
+            return
+        }
+        let pollInterval = max(75, min(2000, terminalPollIntervalMs))
+        terminalPollTask = Task {
+            while !Task.isCancelled {
+                do {
+                    try await pollTerminalOutputOnce(sessionID: session)
+                } catch {
+                    status = "Terminal poll failed: \(error.localizedDescription)"
+                }
+                try? await Task.sleep(nanoseconds: UInt64(pollInterval) * 1_000_000)
+            }
+        }
+    }
+
+    private func stopTerminalPolling() {
+        terminalPollTask?.cancel()
+        terminalPollTask = nil
+    }
+
+    private func pollTerminalOutputOnce(sessionID: String) async throws {
+        guard !sessionID.isEmpty else {
+            return
+        }
+        let encoded = sessionID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? sessionID
+        let path = "/terminal/sessions/\(encoded)/output?since_seq=\(max(0, terminalNextSeq))&limit=500"
+        let result = try await wsCommand(method: "GET", path: path, body: nil, idPrefix: "term-poll", timeoutSeconds: 12)
+        guard let payload = try parseCommandPayload(result) as? [String: Any] else {
+            throw NSError(domain: "NovaAdaptCompanion", code: -2, userInfo: [NSLocalizedDescriptionKey: "invalid terminal output payload"])
+        }
+
+        if let chunks = payload["chunks"] as? [[String: Any]], !chunks.isEmpty {
+            for chunk in chunks {
+                if let seq = toInt(chunk["seq"]), seq > terminalNextSeq {
+                    terminalNextSeq = seq
+                }
+                if let data = chunk["data"] as? String, !data.isEmpty {
+                    terminalOutput += data
+                }
+            }
+            trimTerminalOutput()
+        }
+
+        if let nextSeq = toInt(payload["next_seq"]), nextSeq > terminalNextSeq {
+            terminalNextSeq = nextSeq
+        }
+    }
+
+    private func sendTerminalInput(_ input: String) async throws -> [String: Any] {
+        let session = terminalSessionID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !session.isEmpty else {
+            throw NSError(domain: "NovaAdaptCompanion", code: -2, userInfo: [NSLocalizedDescriptionKey: "terminal session id is empty"])
+        }
+        let encoded = session.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? session
+        let result = try await wsCommand(
+            method: "POST",
+            path: "/terminal/sessions/\(encoded)/input",
+            body: ["input": input],
+            idPrefix: "term-input",
+            timeoutSeconds: 8
+        )
+        guard let payload = try parseCommandPayload(result) as? [String: Any] else {
+            throw NSError(domain: "NovaAdaptCompanion", code: -2, userInfo: [NSLocalizedDescriptionKey: "invalid terminal input payload"])
+        }
+        return payload
+    }
+
+    private func trimTerminalOutput() {
+        let maxChars = 120_000
+        guard terminalOutput.count > maxChars else {
+            return
+        }
+        terminalOutput = String(terminalOutput.suffix(maxChars))
+    }
+
+    private func wsCommand(
+        method: String,
+        path: String,
+        body: [String: Any]?,
+        idPrefix: String,
+        timeoutSeconds: Double
+    ) async throws -> [String: Any] {
+        guard socketTask != nil else {
+            throw NSError(domain: "NovaAdaptCompanion", code: -1, userInfo: [NSLocalizedDescriptionKey: "WebSocket is not connected"])
+        }
+
+        let commandID = "\(idPrefix)-\(UUID().uuidString)"
+        var payload: [String: Any] = [
+            "type": "command",
+            "id": commandID,
+            "method": method.uppercased(),
+            "path": path,
+        ]
+        if let body {
+            payload["body"] = body
+        }
+
+        return try await withCheckedThrowingContinuation { continuation in
+            wsCommandResolvers[commandID] = { result in
+                continuation.resume(with: result)
+            }
+
+            Task {
+                try? await Task.sleep(nanoseconds: UInt64(max(1.0, timeoutSeconds) * 1_000_000_000))
+                await MainActor.run {
+                    if let resolver = self.wsCommandResolvers.removeValue(forKey: commandID) {
+                        resolver(
+                            .failure(
+                                NSError(
+                                    domain: "NovaAdaptCompanion",
+                                    code: -1,
+                                    userInfo: [NSLocalizedDescriptionKey: "command timeout"]
+                                )
+                            )
+                        )
+                    }
+                }
+            }
+
+            Task {
+                do {
+                    try await self.sendWebSocketJSON(payload)
+                } catch {
+                    await MainActor.run {
+                        if let resolver = self.wsCommandResolvers.removeValue(forKey: commandID) {
+                            resolver(.failure(error))
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func parseCommandPayload(_ response: [String: Any]) throws -> Any {
+        let statusCode = toInt(response["status"])
+        let payload = response["payload"]
+        if let statusCode, !(200 ... 299).contains(statusCode) {
+            let message: String
+            if let obj = payload as? [String: Any], let error = obj["error"] as? String {
+                message = error
+            } else {
+                message = "command failed with status \(statusCode)"
+            }
+            throw NSError(domain: "NovaAdaptCompanion", code: statusCode, userInfo: [NSLocalizedDescriptionKey: message])
+        }
+        return payload as Any
+    }
+
+    private func sendWebSocketJSON(_ object: [String: Any]) async throws {
+        guard let socketTask else {
+            throw NSError(domain: "NovaAdaptCompanion", code: -1, userInfo: [NSLocalizedDescriptionKey: "WebSocket is not connected"])
+        }
+        let data = try JSONSerialization.data(withJSONObject: object)
+        guard let text = String(data: data, encoding: .utf8) else {
+            throw NSError(domain: "NovaAdaptCompanion", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to encode websocket payload"])
+        }
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            socketTask.send(.string(text)) { error in
+                if let error {
+                    continuation.resume(throwing: error)
+                } else {
+                    continuation.resume(returning: ())
+                }
+            }
+        }
+    }
+
+    private func resolveWSCommand(id: String, result: Result<[String: Any], Error>) {
+        guard let resolver = wsCommandResolvers.removeValue(forKey: id) else {
+            return
+        }
+        resolver(result)
+    }
+
+    private func resolveAllWSCommands(error: Error) {
+        let callbacks = wsCommandResolvers.values
+        wsCommandResolvers.removeAll()
+        for callback in callbacks {
+            callback(.failure(error))
+        }
     }
 
     private func buildObjectivePayload() -> [String: Any] {
@@ -284,7 +660,9 @@ final class BridgeViewModel: ObservableObject {
     }
 
     private func makeURL(path: String) -> URL? {
-        let base = apiBaseURL.trimmingCharacters(in: .whitespacesAndNewlines).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let base = apiBaseURL
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         guard !base.isEmpty else {
             return nil
         }
@@ -358,6 +736,33 @@ final class BridgeViewModel: ObservableObject {
         }
     }
 
+    private func parseTerminalSessions(_ rows: [[String: Any]]) -> [TerminalSessionSummary] {
+        rows.map { row in
+            let commandItems = (row["command"] as? [Any]) ?? []
+            let command = commandItems
+                .compactMap { item -> String? in
+                    if let text = item as? String {
+                        return text
+                    }
+                    if let number = item as? NSNumber {
+                        return number.stringValue
+                    }
+                    return nil
+                }
+                .joined(separator: " ")
+            return TerminalSessionSummary(
+                id: string(row["id"], fallback: UUID().uuidString),
+                open: (row["open"] as? Bool) ?? false,
+                command: command,
+                cwd: string(row["cwd"]),
+                lastSeq: toInt(row["last_seq"]) ?? 0
+            )
+        }
+        .sorted { lhs, rhs in
+            lhs.id < rhs.id
+        }
+    }
+
     private func string(_ value: Any?, fallback: String = "") -> String {
         switch value {
         case let text as String:
@@ -380,6 +785,16 @@ final class BridgeViewModel: ObservableObject {
             return parsed
         }
         return fallback
+    }
+
+    private func toInt(_ value: Any?) -> Int? {
+        if let number = value as? NSNumber {
+            return number.intValue
+        }
+        if let text = value as? String {
+            return Int(text)
+        }
+        return nil
     }
 
     private func planRank(_ status: String) -> Int {

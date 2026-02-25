@@ -8,6 +8,7 @@ from novaadapt_shared.api_client import APIClientError, NovaAdaptAPIClient
 
 class _Handler(BaseHTTPRequestHandler):
     models_attempts = 0
+    terminal_session_id = "term-1"
 
     def do_GET(self):
         auth = self.headers.get("Authorization")
@@ -46,6 +47,48 @@ class _Handler(BaseHTTPRequestHandler):
             return
         if self.path == "/plugins/novabridge/health":
             self._send(200, {"plugin": "novabridge", "ok": True})
+            return
+        if self.path == "/memory/status":
+            self._send(200, {"ok": True, "enabled": True, "backend": "novaspine-http"})
+            return
+        if self.path == "/terminal/sessions":
+            self._send(
+                200,
+                [
+                    {
+                        "id": _Handler.terminal_session_id,
+                        "open": True,
+                        "command": ["/bin/bash", "-i"],
+                        "last_seq": 3,
+                    }
+                ],
+            )
+            return
+        if self.path == f"/terminal/sessions/{_Handler.terminal_session_id}":
+            self._send(
+                200,
+                {
+                    "id": _Handler.terminal_session_id,
+                    "open": True,
+                    "command": ["/bin/bash", "-i"],
+                    "last_seq": 3,
+                },
+            )
+            return
+        if self.path == f"/terminal/sessions/{_Handler.terminal_session_id}/output?since_seq=0&limit=200":
+            self._send(
+                200,
+                {
+                    "id": _Handler.terminal_session_id,
+                    "open": True,
+                    "next_seq": 3,
+                    "chunks": [
+                        {"seq": 1, "data": "hello\n", "stream": "stdout"},
+                        {"seq": 2, "data": "world\n", "stream": "stdout"},
+                        {"seq": 3, "data": "$ ", "stream": "stdout"},
+                    ],
+                },
+            )
             return
         if self.path == "/jobs/job-1/stream?timeout=2&interval=0.1":
             body = (
@@ -139,6 +182,11 @@ class _Handler(BaseHTTPRequestHandler):
             "/plans/plan-1/undo",
             "/plugins/novabridge/call",
             "/feedback",
+            "/memory/recall",
+            "/memory/ingest",
+            "/terminal/sessions",
+            f"/terminal/sessions/{_Handler.terminal_session_id}/input",
+            f"/terminal/sessions/{_Handler.terminal_session_id}/close",
         }:
             length = int(self.headers.get("Content-Length", "0"))
             raw = self.rfile.read(length).decode("utf-8")
@@ -192,6 +240,39 @@ class _Handler(BaseHTTPRequestHandler):
                 )
             elif self.path == "/feedback":
                 self._send(200, {"ok": True, "id": "feedback-1", "rating": payload.get("rating")})
+            elif self.path == "/memory/recall":
+                self._send(
+                    200,
+                    {
+                        "query": payload.get("query"),
+                        "top_k": payload.get("top_k", 10),
+                        "count": 1,
+                        "memories": [{"content": "remembered", "score": 0.9}],
+                    },
+                )
+            elif self.path == "/memory/ingest":
+                self._send(
+                    200,
+                    {
+                        "ok": True,
+                        "source_id": payload.get("source_id", ""),
+                        "result": {"ingested": True},
+                    },
+                )
+            elif self.path == "/terminal/sessions":
+                self._send(
+                    201,
+                    {
+                        "id": _Handler.terminal_session_id,
+                        "open": True,
+                        "command": ["/bin/bash", "-i"],
+                        "last_seq": 0,
+                    },
+                )
+            elif self.path == f"/terminal/sessions/{_Handler.terminal_session_id}/input":
+                self._send(200, {"id": _Handler.terminal_session_id, "accepted": True, "bytes": len(payload.get("input", ""))})
+            elif self.path == f"/terminal/sessions/{_Handler.terminal_session_id}/close":
+                self._send(200, {"id": _Handler.terminal_session_id, "closed": True})
             elif self.path == "/undo":
                 self._send(200, {"id": payload.get("id", 1), "status": "marked_undone"})
             elif self.path == "/auth/session":
@@ -238,6 +319,7 @@ class _Handler(BaseHTTPRequestHandler):
 class APIClientTests(unittest.TestCase):
     def setUp(self):
         _Handler.models_attempts = 0
+        _Handler.terminal_session_id = "term-1"
         self.server = HTTPServer(("127.0.0.1", 0), _Handler)
         self.host, self.port = self.server.server_address
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
@@ -301,6 +383,24 @@ class APIClientTests(unittest.TestCase):
         feedback_payload = client.submit_feedback(rating=8, objective="demo", notes="good flow")
         self.assertTrue(feedback_payload["ok"])
         self.assertEqual(feedback_payload["rating"], 8)
+        self.assertTrue(client.memory_status()["ok"])
+        recall_payload = client.memory_recall("excel formatting", top_k=3)
+        self.assertEqual(recall_payload["query"], "excel formatting")
+        self.assertEqual(recall_payload["count"], 1)
+        ingest_payload = client.memory_ingest(
+            "Remember this",
+            source_id="test-1",
+            metadata={"scope": "test"},
+            idempotency_key="idem-memory-1",
+        )
+        self.assertTrue(ingest_payload["ok"])
+        session = client.start_terminal_session(command="echo hi")
+        session_id = session["id"]
+        self.assertEqual(client.terminal_session(session_id)["id"], session_id)
+        output = client.terminal_output(session_id, since_seq=0, limit=200)
+        self.assertGreaterEqual(len(output["chunks"]), 1)
+        self.assertTrue(client.terminal_input(session_id, "pwd\n")["accepted"])
+        self.assertTrue(client.terminal_close(session_id)["closed"])
         self.assertIn("novaadapt_core_requests_total", client.metrics_text())
 
     def test_error_without_token(self):

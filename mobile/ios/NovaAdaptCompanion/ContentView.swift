@@ -12,6 +12,7 @@ struct ContentView: View {
                     objectiveCard
                     plansCard
                     jobsCard
+                    terminalCard
                     eventsCard
                     websocketCard
                 }
@@ -163,6 +164,85 @@ struct ContentView: View {
                     .background(Color(.secondarySystemBackground))
                     .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 }
+            }
+        }
+    }
+
+    private var terminalCard: some View {
+        sectionCard(title: "Terminal") {
+            TextField("Session ID", text: $bridge.terminalSessionID)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled(true)
+                .textFieldStyle(.roundedBorder)
+
+            HStack {
+                Button("Refresh Sessions") { bridge.refreshTerminalSessions() }
+                    .buttonStyle(.bordered)
+                if !bridge.terminalSessions.isEmpty {
+                    Picker("Attach", selection: $bridge.terminalSessionID) {
+                        Text("Select").tag("")
+                        ForEach(bridge.terminalSessions) { session in
+                            Text("\(session.id)\(session.open ? "" : " (closed)")")
+                                .tag(session.id)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                }
+            }
+
+            TextField("Startup command (optional)", text: $bridge.terminalCommand)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled(true)
+                .textFieldStyle(.roundedBorder)
+
+            TextField("Working directory (optional)", text: $bridge.terminalCWD)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled(true)
+                .textFieldStyle(.roundedBorder)
+
+            TextField("Shell (optional)", text: $bridge.terminalShell)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled(true)
+                .textFieldStyle(.roundedBorder)
+
+            Stepper("Poll interval: \(bridge.terminalPollIntervalMs)ms", value: $bridge.terminalPollIntervalMs, in: 75 ... 2000, step: 25)
+
+            HStack {
+                Button("Start Session") { bridge.startTerminalSession() }
+                    .buttonStyle(.borderedProminent)
+                Button("Attach Session") {
+                    if !bridge.terminalSessionID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        bridge.attachTerminalSession(bridge.terminalSessionID)
+                    }
+                }
+                .buttonStyle(.bordered)
+                Button("Close") { bridge.closeTerminalSession() }
+                    .buttonStyle(.bordered)
+            }
+
+            HStack {
+                TextField("Type command", text: $bridge.terminalInput)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled(true)
+                    .textFieldStyle(.roundedBorder)
+                Button("Send") { bridge.sendTerminalLine() }
+                    .buttonStyle(.borderedProminent)
+                Button("Ctrl+C") { bridge.sendTerminalCtrlC() }
+                    .buttonStyle(.bordered)
+            }
+
+            if bridge.terminalOutput.isEmpty {
+                Text("No terminal output yet.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            } else {
+                Text(bridge.terminalOutput)
+                    .font(.caption.monospaced())
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(10)
+                    .background(Color.black.opacity(0.85))
+                    .foregroundStyle(Color.green.opacity(0.95))
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             }
         }
     }

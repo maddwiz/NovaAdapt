@@ -18,6 +18,7 @@ from .jobs import JobManager
 from .observability import configure_tracing, start_span
 from .openapi import build_openapi_spec
 from .service import NovaAdaptService
+from .terminal import TerminalSessionManager
 
 
 DEFAULT_MAX_REQUEST_BODY_BYTES = 1 << 20  # 1 MiB
@@ -114,14 +115,24 @@ class _RequestMetrics:
 
 
 class NovaAdaptHTTPServer(ThreadingHTTPServer):
-    def __init__(self, server_address: tuple[str, int], handler_cls, job_manager: JobManager):
+    def __init__(
+        self,
+        server_address: tuple[str, int],
+        handler_cls,
+        job_manager: JobManager,
+        terminal_manager: TerminalSessionManager,
+    ):
         super().__init__(server_address, handler_cls)
         self.job_manager = job_manager
+        self.terminal_manager = terminal_manager
 
     def server_close(self) -> None:
         manager = getattr(self, "job_manager", None)
         if manager is not None:
             manager.shutdown(wait=True)
+        terminal_manager = getattr(self, "terminal_manager", None)
+        if terminal_manager is not None:
+            terminal_manager.close_all()
         super().server_close()
 
 
@@ -163,6 +174,7 @@ def create_server(
         retention_seconds=audit_retention_seconds,
         cleanup_interval_seconds=audit_cleanup_interval_seconds,
     )
+    terminal_manager = TerminalSessionManager()
     metrics = _RequestMetrics()
     configure_tracing(
         enabled=otel_enabled,
@@ -186,10 +198,11 @@ def create_server(
         trusted_proxy_networks=trusted_proxy_networks,
         idempotency_store=idempotency_store,
         audit_store=audit_store,
+        terminal_manager=terminal_manager,
         metrics=metrics,
         max_request_body_bytes=max(1, int(max_request_body_bytes)),
     )
-    return NovaAdaptHTTPServer((host, port), handler_cls, managed_jobs)
+    return NovaAdaptHTTPServer((host, port), handler_cls, managed_jobs, terminal_manager)
 
 
 def run_server(
@@ -254,6 +267,7 @@ def _build_handler(
     trusted_proxy_networks: list[IPNetwork],
     idempotency_store: IdempotencyStore | None,
     audit_store: AuditStore | None,
+    terminal_manager: TerminalSessionManager,
     metrics: _RequestMetrics,
     max_request_body_bytes: int,
 ):
@@ -355,6 +369,8 @@ def _build_handler(
                 "/jobs": self._get_jobs,
                 "/plans": self._get_plans,
                 "/plugins": self._get_plugins,
+                "/memory/status": self._get_memory_status,
+                "/terminal/sessions": self._get_terminal_sessions,
             }
             handler = private_exact.get(path)
             if handler is not None:
@@ -366,6 +382,8 @@ def _build_handler(
                 ("/plans/", "/stream", self._get_plan_stream),
                 ("/plans/", "", self._get_plan_item),
                 ("/plugins/", "/health", self._get_plugin_health),
+                ("/terminal/sessions/", "/output", self._get_terminal_output),
+                ("/terminal/sessions/", "", self._get_terminal_session_item),
             )
             for prefix, suffix, route_handler in dynamic_routes:
                 if path.startswith(prefix) and (suffix == "" or path.endswith(suffix)):
@@ -393,6 +411,9 @@ def _build_handler(
                 "/undo": lambda body: self._post_undo("/undo", body),
                 "/check": self._post_check,
                 "/feedback": lambda body: self._post_feedback("/feedback", body),
+                "/memory/recall": lambda body: self._post_memory_recall("/memory/recall", body),
+                "/memory/ingest": lambda body: self._post_memory_ingest("/memory/ingest", body),
+                "/terminal/sessions": lambda body: self._post_terminal_start("/terminal/sessions", body),
             }
             handler = exact_routes.get(path)
             if handler is not None:
@@ -401,6 +422,8 @@ def _build_handler(
             dynamic_routes: tuple[tuple[str, str, object], ...] = (
                 ("/jobs/", "/cancel", self._post_cancel_job),
                 ("/plugins/", "/call", self._post_plugin_call),
+                ("/terminal/sessions/", "/input", self._post_terminal_input),
+                ("/terminal/sessions/", "/close", self._post_terminal_close),
                 ("/plans/", "/approve_async", self._post_plan_approve_async),
                 ("/plans/", "/retry_failed_async", self._post_plan_retry_failed_async),
                 ("/plans/", "/retry_failed", self._post_plan_retry_failed),
@@ -603,6 +626,10 @@ def _build_handler(
             self._send_json(200, service.plugins())
             return 200
 
+        def _get_memory_status(self, _query: dict[str, list[str]]) -> int:
+            self._send_json(200, service.memory_status())
+            return 200
+
         def _get_plugin_health(self, path: str, _query: dict[str, list[str]]) -> int:
             plugin_name = path.removeprefix("/plugins/").removesuffix("/health").strip("/")
             if not plugin_name:
@@ -610,6 +637,43 @@ def _build_handler(
                 return 404
             self._send_json(200, service.plugin_health(plugin_name))
             return 200
+
+        def _get_terminal_sessions(self, _query: dict[str, list[str]]) -> int:
+            self._send_json(200, terminal_manager.list_sessions())
+            return 200
+
+        def _get_terminal_session_item(self, path: str, _query: dict[str, list[str]]) -> int:
+            session_id = path.removeprefix("/terminal/sessions/").strip("/")
+            if not session_id:
+                self._send_json(404, {"error": "Not found"})
+                return 404
+            try:
+                self._send_json(200, terminal_manager.get_session(session_id))
+                return 200
+            except ValueError as exc:
+                self._send_json(404, {"error": str(exc)})
+                return 404
+
+        def _get_terminal_output(self, path: str, query: dict[str, list[str]]) -> int:
+            session_id = path.removeprefix("/terminal/sessions/").removesuffix("/output").strip("/")
+            if not session_id:
+                self._send_json(404, {"error": "Not found"})
+                return 404
+            since_seq = int(_single(query, "since_seq") or 0)
+            limit = int(_single(query, "limit") or 200)
+            try:
+                self._send_json(
+                    200,
+                    terminal_manager.read_output(
+                        session_id,
+                        since_seq=max(0, since_seq),
+                        limit=max(1, min(1000, limit)),
+                    ),
+                )
+                return 200
+            except ValueError as exc:
+                self._send_json(404, {"error": str(exc)})
+                return 404
 
         def _get_plan_stream(self, path: str, query: dict[str, list[str]]) -> int:
             plan_id = path.removeprefix("/plans/").removesuffix("/stream").strip("/")
@@ -899,6 +963,102 @@ def _build_handler(
                 entity_id_key="id",
             )
 
+        def _post_memory_recall(self, _path: str, payload: dict[str, object]) -> int:
+            query = str(payload.get("query") or "").strip()
+            top_k = int(payload.get("top_k", 10))
+            out = service.memory_recall(query, top_k=max(1, min(100, top_k)))
+            self._send_json(200, out)
+            return 200
+
+        def _post_memory_ingest(self, path: str, payload: dict[str, object]) -> int:
+            return self._respond_idempotent(
+                path=path,
+                payload=payload,
+                operation=lambda: (
+                    200,
+                    service.memory_ingest(
+                        str(payload.get("text") or ""),
+                        source_id=str(payload.get("source_id") or ""),
+                        metadata=payload.get("metadata")
+                        if isinstance(payload.get("metadata"), dict)
+                        else None,
+                    ),
+                ),
+                category="memory",
+                action="ingest",
+                entity_type="memory",
+            )
+
+        def _post_terminal_start(self, path: str, payload: dict[str, object]) -> int:
+            command = payload.get("command")
+            cwd = payload.get("cwd")
+            shell = payload.get("shell")
+            max_chunks = int(payload.get("max_chunks", 4000))
+
+            def _start():
+                return (
+                    201,
+                    terminal_manager.start_session(
+                        command=(str(command) if command is not None else None),
+                        cwd=(str(cwd) if cwd is not None else None),
+                        shell=(str(shell) if shell is not None else None),
+                        max_chunks=max(200, min(20000, max_chunks)),
+                    ),
+                )
+
+            return self._respond_idempotent(
+                path=path,
+                payload=payload,
+                operation=_start,
+                category="terminal",
+                action="start",
+                entity_type="terminal_session",
+                entity_id_key="id",
+            )
+
+        def _post_terminal_input(self, path: str, payload: dict[str, object]) -> int:
+            session_id = path.removeprefix("/terminal/sessions/").removesuffix("/input").strip("/")
+            if not session_id:
+                self._send_json(404, {"error": "Not found"})
+                return 404
+            raw_input = payload.get("input")
+            if raw_input is None:
+                raise ValueError("'input' is required")
+            try:
+                out = terminal_manager.write_input(session_id, str(raw_input))
+                self._audit_event(
+                    category="terminal",
+                    action="input",
+                    status="ok",
+                    entity_type="terminal_session",
+                    entity_id=session_id,
+                    payload=out,
+                )
+                self._send_json(200, out)
+                return 200
+            except ValueError as exc:
+                self._send_json(404, {"error": str(exc)})
+                return 404
+
+        def _post_terminal_close(self, path: str, payload: dict[str, object]) -> int:
+            session_id = path.removeprefix("/terminal/sessions/").removesuffix("/close").strip("/")
+            if not session_id:
+                self._send_json(404, {"error": "Not found"})
+                return 404
+
+            def _close():
+                return (200, terminal_manager.close_session(session_id))
+
+            return self._respond_idempotent(
+                path=path,
+                payload=payload,
+                operation=_close,
+                category="terminal",
+                action="close",
+                entity_type="terminal_session",
+                entity_id=session_id,
+            )
+
         def _respond_idempotent(
             self,
             *,
@@ -1050,9 +1210,15 @@ def _build_handler(
                 return True
             if path in {"/feedback"}:
                 return True
+            if path in {"/memory/ingest"}:
+                return True
+            if path in {"/terminal/sessions"}:
+                return True
             if path.startswith("/jobs/") and path.endswith("/cancel"):
                 return True
             if path.startswith("/plugins/") and path.endswith("/call"):
+                return True
+            if path.startswith("/terminal/sessions/") and path.endswith("/close"):
                 return True
             if path.startswith("/plans/") and (
                 path.endswith("/approve")

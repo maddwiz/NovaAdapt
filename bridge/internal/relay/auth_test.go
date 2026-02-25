@@ -90,6 +90,24 @@ func TestRequiredScopeForRetryFailedRoute(t *testing.T) {
 	}
 }
 
+func TestRequiredScopeForTerminalAndMemoryRoutes(t *testing.T) {
+	if got := requiredScopeForRoute(http.MethodPost, "/terminal/sessions"); got != scopeRun {
+		t.Fatalf("expected %q scope for terminal start, got %q", scopeRun, got)
+	}
+	if got := requiredScopeForRoute(http.MethodPost, "/terminal/sessions/abc/input"); got != scopeRun {
+		t.Fatalf("expected %q scope for terminal input, got %q", scopeRun, got)
+	}
+	if got := requiredScopeForRoute(http.MethodPost, "/terminal/sessions/abc/close"); got != scopeRun {
+		t.Fatalf("expected %q scope for terminal close, got %q", scopeRun, got)
+	}
+	if got := requiredScopeForRoute(http.MethodPost, "/memory/recall"); got != scopeRead {
+		t.Fatalf("expected %q scope for memory recall, got %q", scopeRead, got)
+	}
+	if got := requiredScopeForRoute(http.MethodPost, "/memory/ingest"); got != scopeRun {
+		t.Fatalf("expected %q scope for memory ingest, got %q", scopeRun, got)
+	}
+}
+
 func TestSessionTokenCannotIssueSessionWithoutAdminScope(t *testing.T) {
 	h, err := NewHandler(Config{
 		CoreBaseURL: "http://example.com",

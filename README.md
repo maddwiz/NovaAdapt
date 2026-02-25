@@ -35,8 +35,9 @@ Implemented now:
 - `bridge` relay service in Go for secure remote forwarding into core API.
   - Includes realtime WebSocket control channel (`/ws`) for events + command relay.
 - `view` static realtime console UI for bridge operations (`view/realtime_console.html`).
+- `view` realtime console now includes xterm.js terminal session streaming and PWA install support for Android.
 - `desktop` Tauri operator shell (`desktop/tauri-shell`) for objective queueing, plan approval/rejection/failed-step retry/undo, job cancellation, and event visibility (alpha quality).
-- `mobile` iOS SwiftUI companion source (`mobile/ios/NovaAdaptCompanion`) with objective/plan/job controls plus websocket feed (alpha quality).
+- `mobile` iOS SwiftUI companion source (`mobile/ios/NovaAdaptCompanion`) with objective/plan/job controls, websocket feed, and remote terminal controls (alpha quality).
 - `wearables` Halo/Omi adapter (`wearables/halo_bridge.py`) with bridge session leasing + optional async wait flow.
 
 Planned next:
@@ -202,15 +203,24 @@ API endpoints:
 - `GET /models`
 - `GET /plugins`
 - `GET /plugins/{name}/health`
+- `GET /memory/status`
 - `GET /history?limit=20`
 - `GET /metrics` (Prometheus-style counters, auth-protected when token is enabled)
 - `GET /events?limit=100` (audit log filters: `category`, `entity_type`, `entity_id`, `since_id`)
 - `GET /events/stream` (SSE audit stream, supports `timeout`, `interval`, `since_id`)
+- `GET /terminal/sessions`
+- `GET /terminal/sessions/{id}`
+- `GET /terminal/sessions/{id}/output?since_seq=0&limit=200`
 - `POST /run` with JSON payload
 - `POST /run_async` with JSON payload (returns `job_id`)
 - `POST /swarm/run` with JSON payload (fan out multiple objectives into parallel jobs)
 - `POST /plugins/{name}/call` with JSON payload
 - `POST /feedback` with JSON payload (`rating` 1-10 required)
+- `POST /memory/recall` with JSON payload (`query` required)
+- `POST /memory/ingest` with JSON payload (`text` required)
+- `POST /terminal/sessions` with JSON payload (optional `command`, `cwd`, `shell`)
+- `POST /terminal/sessions/{id}/input` with JSON payload (`input` required)
+- `POST /terminal/sessions/{id}/close`
 - `GET /jobs` and `GET /jobs/{id}`
 - `GET /jobs/{id}/stream` (SSE status updates)
 - `POST /jobs/{id}/cancel`
@@ -239,6 +249,8 @@ Plan approvals support optional transient retry controls: `action_retry_attempts
 Plan approvals also support `retry_failed_only` to rerun only previously failed/blocked actions.
 Use `/plans/{id}/retry_failed_async` for non-blocking operator flows on desktop/mobile dashboards.
 
+Terminal routes are intended for remote shell workflows from bridge websocket clients (web/iOS), with chunked output retrieval via `since_seq`.
+
 When token auth is enabled, browser dashboard usage supports:
 
 ```text
@@ -253,6 +265,19 @@ Dashboard now includes one-click controls for pending plan approval/rejection, f
 ```bash
 make smoke
 ```
+
+## Optional: Tailscale Zero-Config Relay
+
+Enable tailnet access to the bridge container with one toggle:
+
+```bash
+NOVAADAPT_WITH_TAILSCALE=1 \
+NOVAADAPT_TAILSCALE_AUTHKEY=tskey-... \
+./installer/run_docker_stack.sh --with-tailscale
+```
+
+You can persist these values in `deploy/.env`. The stack will start `tailscaled` side-by-side with bridge and expose the same bridge endpoints over your tailnet.
+See `docs/tailscale.md` for details.
 
 ## Dev Commands
 

@@ -181,6 +181,13 @@ class ServerTests(unittest.TestCase):
                 self.assertIn("/plugins/{name}/health", openapi["paths"])
                 self.assertIn("/plugins/{name}/call", openapi["paths"])
                 self.assertIn("/feedback", openapi["paths"])
+                self.assertIn("/memory/status", openapi["paths"])
+                self.assertIn("/memory/recall", openapi["paths"])
+                self.assertIn("/memory/ingest", openapi["paths"])
+                self.assertIn("/terminal/sessions", openapi["paths"])
+                self.assertIn("/terminal/sessions/{id}/output", openapi["paths"])
+                self.assertIn("/terminal/sessions/{id}/input", openapi["paths"])
+                self.assertIn("/terminal/sessions/{id}/close", openapi["paths"])
 
                 models, _ = _get_json_with_headers(f"http://{host}:{port}/models")
                 self.assertEqual(models[0]["name"], "local")
@@ -220,6 +227,54 @@ class ServerTests(unittest.TestCase):
                 )
                 self.assertTrue(feedback["ok"])
                 self.assertEqual(feedback["rating"], 8)
+
+                memory_status, _ = _get_json_with_headers(f"http://{host}:{port}/memory/status")
+                self.assertIn("ok", memory_status)
+                self.assertIn("backend", memory_status)
+
+                memory_recall, _ = _post_json_with_headers(
+                    f"http://{host}:{port}/memory/recall",
+                    {"query": "click ok", "top_k": 5},
+                )
+                self.assertEqual(memory_recall["query"], "click ok")
+                self.assertIn("memories", memory_recall)
+
+                memory_ingest, _ = _post_json_with_headers(
+                    f"http://{host}:{port}/memory/ingest",
+                    {"text": "operator preference: use dark mode", "source_id": "test-source"},
+                )
+                self.assertTrue(memory_ingest["ok"])
+                self.assertEqual(memory_ingest["source_id"], "test-source")
+
+                started_terminal, _ = _post_json_with_headers(
+                    f"http://{host}:{port}/terminal/sessions",
+                    {"max_chunks": 500},
+                )
+                terminal_id = started_terminal["id"]
+                self.assertTrue(started_terminal["open"])
+
+                terminal_sessions, _ = _get_json_with_headers(f"http://{host}:{port}/terminal/sessions")
+                self.assertTrue(any(item["id"] == terminal_id for item in terminal_sessions))
+
+                terminal_item, _ = _get_json_with_headers(f"http://{host}:{port}/terminal/sessions/{terminal_id}")
+                self.assertEqual(terminal_item["id"], terminal_id)
+
+                terminal_output, _ = _get_json_with_headers(
+                    f"http://{host}:{port}/terminal/sessions/{terminal_id}/output?since_seq=0&limit=100"
+                )
+                self.assertIn("chunks", terminal_output)
+
+                terminal_input, _ = _post_json_with_headers(
+                    f"http://{host}:{port}/terminal/sessions/{terminal_id}/input",
+                    {"input": "echo done\n"},
+                )
+                self.assertTrue(terminal_input["accepted"])
+
+                closed_terminal, _ = _post_json_with_headers(
+                    f"http://{host}:{port}/terminal/sessions/{terminal_id}/close",
+                    {},
+                )
+                self.assertTrue(closed_terminal["closed"])
 
                 events, _ = _get_json_with_headers(f"http://{host}:{port}/events?limit=10")
                 self.assertGreaterEqual(len(events), 1)

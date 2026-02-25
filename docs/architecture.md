@@ -22,6 +22,8 @@
 - `POST /swarm/run` for parallel multi-objective fan-out into async jobs.
 - `GET /plugins`, `GET /plugins/{name}/health`, and `POST /plugins/{name}/call` for first-party tool adapters (`novabridge`, `nova4d`, `novablox`).
 - `POST /feedback` for operator ratings/notes persisted into memory.
+- `GET /memory/status`, `POST /memory/recall`, and `POST /memory/ingest` for NovaSpine-backed long-term memory visibility/operations.
+- `GET /terminal/sessions`, `POST /terminal/sessions`, `GET /terminal/sessions/{id}/output`, `POST /terminal/sessions/{id}/input`, and `POST /terminal/sessions/{id}/close` for remote terminal runtime sessions.
 - `GET /jobs` and `GET /jobs/{id}` for job polling.
 - `GET /jobs/{id}/stream` for server-sent event job updates.
 - `GET /plans/{id}/stream` for server-sent event plan updates.
@@ -87,7 +89,7 @@ The bridge additionally exposes `/metrics` for request and error counters.
 
 - Expand built-in execution with a richer gRPC backend for deterministic UI control.
 - Add policy-driven bridge device trust registry management UI.
-- Expand Tauri/iOS/wearable scaffolds into signed production builds with full approval UX parity.
+- Expand Tauri/iOS/wearable scaffolds into signed production builds with full approval + terminal UX parity.
 
 ## Current Constraints
 

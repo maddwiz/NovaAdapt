@@ -6,6 +6,7 @@ import time
 from dataclasses import dataclass
 from typing import Any
 from urllib import error, request
+from urllib.parse import quote
 
 
 class APIClientError(RuntimeError):
@@ -115,6 +116,104 @@ class NovaAdaptAPIClient:
         if isinstance(payload, dict):
             return payload
         raise APIClientError("Expected object payload from /feedback")
+
+    def memory_status(self) -> dict[str, Any]:
+        payload = self._get_json("/memory/status")
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /memory/status")
+
+    def memory_recall(self, query: str, top_k: int = 10) -> dict[str, Any]:
+        payload = self._post_json(
+            "/memory/recall",
+            {"query": str(query), "top_k": max(1, int(top_k))},
+        )
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /memory/recall")
+
+    def memory_ingest(
+        self,
+        text: str,
+        *,
+        source_id: str = "",
+        metadata: dict[str, Any] | None = None,
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {
+            "text": str(text),
+            "source_id": str(source_id or ""),
+        }
+        if metadata is not None:
+            body["metadata"] = metadata
+        payload = self._post_json("/memory/ingest", body, idempotency_key=idempotency_key)
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /memory/ingest")
+
+    def terminal_sessions(self) -> list[dict[str, Any]]:
+        payload = self._get_json("/terminal/sessions")
+        if isinstance(payload, list):
+            return payload
+        raise APIClientError("Expected list payload from /terminal/sessions")
+
+    def terminal_session(self, session_id: str) -> dict[str, Any]:
+        session = quote(str(session_id), safe="")
+        payload = self._get_json(f"/terminal/sessions/{session}")
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /terminal/sessions/{id}")
+
+    def terminal_output(self, session_id: str, *, since_seq: int = 0, limit: int = 200) -> dict[str, Any]:
+        session = quote(str(session_id), safe="")
+        payload = self._get_json(
+            f"/terminal/sessions/{session}/output?since_seq={max(0, int(since_seq))}&limit={max(1, int(limit))}"
+        )
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /terminal/sessions/{id}/output")
+
+    def start_terminal_session(
+        self,
+        *,
+        command: str | None = None,
+        cwd: str | None = None,
+        shell: str | None = None,
+        max_chunks: int = 4000,
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {"max_chunks": max(200, int(max_chunks))}
+        if command is not None:
+            body["command"] = str(command)
+        if cwd is not None:
+            body["cwd"] = str(cwd)
+        if shell is not None:
+            body["shell"] = str(shell)
+        payload = self._post_json("/terminal/sessions", body, idempotency_key=idempotency_key)
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /terminal/sessions")
+
+    def terminal_input(self, session_id: str, text: str) -> dict[str, Any]:
+        session = quote(str(session_id), safe="")
+        payload = self._post_json(
+            f"/terminal/sessions/{session}/input",
+            {"input": str(text)},
+        )
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /terminal/sessions/{id}/input")
+
+    def terminal_close(self, session_id: str, idempotency_key: str | None = None) -> dict[str, Any]:
+        session = quote(str(session_id), safe="")
+        payload = self._post_json(
+            f"/terminal/sessions/{session}/close",
+            {},
+            idempotency_key=idempotency_key,
+        )
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /terminal/sessions/{id}/close")
 
     def run(self, objective: str, idempotency_key: str | None = None, **kwargs: Any) -> dict[str, Any]:
         body = {"objective": objective, **kwargs}

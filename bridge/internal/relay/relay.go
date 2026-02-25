@@ -41,18 +41,25 @@ const (
 )
 
 var allowedPaths = map[string]struct{}{
-	"/models":         {},
-	"/openapi.json":   {},
-	"/dashboard":      {},
-	"/dashboard/data": {},
-	"/history":        {},
-	"/run":            {},
-	"/run_async":      {},
-	"/undo":           {},
-	"/check":          {},
-	"/jobs":           {},
-	"/plans":          {},
-	"/events":         {},
+	"/models":            {},
+	"/openapi.json":      {},
+	"/dashboard":         {},
+	"/dashboard/data":    {},
+	"/history":           {},
+	"/run":               {},
+	"/run_async":         {},
+	"/swarm/run":         {},
+	"/undo":              {},
+	"/check":             {},
+	"/jobs":              {},
+	"/plans":             {},
+	"/plugins":           {},
+	"/feedback":          {},
+	"/memory/status":     {},
+	"/memory/recall":     {},
+	"/memory/ingest":     {},
+	"/terminal/sessions": {},
+	"/events":            {},
 }
 
 // Config controls bridge relay behavior.
@@ -450,6 +457,31 @@ func isForwardedPath(p string) bool {
 	if strings.HasPrefix(p, "/plans/") {
 		id := strings.TrimSpace(strings.TrimPrefix(p, "/plans/"))
 		return id != ""
+	}
+	if strings.HasPrefix(p, "/plugins/") {
+		rest := strings.TrimSpace(strings.TrimPrefix(p, "/plugins/"))
+		if rest == "" {
+			return false
+		}
+		parts := strings.Split(rest, "/")
+		if len(parts) != 2 {
+			return false
+		}
+		return parts[0] != "" && (parts[1] == "health" || parts[1] == "call")
+	}
+	if strings.HasPrefix(p, "/terminal/sessions/") {
+		rest := strings.TrimSpace(strings.TrimPrefix(p, "/terminal/sessions/"))
+		if rest == "" {
+			return false
+		}
+		parts := strings.Split(rest, "/")
+		if len(parts) == 1 {
+			return parts[0] != ""
+		}
+		if len(parts) == 2 {
+			return parts[0] != "" && (parts[1] == "output" || parts[1] == "input" || parts[1] == "close")
+		}
+		return false
 	}
 	_, ok := allowedPaths[p]
 	return ok

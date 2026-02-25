@@ -227,6 +227,36 @@ class NovaAdaptMCPServer:
                     "required": ["rating"],
                 },
             ),
+            MCPTool(
+                name="novaadapt_memory_status",
+                description="Get NovaSpine memory backend readiness/status",
+                input_schema={"type": "object", "properties": {}},
+            ),
+            MCPTool(
+                name="novaadapt_memory_recall",
+                description="Recall relevant long-term memory entries",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "query": {"type": "string"},
+                        "top_k": {"type": "integer", "minimum": 1},
+                    },
+                    "required": ["query"],
+                },
+            ),
+            MCPTool(
+                name="novaadapt_memory_ingest",
+                description="Ingest text into long-term memory backend",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "text": {"type": "string"},
+                        "source_id": {"type": "string"},
+                        "metadata": {"type": "object"},
+                    },
+                    "required": ["text"],
+                },
+            ),
         ]
 
     def handle_request(self, request: dict[str, Any]) -> dict[str, Any]:
@@ -419,6 +449,25 @@ class NovaAdaptMCPServer:
                     "metadata": arguments.get("metadata"),
                     "context": arguments.get("context"),
                 }
+            )
+        if tool_name == "novaadapt_memory_status":
+            return self.service.memory_status()
+        if tool_name == "novaadapt_memory_recall":
+            query = str(arguments.get("query", "")).strip()
+            if not query:
+                raise ValueError("'query' is required")
+            top_k = int(arguments.get("top_k", 10))
+            return self.service.memory_recall(query, top_k=max(1, min(100, top_k)))
+        if tool_name == "novaadapt_memory_ingest":
+            text = str(arguments.get("text", "")).strip()
+            if not text:
+                raise ValueError("'text' is required")
+            source_id = str(arguments.get("source_id", "")).strip()
+            metadata = arguments.get("metadata")
+            return self.service.memory_ingest(
+                text,
+                source_id=source_id,
+                metadata=metadata if isinstance(metadata, dict) else None,
             )
         raise ValueError(f"Unknown tool: {tool_name}")
 

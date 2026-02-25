@@ -27,10 +27,16 @@ Secure relay service for remote clients (phone/glasses) to reach NovaAdapt core.
   - `GET /dashboard`
   - `GET /dashboard/data`
   - `GET /models`
+  - `GET /plugins`
+  - `GET /plugins/{name}/health`
   - `GET /history`
+  - `GET /memory/status`
   - `GET /jobs` and `GET /jobs/{id}`
   - `GET /jobs/{id}/stream` (SSE passthrough)
   - `GET /plans/{id}/stream` (SSE passthrough)
+  - `GET /terminal/sessions`
+  - `GET /terminal/sessions/{id}`
+  - `GET /terminal/sessions/{id}/output`
   - `POST /jobs/{id}/cancel`
   - `GET /plans` and `GET /plans/{id}`
   - `POST /plans`
@@ -40,8 +46,16 @@ Secure relay service for remote clients (phone/glasses) to reach NovaAdapt core.
   - `POST /plans/{id}/retry_failed`
   - `POST /plans/{id}/reject`
   - `POST /plans/{id}/undo`
+  - `POST /plugins/{name}/call`
   - `POST /run`
   - `POST /run_async`
+  - `POST /swarm/run`
+  - `POST /feedback`
+  - `POST /memory/recall`
+  - `POST /memory/ingest`
+  - `POST /terminal/sessions`
+  - `POST /terminal/sessions/{id}/input`
+  - `POST /terminal/sessions/{id}/close`
   - `POST /undo`
   - `POST /check`
 - `GET /ws` (WebSocket upgrade; requires bridge auth)
@@ -79,8 +93,8 @@ Response includes:
 Supported scopes:
 
 - `admin` (all routes)
-- `read` (GET routes + websocket connection)
-- `run` (`/run`, `/run_async`, `/check`, and other non-plan POST routes)
+- `read` (GET routes + websocket connection, plus `POST /memory/recall`)
+- `run` (`/run`, `/run_async`, `/swarm/run`, `/feedback`, `/memory/ingest`, `/terminal/sessions`, `/terminal/sessions/{id}/input`, `/terminal/sessions/{id}/close`, `/plugins/{name}/call`, `/check`)
 - `plan` (`POST /plans`)
 - `approve` (`POST /plans/{id}/approve`, `POST /plans/{id}/approve_async`, `POST /plans/{id}/retry_failed_async`, `POST /plans/{id}/retry_failed`)
 - `reject` (`POST /plans/{id}/reject`)

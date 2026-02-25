@@ -1,0 +1,29 @@
+services:
+  tailscale:
+    image: tailscale/tailscale:stable
+    depends_on:
+      - bridge
+    network_mode: "service:bridge"
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    volumes:
+      - tailscale_state:/var/lib/tailscale
+    environment:
+      TS_AUTHKEY: ${NOVAADAPT_TAILSCALE_AUTHKEY:-}
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_HOSTNAME: ${NOVAADAPT_TAILSCALE_HOSTNAME:-novaadapt-bridge}
+      TS_EXTRA_ARGS: ${NOVAADAPT_TAILSCALE_EXTRA_ARGS:---ssh=false}
+    command: >
+      sh -c '
+      tailscaled --state=$${TS_STATE_DIR}/tailscaled.state &
+      sleep 2 &&
+      tailscale up --authkey=$${TS_AUTHKEY} --hostname=$${TS_HOSTNAME} $${TS_EXTRA_ARGS} &&
+      tailscale status &&
+      wait'
+    restart: unless-stopped
+
+volumes:
+  tailscale_state:

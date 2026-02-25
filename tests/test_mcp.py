@@ -83,6 +83,15 @@ class _StubService:
     def record_feedback(self, payload):
         return {"ok": True, "id": "feedback-1", "rating": payload.get("rating")}
 
+    def memory_status(self):
+        return {"ok": True, "enabled": True, "backend": "novaspine-http"}
+
+    def memory_recall(self, query, top_k=10):
+        return {"query": query, "top_k": top_k, "count": 1, "memories": [{"content": "remembered"}]}
+
+    def memory_ingest(self, text, source_id="", metadata=None):
+        return {"ok": True, "source_id": source_id, "metadata": metadata or {}, "result": {"ingested": text}}
+
 
 class MCPServerTests(unittest.TestCase):
     def test_initialize_and_tools(self):
@@ -106,6 +115,9 @@ class MCPServerTests(unittest.TestCase):
         self.assertIn("novaadapt_plan_approve", names)
         self.assertIn("novaadapt_plan_undo", names)
         self.assertIn("novaadapt_feedback", names)
+        self.assertIn("novaadapt_memory_status", names)
+        self.assertIn("novaadapt_memory_recall", names)
+        self.assertIn("novaadapt_memory_ingest", names)
 
     def test_tools_call(self):
         server = NovaAdaptMCPServer(service=_StubService())
@@ -293,6 +305,49 @@ class MCPServerTests(unittest.TestCase):
         )
         feedback_payload = feedback_resp["result"]["content"][0]["json"]
         self.assertEqual(feedback_payload["rating"], 9)
+
+        memory_status_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 91,
+                "method": "tools/call",
+                "params": {
+                    "name": "novaadapt_memory_status",
+                    "arguments": {},
+                },
+            }
+        )
+        memory_status_payload = memory_status_resp["result"]["content"][0]["json"]
+        self.assertTrue(memory_status_payload["ok"])
+
+        memory_recall_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 92,
+                "method": "tools/call",
+                "params": {
+                    "name": "novaadapt_memory_recall",
+                    "arguments": {"query": "excel report", "top_k": 4},
+                },
+            }
+        )
+        memory_recall_payload = memory_recall_resp["result"]["content"][0]["json"]
+        self.assertEqual(memory_recall_payload["query"], "excel report")
+        self.assertEqual(memory_recall_payload["top_k"], 4)
+
+        memory_ingest_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 93,
+                "method": "tools/call",
+                "params": {
+                    "name": "novaadapt_memory_ingest",
+                    "arguments": {"text": "remember this", "source_id": "mcp-test"},
+                },
+            }
+        )
+        memory_ingest_payload = memory_ingest_resp["result"]["content"][0]["json"]
+        self.assertEqual(memory_ingest_payload["source_id"], "mcp-test")
 
     def test_unknown_method_returns_error(self):
         server = NovaAdaptMCPServer(service=_StubService())

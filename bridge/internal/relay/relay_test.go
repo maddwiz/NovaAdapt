@@ -139,6 +139,8 @@ func TestForwardArrayWithAuthAndRequestID(t *testing.T) {
 		switch r.URL.Path {
 		case "/models":
 			_, _ = w.Write([]byte(`[{"name":"local"}]`))
+		case "/plugins":
+			_, _ = w.Write([]byte(`[{"name":"novabridge"}]`))
 		case "/openapi.json":
 			_, _ = w.Write([]byte(`{"openapi":"3.1.0","paths":{"/run":{}}}`))
 		case "/dashboard":
@@ -150,6 +152,9 @@ func TestForwardArrayWithAuthAndRequestID(t *testing.T) {
 			lastIdempotencyKey = r.Header.Get("Idempotency-Key")
 			w.WriteHeader(http.StatusAccepted)
 			_, _ = w.Write([]byte(`{"job_id":"abc123","status":"queued"}`))
+		case "/swarm/run":
+			w.WriteHeader(http.StatusAccepted)
+			_, _ = w.Write([]byte(`{"status":"queued","kind":"swarm","submitted_jobs":2}`))
 		case "/jobs/abc123/cancel":
 			_, _ = w.Write([]byte(`{"id":"abc123","status":"canceled","canceled":true}`))
 		case "/jobs/abc123/stream":
@@ -186,6 +191,29 @@ func TestForwardArrayWithAuthAndRequestID(t *testing.T) {
 			_, _ = w.Write([]byte(`{"id":"plan1","status":"rejected"}`))
 		case "/plans/plan1/undo":
 			_, _ = w.Write([]byte(`{"plan_id":"plan1","results":[{"id":1,"ok":true}]}`))
+		case "/feedback":
+			_, _ = w.Write([]byte(`{"ok":true,"id":"feedback-1","rating":9}`))
+		case "/memory/status":
+			_, _ = w.Write([]byte(`{"ok":true,"enabled":true,"backend":"novaspine-http"}`))
+		case "/memory/recall":
+			_, _ = w.Write([]byte(`{"query":"test","top_k":5,"count":1,"memories":[{"content":"remembered"}]}`))
+		case "/memory/ingest":
+			_, _ = w.Write([]byte(`{"ok":true,"source_id":"bridge-test"}`))
+		case "/terminal/sessions":
+			if r.Method == http.MethodGet {
+				_, _ = w.Write([]byte(`[{"id":"term1","open":true}]`))
+				return
+			}
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"id":"term1","open":true}`))
+		case "/terminal/sessions/term1":
+			_, _ = w.Write([]byte(`{"id":"term1","open":true}`))
+		case "/terminal/sessions/term1/output":
+			_, _ = w.Write([]byte(`{"id":"term1","open":true,"next_seq":1,"chunks":[{"seq":1,"data":"$ "}]}`))
+		case "/terminal/sessions/term1/input":
+			_, _ = w.Write([]byte(`{"id":"term1","accepted":true}`))
+		case "/terminal/sessions/term1/close":
+			_, _ = w.Write([]byte(`{"id":"term1","closed":true}`))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 			_, _ = w.Write([]byte(`{"error":"not found"}`))
@@ -281,6 +309,14 @@ func TestForwardArrayWithAuthAndRequestID(t *testing.T) {
 	}
 	if lastIdempotencyKey != "idem-bridge-1" {
 		t.Fatalf("expected idempotency key forwarded, got %q", lastIdempotencyKey)
+	}
+
+	rrSwarm := httptest.NewRecorder()
+	reqSwarm := httptest.NewRequest(http.MethodPost, "/swarm/run", strings.NewReader(`{"objectives":["a","b"]}`))
+	reqSwarm.Header.Set("Authorization", "Bearer bridge")
+	h.ServeHTTP(rrSwarm, reqSwarm)
+	if rrSwarm.Code != http.StatusAccepted {
+		t.Fatalf("expected 202 got %d body=%s", rrSwarm.Code, rrSwarm.Body.String())
 	}
 
 	rrCancel := httptest.NewRecorder()
@@ -415,6 +451,78 @@ func TestForwardArrayWithAuthAndRequestID(t *testing.T) {
 	h.ServeHTTP(rrUndoPlan, reqUndoPlan)
 	if rrUndoPlan.Code != http.StatusOK {
 		t.Fatalf("expected 200 got %d body=%s", rrUndoPlan.Code, rrUndoPlan.Body.String())
+	}
+
+	rrMemoryStatus := httptest.NewRecorder()
+	reqMemoryStatus := httptest.NewRequest(http.MethodGet, "/memory/status", nil)
+	reqMemoryStatus.Header.Set("Authorization", "Bearer bridge")
+	h.ServeHTTP(rrMemoryStatus, reqMemoryStatus)
+	if rrMemoryStatus.Code != http.StatusOK {
+		t.Fatalf("expected 200 got %d body=%s", rrMemoryStatus.Code, rrMemoryStatus.Body.String())
+	}
+
+	rrMemoryRecall := httptest.NewRecorder()
+	reqMemoryRecall := httptest.NewRequest(http.MethodPost, "/memory/recall", strings.NewReader(`{"query":"test","top_k":5}`))
+	reqMemoryRecall.Header.Set("Authorization", "Bearer bridge")
+	h.ServeHTTP(rrMemoryRecall, reqMemoryRecall)
+	if rrMemoryRecall.Code != http.StatusOK {
+		t.Fatalf("expected 200 got %d body=%s", rrMemoryRecall.Code, rrMemoryRecall.Body.String())
+	}
+
+	rrMemoryIngest := httptest.NewRecorder()
+	reqMemoryIngest := httptest.NewRequest(http.MethodPost, "/memory/ingest", strings.NewReader(`{"text":"hello","source_id":"bridge-test"}`))
+	reqMemoryIngest.Header.Set("Authorization", "Bearer bridge")
+	h.ServeHTTP(rrMemoryIngest, reqMemoryIngest)
+	if rrMemoryIngest.Code != http.StatusOK {
+		t.Fatalf("expected 200 got %d body=%s", rrMemoryIngest.Code, rrMemoryIngest.Body.String())
+	}
+
+	rrTerminalStart := httptest.NewRecorder()
+	reqTerminalStart := httptest.NewRequest(http.MethodPost, "/terminal/sessions", strings.NewReader(`{"command":"echo hi"}`))
+	reqTerminalStart.Header.Set("Authorization", "Bearer bridge")
+	h.ServeHTTP(rrTerminalStart, reqTerminalStart)
+	if rrTerminalStart.Code != http.StatusCreated {
+		t.Fatalf("expected 201 got %d body=%s", rrTerminalStart.Code, rrTerminalStart.Body.String())
+	}
+
+	rrTerminalList := httptest.NewRecorder()
+	reqTerminalList := httptest.NewRequest(http.MethodGet, "/terminal/sessions", nil)
+	reqTerminalList.Header.Set("Authorization", "Bearer bridge")
+	h.ServeHTTP(rrTerminalList, reqTerminalList)
+	if rrTerminalList.Code != http.StatusOK {
+		t.Fatalf("expected 200 got %d body=%s", rrTerminalList.Code, rrTerminalList.Body.String())
+	}
+
+	rrTerminalGet := httptest.NewRecorder()
+	reqTerminalGet := httptest.NewRequest(http.MethodGet, "/terminal/sessions/term1", nil)
+	reqTerminalGet.Header.Set("Authorization", "Bearer bridge")
+	h.ServeHTTP(rrTerminalGet, reqTerminalGet)
+	if rrTerminalGet.Code != http.StatusOK {
+		t.Fatalf("expected 200 got %d body=%s", rrTerminalGet.Code, rrTerminalGet.Body.String())
+	}
+
+	rrTerminalOutput := httptest.NewRecorder()
+	reqTerminalOutput := httptest.NewRequest(http.MethodGet, "/terminal/sessions/term1/output?since_seq=0&limit=100", nil)
+	reqTerminalOutput.Header.Set("Authorization", "Bearer bridge")
+	h.ServeHTTP(rrTerminalOutput, reqTerminalOutput)
+	if rrTerminalOutput.Code != http.StatusOK {
+		t.Fatalf("expected 200 got %d body=%s", rrTerminalOutput.Code, rrTerminalOutput.Body.String())
+	}
+
+	rrTerminalInput := httptest.NewRecorder()
+	reqTerminalInput := httptest.NewRequest(http.MethodPost, "/terminal/sessions/term1/input", strings.NewReader(`{"input":"pwd\n"}`))
+	reqTerminalInput.Header.Set("Authorization", "Bearer bridge")
+	h.ServeHTTP(rrTerminalInput, reqTerminalInput)
+	if rrTerminalInput.Code != http.StatusOK {
+		t.Fatalf("expected 200 got %d body=%s", rrTerminalInput.Code, rrTerminalInput.Body.String())
+	}
+
+	rrTerminalClose := httptest.NewRecorder()
+	reqTerminalClose := httptest.NewRequest(http.MethodPost, "/terminal/sessions/term1/close", strings.NewReader(`{}`))
+	reqTerminalClose.Header.Set("Authorization", "Bearer bridge")
+	h.ServeHTTP(rrTerminalClose, reqTerminalClose)
+	if rrTerminalClose.Code != http.StatusOK {
+		t.Fatalf("expected 200 got %d body=%s", rrTerminalClose.Code, rrTerminalClose.Body.String())
 	}
 }
 
