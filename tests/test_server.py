@@ -720,6 +720,73 @@ class ServerTests(unittest.TestCase):
                 server.server_close()
                 thread.join(timeout=2)
 
+    def test_retry_failed_async_idempotency_replay_and_conflict(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _FlakyDirectShell.attempts = 0
+            service = NovaAdaptService(
+                default_config=Path("unused.json"),
+                db_path=Path(tmp) / "actions.db",
+                plans_db_path=Path(tmp) / "plans.db",
+                router_loader=lambda _path: _StubRouter(),
+                directshell_factory=_FlakyDirectShell,
+            )
+            server = create_server(
+                "127.0.0.1",
+                0,
+                service,
+                api_token="secret",
+                jobs_db_path=str(Path(tmp) / "jobs.db"),
+                idempotency_db_path=str(Path(tmp) / "idempotency.db"),
+                audit_db_path=str(Path(tmp) / "events.db"),
+            )
+            host, port = server.server_address
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+
+            try:
+                created_plan = _post_json(
+                    f"http://{host}:{port}/plans",
+                    {"objective": "click ok"},
+                    token="secret",
+                )
+                plan_id = created_plan["id"]
+
+                failed_plan = _post_json(
+                    f"http://{host}:{port}/plans/{plan_id}/approve",
+                    {"execute": True},
+                    token="secret",
+                )
+                self.assertEqual(failed_plan["status"], "failed")
+
+                first, _ = _post_json_with_headers(
+                    f"http://{host}:{port}/plans/{plan_id}/retry_failed_async",
+                    {"allow_dangerous": True, "action_retry_attempts": 2, "action_retry_backoff_seconds": 0.0},
+                    token="secret",
+                    idempotency_key="idem-retry-1",
+                )
+                second, headers = _post_json_with_headers(
+                    f"http://{host}:{port}/plans/{plan_id}/retry_failed_async",
+                    {"allow_dangerous": True, "action_retry_attempts": 2, "action_retry_backoff_seconds": 0.0},
+                    token="secret",
+                    idempotency_key="idem-retry-1",
+                )
+                self.assertEqual(first["job_id"], second["job_id"])
+                self.assertEqual(headers.get("X-Idempotency-Replayed"), "true")
+                self.assertEqual(headers.get("Idempotency-Key"), "idem-retry-1")
+
+                with self.assertRaises(error.HTTPError) as err:
+                    _post_json(
+                        f"http://{host}:{port}/plans/{plan_id}/retry_failed_async",
+                        {"allow_dangerous": False, "action_retry_attempts": 0, "action_retry_backoff_seconds": 0.0},
+                        token="secret",
+                        idempotency_key="idem-retry-1",
+                    )
+                self.assertEqual(err.exception.code, 409)
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=2)
+
     def test_audit_retention_prunes_expired_events_on_write(self):
         with tempfile.TemporaryDirectory() as tmp:
             events_db = Path(tmp) / "events.db"
