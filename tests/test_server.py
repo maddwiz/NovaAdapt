@@ -85,6 +85,7 @@ class ServerTests(unittest.TestCase):
                 self.assertIn("/run", openapi["paths"])
                 self.assertIn("/jobs/{id}/cancel", openapi["paths"])
                 self.assertIn("/jobs/{id}/stream", openapi["paths"])
+                self.assertIn("/plans/{id}/stream", openapi["paths"])
                 self.assertIn("/plans/{id}/approve", openapi["paths"])
                 self.assertIn("/plans/{id}/approve_async", openapi["paths"])
                 self.assertIn("/plans/{id}/undo", openapi["paths"])
@@ -122,6 +123,12 @@ class ServerTests(unittest.TestCase):
                 )
                 self.assertEqual(approved_plan["status"], "executed")
                 self.assertEqual(len(approved_plan.get("execution_results") or []), 1)
+
+                plan_stream = _get_text(
+                    f"http://{host}:{port}/plans/{plan_id}/stream?timeout=2&interval=0.05"
+                )
+                self.assertIn("event: plan", plan_stream)
+                self.assertIn("event: end", plan_stream)
 
                 undo_plan, _ = _post_json_with_headers(
                     f"http://{host}:{port}/plans/{plan_id}/undo",

@@ -109,6 +109,9 @@ func TestForwardArrayWithAuthAndRequestID(t *testing.T) {
 		case "/jobs/abc123/stream":
 			w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
 			_, _ = w.Write([]byte("event: job\ndata: {\"id\":\"abc123\",\"status\":\"running\"}\n\n"))
+		case "/plans/plan1/stream":
+			w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
+			_, _ = w.Write([]byte("event: plan\ndata: {\"id\":\"plan1\",\"status\":\"pending\"}\n\n"))
 		case "/plans":
 			if r.Method == http.MethodGet {
 				_, _ = w.Write([]byte(`[{"id":"plan1","status":"pending"}]`))
@@ -251,6 +254,20 @@ func TestForwardArrayWithAuthAndRequestID(t *testing.T) {
 	}
 	if !strings.Contains(rrStream.Body.String(), "event: job") {
 		t.Fatalf("expected stream payload, got %s", rrStream.Body.String())
+	}
+
+	rrPlanStream := httptest.NewRecorder()
+	reqPlanStream := httptest.NewRequest(http.MethodGet, "/plans/plan1/stream", nil)
+	reqPlanStream.Header.Set("Authorization", "Bearer bridge")
+	h.ServeHTTP(rrPlanStream, reqPlanStream)
+	if rrPlanStream.Code != http.StatusOK {
+		t.Fatalf("expected 200 got %d body=%s", rrPlanStream.Code, rrPlanStream.Body.String())
+	}
+	if !strings.Contains(rrPlanStream.Header().Get("Content-Type"), "text/event-stream") {
+		t.Fatalf("expected event-stream content type, got %s", rrPlanStream.Header().Get("Content-Type"))
+	}
+	if !strings.Contains(rrPlanStream.Body.String(), "event: plan") {
+		t.Fatalf("expected plan stream payload, got %s", rrPlanStream.Body.String())
 	}
 
 	rrPlans := httptest.NewRecorder()

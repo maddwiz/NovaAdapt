@@ -139,6 +139,14 @@ if [[ "$missing_plan_undo_status" != "400" ]]; then
   exit 1
 fi
 
+missing_plan_stream_status=$(curl -s -o /tmp/novaadapt-smoke-plan-missing-stream.json -w "%{http_code}" \
+  -H "Authorization: Bearer ${BRIDGE_TOKEN}" \
+  "http://127.0.0.1:${BRIDGE_PORT}/plans/missing-plan-id/stream?timeout=1&interval=0.1")
+if [[ "$missing_plan_stream_status" != "404" ]]; then
+  echo "Expected 404 from missing plan stream, got $missing_plan_stream_status"
+  exit 1
+fi
+
 idem_key="smoke-idem-run-1"
 queued_job=$(curl -sS \
   -H "Authorization: Bearer ${BRIDGE_TOKEN}" \

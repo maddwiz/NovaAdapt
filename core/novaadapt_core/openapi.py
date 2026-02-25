@@ -142,6 +142,32 @@ def build_openapi_spec() -> dict:
                     "responses": {"200": {"description": "Plan"}, "404": {"description": "Not found"}},
                 }
             },
+            "/plans/{id}/stream": {
+                "get": {
+                    "summary": "Stream plan status updates as SSE",
+                    "parameters": [
+                        {
+                            "name": "id",
+                            "in": "path",
+                            "required": True,
+                            "schema": {"type": "string"},
+                        },
+                        {
+                            "name": "timeout",
+                            "in": "query",
+                            "required": False,
+                            "schema": {"type": "number"},
+                        },
+                        {
+                            "name": "interval",
+                            "in": "query",
+                            "required": False,
+                            "schema": {"type": "number"},
+                        },
+                    ],
+                    "responses": {"200": {"description": "SSE stream"}, "404": {"description": "Not found"}},
+                }
+            },
             "/plans/{id}/approve": {
                 "post": {
                     "summary": "Approve plan and optionally execute actions",

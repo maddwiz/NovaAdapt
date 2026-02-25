@@ -20,6 +20,7 @@ Secure relay service for remote clients (phone/glasses) to reach NovaAdapt core.
   - `GET /history`
   - `GET /jobs` and `GET /jobs/{id}`
   - `GET /jobs/{id}/stream` (SSE passthrough)
+  - `GET /plans/{id}/stream` (SSE passthrough)
   - `POST /jobs/{id}/cancel`
   - `GET /plans` and `GET /plans/{id}`
   - `POST /plans`

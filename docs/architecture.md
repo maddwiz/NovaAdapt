@@ -18,6 +18,7 @@
 - `POST /run_async` for queued objective execution.
 - `GET /jobs` and `GET /jobs/{id}` for job polling.
 - `GET /jobs/{id}/stream` for server-sent event job updates.
+- `GET /plans/{id}/stream` for server-sent event plan updates.
 - `POST /jobs/{id}/cancel` for cancellation requests.
 - `POST /undo` for action reversal.
 - `GET /models` and `POST /check` for model routing visibility.

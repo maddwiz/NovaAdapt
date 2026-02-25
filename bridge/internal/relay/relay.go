@@ -219,7 +219,10 @@ func isRawForwardPath(p string) bool {
 	if p == "/dashboard" {
 		return true
 	}
-	return strings.HasPrefix(p, "/jobs/") && strings.HasSuffix(p, "/stream")
+	if strings.HasPrefix(p, "/jobs/") && strings.HasSuffix(p, "/stream") {
+		return true
+	}
+	return strings.HasPrefix(p, "/plans/") && strings.HasSuffix(p, "/stream")
 }
 
 func (h *Handler) authorized(r *http.Request) bool {

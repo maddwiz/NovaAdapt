@@ -140,6 +140,7 @@ API endpoints:
 - `GET /jobs/{id}/stream` (SSE status updates)
 - `POST /jobs/{id}/cancel`
 - `GET /plans` and `GET /plans/{id}`
+- `GET /plans/{id}/stream` (SSE status updates)
 - `POST /plans` (create pending plan)
 - `POST /plans/{id}/approve` (execute on approval by default)
 - `POST /plans/{id}/approve_async` (queue approval/execution as async job)
@@ -224,6 +225,7 @@ client = NovaAdaptAPIClient(base_url="http://127.0.0.1:8787", token="YOUR_CORE_T
 print(client.models())
 print(client.run("Open browser and go to example.com"))
 print(client.job_stream("job-id", timeout_seconds=10))
+print(client.plan_stream("plan-id", timeout_seconds=10))
 ```
 
 `NovaAdaptAPIClient` retries transient HTTP failures by default (`max_retries=1`), configurable per client instance.

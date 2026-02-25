@@ -300,6 +300,24 @@ def _build_handler(
                     self._send_json(status_code, service.list_plans(limit=limit))
                     return
 
+                if path.startswith("/plans/") and path.endswith("/stream"):
+                    plan_id = path.removeprefix("/plans/").removesuffix("/stream").strip("/")
+                    if not plan_id:
+                        status_code = 404
+                        self._send_json(status_code, {"error": "Not found"})
+                        return
+                    timeout_seconds = float(_single(query, "timeout") or 30.0)
+                    interval_seconds = float(_single(query, "interval") or 0.25)
+                    timeout_seconds = min(300.0, max(1.0, timeout_seconds))
+                    interval_seconds = min(5.0, max(0.05, interval_seconds))
+                    status_code = 200
+                    self._stream_plan_events(
+                        plan_id=plan_id,
+                        timeout_seconds=timeout_seconds,
+                        interval_seconds=interval_seconds,
+                    )
+                    return
+
                 if path.startswith("/plans/"):
                     plan_id = path.removeprefix("/plans/").strip("/")
                     if not plan_id:
@@ -733,6 +751,49 @@ def _build_handler(
 
                 if time.monotonic() >= deadline:
                     self._write_sse_event("timeout", {"id": job_id, "request_id": self._request_id})
+                    return
+
+                time.sleep(interval_seconds)
+
+        def _stream_plan_events(self, plan_id: str, timeout_seconds: float, interval_seconds: float) -> None:
+            current = service.get_plan(plan_id)
+            if current is None:
+                self._send_json(404, {"error": "Plan not found"})
+                return
+
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+            self.send_header("Cache-Control", "no-cache")
+            self.send_header("Connection", "close")
+            self.send_header("X-Request-ID", self._request_id)
+            self.end_headers()
+
+            last_snapshot: str | None = None
+            deadline = time.monotonic() + timeout_seconds
+            while True:
+                current = service.get_plan(plan_id)
+                if current is None:
+                    self._write_sse_event("error", {"error": "Plan not found", "id": plan_id})
+                    return
+
+                snapshot = json.dumps(current, sort_keys=True, separators=(",", ":"))
+                if snapshot != last_snapshot:
+                    payload = dict(current)
+                    payload.setdefault("request_id", self._request_id)
+                    if not self._write_sse_event("plan", payload):
+                        return
+                    last_snapshot = snapshot
+
+                status = str(current.get("status", ""))
+                if status in {"approved", "rejected", "executed"}:
+                    self._write_sse_event(
+                        "end",
+                        {"id": plan_id, "status": status, "request_id": self._request_id},
+                    )
+                    return
+
+                if time.monotonic() >= deadline:
+                    self._write_sse_event("timeout", {"id": plan_id, "request_id": self._request_id})
                     return
 
                 time.sleep(interval_seconds)
