@@ -55,10 +55,14 @@ func (w *wsJSONWriter) write(payload map[string]any) error {
 	return w.conn.WriteJSON(payload)
 }
 
-func (h *Handler) handleWebSocket(w http.ResponseWriter, r *http.Request, requestID string) int {
+func (h *Handler) handleWebSocket(w http.ResponseWriter, r *http.Request, requestID string, auth authContext) int {
 	if r.Method != http.MethodGet {
 		h.writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "Method not allowed", "request_id": requestID})
 		return http.StatusMethodNotAllowed
+	}
+	if !auth.hasScope(scopeRead) {
+		h.writeJSON(w, http.StatusForbidden, map[string]any{"error": "Forbidden", "request_id": requestID})
+		return http.StatusForbidden
 	}
 
 	conn, err := wsUpgrader.Upgrade(w, r, nil)
@@ -102,7 +106,7 @@ func (h *Handler) handleWebSocket(w http.ResponseWriter, r *http.Request, reques
 		if err := conn.ReadJSON(&msg); err != nil {
 			break
 		}
-		if err := h.handleWSClientMessage(writer, requestID, &lastEventID, msg); err != nil {
+		if err := h.handleWSClientMessage(writer, requestID, &lastEventID, msg, auth); err != nil {
 			break
 		}
 	}
@@ -186,6 +190,7 @@ func (h *Handler) handleWSClientMessage(
 	requestID string,
 	lastEventID *int64,
 	msg wsClientMessage,
+	auth authContext,
 ) error {
 	msgType := strings.ToLower(strings.TrimSpace(msg.Type))
 	switch msgType {
@@ -199,7 +204,7 @@ func (h *Handler) handleWSClientMessage(
 		atomic.StoreInt64(lastEventID, next)
 		return writer.write(map[string]any{"type": "ack", "id": msg.ID, "request_id": requestID, "since_id": next})
 	case "command":
-		return h.handleWSCommand(writer, requestID, msg)
+		return h.handleWSCommand(writer, requestID, msg, auth)
 	default:
 		return writer.write(
 			map[string]any{
@@ -212,7 +217,7 @@ func (h *Handler) handleWSClientMessage(
 	}
 }
 
-func (h *Handler) handleWSCommand(writer *wsJSONWriter, requestID string, msg wsClientMessage) error {
+func (h *Handler) handleWSCommand(writer *wsJSONWriter, requestID string, msg wsClientMessage, auth authContext) error {
 	method := strings.ToUpper(strings.TrimSpace(msg.Method))
 	if method == "" {
 		if msg.Body != nil {
@@ -240,6 +245,18 @@ func (h *Handler) handleWSCommand(writer *wsJSONWriter, requestID string, msg ws
 				"id":         msg.ID,
 				"error":      "path is not command-forwardable",
 				"path":       path,
+				"request_id": requestID,
+			},
+		)
+	}
+	if !auth.canAccess(method, path) {
+		return writer.write(
+			map[string]any{
+				"type":       "error",
+				"id":         msg.ID,
+				"error":      "forbidden by token scope",
+				"path":       path,
+				"method":     method,
 				"request_id": requestID,
 			},
 		)

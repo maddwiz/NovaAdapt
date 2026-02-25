@@ -38,6 +38,10 @@ type Config struct {
 	CoreBaseURL string
 	BridgeToken string
 	CoreToken   string
+	// SessionSigningKey signs scoped short-lived session tokens for websocket/browser clients.
+	SessionSigningKey string
+	// SessionTokenTTL controls default issued session token lifetime.
+	SessionTokenTTL time.Duration
 	// AllowedDeviceIDs optionally restricts requests to known device IDs via X-Device-ID.
 	// Empty means device allowlisting is disabled.
 	AllowedDeviceIDs []string
@@ -64,6 +68,9 @@ func NewHandler(cfg Config) (*Handler, error) {
 	}
 	if cfg.Timeout <= 0 {
 		cfg.Timeout = 30 * time.Second
+	}
+	if cfg.SessionTokenTTL <= 0 {
+		cfg.SessionTokenTTL = 15 * time.Minute
 	}
 	if cfg.Logger == nil {
 		cfg.Logger = log.Default()
@@ -123,7 +130,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !h.authorized(r) {
+	auth := h.authenticate(r)
+	if !auth.Authorized {
 		atomic.AddUint64(&h.unauthorizedTotal, 1)
 		statusCode = http.StatusUnauthorized
 		h.writeJSONWithStatus(
@@ -135,8 +143,36 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if r.URL.Path == "/auth/session" {
+		if r.Method != http.MethodPost {
+			statusCode = http.StatusMethodNotAllowed
+			h.writeJSON(w, statusCode, map[string]any{"error": "Method not allowed", "request_id": requestID})
+			return
+		}
+		if !auth.hasScope(scopeAdmin) {
+			statusCode = http.StatusForbidden
+			h.writeJSON(w, statusCode, map[string]any{"error": "Forbidden", "request_id": requestID})
+			return
+		}
+		body, err := h.readBody(r)
+		if err != nil {
+			statusCode = http.StatusBadRequest
+			h.writeJSON(w, statusCode, map[string]any{"error": err.Error(), "request_id": requestID})
+			return
+		}
+		issued, err := h.handleIssueSessionToken(body, auth, requestID)
+		if err != nil {
+			statusCode = http.StatusBadRequest
+			h.writeJSON(w, statusCode, map[string]any{"error": err.Error(), "request_id": requestID})
+			return
+		}
+		statusCode = http.StatusOK
+		h.writeJSON(w, statusCode, issued)
+		return
+	}
+
 	if r.URL.Path == "/ws" {
-		statusCode = h.handleWebSocket(w, r, requestID)
+		statusCode = h.handleWebSocket(w, r, requestID, auth)
 		if statusCode >= 500 {
 			atomic.AddUint64(&h.upstreamErrorsTotal, 1)
 		}
@@ -146,6 +182,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if !isForwardedPath(r.URL.Path) {
 		statusCode = http.StatusNotFound
 		h.writeJSON(w, statusCode, map[string]any{"error": "Not found", "request_id": requestID})
+		return
+	}
+
+	if !auth.canAccess(r.Method, r.URL.Path) {
+		statusCode = http.StatusForbidden
+		h.writeJSON(w, statusCode, map[string]any{"error": "Forbidden", "request_id": requestID})
 		return
 	}
 
@@ -251,34 +293,6 @@ func isRawForwardPath(p string) bool {
 		return true
 	}
 	return strings.HasPrefix(p, "/plans/") && strings.HasSuffix(p, "/stream")
-}
-
-func (h *Handler) authorized(r *http.Request) bool {
-	if strings.TrimSpace(h.cfg.BridgeToken) == "" {
-		return true
-	}
-	expected := "Bearer " + h.cfg.BridgeToken
-	authHeaderOK := r.Header.Get("Authorization") == expected
-	queryTokenOK := false
-	// Browsers cannot set Authorization header on websocket upgrades.
-	if r.URL.Path == "/ws" {
-		queryTokenOK = strings.TrimSpace(r.URL.Query().Get("token")) == h.cfg.BridgeToken
-	}
-	if !authHeaderOK && !queryTokenOK {
-		return false
-	}
-	if len(h.allowedDevices) == 0 {
-		return true
-	}
-	deviceID := strings.TrimSpace(r.Header.Get("X-Device-ID"))
-	if deviceID == "" && r.URL.Path == "/ws" {
-		deviceID = strings.TrimSpace(r.URL.Query().Get("device_id"))
-	}
-	if deviceID == "" {
-		return false
-	}
-	_, ok := h.allowedDevices[deviceID]
-	return ok
 }
 
 func (h *Handler) readBody(r *http.Request) ([]byte, error) {

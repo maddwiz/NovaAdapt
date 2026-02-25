@@ -6,6 +6,7 @@ Secure relay service for remote clients (phone/glasses) to reach NovaAdapt core.
 
 - Primary implementation: Go (`bridge/cmd/novaadapt-bridge`)
 - Token-authenticated ingress (bridge token)
+- Optional scoped session token issuance (`POST /auth/session`) for least-privilege clients
 - Optional trusted-device allowlist via `X-Device-ID`
 - Token-authenticated upstream calls to core API (core token)
 - Request-id tracing (`X-Request-ID`) propagated to core
@@ -35,6 +36,46 @@ Secure relay service for remote clients (phone/glasses) to reach NovaAdapt core.
   - `POST /undo`
   - `POST /check`
 - `GET /ws` (WebSocket upgrade; requires bridge auth)
+- `POST /auth/session` (issue scoped short-lived bridge session token; admin only)
+
+## Auth Model
+
+Bridge supports two token modes:
+
+- Static bridge token (`NOVAADAPT_BRIDGE_TOKEN`): full admin capabilities.
+- Signed session token (`na1.<payload>.<sig>`): scoped and time-limited.
+
+`POST /auth/session` requires admin auth (static token, or session token with `admin` scope).
+
+Request body (all fields optional):
+
+```json
+{
+  "subject": "iphone-operator",
+  "scopes": ["read", "plan", "approve"],
+  "device_id": "iphone-1",
+  "ttl_seconds": 900
+}
+```
+
+Response includes:
+
+- `token` (session bearer token)
+- `expires_at`, `issued_at`
+- normalized `scopes`, `subject`, `device_id`
+
+Supported scopes:
+
+- `admin` (all routes)
+- `read` (GET routes + websocket connection)
+- `run` (`/run`, `/run_async`, `/check`, and other non-plan POST routes)
+- `plan` (`POST /plans`)
+- `approve` (`POST /plans/{id}/approve`, `POST /plans/{id}/approve_async`)
+- `reject` (`POST /plans/{id}/reject`)
+- `undo` (`POST /undo`, `POST /plans/{id}/undo`)
+- `cancel` (`POST /jobs/{id}/cancel`)
+
+Unknown scopes are rejected at token-issue time with `400`.
 
 ## WebSocket Channel (`/ws`)
 
@@ -69,7 +110,9 @@ Client-to-server message types:
 Browser-compatible websocket auth:
 
 - `ws://.../ws?token=BRIDGE_TOKEN`
+- `ws://.../ws?token=SESSION_TOKEN` (scopes still enforced)
 - with device allowlist enabled: `ws://.../ws?token=BRIDGE_TOKEN&device_id=iphone-1`
+- with device-bound session token: `ws://.../ws?token=SESSION_TOKEN&device_id=iphone-1`
 
 ## Build
 
@@ -98,6 +141,8 @@ Container build uses:
   --core-url http://127.0.0.1:8787 \
   --bridge-token your_bridge_token \
   --core-token your_core_api_token \
+  --session-signing-key your_session_hmac_key \
+  --session-token-ttl-seconds 900 \
   --allowed-device-ids iphone-15-pro,halo-glasses-1 \
   --log-requests true
 ```
@@ -109,6 +154,8 @@ Environment variables are also supported:
 - `NOVAADAPT_CORE_URL`
 - `NOVAADAPT_BRIDGE_TOKEN`
 - `NOVAADAPT_CORE_TOKEN`
+- `NOVAADAPT_BRIDGE_SESSION_SIGNING_KEY` (defaults to bridge token when unset)
+- `NOVAADAPT_BRIDGE_SESSION_TTL_SECONDS` (default issued session TTL)
 - `NOVAADAPT_BRIDGE_ALLOWED_DEVICE_IDS` (comma-separated trusted device IDs)
 - `NOVAADAPT_BRIDGE_TIMEOUT`
 - `NOVAADAPT_BRIDGE_LOG_REQUESTS`

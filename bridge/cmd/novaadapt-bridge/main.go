@@ -22,6 +22,16 @@ func main() {
 	coreURL := flag.String("core-url", envOrDefault("NOVAADAPT_CORE_URL", "http://127.0.0.1:8787"), "Core API URL")
 	bridgeToken := flag.String("bridge-token", os.Getenv("NOVAADAPT_BRIDGE_TOKEN"), "Bearer token required for bridge clients")
 	coreToken := flag.String("core-token", os.Getenv("NOVAADAPT_CORE_TOKEN"), "Bearer token used when calling core API")
+	sessionSigningKey := flag.String(
+		"session-signing-key",
+		os.Getenv("NOVAADAPT_BRIDGE_SESSION_SIGNING_KEY"),
+		"HMAC key for issuing/verifying scoped bridge session tokens (defaults to bridge token when unset)",
+	)
+	sessionTokenTTL := flag.Int(
+		"session-token-ttl-seconds",
+		envOrDefaultInt("NOVAADAPT_BRIDGE_SESSION_TTL_SECONDS", 900),
+		"Default ttl for issued bridge session tokens",
+	)
 	allowedDeviceIDs := flag.String(
 		"allowed-device-ids",
 		envOrDefault("NOVAADAPT_BRIDGE_ALLOWED_DEVICE_IDS", ""),
@@ -32,13 +42,15 @@ func main() {
 	flag.Parse()
 
 	handler, err := relay.NewHandler(relay.Config{
-		CoreBaseURL:      *coreURL,
-		BridgeToken:      *bridgeToken,
-		CoreToken:        *coreToken,
-		AllowedDeviceIDs: parseCSV(*allowedDeviceIDs),
-		Timeout:          time.Duration(max(1, *timeout)) * time.Second,
-		LogRequests:      *logRequests,
-		Logger:           log.Default(),
+		CoreBaseURL:       *coreURL,
+		BridgeToken:       *bridgeToken,
+		CoreToken:         *coreToken,
+		SessionSigningKey: *sessionSigningKey,
+		SessionTokenTTL:   time.Duration(max(60, *sessionTokenTTL)) * time.Second,
+		AllowedDeviceIDs:  parseCSV(*allowedDeviceIDs),
+		Timeout:           time.Duration(max(1, *timeout)) * time.Second,
+		LogRequests:       *logRequests,
+		Logger:            log.Default(),
 	})
 	if err != nil {
 		log.Fatalf("failed to initialize relay: %v", err)
