@@ -50,24 +50,41 @@ class PlanStore:
                     approved_at TEXT,
                     rejected_at TEXT,
                     executed_at TEXT,
+                    execution_started_at TEXT,
                     reject_reason TEXT,
                     execution_results_json TEXT,
-                    action_log_ids_json TEXT
+                    action_log_ids_json TEXT,
+                    progress_completed INTEGER NOT NULL DEFAULT 0,
+                    progress_total INTEGER NOT NULL DEFAULT 0,
+                    execution_error TEXT
                 )
                 """
             )
+            columns = {
+                row[1]
+                for row in conn.execute("PRAGMA table_info(plans)").fetchall()
+            }
+            if "execution_started_at" not in columns:
+                conn.execute("ALTER TABLE plans ADD COLUMN execution_started_at TEXT")
+            if "progress_completed" not in columns:
+                conn.execute("ALTER TABLE plans ADD COLUMN progress_completed INTEGER NOT NULL DEFAULT 0")
+            if "progress_total" not in columns:
+                conn.execute("ALTER TABLE plans ADD COLUMN progress_total INTEGER NOT NULL DEFAULT 0")
+            if "execution_error" not in columns:
+                conn.execute("ALTER TABLE plans ADD COLUMN execution_error TEXT")
             conn.commit()
 
     def create(self, payload: dict[str, Any]) -> dict[str, Any]:
         plan_id = payload.get("id") or uuid.uuid4().hex
         now = _now_iso()
+        actions = payload.get("actions", [])
         record = {
             "id": plan_id,
             "objective": str(payload["objective"]),
             "strategy": str(payload.get("strategy", "single")),
             "model": payload.get("model"),
             "model_id": payload.get("model_id"),
-            "actions": payload.get("actions", []),
+            "actions": actions,
             "votes": payload.get("votes", {}),
             "model_errors": payload.get("model_errors", {}),
             "attempted_models": payload.get("attempted_models", []),
@@ -77,9 +94,13 @@ class PlanStore:
             "approved_at": None,
             "rejected_at": None,
             "executed_at": None,
+            "execution_started_at": None,
             "reject_reason": None,
             "execution_results": None,
             "action_log_ids": None,
+            "progress_completed": int(payload.get("progress_completed", 0)),
+            "progress_total": int(payload.get("progress_total", len(actions))),
+            "execution_error": None,
         }
         with self._connection() as conn:
             conn.execute(
@@ -87,9 +108,10 @@ class PlanStore:
                 INSERT INTO plans(
                     id, objective, strategy, model, model_id, actions_json, votes_json,
                     model_errors_json, attempted_models_json, status, created_at, updated_at,
-                    approved_at, rejected_at, executed_at, reject_reason,
-                    execution_results_json, action_log_ids_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    approved_at, rejected_at, executed_at, execution_started_at, reject_reason,
+                    execution_results_json, action_log_ids_json, progress_completed, progress_total,
+                    execution_error
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     record["id"],
@@ -107,9 +129,13 @@ class PlanStore:
                     record["approved_at"],
                     record["rejected_at"],
                     record["executed_at"],
+                    record["execution_started_at"],
                     record["reject_reason"],
                     None,
                     None,
+                    record["progress_completed"],
+                    record["progress_total"],
+                    record["execution_error"],
                 ),
             )
             conn.commit()
@@ -121,8 +147,9 @@ class PlanStore:
                 """
                 SELECT id, objective, strategy, model, model_id, actions_json, votes_json,
                        model_errors_json, attempted_models_json, status, created_at, updated_at,
-                       approved_at, rejected_at, executed_at, reject_reason,
-                       execution_results_json, action_log_ids_json
+                       approved_at, rejected_at, executed_at, execution_started_at, reject_reason,
+                       execution_results_json, action_log_ids_json,
+                       progress_completed, progress_total, execution_error
                 FROM plans
                 WHERE id = ?
                 """,
@@ -138,8 +165,9 @@ class PlanStore:
                 """
                 SELECT id, objective, strategy, model, model_id, actions_json, votes_json,
                        model_errors_json, attempted_models_json, status, created_at, updated_at,
-                       approved_at, rejected_at, executed_at, reject_reason,
-                       execution_results_json, action_log_ids_json
+                       approved_at, rejected_at, executed_at, execution_started_at, reject_reason,
+                       execution_results_json, action_log_ids_json,
+                       progress_completed, progress_total, execution_error
                 FROM plans
                 ORDER BY created_at DESC
                 LIMIT ?
@@ -147,6 +175,113 @@ class PlanStore:
                 (max(1, int(limit)),),
             ).fetchall()
         return [self._row_to_dict(row) for row in rows]
+
+    def mark_executing(self, plan_id: str, total_actions: int) -> dict[str, Any] | None:
+        if self.get(plan_id) is None:
+            return None
+        now = _now_iso()
+        with self._connection() as conn:
+            conn.execute(
+                """
+                UPDATE plans
+                SET status = ?,
+                    updated_at = ?,
+                    approved_at = COALESCE(approved_at, ?),
+                    execution_started_at = COALESCE(execution_started_at, ?),
+                    progress_completed = ?,
+                    progress_total = ?,
+                    execution_error = NULL
+                WHERE id = ?
+                """,
+                ("executing", now, now, now, 0, max(0, int(total_actions)), plan_id),
+            )
+            conn.commit()
+        return self.get(plan_id)
+
+    def update_execution_progress(
+        self,
+        plan_id: str,
+        execution_results: list[dict[str, Any]],
+        action_log_ids: list[int],
+        progress_completed: int,
+        progress_total: int,
+    ) -> dict[str, Any] | None:
+        current = self.get(plan_id)
+        if current is None:
+            return None
+        now = _now_iso()
+        with self._connection() as conn:
+            conn.execute(
+                """
+                UPDATE plans
+                SET updated_at = ?,
+                    execution_results_json = ?,
+                    action_log_ids_json = ?,
+                    progress_completed = ?,
+                    progress_total = ?
+                WHERE id = ?
+                """,
+                (
+                    now,
+                    json.dumps(execution_results),
+                    json.dumps(action_log_ids),
+                    max(0, int(progress_completed)),
+                    max(0, int(progress_total)),
+                    plan_id,
+                ),
+            )
+            conn.commit()
+        return self.get(plan_id)
+
+    def fail_execution(
+        self,
+        plan_id: str,
+        error: str,
+        execution_results: list[dict[str, Any]] | None = None,
+        action_log_ids: list[int] | None = None,
+        progress_completed: int | None = None,
+        progress_total: int | None = None,
+    ) -> dict[str, Any] | None:
+        current = self.get(plan_id)
+        if current is None:
+            return None
+        now = _now_iso()
+        with self._connection() as conn:
+            conn.execute(
+                """
+                UPDATE plans
+                SET status = ?,
+                    updated_at = ?,
+                    executed_at = ?,
+                    execution_results_json = ?,
+                    action_log_ids_json = ?,
+                    progress_completed = ?,
+                    progress_total = ?,
+                    execution_error = ?
+                WHERE id = ?
+                """,
+                (
+                    "failed",
+                    now,
+                    now,
+                    json.dumps(execution_results) if execution_results is not None else json.dumps(current.get("execution_results")),
+                    json.dumps(action_log_ids) if action_log_ids is not None else json.dumps(current.get("action_log_ids")),
+                    (
+                        max(0, int(progress_completed))
+                        if progress_completed is not None
+                        else int(current.get("progress_completed") or 0)
+                    ),
+                    (
+                        max(0, int(progress_total))
+                        if progress_total is not None
+                        else int(current.get("progress_total") or 0)
+                    ),
+                    str(error),
+                    plan_id,
+                ),
+            )
+            conn.commit()
+        return self.get(plan_id)
 
     def approve(
         self,
@@ -178,7 +313,10 @@ class PlanStore:
                     approved_at = COALESCE(approved_at, ?),
                     executed_at = ?,
                     execution_results_json = ?,
-                    action_log_ids_json = ?
+                    action_log_ids_json = ?,
+                    progress_completed = ?,
+                    progress_total = ?,
+                    execution_error = NULL
                 WHERE id = ?
                 """,
                 (
@@ -188,6 +326,8 @@ class PlanStore:
                     now if execution_results is not None else current.get("executed_at"),
                     execution_results_json,
                     action_log_ids_json,
+                    len(execution_results or []),
+                    max(len(current.get("actions") or []), len(execution_results or [])),
                     plan_id,
                 ),
             )
@@ -205,7 +345,8 @@ class PlanStore:
                 SET status = ?,
                     updated_at = ?,
                     rejected_at = ?,
-                    reject_reason = ?
+                    reject_reason = ?,
+                    execution_error = NULL
                 WHERE id = ?
                 """,
                 ("rejected", now, now, reason, plan_id),
@@ -234,9 +375,13 @@ class PlanStore:
             "approved_at": row[12],
             "rejected_at": row[13],
             "executed_at": row[14],
-            "reject_reason": row[15],
-            "execution_results": _j(row[16], None),
-            "action_log_ids": _j(row[17], None),
+            "execution_started_at": row[15],
+            "reject_reason": row[16],
+            "execution_results": _j(row[17], None),
+            "action_log_ids": _j(row[18], None),
+            "progress_completed": int(row[19] or 0),
+            "progress_total": int(row[20] or 0),
+            "execution_error": row[21],
         }
 
 

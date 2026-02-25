@@ -125,6 +125,9 @@ class ServiceTests(unittest.TestCase):
             self.assertEqual(approved["status"], "executed")
             self.assertEqual(len(approved.get("execution_results") or []), 1)
             self.assertEqual(len(approved.get("action_log_ids") or []), 1)
+            self.assertEqual(approved.get("progress_completed"), 1)
+            self.assertEqual(approved.get("progress_total"), 1)
+            self.assertIsNone(approved.get("execution_error"))
 
             history = service.history(limit=5)
             self.assertEqual(len(history), 1)

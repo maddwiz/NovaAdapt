@@ -124,6 +124,7 @@ def render_dashboard_html() -> str:
             <tr>
               <th>Plan ID</th>
               <th>Status</th>
+              <th>Progress</th>
               <th>Objective</th>
               <th>Created</th>
             </tr>
@@ -199,6 +200,7 @@ def render_dashboard_html() -> str:
           <tr>
             <td class=\"mono\">${plan.id}</td>
             <td>${plan.status}</td>
+            <td>${Number(plan.progress_completed || 0)}/${Number(plan.progress_total || 0)}</td>
             <td>${String(plan.objective || '').slice(0, 80)}</td>
             <td>${plan.created_at || ''}</td>
           </tr>

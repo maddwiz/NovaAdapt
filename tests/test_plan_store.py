@@ -32,6 +32,23 @@ class PlanStoreTests(unittest.TestCase):
             fetched = store.get(created["id"])
             self.assertIsNotNone(fetched)
             self.assertEqual(fetched["model"], "local")
+            self.assertEqual(fetched["progress_completed"], 0)
+            self.assertEqual(fetched["progress_total"], 1)
+
+            executing = store.mark_executing(created["id"], total_actions=1)
+            self.assertIsNotNone(executing)
+            self.assertEqual(executing["status"], "executing")
+
+            progress = store.update_execution_progress(
+                created["id"],
+                execution_results=[{"status": "ok"}],
+                action_log_ids=[1],
+                progress_completed=1,
+                progress_total=1,
+            )
+            self.assertIsNotNone(progress)
+            self.assertEqual(progress["progress_completed"], 1)
+            self.assertEqual(progress["progress_total"], 1)
 
             approved = store.approve(
                 created["id"],
@@ -43,12 +60,19 @@ class PlanStoreTests(unittest.TestCase):
             self.assertEqual(approved["status"], "executed")
             self.assertEqual(approved["execution_results"][0]["status"], "ok")
             self.assertEqual(approved["action_log_ids"][0], 1)
+            self.assertIsNone(approved["execution_error"])
 
             created_2 = store.create({"objective": "do not run", "actions": []})
             rejected = store.reject(created_2["id"], reason="unsafe")
             self.assertIsNotNone(rejected)
             self.assertEqual(rejected["status"], "rejected")
             self.assertEqual(rejected["reject_reason"], "unsafe")
+
+            created_3 = store.create({"objective": "fails", "actions": [{"type": "click", "target": "X"}]})
+            failed = store.fail_execution(created_3["id"], error="boom", progress_completed=0, progress_total=1)
+            self.assertIsNotNone(failed)
+            self.assertEqual(failed["status"], "failed")
+            self.assertEqual(failed["execution_error"], "boom")
 
 
 if __name__ == "__main__":

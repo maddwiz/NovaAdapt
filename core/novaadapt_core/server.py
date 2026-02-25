@@ -785,7 +785,7 @@ def _build_handler(
                     last_snapshot = snapshot
 
                 status = str(current.get("status", ""))
-                if status in {"approved", "rejected", "executed"}:
+                if status in {"approved", "rejected", "executed", "failed"}:
                     self._write_sse_event(
                         "end",
                         {"id": plan_id, "status": status, "request_id": self._request_id},

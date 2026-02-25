@@ -123,6 +123,8 @@ class NovaAdaptService:
             raise ValueError("Plan not found")
         if plan["status"] == "rejected":
             raise ValueError("Plan already rejected")
+        if plan["status"] == "executing":
+            raise ValueError("Plan is already executing")
         if plan["status"] == "executed":
             return plan
 
@@ -141,46 +143,72 @@ class NovaAdaptService:
         policy = ActionPolicy()
         queue = UndoQueue(db_path=self.db_path)
         directshell = self.directshell_factory()
+        self._plans().mark_executing(plan_id=plan_id, total_actions=len(actions))
 
         execution_results: list[dict[str, Any]] = []
         action_log_ids: list[int] = []
-        for action in actions:
-            decision = policy.evaluate(action, allow_dangerous=allow_dangerous)
-            undo_action = action.get("undo") if isinstance(action.get("undo"), dict) else None
-            if not decision.allowed:
+        try:
+            for idx, action in enumerate(actions, start=1):
+                decision = policy.evaluate(action, allow_dangerous=allow_dangerous)
+                undo_action = action.get("undo") if isinstance(action.get("undo"), dict) else None
+                if not decision.allowed:
+                    execution_results.append(
+                        {
+                            "status": "blocked",
+                            "output": decision.reason,
+                            "action": action,
+                            "dangerous": decision.dangerous,
+                        }
+                    )
+                    action_log_ids.append(
+                        queue.record(
+                            action=action,
+                            status="blocked",
+                            undo_action=undo_action,
+                        )
+                    )
+                    self._plans().update_execution_progress(
+                        plan_id=plan_id,
+                        execution_results=execution_results,
+                        action_log_ids=action_log_ids,
+                        progress_completed=idx,
+                        progress_total=len(actions),
+                    )
+                    continue
+
+                run_result = directshell.execute_action(action=action, dry_run=False)
                 execution_results.append(
                     {
-                        "status": "blocked",
-                        "output": decision.reason,
-                        "action": action,
+                        "status": run_result.status,
+                        "output": run_result.output,
+                        "action": run_result.action,
                         "dangerous": decision.dangerous,
                     }
                 )
                 action_log_ids.append(
                     queue.record(
-                        action=action,
-                        status="blocked",
+                        action=run_result.action,
+                        status=run_result.status,
                         undo_action=undo_action,
                     )
                 )
-                continue
-
-            run_result = directshell.execute_action(action=action, dry_run=False)
-            execution_results.append(
-                {
-                    "status": run_result.status,
-                    "output": run_result.output,
-                    "action": run_result.action,
-                    "dangerous": decision.dangerous,
-                }
-            )
-            action_log_ids.append(
-                queue.record(
-                    action=run_result.action,
-                    status=run_result.status,
-                    undo_action=undo_action,
+                self._plans().update_execution_progress(
+                    plan_id=plan_id,
+                    execution_results=execution_results,
+                    action_log_ids=action_log_ids,
+                    progress_completed=idx,
+                    progress_total=len(actions),
                 )
+        except Exception as exc:  # pragma: no cover - defensive execution boundary
+            self._plans().fail_execution(
+                plan_id=plan_id,
+                error=str(exc),
+                execution_results=execution_results,
+                action_log_ids=action_log_ids,
+                progress_completed=len(execution_results),
+                progress_total=len(actions),
             )
+            raise
 
         approved = self._plans().approve(
             plan_id=plan_id,
