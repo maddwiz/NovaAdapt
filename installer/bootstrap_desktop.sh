@@ -21,3 +21,4 @@ fi
 
 echo "NovaAdapt desktop MVP bootstrapped."
 echo "Next: source .venv/bin/activate && novaadapt models --config config/models.local.json"
+echo "Or run full local stack: make run-local"

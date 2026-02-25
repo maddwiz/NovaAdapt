@@ -280,6 +280,18 @@ python3 -m http.server 8088
 
 Open `http://127.0.0.1:8088/realtime_console.html`.
 
+One-command local operator stack (core + bridge + optional view server):
+
+```bash
+make run-local
+```
+
+Optional env vars:
+- `NOVAADAPT_CORE_TOKEN`
+- `NOVAADAPT_BRIDGE_TOKEN`
+- `NOVAADAPT_BRIDGE_ALLOWED_DEVICE_IDS`
+- `NOVAADAPT_WITH_VIEW=0` (skip static view server)
+
 Wearable intent bridge prototype:
 
 ```bash

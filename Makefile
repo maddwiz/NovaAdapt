@@ -1,6 +1,6 @@
 PYTHONPATH := core:shared
 
-.PHONY: test test-py test-go build-bridge smoke
+.PHONY: test test-py test-go build-bridge smoke run-local
 
 test: test-py test-go
 
@@ -15,3 +15,6 @@ build-bridge:
 
 smoke:
 	./scripts/smoke_bridge.sh
+
+run-local:
+	./installer/run_local_operator_stack.sh
