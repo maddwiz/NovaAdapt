@@ -157,6 +157,17 @@ func TestWebSocketCommandAndEventStreaming(t *testing.T) {
 			w.Header().Set("X-Idempotency-Replayed", "false")
 			w.WriteHeader(http.StatusAccepted)
 			_, _ = w.Write([]byte(`{"job_id":"plan-job-1","status":"queued","kind":"plan_approval"}`))
+		case "/plans/plan1/retry_failed_async":
+			if r.Method != http.MethodPost {
+				w.WriteHeader(http.StatusMethodNotAllowed)
+				_, _ = w.Write([]byte(`{"error":"method not allowed"}`))
+				return
+			}
+			w.Header().Set("X-Request-ID", "core-rid-2")
+			w.Header().Set("Idempotency-Key", r.Header.Get("Idempotency-Key"))
+			w.Header().Set("X-Idempotency-Replayed", "false")
+			w.WriteHeader(http.StatusAccepted)
+			_, _ = w.Write([]byte(`{"job_id":"plan-job-retry-1","status":"queued","kind":"plan_retry_failed"}`))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 			_, _ = w.Write([]byte(`{"error":"not found"}`))
@@ -236,6 +247,39 @@ func TestWebSocketCommandAndEventStreaming(t *testing.T) {
 	}
 	if replayed, ok := result["replayed"].(bool); !ok || replayed {
 		t.Fatalf("expected replayed=false, got %#v", result["replayed"])
+	}
+
+	if err := conn.WriteJSON(
+		map[string]any{
+			"type":   "command",
+			"id":     "cmd-retry",
+			"method": "POST",
+			"path":   "/plans/plan1/retry_failed_async",
+			"body": map[string]any{
+				"allow_dangerous": true,
+			},
+			"idempotency_key": "idem-ws-retry-1",
+		},
+	); err != nil {
+		t.Fatalf("write retry command: %v", err)
+	}
+
+	retryResult := mustReadWSMessageByType(t, conn, "command_result", 2*time.Second)
+	if retryResult["id"] != "cmd-retry" {
+		t.Fatalf("expected retry command_result id, got %#v", retryResult)
+	}
+	if int(retryResult["status"].(float64)) != http.StatusAccepted {
+		t.Fatalf("expected retry status 202, got %#v", retryResult["status"])
+	}
+	retryPayload, ok := retryResult["payload"].(map[string]any)
+	if !ok || retryPayload["kind"] != "plan_retry_failed" {
+		t.Fatalf("unexpected retry command payload: %#v", retryResult["payload"])
+	}
+	if retryResult["idempotency_key"] != "idem-ws-retry-1" {
+		t.Fatalf("expected retry idempotency key in command result, got %#v", retryResult["idempotency_key"])
+	}
+	if retryResult["core_request_id"] != "core-rid-2" {
+		t.Fatalf("expected retry core request id in command result, got %#v", retryResult["core_request_id"])
 	}
 
 	if err := conn.WriteJSON(map[string]any{"type": "set_since_id", "id": "cursor-1", "since_id": 1}); err != nil {
