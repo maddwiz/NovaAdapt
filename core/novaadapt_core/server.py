@@ -194,8 +194,44 @@ def _build_handler(
 
             try:
                 if path == "/health":
-                    status_code = 200
-                    self._send_json(status_code, {"ok": True, "service": "novaadapt"})
+                    deep = (_single(query, "deep") or "0") == "1"
+                    if not deep:
+                        status_code = 200
+                        self._send_json(status_code, {"ok": True, "service": "novaadapt"})
+                        return
+                    health_payload = {"ok": True, "service": "novaadapt", "checks": {}, "metrics": metrics.snapshot()}
+                    checks = health_payload["checks"]
+
+                    config = _to_path(_single(query, "config"))
+                    try:
+                        checks["models"] = {"ok": True, "count": len(service.models(config_path=config))}
+                    except Exception as exc:
+                        checks["models"] = {"ok": False, "error": str(exc)}
+                        health_payload["ok"] = False
+
+                    try:
+                        checks["audit_store"] = {
+                            "ok": True,
+                            "recent_count": len(audit_store.list(limit=1)) if audit_store is not None else 0,
+                        }
+                    except Exception as exc:
+                        checks["audit_store"] = {"ok": False, "error": str(exc)}
+                        health_payload["ok"] = False
+
+                    try:
+                        checks["plan_store"] = {"ok": True, "recent_count": len(service.list_plans(limit=1))}
+                    except Exception as exc:
+                        checks["plan_store"] = {"ok": False, "error": str(exc)}
+                        health_payload["ok"] = False
+
+                    try:
+                        checks["action_log"] = {"ok": True, "recent_count": len(service.history(limit=1))}
+                    except Exception as exc:
+                        checks["action_log"] = {"ok": False, "error": str(exc)}
+                        health_payload["ok"] = False
+
+                    status_code = 200 if health_payload["ok"] else 503
+                    self._send_json(status_code, health_payload)
                     return
 
                 if path == "/dashboard":

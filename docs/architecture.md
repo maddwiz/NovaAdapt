@@ -32,6 +32,7 @@
 Bearer token auth can be required for all routes except `/health`.
 All responses include `X-Request-ID` for request-level tracing across bridge/core.
 Core also exposes `/metrics` and can enforce request-rate and request-body limits.
+`GET /health?deep=1` provides a readiness snapshot covering model visibility and core SQLite-backed stores.
 Mutating POST routes support `Idempotency-Key` replay protection for safe retries.
 Async job records are persisted to SQLite when `--jobs-db-path` is configured.
 

@@ -140,7 +140,8 @@ novaadapt serve \
 
 API endpoints:
 
-- `GET /health`
+- `GET /health` (liveness)
+- `GET /health?deep=1` (readiness snapshot: models + SQLite-backed stores + metrics)
 - `GET /openapi.json`
 - `GET /dashboard` (auth-protected operational HTML dashboard)
 - `GET /dashboard/data` (auth-protected dashboard JSON: health, metrics, jobs, plans, events)

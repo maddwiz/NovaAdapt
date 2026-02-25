@@ -13,7 +13,19 @@ def build_openapi_spec() -> dict:
             "/health": {
                 "get": {
                     "summary": "Service health",
-                    "responses": {"200": {"description": "Healthy"}},
+                    "parameters": [
+                        {
+                            "name": "deep",
+                            "in": "query",
+                            "required": False,
+                            "schema": {"type": "integer", "enum": [0, 1]},
+                            "description": "Set to 1 for readiness checks (models + stores + metrics).",
+                        }
+                    ],
+                    "responses": {
+                        "200": {"description": "Healthy"},
+                        "503": {"description": "Unhealthy readiness check"},
+                    },
                 }
             },
             "/dashboard": {

@@ -76,6 +76,13 @@ class ServerTests(unittest.TestCase):
                 self.assertIn("request_id", health)
                 self.assertTrue(health_headers.get("X-Request-ID"))
 
+                deep_health, _ = _get_json_with_headers(f"http://{host}:{port}/health?deep=1")
+                self.assertTrue(deep_health["ok"])
+                self.assertIn("checks", deep_health)
+                self.assertTrue(deep_health["checks"]["models"]["ok"])
+                self.assertTrue(deep_health["checks"]["audit_store"]["ok"])
+                self.assertIn("metrics", deep_health)
+
                 dashboard_html = _get_text(f"http://{host}:{port}/dashboard")
                 self.assertIn("NovaAdapt Core Dashboard", dashboard_html)
                 self.assertIn("Approve Async", dashboard_html)
