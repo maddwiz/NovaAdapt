@@ -152,6 +152,7 @@ API endpoints:
 Core API responses include `X-Request-ID` for tracing (and object responses also include `request_id` in JSON).
 Mutating POST routes support idempotency via `Idempotency-Key`; replayed responses return `X-Idempotency-Replayed: true`.
 Plan records expose execution progress fields (`progress_completed`, `progress_total`) and terminal error state (`execution_error`).
+Plans finalize as `failed` when one or more actions are blocked or fail during execution.
 
 When token auth is enabled, browser dashboard usage supports:
 

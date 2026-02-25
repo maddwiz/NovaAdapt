@@ -210,6 +210,24 @@ class NovaAdaptService:
             )
             raise
 
+        failed_actions = [
+            item
+            for item in execution_results
+            if str(item.get("status", "")).lower() in {"failed", "blocked"}
+        ]
+        if failed_actions:
+            failed = self._plans().fail_execution(
+                plan_id=plan_id,
+                error=f"{len(failed_actions)} actions failed or were blocked",
+                execution_results=execution_results,
+                action_log_ids=action_log_ids,
+                progress_completed=len(execution_results),
+                progress_total=len(actions),
+            )
+            if failed is None:
+                raise ValueError("Plan not found")
+            return failed
+
         approved = self._plans().approve(
             plan_id=plan_id,
             execution_results=execution_results,

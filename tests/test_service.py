@@ -100,6 +100,28 @@ class ServiceTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             service.run({})
 
+    def test_approve_plan_marks_failed_on_blocked_action(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            service = NovaAdaptService(
+                default_config=Path("unused.json"),
+                db_path=Path(tmp) / "actions.db",
+                plans_db_path=Path(tmp) / "plans.db",
+                router_loader=lambda _path: _StubRouter(),
+                directshell_factory=_StubDirectShell,
+            )
+            # Store a dangerous action directly so approval execution hits policy block.
+            plan = service._plans().create(
+                {
+                    "objective": "dangerous",
+                    "actions": [{"type": "delete", "target": "/tmp/something"}],
+                }
+            )
+            out = service.approve_plan(plan["id"], {"execute": True, "allow_dangerous": False})
+            self.assertEqual(out["status"], "failed")
+            self.assertEqual(out["progress_completed"], 1)
+            self.assertEqual(out["progress_total"], 1)
+            self.assertIn("failed or were blocked", str(out.get("execution_error")))
+
     def test_plan_lifecycle_execute_and_reject(self):
         with tempfile.TemporaryDirectory() as tmp:
             service = NovaAdaptService(
