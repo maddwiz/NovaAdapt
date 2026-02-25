@@ -67,6 +67,8 @@ type Config struct {
 	// CORSAllowedOrigins controls which browser origins may call cross-origin bridge APIs.
 	// Empty keeps cross-origin requests blocked; same-origin requests are always allowed.
 	CORSAllowedOrigins []string
+	// RevocationStorePath optionally persists revoked session IDs across bridge restarts.
+	RevocationStorePath string
 	// RateLimitRPS limits requests per client key (remote IP / forwarded IP). <=0 disables.
 	RateLimitRPS float64
 	// RateLimitBurst configures token bucket burst size when RateLimitRPS is enabled.
@@ -136,6 +138,10 @@ func NewHandler(cfg Config) (*Handler, error) {
 		}
 		corsAllowedOrigins[canonicalOrigin(trimmed)] = struct{}{}
 	}
+	revokedSessions, err := loadRevocationEntries(strings.TrimSpace(cfg.RevocationStorePath), time.Now().Unix())
+	if err != nil {
+		return nil, fmt.Errorf("failed to load revocation store: %w", err)
+	}
 	return &Handler{
 		cfg: cfg,
 		client: &http.Client{
@@ -144,7 +150,7 @@ func NewHandler(cfg Config) (*Handler, error) {
 		allowedDevices:     allowedDevices,
 		corsAllowedOrigins: corsAllowedOrigins,
 		corsAllowAll:       corsAllowAll,
-		revokedSessions:    make(map[string]int64),
+		revokedSessions:    revokedSessions,
 		rateLimiters:       make(map[string]*clientLimiter),
 	}, nil
 }

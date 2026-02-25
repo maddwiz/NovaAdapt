@@ -42,6 +42,11 @@ func main() {
 		envOrDefault("NOVAADAPT_BRIDGE_CORS_ALLOWED_ORIGINS", ""),
 		"Comma-separated allowed CORS origins for browser clients (use * to allow any)",
 	)
+	revocationStorePath := flag.String(
+		"revocation-store-path",
+		envOrDefault("NOVAADAPT_BRIDGE_REVOCATION_STORE_PATH", ""),
+		"Optional file path for persisted session revocation state",
+	)
 	rateLimitRPS := flag.Float64(
 		"rate-limit-rps",
 		envOrDefaultFloat("NOVAADAPT_BRIDGE_RATE_LIMIT_RPS", 0),
@@ -57,18 +62,19 @@ func main() {
 	flag.Parse()
 
 	handler, err := relay.NewHandler(relay.Config{
-		CoreBaseURL:        *coreURL,
-		BridgeToken:        *bridgeToken,
-		CoreToken:          *coreToken,
-		SessionSigningKey:  *sessionSigningKey,
-		SessionTokenTTL:    time.Duration(max(60, *sessionTokenTTL)) * time.Second,
-		AllowedDeviceIDs:   parseCSV(*allowedDeviceIDs),
-		CORSAllowedOrigins: parseCSV(*corsAllowedOrigins),
-		RateLimitRPS:       *rateLimitRPS,
-		RateLimitBurst:     max(1, *rateLimitBurst),
-		Timeout:            time.Duration(max(1, *timeout)) * time.Second,
-		LogRequests:        *logRequests,
-		Logger:             log.Default(),
+		CoreBaseURL:         *coreURL,
+		BridgeToken:         *bridgeToken,
+		CoreToken:           *coreToken,
+		SessionSigningKey:   *sessionSigningKey,
+		SessionTokenTTL:     time.Duration(max(60, *sessionTokenTTL)) * time.Second,
+		AllowedDeviceIDs:    parseCSV(*allowedDeviceIDs),
+		CORSAllowedOrigins:  parseCSV(*corsAllowedOrigins),
+		RevocationStorePath: strings.TrimSpace(*revocationStorePath),
+		RateLimitRPS:        *rateLimitRPS,
+		RateLimitBurst:      max(1, *rateLimitBurst),
+		Timeout:             time.Duration(max(1, *timeout)) * time.Second,
+		LogRequests:         *logRequests,
+		Logger:              log.Default(),
 	})
 	if err != nil {
 		log.Fatalf("failed to initialize relay: %v", err)

@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -283,6 +285,100 @@ func TestSessionTokenRevocationRejectsInvalidToken(t *testing.T) {
 	}
 	if !strings.Contains(rr.Body.String(), "invalid session token") {
 		t.Fatalf("expected invalid session token error, got %s", rr.Body.String())
+	}
+}
+
+func TestSessionTokenRevocationPersistsAcrossHandlerRestart(t *testing.T) {
+	core := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/models" {
+			_, _ = w.Write([]byte(`[{"name":"local"}]`))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"error":"not found"}`))
+	}))
+	defer core.Close()
+
+	tempDir := t.TempDir()
+	revocationStorePath := filepath.Join(tempDir, "revocations.json")
+
+	h1, err := NewHandler(
+		Config{
+			CoreBaseURL:         core.URL,
+			BridgeToken:         "bridge",
+			RevocationStorePath: revocationStorePath,
+			Timeout:             5 * time.Second,
+		},
+	)
+	if err != nil {
+		t.Fatalf("new handler #1: %v", err)
+	}
+
+	rrIssue := httptest.NewRecorder()
+	reqIssue := httptest.NewRequest(http.MethodPost, "/auth/session", strings.NewReader(`{"scopes":["read"]}`))
+	reqIssue.Header.Set("Authorization", "Bearer bridge")
+	h1.ServeHTTP(rrIssue, reqIssue)
+	if rrIssue.Code != http.StatusOK {
+		t.Fatalf("issue session token failed: %d body=%s", rrIssue.Code, rrIssue.Body.String())
+	}
+	var issuePayload map[string]any
+	if err := json.Unmarshal(rrIssue.Body.Bytes(), &issuePayload); err != nil {
+		t.Fatalf("unmarshal issue payload: %v", err)
+	}
+	sessionToken := strings.TrimSpace(toString(issuePayload["token"]))
+	if sessionToken == "" {
+		t.Fatalf("expected issued session token")
+	}
+
+	rrRevoke := httptest.NewRecorder()
+	reqRevoke := httptest.NewRequest(http.MethodPost, "/auth/session/revoke", strings.NewReader(`{"token":"`+sessionToken+`"}`))
+	reqRevoke.Header.Set("Authorization", "Bearer bridge")
+	h1.ServeHTTP(rrRevoke, reqRevoke)
+	if rrRevoke.Code != http.StatusOK {
+		t.Fatalf("revoke session token failed: %d body=%s", rrRevoke.Code, rrRevoke.Body.String())
+	}
+	if _, err := os.Stat(revocationStorePath); err != nil {
+		t.Fatalf("expected revocation store file: %v", err)
+	}
+
+	h2, err := NewHandler(
+		Config{
+			CoreBaseURL:         core.URL,
+			BridgeToken:         "bridge",
+			RevocationStorePath: revocationStorePath,
+			Timeout:             5 * time.Second,
+		},
+	)
+	if err != nil {
+		t.Fatalf("new handler #2: %v", err)
+	}
+
+	rrModels := httptest.NewRecorder()
+	reqModels := httptest.NewRequest(http.MethodGet, "/models", nil)
+	reqModels.Header.Set("Authorization", "Bearer "+sessionToken)
+	h2.ServeHTTP(rrModels, reqModels)
+	if rrModels.Code != http.StatusUnauthorized {
+		t.Fatalf("expected revoked token to remain unauthorized after restart, got %d body=%s", rrModels.Code, rrModels.Body.String())
+	}
+}
+
+func TestInvalidRevocationStoreFailsHandlerInit(t *testing.T) {
+	tempDir := t.TempDir()
+	storePath := filepath.Join(tempDir, "revocations.json")
+	if err := os.WriteFile(storePath, []byte("{not-json"), 0o600); err != nil {
+		t.Fatalf("write invalid store: %v", err)
+	}
+
+	_, err := NewHandler(
+		Config{
+			CoreBaseURL:         "http://example.com",
+			BridgeToken:         "bridge",
+			RevocationStorePath: storePath,
+			Timeout:             5 * time.Second,
+		},
+	)
+	if err == nil {
+		t.Fatalf("expected handler init to fail with invalid revocation store")
 	}
 }
 

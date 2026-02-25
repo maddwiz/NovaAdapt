@@ -17,6 +17,7 @@ RATE_LIMIT_RPS="${NOVAADAPT_BRIDGE_RATE_LIMIT_RPS:-0}"
 RATE_LIMIT_BURST="${NOVAADAPT_BRIDGE_RATE_LIMIT_BURST:-20}"
 LOG_DIR="${NOVAADAPT_LOCAL_LOG_DIR:-$ROOT_DIR/.novaadapt-local}"
 mkdir -p "$LOG_DIR"
+REVOCATION_STORE_PATH="${NOVAADAPT_BRIDGE_REVOCATION_STORE_PATH:-$LOG_DIR/revoked_sessions.json}"
 
 if [[ -z "$CORS_ALLOWED_ORIGINS" && "$WITH_VIEW" == "1" ]]; then
   CORS_ALLOWED_ORIGINS="http://127.0.0.1:${VIEW_PORT}"
@@ -92,6 +93,9 @@ if [[ -n "$CORS_ALLOWED_ORIGINS" ]]; then
   bridge_cmd+=(--cors-allowed-origins "$CORS_ALLOWED_ORIGINS")
 fi
 bridge_cmd+=(--rate-limit-rps "$RATE_LIMIT_RPS" --rate-limit-burst "$RATE_LIMIT_BURST")
+if [[ -n "$REVOCATION_STORE_PATH" ]]; then
+  bridge_cmd+=(--revocation-store-path "$REVOCATION_STORE_PATH")
+fi
 "${bridge_cmd[@]}" >"$LOG_DIR/bridge.log" 2>&1 &
 BRIDGE_PID="$!"
 
@@ -129,6 +133,7 @@ if [[ -n "$CORS_ALLOWED_ORIGINS" ]]; then
 fi
 echo "Rate limit rps:   ${RATE_LIMIT_RPS}"
 echo "Rate limit burst: ${RATE_LIMIT_BURST}"
+echo "Revocation store: ${REVOCATION_STORE_PATH}"
 echo ""
 echo "Logs:"
 echo "  $LOG_DIR/core.log"

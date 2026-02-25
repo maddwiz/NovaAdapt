@@ -10,6 +10,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -81,6 +83,11 @@ type sessionTokenClaims struct {
 	JTI      string   `json:"jti,omitempty"`
 	Exp      int64    `json:"exp"`
 	Iat      int64    `json:"iat,omitempty"`
+}
+
+type revocationStorePayload struct {
+	Version         int              `json:"version"`
+	RevokedSessions map[string]int64 `json:"revoked_sessions"`
 }
 
 func (h *Handler) authenticate(r *http.Request) authContext {
@@ -430,7 +437,10 @@ func (h *Handler) handleRevokeSessionToken(body []byte, requestID string) (map[s
 	if sessionID == "" {
 		return nil, fmt.Errorf("session token is not revocable")
 	}
-	alreadyRevoked := h.revokeSession(sessionID, claims.Exp)
+	alreadyRevoked, err := h.revokeSession(sessionID, claims.Exp)
+	if err != nil {
+		return nil, err
+	}
 
 	return map[string]any{
 		"revoked":         true,
@@ -494,18 +504,28 @@ func bytesTrimSpace(value []byte) []byte {
 	return []byte(strings.TrimSpace(string(value)))
 }
 
-func (h *Handler) revokeSession(sessionID string, expiresAt int64) bool {
+func (h *Handler) revokeSession(sessionID string, expiresAt int64) (bool, error) {
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
-		return false
+		return false, nil
 	}
 	now := time.Now().Unix()
 	h.revokedSessionsMu.Lock()
 	defer h.revokedSessionsMu.Unlock()
+	h.pruneExpiredRevocationsLocked(now)
 	currentExpiry, exists := h.revokedSessions[sessionID]
 	alreadyRevoked := exists && currentExpiry > now
+	previousExpiry := currentExpiry
 	h.revokedSessions[sessionID] = expiresAt
-	return alreadyRevoked
+	if err := persistRevocationEntries(strings.TrimSpace(h.cfg.RevocationStorePath), h.revokedSessions); err != nil {
+		if exists {
+			h.revokedSessions[sessionID] = previousExpiry
+		} else {
+			delete(h.revokedSessions, sessionID)
+		}
+		return false, fmt.Errorf("failed to persist session revocation: %w", err)
+	}
+	return alreadyRevoked, nil
 }
 
 func (h *Handler) isSessionRevoked(sessionID string, now int64) bool {
@@ -528,4 +548,69 @@ func (h *Handler) isSessionRevoked(sessionID string, now int64) bool {
 		return false
 	}
 	return true
+}
+
+func (h *Handler) pruneExpiredRevocationsLocked(now int64) {
+	for sessionID, expiresAt := range h.revokedSessions {
+		if expiresAt > 0 && expiresAt <= now {
+			delete(h.revokedSessions, sessionID)
+		}
+	}
+}
+
+func loadRevocationEntries(path string, now int64) (map[string]int64, error) {
+	out := make(map[string]int64)
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return out, nil
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return out, nil
+		}
+		return nil, err
+	}
+	payload := revocationStorePayload{}
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return nil, err
+	}
+	for sessionID, expiresAt := range payload.RevokedSessions {
+		trimmed := strings.TrimSpace(sessionID)
+		if trimmed == "" {
+			continue
+		}
+		if expiresAt > 0 && expiresAt <= now {
+			continue
+		}
+		out[trimmed] = expiresAt
+	}
+	return out, nil
+}
+
+func persistRevocationEntries(path string, entries map[string]int64) error {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return nil
+	}
+	payload := revocationStorePayload{
+		Version:         1,
+		RevokedSessions: entries,
+	}
+	encoded, err := json.MarshalIndent(payload, "", "  ")
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, encoded, 0o600); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	return nil
 }

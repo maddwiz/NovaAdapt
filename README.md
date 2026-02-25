@@ -298,6 +298,7 @@ Optional env vars:
 - `NOVAADAPT_BRIDGE_CORS_ALLOWED_ORIGINS` (defaults to local view origin when `NOVAADAPT_WITH_VIEW=1`)
 - `NOVAADAPT_BRIDGE_RATE_LIMIT_RPS` (`<=0` disables bridge per-client rate limiting)
 - `NOVAADAPT_BRIDGE_RATE_LIMIT_BURST` (bridge per-client burst capacity)
+- `NOVAADAPT_BRIDGE_REVOCATION_STORE_PATH` (persist bridge session revocations across restart)
 - `NOVAADAPT_BRIDGE_ADMIN_TOKEN` (for vibe session leasing)
 - `NOVAADAPT_BRIDGE_SESSION_SCOPES` (CSV scopes for leased vibe sessions)
 - `NOVAADAPT_BRIDGE_SESSION_TTL` (seconds for leased vibe sessions)
@@ -368,7 +369,7 @@ Environment variables:
 - Bridge relay propagates `X-Request-ID` for traceability and supports deep health probing at `/health?deep=1`.
 - Bridge relay exposes `/metrics` for basic operational counters.
 - Bridge relay can issue short-lived scoped session tokens (`/auth/session`) so view/vibe clients can run with least privilege.
-- Bridge relay supports admin session revocation (`/auth/session/revoke`) with denylist enforcement for issued session IDs.
+- Bridge relay supports admin session revocation (`/auth/session/revoke`) with denylist enforcement for issued session IDs (optionally persisted via `NOVAADAPT_BRIDGE_REVOCATION_STORE_PATH`).
 - Bridge relay forwards `/openapi.json` so remote clients can discover contract shape.
 - Bridge relay forwards `/dashboard` HTML for secure remote browser access.
 - Bridge relay supports optional per-client request throttling (`NOVAADAPT_BRIDGE_RATE_LIMIT_RPS` / `..._BURST`).

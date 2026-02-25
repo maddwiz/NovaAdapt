@@ -10,6 +10,7 @@ Secure relay service for remote clients (phone/glasses) to reach NovaAdapt core.
 - Optional trusted-device allowlist via `X-Device-ID`
 - Optional cross-origin browser allowlist (`--cors-allowed-origins`)
 - Optional per-client rate limiting (`--rate-limit-rps`, `--rate-limit-burst`)
+- Optional persisted session-revocation store (`--revocation-store-path`)
 - Token-authenticated upstream calls to core API (core token)
 - Request-id tracing (`X-Request-ID`) propagated to core
 - Idempotency key forwarding (`Idempotency-Key`) propagated to core
@@ -91,7 +92,7 @@ Session revocation:
 ```
 
 `POST /auth/session/revoke` adds the token `session_id` to an in-memory denylist until expiry.
-Revocations are process-local and reset on bridge restart.
+If `--revocation-store-path` is configured, revocations survive bridge restart.
 
 ## WebSocket Channel (`/ws`)
 
@@ -162,6 +163,7 @@ Container build uses:
   --cors-allowed-origins http://127.0.0.1:8088 \
   --rate-limit-rps 20 \
   --rate-limit-burst 20 \
+  --revocation-store-path ./data/revocations.json \
   --allowed-device-ids iphone-15-pro,halo-glasses-1 \
   --log-requests true
 ```
@@ -178,6 +180,7 @@ Environment variables are also supported:
 - `NOVAADAPT_BRIDGE_CORS_ALLOWED_ORIGINS` (comma-separated browser origins; `*` to allow any)
 - `NOVAADAPT_BRIDGE_RATE_LIMIT_RPS` (per-client requests/second; `<=0` disables)
 - `NOVAADAPT_BRIDGE_RATE_LIMIT_BURST` (per-client burst capacity)
+- `NOVAADAPT_BRIDGE_REVOCATION_STORE_PATH` (optional persisted session revocation file)
 - `NOVAADAPT_BRIDGE_ALLOWED_DEVICE_IDS` (comma-separated trusted device IDs)
 - `NOVAADAPT_BRIDGE_TIMEOUT`
 - `NOVAADAPT_BRIDGE_LOG_REQUESTS`
