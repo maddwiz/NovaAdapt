@@ -169,6 +169,8 @@ Container build uses:
   --core-url http://127.0.0.1:8787 \
   --bridge-token your_bridge_token \
   --core-token your_core_api_token \
+  --tls-cert-file ./certs/bridge.crt \
+  --tls-key-file ./certs/bridge.key \
   --session-signing-key your_session_hmac_key \
   --session-token-ttl-seconds 900 \
   --cors-allowed-origins http://127.0.0.1:8088 \
@@ -187,6 +189,8 @@ Environment variables are also supported:
 - `NOVAADAPT_CORE_URL`
 - `NOVAADAPT_BRIDGE_TOKEN`
 - `NOVAADAPT_CORE_TOKEN`
+- `NOVAADAPT_BRIDGE_TLS_CERT_FILE` (optional HTTPS cert PEM)
+- `NOVAADAPT_BRIDGE_TLS_KEY_FILE` (optional HTTPS private key PEM; must be set with cert)
 - `NOVAADAPT_BRIDGE_SESSION_SIGNING_KEY` (defaults to bridge token when unset)
 - `NOVAADAPT_BRIDGE_SESSION_TTL_SECONDS` (default issued session TTL)
 - `NOVAADAPT_BRIDGE_CORS_ALLOWED_ORIGINS` (comma-separated browser origins; `*` to allow any)
@@ -197,3 +201,5 @@ Environment variables are also supported:
 - `NOVAADAPT_BRIDGE_ALLOWED_DEVICE_IDS` (comma-separated trusted device IDs)
 - `NOVAADAPT_BRIDGE_TIMEOUT`
 - `NOVAADAPT_BRIDGE_LOG_REQUESTS`
+
+When TLS cert/key are configured, bridge serves HTTPS and websocket clients should use `wss://`.

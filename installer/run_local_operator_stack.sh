@@ -14,6 +14,9 @@ WITH_VIEW="${NOVAADAPT_WITH_VIEW:-1}"
 ALLOWED_DEVICE_IDS="${NOVAADAPT_BRIDGE_ALLOWED_DEVICE_IDS:-}"
 CORS_ALLOWED_ORIGINS="${NOVAADAPT_BRIDGE_CORS_ALLOWED_ORIGINS:-}"
 TRUSTED_PROXY_CIDRS="${NOVAADAPT_BRIDGE_TRUSTED_PROXY_CIDRS:-}"
+BRIDGE_TLS_CERT_FILE="${NOVAADAPT_BRIDGE_TLS_CERT_FILE:-}"
+BRIDGE_TLS_KEY_FILE="${NOVAADAPT_BRIDGE_TLS_KEY_FILE:-}"
+BRIDGE_TLS_INSECURE_SKIP_VERIFY="${NOVAADAPT_BRIDGE_TLS_INSECURE_SKIP_VERIFY:-1}"
 RATE_LIMIT_RPS="${NOVAADAPT_BRIDGE_RATE_LIMIT_RPS:-0}"
 RATE_LIMIT_BURST="${NOVAADAPT_BRIDGE_RATE_LIMIT_BURST:-20}"
 LOG_DIR="${NOVAADAPT_LOCAL_LOG_DIR:-$ROOT_DIR/.novaadapt-local}"
@@ -48,9 +51,14 @@ trap cleanup EXIT INT TERM
 wait_for_http() {
   local url="$1"
   local timeout="${2:-12}"
+  local insecure_skip_verify="${3:-0}"
   local waited=0
   while (( waited < timeout * 10 )); do
-    if curl -fsS "$url" >/dev/null 2>&1; then
+    if [[ "$insecure_skip_verify" == "1" ]]; then
+      if curl -k -fsS "$url" >/dev/null 2>&1; then
+        return 0
+      fi
+    elif curl -fsS "$url" >/dev/null 2>&1; then
       return 0
     fi
     sleep 0.1
@@ -96,6 +104,13 @@ fi
 if [[ -n "$TRUSTED_PROXY_CIDRS" ]]; then
   bridge_cmd+=(--trusted-proxy-cidrs "$TRUSTED_PROXY_CIDRS")
 fi
+if [[ -n "$BRIDGE_TLS_CERT_FILE" || -n "$BRIDGE_TLS_KEY_FILE" ]]; then
+  if [[ -z "$BRIDGE_TLS_CERT_FILE" || -z "$BRIDGE_TLS_KEY_FILE" ]]; then
+    echo "Both NOVAADAPT_BRIDGE_TLS_CERT_FILE and NOVAADAPT_BRIDGE_TLS_KEY_FILE are required for TLS."
+    exit 1
+  fi
+  bridge_cmd+=(--tls-cert-file "$BRIDGE_TLS_CERT_FILE" --tls-key-file "$BRIDGE_TLS_KEY_FILE")
+fi
 bridge_cmd+=(--rate-limit-rps "$RATE_LIMIT_RPS" --rate-limit-burst "$RATE_LIMIT_BURST")
 if [[ -n "$REVOCATION_STORE_PATH" ]]; then
   bridge_cmd+=(--revocation-store-path "$REVOCATION_STORE_PATH")
@@ -103,7 +118,14 @@ fi
 "${bridge_cmd[@]}" >"$LOG_DIR/bridge.log" 2>&1 &
 BRIDGE_PID="$!"
 
-if ! wait_for_http "http://${BRIDGE_HOST}:${BRIDGE_PORT}/health?deep=1" 18; then
+bridge_health_url="http://${BRIDGE_HOST}:${BRIDGE_PORT}/health?deep=1"
+bridge_health_insecure="0"
+if [[ -n "$BRIDGE_TLS_CERT_FILE" && -n "$BRIDGE_TLS_KEY_FILE" ]]; then
+  bridge_health_url="https://${BRIDGE_HOST}:${BRIDGE_PORT}/health?deep=1"
+  bridge_health_insecure="$BRIDGE_TLS_INSECURE_SKIP_VERIFY"
+fi
+
+if ! wait_for_http "$bridge_health_url" 18 "$bridge_health_insecure"; then
   echo "Bridge failed to start. Check $LOG_DIR/bridge.log"
   exit 1
 fi
@@ -121,8 +143,13 @@ echo ""
 echo "NovaAdapt local operator stack is running."
 echo "Core health:      http://${CORE_HOST}:${CORE_PORT}/health"
 echo "Core dashboard:   http://${CORE_HOST}:${CORE_PORT}/dashboard?token=${CORE_TOKEN}"
-echo "Bridge health:    http://${BRIDGE_HOST}:${BRIDGE_PORT}/health?deep=1"
-echo "Bridge websocket: ws://${BRIDGE_HOST}:${BRIDGE_PORT}/ws?token=${BRIDGE_TOKEN}"
+if [[ -n "$BRIDGE_TLS_CERT_FILE" && -n "$BRIDGE_TLS_KEY_FILE" ]]; then
+  echo "Bridge health:    https://${BRIDGE_HOST}:${BRIDGE_PORT}/health?deep=1"
+  echo "Bridge websocket: wss://${BRIDGE_HOST}:${BRIDGE_PORT}/ws?token=${BRIDGE_TOKEN}"
+else
+  echo "Bridge health:    http://${BRIDGE_HOST}:${BRIDGE_PORT}/health?deep=1"
+  echo "Bridge websocket: ws://${BRIDGE_HOST}:${BRIDGE_PORT}/ws?token=${BRIDGE_TOKEN}"
+fi
 if [[ "$WITH_VIEW" == "1" ]]; then
   echo "View console:     http://127.0.0.1:${VIEW_PORT}/realtime_console.html"
 fi
@@ -137,6 +164,10 @@ if [[ -n "$CORS_ALLOWED_ORIGINS" ]]; then
 fi
 if [[ -n "$TRUSTED_PROXY_CIDRS" ]]; then
   echo "Trusted proxies:  ${TRUSTED_PROXY_CIDRS}"
+fi
+if [[ -n "$BRIDGE_TLS_CERT_FILE" && -n "$BRIDGE_TLS_KEY_FILE" ]]; then
+  echo "Bridge TLS cert:  ${BRIDGE_TLS_CERT_FILE}"
+  echo "Bridge TLS key:   ${BRIDGE_TLS_KEY_FILE}"
 fi
 echo "Rate limit rps:   ${RATE_LIMIT_RPS}"
 echo "Rate limit burst: ${RATE_LIMIT_BURST}"

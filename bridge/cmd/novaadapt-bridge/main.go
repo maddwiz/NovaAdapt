@@ -22,6 +22,16 @@ func main() {
 	coreURL := flag.String("core-url", envOrDefault("NOVAADAPT_CORE_URL", "http://127.0.0.1:8787"), "Core API URL")
 	bridgeToken := flag.String("bridge-token", os.Getenv("NOVAADAPT_BRIDGE_TOKEN"), "Bearer token required for bridge clients")
 	coreToken := flag.String("core-token", os.Getenv("NOVAADAPT_CORE_TOKEN"), "Bearer token used when calling core API")
+	tlsCertFile := flag.String(
+		"tls-cert-file",
+		envOrDefault("NOVAADAPT_BRIDGE_TLS_CERT_FILE", ""),
+		"Optional TLS certificate PEM file for HTTPS listener",
+	)
+	tlsKeyFile := flag.String(
+		"tls-key-file",
+		envOrDefault("NOVAADAPT_BRIDGE_TLS_KEY_FILE", ""),
+		"Optional TLS private key PEM file for HTTPS listener",
+	)
 	sessionSigningKey := flag.String(
 		"session-signing-key",
 		os.Getenv("NOVAADAPT_BRIDGE_SESSION_SIGNING_KEY"),
@@ -88,14 +98,27 @@ func main() {
 
 	addr := *host + ":" + strconv.Itoa(*port)
 	server := &http.Server{Addr: addr, Handler: handler}
+	tlsCert := strings.TrimSpace(*tlsCertFile)
+	tlsKey := strings.TrimSpace(*tlsKeyFile)
+	if (tlsCert == "") != (tlsKey == "") {
+		log.Fatalf("both --tls-cert-file and --tls-key-file must be provided together")
+	}
+	listenLabel := "http"
+	serveFn := server.ListenAndServe
+	if tlsCert != "" && tlsKey != "" {
+		listenLabel = "https"
+		serveFn = func() error {
+			return server.ListenAndServeTLS(tlsCert, tlsKey)
+		}
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
 	errCh := make(chan error, 1)
 	go func() {
-		log.Printf("novaadapt-bridge-go listening on %s -> core %s", addr, *coreURL)
-		errCh <- server.ListenAndServe()
+		log.Printf("novaadapt-bridge-go listening on %s://%s -> core %s", listenLabel, addr, *coreURL)
+		errCh <- serveFn()
 	}()
 
 	select {

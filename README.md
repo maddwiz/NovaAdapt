@@ -266,6 +266,8 @@ print(client.revoke_session_id(session["session_id"]))
   --core-url http://127.0.0.1:8787 \
   --bridge-token YOUR_BRIDGE_TOKEN \
   --core-token YOUR_CORE_TOKEN \
+  --tls-cert-file ./certs/bridge.crt \
+  --tls-key-file ./certs/bridge.key \
   --trusted-proxy-cidrs 127.0.0.1/32 \
   --allowed-device-ids iphone-15-pro,halo-glasses-1 \
   --log-requests true
@@ -299,6 +301,8 @@ Optional env vars:
 - `NOVAADAPT_BRIDGE_TOKEN`
 - `NOVAADAPT_BRIDGE_ALLOWED_DEVICE_IDS`
 - `NOVAADAPT_BRIDGE_CORS_ALLOWED_ORIGINS` (defaults to local view origin when `NOVAADAPT_WITH_VIEW=1`)
+- `NOVAADAPT_BRIDGE_TLS_CERT_FILE` / `NOVAADAPT_BRIDGE_TLS_KEY_FILE` (optional HTTPS listener)
+- `NOVAADAPT_BRIDGE_TLS_INSECURE_SKIP_VERIFY=1` (local stack health probe skips cert verification when HTTPS uses self-signed certs)
 - `NOVAADAPT_BRIDGE_TRUSTED_PROXY_CIDRS` (CIDRs/IPs allowed to set `X-Forwarded-For` / `X-Forwarded-Proto`)
 - `NOVAADAPT_BRIDGE_RATE_LIMIT_RPS` (`<=0` disables bridge per-client rate limiting)
 - `NOVAADAPT_BRIDGE_RATE_LIMIT_BURST` (bridge per-client burst capacity)
