@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 import threading
 import uuid
 from concurrent.futures import Future, ThreadPoolExecutor
@@ -122,11 +123,25 @@ class JobManager:
             record.started_at = _now_iso()
             self._persist(record)
 
+        call_kwargs = dict(kwargs)
+        if "cancel_requested" not in call_kwargs:
+            try:
+                signature = inspect.signature(fn)
+                if "cancel_requested" in signature.parameters:
+                    call_kwargs["cancel_requested"] = lambda: self._is_cancel_requested(job_id)
+            except (TypeError, ValueError):  # pragma: no cover - non-introspectable callables
+                pass
+
         try:
-            result = fn(*args, **kwargs)
+            result = fn(*args, **call_kwargs)
             with self._lock:
                 record = self._jobs[job_id]
-                if record.status == "canceled":
+                if record.status == "canceled" or record.cancel_requested:
+                    record.status = "canceled"
+                    record.result = result
+                    record.error = record.error or "Canceled by operator"
+                    record.finished_at = _now_iso()
+                    self._persist(record)
                     return
                 record.status = "succeeded"
                 record.result = result
@@ -135,7 +150,11 @@ class JobManager:
         except Exception as exc:  # pragma: no cover - defensive boundary
             with self._lock:
                 record = self._jobs[job_id]
-                if record.status == "canceled":
+                if record.status == "canceled" or record.cancel_requested:
+                    record.status = "canceled"
+                    record.error = str(exc) or "Canceled by operator"
+                    record.finished_at = _now_iso()
+                    self._persist(record)
                     return
                 record.status = "failed"
                 record.error = str(exc)
@@ -169,6 +188,11 @@ class JobManager:
     def _persist(self, record: JobRecord) -> None:
         if self._store is not None:
             self._store.upsert(_serialize(record))
+
+    def _is_cancel_requested(self, job_id: str) -> bool:
+        with self._lock:
+            record = self._jobs.get(job_id)
+            return bool(record and record.cancel_requested)
 
 
 def _serialize(record: JobRecord) -> dict[str, Any]:

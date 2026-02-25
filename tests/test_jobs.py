@@ -101,6 +101,41 @@ class JobManagerTests(unittest.TestCase):
             self.assertGreaterEqual(len(jobs2.list(limit=10)), 1)
             jobs2.shutdown()
 
+    def test_cancel_running_job_with_cooperative_callback(self):
+        jobs = JobManager(max_workers=1)
+
+        def cooperative_work(cancel_requested=None):
+            for _ in range(200):
+                if callable(cancel_requested) and cancel_requested():
+                    raise RuntimeError("execution canceled by operator")
+                time.sleep(0.005)
+            return {"ok": True}
+
+        job_id = jobs.submit(cooperative_work)
+
+        for _ in range(100):
+            current = jobs.get(job_id)
+            if current and current["status"] == "running":
+                break
+            time.sleep(0.005)
+
+        cancel_payload = jobs.cancel(job_id)
+        self.assertIsNotNone(cancel_payload)
+        self.assertFalse(cancel_payload["canceled"])
+
+        final = None
+        for _ in range(200):
+            final = jobs.get(job_id)
+            if final and final["status"] in {"succeeded", "failed", "canceled"}:
+                break
+            time.sleep(0.01)
+
+        self.assertIsNotNone(final)
+        self.assertEqual(final["status"], "canceled")
+        self.assertTrue(final["cancel_requested"])
+        self.assertIn("canceled", str(final.get("error", "")).lower())
+        jobs.shutdown()
+
 
 if __name__ == "__main__":
     unittest.main()

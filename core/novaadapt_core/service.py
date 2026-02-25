@@ -138,7 +138,13 @@ class NovaAdaptService:
     def get_plan(self, plan_id: str) -> dict[str, Any] | None:
         return self._plans().get(plan_id)
 
-    def approve_plan(self, plan_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+    def approve_plan(
+        self,
+        plan_id: str,
+        payload: dict[str, Any],
+        *,
+        cancel_requested: Callable[[], bool] | None = None,
+    ) -> dict[str, Any]:
         plan = self._plans().get(plan_id)
         if plan is None:
             raise ValueError("Plan not found")
@@ -207,6 +213,9 @@ class NovaAdaptService:
         action_log_ids: list[int] = list(preserved_action_log_ids)
         try:
             for idx, action in enumerate(actions, start=1):
+                if callable(cancel_requested) and bool(cancel_requested()):
+                    raise RuntimeError("execution canceled by operator")
+
                 decision = policy.evaluate(action, allow_dangerous=allow_dangerous)
                 undo_action = action.get("undo") if isinstance(action.get("undo"), dict) else None
                 if not decision.allowed:
@@ -237,6 +246,8 @@ class NovaAdaptService:
                 run_result = directshell.execute_action(action=action, dry_run=False)
                 attempts = 1
                 while str(run_result.status).lower() != "ok" and attempts <= action_retry_attempts:
+                    if callable(cancel_requested) and bool(cancel_requested()):
+                        raise RuntimeError("execution canceled by operator")
                     if action_retry_backoff_seconds > 0:
                         time.sleep(action_retry_backoff_seconds * (2 ** (attempts - 1)))
                     run_result = directshell.execute_action(action=action, dry_run=False)

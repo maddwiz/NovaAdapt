@@ -211,6 +211,7 @@ API endpoints:
 
 Core API responses include `X-Request-ID` for tracing (and object responses also include `request_id` in JSON).
 Mutating POST routes support idempotency via `Idempotency-Key`; replayed responses return `X-Idempotency-Replayed: true`.
+Async job cancellation is cooperative: plan approval execution checks cancellation between actions/retries and stops early when cancel is requested.
 Idempotency records auto-expire (defaults: 7 days retention, 60s cleanup interval) to prevent unbounded DB growth.
 Audit events are persisted in SQLite (`--audit-db-path`) and include request IDs for forensic tracing.
 Audit events auto-expire by default (30 days retention, 60s cleanup interval) to cap storage growth.

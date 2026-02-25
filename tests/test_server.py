@@ -59,6 +59,42 @@ class _StubDirectShell:
         return ExecutionResult(action=action, status="preview" if dry_run else "ok", output="simulated")
 
 
+class _SlowRouter(_StubRouter):
+    def chat(
+        self,
+        messages,
+        model_name=None,
+        strategy="single",
+        candidate_models=None,
+        fallback_models=None,
+    ):
+        return RouterResult(
+            model_name=model_name or "local",
+            model_id="qwen",
+            content=(
+                '{"actions":['
+                '{"type":"click","target":"10,10"},'
+                '{"type":"click","target":"20,20"},'
+                '{"type":"click","target":"30,30"},'
+                '{"type":"click","target":"40,40"},'
+                '{"type":"click","target":"50,50"}'
+                ']}'
+            ),
+            strategy=strategy,
+            votes={},
+            errors={},
+            attempted_models=[model_name or "local"],
+        )
+
+
+class _SlowDirectShell:
+    def execute_action(self, action, dry_run=True):
+        if dry_run:
+            return ExecutionResult(action=action, status="preview", output="simulated")
+        time.sleep(0.05)
+        return ExecutionResult(action=action, status="ok", output="slow-ok")
+
+
 class _FlakyDirectShell:
     attempts = 0
 
@@ -345,6 +381,77 @@ class ServerTests(unittest.TestCase):
                 server2.shutdown()
                 server2.server_close()
                 thread2.join(timeout=2)
+
+    def test_cancel_running_plan_approval_job(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            service = NovaAdaptService(
+                default_config=Path("unused.json"),
+                db_path=Path(tmp) / "actions.db",
+                plans_db_path=Path(tmp) / "plans.db",
+                router_loader=lambda _path: _SlowRouter(),
+                directshell_factory=_SlowDirectShell,
+            )
+            server = create_server(
+                "127.0.0.1",
+                0,
+                service,
+                api_token="secret",
+                jobs_db_path=str(Path(tmp) / "jobs.db"),
+                audit_db_path=str(Path(tmp) / "events.db"),
+            )
+            host, port = server.server_address
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+
+            try:
+                created_plan = _post_json(
+                    f"http://{host}:{port}/plans",
+                    {"objective": "slow multi click"},
+                    token="secret",
+                )
+                plan_id = created_plan["id"]
+
+                queued_plan = _post_json(
+                    f"http://{host}:{port}/plans/{plan_id}/approve_async",
+                    {"execute": True, "allow_dangerous": True},
+                    token="secret",
+                )
+                job_id = queued_plan["job_id"]
+
+                saw_running = False
+                for _ in range(100):
+                    item = _get_json(f"http://{host}:{port}/jobs/{job_id}", token="secret")
+                    if item["status"] == "running":
+                        saw_running = True
+                        break
+                    if item["status"] in {"failed", "succeeded", "canceled"}:
+                        break
+                    time.sleep(0.01)
+                self.assertTrue(saw_running)
+
+                cancel_payload = _post_json(
+                    f"http://{host}:{port}/jobs/{job_id}/cancel",
+                    {},
+                    token="secret",
+                )
+                self.assertEqual(cancel_payload["id"], job_id)
+
+                terminal = None
+                for _ in range(200):
+                    terminal = _get_json(f"http://{host}:{port}/jobs/{job_id}", token="secret")
+                    if terminal["status"] in {"succeeded", "failed", "canceled"}:
+                        break
+                    time.sleep(0.01)
+                self.assertIsNotNone(terminal)
+                self.assertEqual(terminal["status"], "canceled")
+
+                canceled_plan = _get_json(f"http://{host}:{port}/plans/{plan_id}", token="secret")
+                self.assertEqual(canceled_plan["status"], "failed")
+                self.assertIn("canceled", str(canceled_plan.get("execution_error", "")).lower())
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=2)
 
     def test_retry_failed_async_route_queues_job(self):
         with tempfile.TemporaryDirectory() as tmp:

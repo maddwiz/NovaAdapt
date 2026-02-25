@@ -83,6 +83,32 @@ class _RecordingDirectShell(_StubDirectShell):
         return super().execute_action(action, dry_run=dry_run)
 
 
+class _MultiActionRouter(_StubRouter):
+    def chat(
+        self,
+        messages,
+        model_name=None,
+        strategy="single",
+        candidate_models=None,
+        fallback_models=None,
+    ):
+        return RouterResult(
+            model_name=model_name or "local",
+            model_id="qwen",
+            content=(
+                '{"actions":['
+                '{"type":"click","target":"10,10"},'
+                '{"type":"click","target":"20,20"},'
+                '{"type":"click","target":"30,30"}'
+                ']}'
+            ),
+            strategy=strategy,
+            votes={},
+            errors={},
+            attempted_models=[model_name or "local"],
+        )
+
+
 class _StubDirectShellWithProbe(_StubDirectShell):
     def probe(self):
         return {"ok": True, "transport": "stub"}
@@ -333,6 +359,40 @@ class ServiceTests(unittest.TestCase):
             self.assertEqual(approved["status"], "executed")
             with self.assertRaises(ValueError):
                 service.approve_plan(created["id"], {"execute": True, "retry_failed_only": True})
+
+    def test_approve_plan_respects_cancel_requested_callback(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            recorder = _RecordingDirectShell()
+            service = NovaAdaptService(
+                default_config=Path("unused.json"),
+                db_path=Path(tmp) / "actions.db",
+                plans_db_path=Path(tmp) / "plans.db",
+                router_loader=lambda _path: _MultiActionRouter(),
+                directshell_factory=lambda: recorder,
+            )
+
+            created = service.create_plan({"objective": "multi action"})
+            checks = {"count": 0}
+
+            def _cancel_requested():
+                checks["count"] += 1
+                return checks["count"] >= 2
+
+            with self.assertRaises(RuntimeError) as err:
+                service.approve_plan(
+                    created["id"],
+                    {"execute": True, "allow_dangerous": True},
+                    cancel_requested=_cancel_requested,
+                )
+            self.assertIn("canceled", str(err.exception).lower())
+
+            updated = service.get_plan(created["id"])
+            self.assertIsNotNone(updated)
+            self.assertEqual(updated["status"], "failed")
+            self.assertIn("canceled", str(updated.get("execution_error", "")).lower())
+            self.assertEqual(updated.get("progress_completed"), 1)
+            self.assertEqual(updated.get("progress_total"), 3)
+            self.assertEqual(len(recorder.executed_actions), 1)
 
     def test_events_reads_filtered_audit_log(self):
         with tempfile.TemporaryDirectory() as tmp:
