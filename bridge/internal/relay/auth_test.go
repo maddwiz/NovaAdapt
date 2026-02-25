@@ -288,6 +288,64 @@ func TestSessionTokenRevocationRejectsInvalidToken(t *testing.T) {
 	}
 }
 
+func TestSessionTokenRevocationBySessionID(t *testing.T) {
+	core := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/models" {
+			_, _ = w.Write([]byte(`[{"name":"local"}]`))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"error":"not found"}`))
+	}))
+	defer core.Close()
+
+	h, err := NewHandler(Config{
+		CoreBaseURL: core.URL,
+		BridgeToken: "bridge",
+		Timeout:     5 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("new handler: %v", err)
+	}
+
+	rrIssue := httptest.NewRecorder()
+	reqIssue := httptest.NewRequest(
+		http.MethodPost,
+		"/auth/session",
+		strings.NewReader(`{"subject":"iphone","scopes":["read"],"ttl_seconds":120}`),
+	)
+	reqIssue.Header.Set("Authorization", "Bearer bridge")
+	h.ServeHTTP(rrIssue, reqIssue)
+	if rrIssue.Code != http.StatusOK {
+		t.Fatalf("expected 200 from /auth/session got %d body=%s", rrIssue.Code, rrIssue.Body.String())
+	}
+	var issuePayload map[string]any
+	if err := json.Unmarshal(rrIssue.Body.Bytes(), &issuePayload); err != nil {
+		t.Fatalf("unmarshal issue payload: %v", err)
+	}
+	sessionToken := strings.TrimSpace(toString(issuePayload["token"]))
+	sessionID := strings.TrimSpace(toString(issuePayload["session_id"]))
+	if sessionToken == "" || sessionID == "" {
+		t.Fatalf("expected session token and session_id")
+	}
+
+	rrRevoke := httptest.NewRecorder()
+	reqRevoke := httptest.NewRequest(http.MethodPost, "/auth/session/revoke", strings.NewReader(`{"session_id":"`+sessionID+`"}`))
+	reqRevoke.Header.Set("Authorization", "Bearer bridge")
+	h.ServeHTTP(rrRevoke, reqRevoke)
+	if rrRevoke.Code != http.StatusOK {
+		t.Fatalf("revoke by session_id failed: %d body=%s", rrRevoke.Code, rrRevoke.Body.String())
+	}
+
+	rrModels := httptest.NewRecorder()
+	reqModels := httptest.NewRequest(http.MethodGet, "/models", nil)
+	reqModels.Header.Set("Authorization", "Bearer "+sessionToken)
+	h.ServeHTTP(rrModels, reqModels)
+	if rrModels.Code != http.StatusUnauthorized {
+		t.Fatalf("expected session revoked by id to be unauthorized, got %d body=%s", rrModels.Code, rrModels.Body.String())
+	}
+}
+
 func TestSessionTokenRevocationPersistsAcrossHandlerRestart(t *testing.T) {
 	core := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/models" {

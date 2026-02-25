@@ -235,7 +235,30 @@ class NovaAdaptAPIClient:
         raise APIClientError("Expected object payload from /auth/session")
 
     def revoke_session_token(self, token: str) -> dict[str, Any]:
-        payload = self._post_json("/auth/session/revoke", {"token": token})
+        return self.revoke_session(session_token=token)
+
+    def revoke_session(
+        self,
+        session_token: str | None = None,
+        session_id: str | None = None,
+        expires_at: int | None = None,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {}
+        if session_token:
+            body["token"] = session_token
+        if session_id:
+            body["session_id"] = session_id
+        if expires_at is not None:
+            body["expires_at"] = int(expires_at)
+        if not body:
+            raise APIClientError("session_token or session_id is required")
+        payload = self._post_json("/auth/session/revoke", body)
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /auth/session/revoke")
+
+    def revoke_session_id(self, session_id: str, expires_at: int | None = None) -> dict[str, Any]:
+        payload = self.revoke_session(session_id=session_id, expires_at=expires_at)
         if isinstance(payload, dict):
             return payload
         raise APIClientError("Expected object payload from /auth/session/revoke")

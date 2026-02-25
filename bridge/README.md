@@ -91,6 +91,15 @@ Session revocation:
 }
 ```
 
+Or revoke by session id:
+
+```json
+{
+  "session_id": "abc123...",
+  "expires_at": 1730000000
+}
+```
+
 `POST /auth/session/revoke` adds the token `session_id` to an in-memory denylist until expiry.
 If `--revocation-store-path` is configured, revocations survive bridge restart.
 

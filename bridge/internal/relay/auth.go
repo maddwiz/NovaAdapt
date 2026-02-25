@@ -425,19 +425,35 @@ func (h *Handler) handleRevokeSessionToken(body []byte, requestID string) (map[s
 		}
 	}
 	token := strings.TrimSpace(toString(payload["token"]))
-	if token == "" {
-		return nil, fmt.Errorf("'token' is required")
+	sessionID := strings.TrimSpace(toString(payload["session_id"]))
+	subject := ""
+	expiresAt := int64(0)
+	via := "session_id"
+
+	if token != "" {
+		claims, err := h.verifySessionToken(token)
+		if err != nil {
+			return nil, fmt.Errorf("invalid session token")
+		}
+		sessionID = strings.TrimSpace(claims.JTI)
+		if sessionID == "" {
+			return nil, fmt.Errorf("session token is not revocable")
+		}
+		subject = claims.Sub
+		expiresAt = claims.Exp
+		via = "token"
+	} else if sessionID == "" {
+		return nil, fmt.Errorf("'token' or 'session_id' is required")
 	}
 
-	claims, err := h.verifySessionToken(token)
-	if err != nil {
-		return nil, fmt.Errorf("invalid session token")
+	if expiresAt == 0 {
+		expiresAt = int64(toInt(payload["expires_at"]))
 	}
-	sessionID := strings.TrimSpace(claims.JTI)
-	if sessionID == "" {
-		return nil, fmt.Errorf("session token is not revocable")
+	now := time.Now().Unix()
+	if expiresAt <= now {
+		expiresAt = now + 24*3600
 	}
-	alreadyRevoked, err := h.revokeSession(sessionID, claims.Exp)
+	alreadyRevoked, err := h.revokeSession(sessionID, expiresAt)
 	if err != nil {
 		return nil, err
 	}
@@ -446,8 +462,9 @@ func (h *Handler) handleRevokeSessionToken(body []byte, requestID string) (map[s
 		"revoked":         true,
 		"already_revoked": alreadyRevoked,
 		"session_id":      sessionID,
-		"subject":         claims.Sub,
-		"expires_at":      claims.Exp,
+		"subject":         subject,
+		"expires_at":      expiresAt,
+		"via":             via,
 		"request_id":      requestID,
 	}, nil
 }

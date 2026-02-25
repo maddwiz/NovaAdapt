@@ -236,12 +236,16 @@ class APIClientTests(unittest.TestCase):
         self.assertEqual(session_payload["session_id"], "session-1")
         revoke_payload = client.revoke_session_token("na1.mock-session")
         self.assertTrue(revoke_payload["revoked"])
+        revoke_by_id_payload = client.revoke_session_id("session-1", expires_at=9999999999)
+        self.assertTrue(revoke_by_id_payload["revoked"])
         self.assertIn("novaadapt_core_requests_total", client.metrics_text())
 
     def test_error_without_token(self):
         client = NovaAdaptAPIClient(base_url=f"http://{self.host}:{self.port}")
         with self.assertRaises(APIClientError):
             client.models()
+        with self.assertRaises(APIClientError):
+            client.revoke_session()
 
     def test_retry_for_transient_http(self):
         client = NovaAdaptAPIClient(
