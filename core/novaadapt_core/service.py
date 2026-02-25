@@ -152,6 +152,8 @@ class NovaAdaptService:
         execute = bool(payload.get("execute", True))
         allow_dangerous = bool(payload.get("allow_dangerous", False))
         max_actions = int(payload.get("max_actions", len(plan.get("actions", [])) or 1))
+        action_retry_attempts = max(0, int(payload.get("action_retry_attempts", 0)))
+        action_retry_backoff_seconds = max(0.0, float(payload.get("action_retry_backoff_seconds", 0.25)))
 
         if not execute:
             approved = self._plans().approve(plan_id=plan_id, status="approved")
@@ -198,12 +200,19 @@ class NovaAdaptService:
                     continue
 
                 run_result = directshell.execute_action(action=action, dry_run=False)
+                attempts = 1
+                while str(run_result.status).lower() != "ok" and attempts <= action_retry_attempts:
+                    if action_retry_backoff_seconds > 0:
+                        time.sleep(action_retry_backoff_seconds * (2 ** (attempts - 1)))
+                    run_result = directshell.execute_action(action=action, dry_run=False)
+                    attempts += 1
                 execution_results.append(
                     {
                         "status": run_result.status,
                         "output": run_result.output,
                         "action": run_result.action,
                         "dangerous": decision.dangerous,
+                        "attempts": attempts,
                     }
                 )
                 action_log_ids.append(

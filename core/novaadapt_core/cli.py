@@ -164,6 +164,18 @@ def _build_parser() -> argparse.ArgumentParser:
         default=25,
         help="Cap number of actions executed from the stored plan",
     )
+    plan_approve_cmd.add_argument(
+        "--action-retry-attempts",
+        type=int,
+        default=0,
+        help="Retries per failed action execution before marking failed",
+    )
+    plan_approve_cmd.add_argument(
+        "--action-retry-backoff-seconds",
+        type=float,
+        default=0.25,
+        help="Base backoff delay between action retries",
+    )
 
     plan_reject_cmd = sub.add_parser("plan-reject", help="Reject a plan with optional reason")
     plan_reject_cmd.add_argument("--id", required=True)
@@ -605,6 +617,8 @@ def main() -> None:
                 "execute": not bool(args.no_execute),
                 "allow_dangerous": bool(args.allow_dangerous),
                 "max_actions": max(1, args.max_actions),
+                "action_retry_attempts": max(0, int(args.action_retry_attempts)),
+                "action_retry_backoff_seconds": max(0.0, float(args.action_retry_backoff_seconds)),
             }
             print(json.dumps(service.approve_plan(args.id, payload), indent=2))
             return

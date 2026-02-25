@@ -118,6 +118,7 @@ novaadapt events-watch --since-id 120 --timeout-seconds 10
 novaadapt plan-create --objective "Open browser and go to example.com"
 novaadapt plans --limit 10
 novaadapt plan-approve --id PLAN_ID         # executes by default
+novaadapt plan-approve --id PLAN_ID --action-retry-attempts 2 --action-retry-backoff-seconds 0.2
 novaadapt plan-reject --id PLAN_ID --reason "Not safe enough"
 ```
 
@@ -212,6 +213,7 @@ Audit events auto-expire by default (30 days retention, 60s cleanup interval) to
 Audit persistence enables WAL mode, busy-timeout handling, and transient SQLite retry for improved resilience under load.
 Plan records expose execution progress fields (`progress_completed`, `progress_total`) and terminal error state (`execution_error`).
 Plans finalize as `failed` when one or more actions are blocked or fail during execution.
+Plan approvals support optional transient retry controls: `action_retry_attempts` and `action_retry_backoff_seconds`.
 
 When token auth is enabled, browser dashboard usage supports:
 

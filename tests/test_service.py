@@ -59,6 +59,20 @@ class _StubDirectShell:
         )
 
 
+class _FlakyDirectShell:
+    def __init__(self, fail_count=1):
+        self.fail_count = max(0, int(fail_count))
+        self.execute_calls = 0
+
+    def execute_action(self, action, dry_run=True):
+        if dry_run:
+            return ExecutionResult(action=action, status="preview", output="simulated")
+        self.execute_calls += 1
+        if self.execute_calls <= self.fail_count:
+            return ExecutionResult(action=action, status="failed", output="transient failure")
+        return ExecutionResult(action=action, status="ok", output="recovered")
+
+
 class _StubDirectShellWithProbe(_StubDirectShell):
     def probe(self):
         return {"ok": True, "transport": "stub"}
@@ -192,6 +206,56 @@ class ServiceTests(unittest.TestCase):
 
             with self.assertRaises(ValueError):
                 service.approve_plan(created_2["id"], {"execute": True})
+
+    def test_approve_plan_retries_transient_failures(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            flaky = _FlakyDirectShell(fail_count=1)
+            service = NovaAdaptService(
+                default_config=Path("unused.json"),
+                db_path=Path(tmp) / "actions.db",
+                plans_db_path=Path(tmp) / "plans.db",
+                router_loader=lambda _path: _StubRouter(),
+                directshell_factory=lambda: flaky,
+            )
+
+            created = service.create_plan({"objective": "click ok"})
+            approved = service.approve_plan(
+                created["id"],
+                {
+                    "execute": True,
+                    "action_retry_attempts": 2,
+                    "action_retry_backoff_seconds": 0.0,
+                },
+            )
+            self.assertEqual(approved["status"], "executed")
+            self.assertEqual(approved["execution_results"][0]["status"], "ok")
+            self.assertEqual(approved["execution_results"][0]["attempts"], 2)
+            self.assertEqual(flaky.execute_calls, 2)
+
+    def test_approve_plan_retry_exhaustion_marks_failed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            flaky = _FlakyDirectShell(fail_count=3)
+            service = NovaAdaptService(
+                default_config=Path("unused.json"),
+                db_path=Path(tmp) / "actions.db",
+                plans_db_path=Path(tmp) / "plans.db",
+                router_loader=lambda _path: _StubRouter(),
+                directshell_factory=lambda: flaky,
+            )
+
+            created = service.create_plan({"objective": "click ok"})
+            out = service.approve_plan(
+                created["id"],
+                {
+                    "execute": True,
+                    "action_retry_attempts": 1,
+                    "action_retry_backoff_seconds": 0.0,
+                },
+            )
+            self.assertEqual(out["status"], "failed")
+            self.assertEqual(out["execution_results"][0]["status"], "failed")
+            self.assertEqual(out["execution_results"][0]["attempts"], 2)
+            self.assertEqual(flaky.execute_calls, 2)
 
     def test_events_reads_filtered_audit_log(self):
         with tempfile.TemporaryDirectory() as tmp:
