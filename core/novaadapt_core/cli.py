@@ -199,6 +199,16 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Fallback transport used when native transport action execution fails",
     )
     directshell_check_cmd.add_argument(
+        "--http-token",
+        default=None,
+        help="Optional DirectShell HTTP token override",
+    )
+    directshell_check_cmd.add_argument(
+        "--daemon-token",
+        default=None,
+        help="Optional DirectShell daemon token override",
+    )
+    directshell_check_cmd.add_argument(
         "--timeout-seconds",
         type=int,
         default=5,
@@ -224,6 +234,11 @@ def _build_parser() -> argparse.ArgumentParser:
         type=int,
         default=int(os.getenv("DIRECTSHELL_DAEMON_PORT", "8766")),
         help="TCP port when --socket is empty",
+    )
+    native_daemon_cmd.add_argument(
+        "--daemon-token",
+        default=os.getenv("DIRECTSHELL_DAEMON_TOKEN", ""),
+        help="Optional shared token required by daemon requests",
     )
     native_daemon_cmd.add_argument(
         "--timeout-seconds",
@@ -632,6 +647,8 @@ def main() -> None:
         if args.command == "directshell-check":
             client = DirectShellClient(
                 transport=args.transport,
+                http_token=args.http_token,
+                daemon_token=args.daemon_token,
                 native_fallback_transport=args.native_fallback_transport,
                 timeout_seconds=max(1, int(args.timeout_seconds)),
             )
@@ -643,6 +660,7 @@ def main() -> None:
                 socket_path=str(args.socket or ""),
                 host=str(args.host or "127.0.0.1"),
                 port=max(1, int(args.port)),
+                daemon_token=str(args.daemon_token or "").strip() or None,
                 timeout_seconds=max(1, int(args.timeout_seconds)),
             )
             daemon.serve_forever()

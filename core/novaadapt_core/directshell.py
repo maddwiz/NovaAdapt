@@ -31,9 +31,11 @@ class DirectShellClient:
         binary: str | None = None,
         transport: str | None = None,
         http_url: str | None = None,
+        http_token: str | None = None,
         daemon_socket: str | None = None,
         daemon_host: str | None = None,
         daemon_port: int | None = None,
+        daemon_token: str | None = None,
         native_fallback_transport: str | None = None,
         native_executor: NativeDesktopExecutor | None = None,
         timeout_seconds: int = 30,
@@ -41,6 +43,8 @@ class DirectShellClient:
         self.binary = binary or os.getenv("DIRECTSHELL_BIN", "directshell")
         self.transport = (transport or os.getenv("DIRECTSHELL_TRANSPORT", "native")).lower()
         self.http_url = http_url or os.getenv("DIRECTSHELL_HTTP_URL", "http://127.0.0.1:8765/execute")
+        raw_http_token = os.getenv("DIRECTSHELL_HTTP_TOKEN", "") if http_token is None else str(http_token)
+        self.http_token = raw_http_token.strip() or None
         self.daemon_socket = (
             os.getenv("DIRECTSHELL_DAEMON_SOCKET", "/tmp/directshell.sock")
             if daemon_socket is None
@@ -48,6 +52,8 @@ class DirectShellClient:
         )
         self.daemon_host = daemon_host or os.getenv("DIRECTSHELL_DAEMON_HOST", "127.0.0.1")
         self.daemon_port = int(os.getenv("DIRECTSHELL_DAEMON_PORT", "8766")) if daemon_port is None else int(daemon_port)
+        raw_daemon_token = os.getenv("DIRECTSHELL_DAEMON_TOKEN", "") if daemon_token is None else str(daemon_token)
+        self.daemon_token = raw_daemon_token.strip() or None
         raw_fallback = (
             os.getenv("DIRECTSHELL_NATIVE_FALLBACK_TRANSPORT", "")
             if native_fallback_transport is None
@@ -219,10 +225,13 @@ class DirectShellClient:
 
     def _execute_http(self, action: dict[str, Any]) -> ExecutionResult:
         payload = json.dumps({"action": action}).encode("utf-8")
+        headers = {"Content-Type": "application/json"}
+        if self.http_token:
+            headers["X-DirectShell-Token"] = self.http_token
         req = request.Request(
             url=self.http_url,
             data=payload,
-            headers={"Content-Type": "application/json"},
+            headers=headers,
             method="POST",
         )
         try:
@@ -253,20 +262,23 @@ class DirectShellClient:
             }
 
         health_url = f"{parsed.scheme}://{parsed.netloc}/health"
-        req = request.Request(url=health_url, method="GET")
+        headers = {}
+        if self.http_token:
+            headers["X-DirectShell-Token"] = self.http_token
+        req = request.Request(url=health_url, method="GET", headers=headers)
         try:
             with request.urlopen(req, timeout=self.timeout_seconds) as response:
+                status_code = int(response.status)
                 return {
-                    "ok": True,
+                    "ok": 200 <= status_code < 400,
                     "transport": "http",
                     "url": self.http_url,
                     "health_url": health_url,
-                    "status_code": int(response.status),
+                    "status_code": status_code,
                 }
         except error.HTTPError as exc:
-            reachable = int(exc.code) < 500
             return {
-                "ok": reachable,
+                "ok": False,
                 "transport": "http",
                 "url": self.http_url,
                 "health_url": health_url,
@@ -283,7 +295,10 @@ class DirectShellClient:
             }
 
     def _execute_daemon(self, action: dict[str, Any]) -> ExecutionResult:
-        payload = json.dumps({"action": action}, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+        body: dict[str, Any] = {"action": action}
+        if self.daemon_token:
+            body["token"] = self.daemon_token
+        payload = json.dumps(body, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
         framed = len(payload).to_bytes(4, byteorder="big") + payload
         try:
             with self._daemon_connection() as sock:
@@ -311,21 +326,14 @@ class DirectShellClient:
             if str(self.daemon_socket or "").strip()
             else {"host": self.daemon_host, "port": self.daemon_port}
         )
-        try:
-            with self._daemon_connection() as sock:
-                sock.settimeout(self.timeout_seconds)
-            return {
-                "ok": True,
-                "transport": "daemon",
-                **target,
-            }
-        except OSError as exc:
-            return {
-                "ok": False,
-                "transport": "daemon",
-                "error": f"Daemon transport error: {exc}",
-                **target,
-            }
+        probe_result = self._execute_daemon({"type": "note", "target": "probe", "value": "probe"})
+        return {
+            "ok": str(probe_result.status).lower() == "ok",
+            "transport": "daemon",
+            "probe_status": str(probe_result.status),
+            "probe_output": str(probe_result.output),
+            **target,
+        }
 
     def _daemon_connection(self):
         socket_path = str(self.daemon_socket or "").strip()

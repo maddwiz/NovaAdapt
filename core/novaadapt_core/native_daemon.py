@@ -38,6 +38,7 @@ class NativeExecutionDaemon:
         socket_path: str | None = None,
         host: str = "127.0.0.1",
         port: int = 8766,
+        daemon_token: str | None = None,
         timeout_seconds: int = 30,
         executor: NativeDesktopExecutor | None = None,
     ) -> None:
@@ -46,6 +47,8 @@ class NativeExecutionDaemon:
             host=str(host or "127.0.0.1"),
             port=int(port),
         )
+        raw_token = os.getenv("DIRECTSHELL_DAEMON_TOKEN", "") if daemon_token is None else str(daemon_token)
+        self.daemon_token = raw_token.strip() or None
         self.executor = executor or NativeDesktopExecutor(timeout_seconds=timeout_seconds)
         self.timeout_seconds = max(1, int(timeout_seconds))
         self._server: socketserver.BaseServer | None = None
@@ -89,6 +92,7 @@ class NativeExecutionDaemon:
 
     def _build_handler(self):
         executor = self.executor
+        expected_token = self.daemon_token
 
         class _Handler(socketserver.StreamRequestHandler):
             def handle(self) -> None:
@@ -114,6 +118,9 @@ class NativeExecutionDaemon:
                 action = payload.get("action") if isinstance(payload, dict) else None
                 if not isinstance(action, dict):
                     self._write_response({"status": "failed", "output": "payload must include object field 'action'"})
+                    return
+                if expected_token and str(payload.get("token") or "") != expected_token:
+                    self._write_response({"status": "failed", "output": "unauthorized"})
                     return
 
                 result = executor.execute_action(action)

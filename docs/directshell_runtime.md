@@ -29,6 +29,11 @@ Supported action types:
 - external DirectShell daemon endpoint
 - built-in NovaAdapt daemon (`novaadapt native-daemon`)
 
+Optional transport auth:
+
+- `DIRECTSHELL_HTTP_TOKEN`: sent as `X-DirectShell-Token` for HTTP transport and probe.
+- `DIRECTSHELL_DAEMON_TOKEN`: included in daemon payloads and enforceable by `novaadapt native-daemon`.
+
 ## Runtime Readiness Probe
 
 Use the built-in check before enabling live execution:
@@ -45,7 +50,8 @@ When using native mode with optional fallback transport:
 export DIRECTSHELL_TRANSPORT=native
 export DIRECTSHELL_NATIVE_FALLBACK_TRANSPORT=http
 export DIRECTSHELL_HTTP_URL=http://127.0.0.1:8765/execute
-novaadapt directshell-check --transport native --native-fallback-transport http
+export DIRECTSHELL_HTTP_TOKEN=YOUR_DS_TOKEN
+novaadapt directshell-check --transport native --native-fallback-transport http --http-token YOUR_DS_TOKEN
 ```
 
 Fallback transport executes only when native action execution returns a non-`ok` status.
@@ -62,6 +68,7 @@ Or TCP mode:
 
 ```bash
 novaadapt native-daemon --socket '' --host 127.0.0.1 --port 8766
+novaadapt native-daemon --socket '' --host 127.0.0.1 --port 8766 --daemon-token YOUR_DS_TOKEN
 ```
 
 Then configure core execution transport:

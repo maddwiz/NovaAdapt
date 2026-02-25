@@ -506,14 +506,18 @@ Environment variables:
 - `DIRECTSHELL_NATIVE_FALLBACK_TRANSPORT` = `subprocess`, `http`, or `daemon` (optional; only used when primary transport is `native`)
 - `DIRECTSHELL_BIN` (subprocess mode)
 - `DIRECTSHELL_HTTP_URL` (http mode, default `http://127.0.0.1:8765/execute`)
+- `DIRECTSHELL_HTTP_TOKEN` (optional shared token sent as `X-DirectShell-Token` header in http mode)
 - `DIRECTSHELL_DAEMON_SOCKET` (daemon Unix socket path, default `/tmp/directshell.sock`; set empty to force TCP)
 - `DIRECTSHELL_DAEMON_HOST` / `DIRECTSHELL_DAEMON_PORT` (daemon TCP endpoint, default `127.0.0.1:8766`)
+- `DIRECTSHELL_DAEMON_TOKEN` (optional shared token included in daemon payloads and enforceable by `novaadapt native-daemon`)
 
 Readiness probe:
 
 ```bash
 novaadapt directshell-check
 novaadapt directshell-check --transport native --native-fallback-transport http
+novaadapt directshell-check --transport http --http-token YOUR_DS_TOKEN
+novaadapt directshell-check --transport daemon --daemon-token YOUR_DS_TOKEN
 novaadapt directshell-check --transport daemon
 ```
 
@@ -523,6 +527,8 @@ Run built-in daemon transport endpoint:
 novaadapt native-daemon --socket /tmp/directshell.sock
 # or TCP mode
 novaadapt native-daemon --socket '' --host 127.0.0.1 --port 8766
+# optional daemon auth token
+novaadapt native-daemon --socket '' --host 127.0.0.1 --port 8766 --daemon-token YOUR_DS_TOKEN
 ```
 
 Built-in native action types:

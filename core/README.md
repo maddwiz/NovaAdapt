@@ -10,6 +10,7 @@ Contains:
 - DirectShell adapter for preview and execution (`native`, `subprocess`, `http`, `daemon`) with optional native fallback transport.
 - DirectShell readiness probe command (`novaadapt directshell-check`).
 - Built-in daemon endpoint command (`novaadapt native-daemon`) for DirectShell-compatible socket/TCP execution.
+- Optional transport-level auth tokens for HTTP/daemon execution paths.
 - History/undo command support via shared SQLite queue.
 - Audit log query command support (`novaadapt events`).
 - Audit event watch support (`novaadapt events-watch`).
