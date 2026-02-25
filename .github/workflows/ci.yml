@@ -25,6 +25,7 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: '1.22'
+          cache-dependency-path: bridge/go.sum
 
       - name: Run Go tests
         run: |
