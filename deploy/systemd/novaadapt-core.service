@@ -1,0 +1,23 @@
+[Unit]
+Description=NovaAdapt Core API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=novaadapt
+Group=novaadapt
+WorkingDirectory=/opt/novaadapt
+EnvironmentFile=-/etc/novaadapt/core.env
+ExecStart=/opt/novaadapt/deploy/systemd/start-core.sh
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full
+ReadWritePaths=/var/lib/novaadapt
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target

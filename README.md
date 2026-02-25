@@ -239,6 +239,24 @@ Compose stack file:
 
 - `/Users/desmondpottle/Documents/New project/NovaAdapt/deploy/docker-compose.yml`
 
+## Systemd Deployment (Linux)
+
+Systemd units and env templates are included under:
+
+- `/Users/desmondpottle/Documents/New project/NovaAdapt/deploy/systemd`
+
+Quick install reference:
+
+```bash
+sudo cp deploy/systemd/core.env.example /etc/novaadapt/core.env
+sudo cp deploy/systemd/bridge.env.example /etc/novaadapt/bridge.env
+sudo cp deploy/systemd/novaadapt-core.service /etc/systemd/system/
+sudo cp deploy/systemd/novaadapt-bridge.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now novaadapt-core.service
+sudo systemctl enable --now novaadapt-bridge.service
+```
+
 ## Python API Client
 
 ```python
