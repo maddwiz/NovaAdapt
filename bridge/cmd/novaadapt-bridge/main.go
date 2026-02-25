@@ -42,6 +42,11 @@ func main() {
 		envOrDefault("NOVAADAPT_BRIDGE_CORS_ALLOWED_ORIGINS", ""),
 		"Comma-separated allowed CORS origins for browser clients (use * to allow any)",
 	)
+	trustedProxyCIDRs := flag.String(
+		"trusted-proxy-cidrs",
+		envOrDefault("NOVAADAPT_BRIDGE_TRUSTED_PROXY_CIDRS", ""),
+		"Comma-separated CIDRs/IPs for trusted reverse proxies allowed to set X-Forwarded-* headers",
+	)
 	revocationStorePath := flag.String(
 		"revocation-store-path",
 		envOrDefault("NOVAADAPT_BRIDGE_REVOCATION_STORE_PATH", ""),
@@ -69,6 +74,7 @@ func main() {
 		SessionTokenTTL:     time.Duration(max(60, *sessionTokenTTL)) * time.Second,
 		AllowedDeviceIDs:    parseCSV(*allowedDeviceIDs),
 		CORSAllowedOrigins:  parseCSV(*corsAllowedOrigins),
+		TrustedProxyCIDRs:   parseCSV(*trustedProxyCIDRs),
 		RevocationStorePath: strings.TrimSpace(*revocationStorePath),
 		RateLimitRPS:        *rateLimitRPS,
 		RateLimitBurst:      max(1, *rateLimitBurst),

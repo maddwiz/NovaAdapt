@@ -13,6 +13,7 @@ MODEL_CONFIG="${NOVAADAPT_MODEL_CONFIG:-config/models.example.json}"
 WITH_VIEW="${NOVAADAPT_WITH_VIEW:-1}"
 ALLOWED_DEVICE_IDS="${NOVAADAPT_BRIDGE_ALLOWED_DEVICE_IDS:-}"
 CORS_ALLOWED_ORIGINS="${NOVAADAPT_BRIDGE_CORS_ALLOWED_ORIGINS:-}"
+TRUSTED_PROXY_CIDRS="${NOVAADAPT_BRIDGE_TRUSTED_PROXY_CIDRS:-}"
 RATE_LIMIT_RPS="${NOVAADAPT_BRIDGE_RATE_LIMIT_RPS:-0}"
 RATE_LIMIT_BURST="${NOVAADAPT_BRIDGE_RATE_LIMIT_BURST:-20}"
 LOG_DIR="${NOVAADAPT_LOCAL_LOG_DIR:-$ROOT_DIR/.novaadapt-local}"
@@ -92,6 +93,9 @@ fi
 if [[ -n "$CORS_ALLOWED_ORIGINS" ]]; then
   bridge_cmd+=(--cors-allowed-origins "$CORS_ALLOWED_ORIGINS")
 fi
+if [[ -n "$TRUSTED_PROXY_CIDRS" ]]; then
+  bridge_cmd+=(--trusted-proxy-cidrs "$TRUSTED_PROXY_CIDRS")
+fi
 bridge_cmd+=(--rate-limit-rps "$RATE_LIMIT_RPS" --rate-limit-burst "$RATE_LIMIT_BURST")
 if [[ -n "$REVOCATION_STORE_PATH" ]]; then
   bridge_cmd+=(--revocation-store-path "$REVOCATION_STORE_PATH")
@@ -130,6 +134,9 @@ if [[ -n "$ALLOWED_DEVICE_IDS" ]]; then
 fi
 if [[ -n "$CORS_ALLOWED_ORIGINS" ]]; then
   echo "CORS origins:     ${CORS_ALLOWED_ORIGINS}"
+fi
+if [[ -n "$TRUSTED_PROXY_CIDRS" ]]; then
+  echo "Trusted proxies:  ${TRUSTED_PROXY_CIDRS}"
 fi
 echo "Rate limit rps:   ${RATE_LIMIT_RPS}"
 echo "Rate limit burst: ${RATE_LIMIT_BURST}"

@@ -548,6 +548,51 @@ func TestCORSSameOriginAllowedWithoutConfig(t *testing.T) {
 	}
 }
 
+func TestCORSSpoofedForwardedProtoDeniedWithoutTrustedProxy(t *testing.T) {
+	h, err := NewHandler(Config{CoreBaseURL: "http://example.com", BridgeToken: "secret", Timeout: 5 * time.Second})
+	if err != nil {
+		t.Fatalf("new handler: %v", err)
+	}
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	req.Host = "bridge.local:9797"
+	req.RemoteAddr = "203.0.113.10:1234"
+	req.Header.Set("Origin", "https://bridge.local:9797")
+	req.Header.Set("X-Forwarded-Proto", "https")
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 got %d body=%s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestCORSSameOriginViaTrustedProxyForwardedProtoAllowed(t *testing.T) {
+	h, err := NewHandler(
+		Config{
+			CoreBaseURL:       "http://example.com",
+			BridgeToken:       "secret",
+			TrustedProxyCIDRs: []string{"203.0.113.0/24"},
+			Timeout:           5 * time.Second,
+		},
+	)
+	if err != nil {
+		t.Fatalf("new handler: %v", err)
+	}
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	req.Host = "bridge.local:9797"
+	req.RemoteAddr = "203.0.113.10:1234"
+	req.Header.Set("Origin", "https://bridge.local:9797")
+	req.Header.Set("X-Forwarded-Proto", "https")
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 got %d body=%s", rr.Code, rr.Body.String())
+	}
+}
+
 func TestRateLimitPerClient(t *testing.T) {
 	core := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/models" {
@@ -600,5 +645,105 @@ func TestRateLimitPerClient(t *testing.T) {
 	h.ServeHTTP(otherClient, reqOtherClient)
 	if otherClient.Code != http.StatusOK {
 		t.Fatalf("expected different client to pass rate limit, got %d body=%s", otherClient.Code, otherClient.Body.String())
+	}
+}
+
+func TestRateLimitDoesNotTrustForwardedForByDefault(t *testing.T) {
+	core := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/models" {
+			_, _ = w.Write([]byte(`[{"name":"local"}]`))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer core.Close()
+
+	h, err := NewHandler(
+		Config{
+			CoreBaseURL:    core.URL,
+			BridgeToken:    "secret",
+			RateLimitRPS:   1.0,
+			RateLimitBurst: 1,
+			Timeout:        5 * time.Second,
+		},
+	)
+	if err != nil {
+		t.Fatalf("new handler: %v", err)
+	}
+
+	first := httptest.NewRecorder()
+	reqFirst := httptest.NewRequest(http.MethodGet, "/models", nil)
+	reqFirst.Header.Set("Authorization", "Bearer secret")
+	reqFirst.Header.Set("X-Forwarded-For", "198.51.100.50")
+	reqFirst.RemoteAddr = "203.0.113.10:1234"
+	h.ServeHTTP(first, reqFirst)
+	if first.Code != http.StatusOK {
+		t.Fatalf("expected first request 200 got %d body=%s", first.Code, first.Body.String())
+	}
+
+	second := httptest.NewRecorder()
+	reqSecond := httptest.NewRequest(http.MethodGet, "/models", nil)
+	reqSecond.Header.Set("Authorization", "Bearer secret")
+	reqSecond.Header.Set("X-Forwarded-For", "198.51.100.50")
+	reqSecond.RemoteAddr = "203.0.113.11:5678"
+	h.ServeHTTP(second, reqSecond)
+	if second.Code != http.StatusOK {
+		t.Fatalf("expected second request from different socket client to pass, got %d body=%s", second.Code, second.Body.String())
+	}
+}
+
+func TestRateLimitTrustsForwardedForFromTrustedProxy(t *testing.T) {
+	core := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/models" {
+			_, _ = w.Write([]byte(`[{"name":"local"}]`))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer core.Close()
+
+	h, err := NewHandler(
+		Config{
+			CoreBaseURL:       core.URL,
+			BridgeToken:       "secret",
+			TrustedProxyCIDRs: []string{"203.0.113.0/24"},
+			RateLimitRPS:      1.0,
+			RateLimitBurst:    1,
+			Timeout:           5 * time.Second,
+		},
+	)
+	if err != nil {
+		t.Fatalf("new handler: %v", err)
+	}
+
+	first := httptest.NewRecorder()
+	reqFirst := httptest.NewRequest(http.MethodGet, "/models", nil)
+	reqFirst.Header.Set("Authorization", "Bearer secret")
+	reqFirst.Header.Set("X-Forwarded-For", "198.51.100.77")
+	reqFirst.RemoteAddr = "203.0.113.10:1234"
+	h.ServeHTTP(first, reqFirst)
+	if first.Code != http.StatusOK {
+		t.Fatalf("expected first request 200 got %d body=%s", first.Code, first.Body.String())
+	}
+
+	second := httptest.NewRecorder()
+	reqSecond := httptest.NewRequest(http.MethodGet, "/models", nil)
+	reqSecond.Header.Set("Authorization", "Bearer secret")
+	reqSecond.Header.Set("X-Forwarded-For", "198.51.100.77")
+	reqSecond.RemoteAddr = "203.0.113.11:5678"
+	h.ServeHTTP(second, reqSecond)
+	if second.Code != http.StatusTooManyRequests {
+		t.Fatalf("expected second request 429 due to shared forwarded client IP, got %d body=%s", second.Code, second.Body.String())
+	}
+}
+
+func TestInvalidTrustedProxyCIDRRejected(t *testing.T) {
+	_, err := NewHandler(Config{
+		CoreBaseURL:       "http://example.com",
+		BridgeToken:       "secret",
+		TrustedProxyCIDRs: []string{"not-a-cidr"},
+	})
+	if err == nil {
+		t.Fatalf("expected invalid trusted proxy cidr to fail handler init")
 	}
 }

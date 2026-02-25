@@ -266,6 +266,7 @@ print(client.revoke_session_id(session["session_id"]))
   --core-url http://127.0.0.1:8787 \
   --bridge-token YOUR_BRIDGE_TOKEN \
   --core-token YOUR_CORE_TOKEN \
+  --trusted-proxy-cidrs 127.0.0.1/32 \
   --allowed-device-ids iphone-15-pro,halo-glasses-1 \
   --log-requests true
 ```
@@ -298,6 +299,7 @@ Optional env vars:
 - `NOVAADAPT_BRIDGE_TOKEN`
 - `NOVAADAPT_BRIDGE_ALLOWED_DEVICE_IDS`
 - `NOVAADAPT_BRIDGE_CORS_ALLOWED_ORIGINS` (defaults to local view origin when `NOVAADAPT_WITH_VIEW=1`)
+- `NOVAADAPT_BRIDGE_TRUSTED_PROXY_CIDRS` (CIDRs/IPs allowed to set `X-Forwarded-For` / `X-Forwarded-Proto`)
 - `NOVAADAPT_BRIDGE_RATE_LIMIT_RPS` (`<=0` disables bridge per-client rate limiting)
 - `NOVAADAPT_BRIDGE_RATE_LIMIT_BURST` (bridge per-client burst capacity)
 - `NOVAADAPT_BRIDGE_REVOCATION_STORE_PATH` (persist bridge session revocations across restart)
@@ -375,6 +377,7 @@ Environment variables:
 - Bridge relay forwards `/openapi.json` so remote clients can discover contract shape.
 - Bridge relay forwards `/dashboard` HTML for secure remote browser access.
 - Bridge relay supports optional per-client request throttling (`NOVAADAPT_BRIDGE_RATE_LIMIT_RPS` / `..._BURST`).
+- Bridge relay only trusts forwarded client/protocol headers from configured trusted proxy CIDRs (`NOVAADAPT_BRIDGE_TRUSTED_PROXY_CIDRS`).
 - Core API supports configurable request rate limiting and max body size on `serve`.
 - Core API supports persisted idempotency keys on `serve` (`--idempotency-db-path`) to prevent duplicate mutations on retries.
 - Async job records can be persisted to SQLite (`--jobs-db-path`) for restart-safe history.

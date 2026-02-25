@@ -67,6 +67,9 @@ type Config struct {
 	// CORSAllowedOrigins controls which browser origins may call cross-origin bridge APIs.
 	// Empty keeps cross-origin requests blocked; same-origin requests are always allowed.
 	CORSAllowedOrigins []string
+	// TrustedProxyCIDRs defines which remote client networks are allowed to set
+	// X-Forwarded-For / X-Forwarded-Proto headers.
+	TrustedProxyCIDRs []string
 	// RevocationStorePath optionally persists revoked session IDs across bridge restarts.
 	RevocationStorePath string
 	// RateLimitRPS limits requests per client key (remote IP / forwarded IP). <=0 disables.
@@ -92,6 +95,7 @@ type Handler struct {
 	allowedDevices      map[string]struct{}
 	corsAllowedOrigins  map[string]struct{}
 	corsAllowAll        bool
+	trustedProxies      []*net.IPNet
 	revokedSessionsMu   sync.RWMutex
 	revokedSessions     map[string]int64
 	rateLimitMu         sync.Mutex
@@ -144,6 +148,10 @@ func NewHandler(cfg Config) (*Handler, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to load revocation store: %w", err)
 	}
+	trustedProxies, err := parseTrustedProxyCIDRs(cfg.TrustedProxyCIDRs)
+	if err != nil {
+		return nil, fmt.Errorf("invalid trusted proxy cidr config: %w", err)
+	}
 	return &Handler{
 		cfg: cfg,
 		client: &http.Client{
@@ -152,6 +160,7 @@ func NewHandler(cfg Config) (*Handler, error) {
 		allowedDevices:     allowedDevices,
 		corsAllowedOrigins: corsAllowedOrigins,
 		corsAllowAll:       corsAllowAll,
+		trustedProxies:     trustedProxies,
 		revokedSessions:    revokedSessions,
 		rateLimiters:       make(map[string]*clientLimiter),
 	}, nil
@@ -587,7 +596,7 @@ func (h *Handler) applyCORSHeaders(w http.ResponseWriter, r *http.Request) corsS
 }
 
 func (h *Handler) isOriginAllowed(r *http.Request, origin string) bool {
-	if isSameOrigin(r, origin) {
+	if isSameOrigin(r, origin, h.requestScheme(r)) {
 		return true
 	}
 	if h.corsAllowAll {
@@ -597,26 +606,105 @@ func (h *Handler) isOriginAllowed(r *http.Request, origin string) bool {
 	return ok
 }
 
-func isSameOrigin(r *http.Request, origin string) bool {
-	expectedOrigin := requestScheme(r) + "://" + r.Host
+func isSameOrigin(r *http.Request, origin string, scheme string) bool {
+	expectedOrigin := scheme + "://" + r.Host
 	return canonicalOrigin(origin) == canonicalOrigin(expectedOrigin)
 }
 
-func requestScheme(r *http.Request) string {
-	forwarded := strings.TrimSpace(r.Header.Get("X-Forwarded-Proto"))
-	if forwarded != "" {
-		if idx := strings.Index(forwarded, ","); idx >= 0 {
-			forwarded = forwarded[:idx]
-		}
-		candidate := strings.ToLower(strings.TrimSpace(forwarded))
-		if candidate == "http" || candidate == "https" {
-			return candidate
+func (h *Handler) requestScheme(r *http.Request) string {
+	if h.isTrustedProxy(r) {
+		forwarded := strings.TrimSpace(r.Header.Get("X-Forwarded-Proto"))
+		if forwarded != "" {
+			if idx := strings.Index(forwarded, ","); idx >= 0 {
+				forwarded = forwarded[:idx]
+			}
+			candidate := strings.ToLower(strings.TrimSpace(forwarded))
+			if candidate == "http" || candidate == "https" {
+				return candidate
+			}
 		}
 	}
 	if r.TLS != nil {
 		return "https"
 	}
 	return "http"
+}
+
+func (h *Handler) isTrustedProxy(r *http.Request) bool {
+	if len(h.trustedProxies) == 0 {
+		return false
+	}
+	remoteIP := remoteIPFromAddr(r.RemoteAddr)
+	if remoteIP == nil {
+		return false
+	}
+	for _, network := range h.trustedProxies {
+		if network.Contains(remoteIP) {
+			return true
+		}
+	}
+	return false
+}
+
+func remoteIPFromAddr(remoteAddr string) net.IP {
+	host, _, err := net.SplitHostPort(strings.TrimSpace(remoteAddr))
+	if err == nil && host != "" {
+		return net.ParseIP(host)
+	}
+	return net.ParseIP(strings.TrimSpace(remoteAddr))
+}
+
+func parseTrustedProxyCIDRs(items []string) ([]*net.IPNet, error) {
+	if len(items) == 0 {
+		return nil, nil
+	}
+	trusted := make([]*net.IPNet, 0, len(items))
+	for _, item := range items {
+		candidate := strings.TrimSpace(item)
+		if candidate == "" {
+			continue
+		}
+		if ip := net.ParseIP(candidate); ip != nil {
+			bits := 32
+			if ip.To4() == nil {
+				bits = 128
+			}
+			trusted = append(trusted, &net.IPNet{
+				IP:   ip,
+				Mask: net.CIDRMask(bits, bits),
+			})
+			continue
+		}
+		_, network, err := net.ParseCIDR(candidate)
+		if err != nil {
+			return nil, fmt.Errorf("%q: %w", candidate, err)
+		}
+		trusted = append(trusted, network)
+	}
+	return trusted, nil
+}
+
+func (h *Handler) clientRateKey(r *http.Request) string {
+	if h.isTrustedProxy(r) {
+		forwarded := strings.TrimSpace(r.Header.Get("X-Forwarded-For"))
+		if forwarded != "" {
+			if idx := strings.Index(forwarded, ","); idx >= 0 {
+				forwarded = forwarded[:idx]
+			}
+			forwarded = strings.TrimSpace(forwarded)
+			if forwarded != "" {
+				return forwarded
+			}
+		}
+	}
+	host, _, err := net.SplitHostPort(strings.TrimSpace(r.RemoteAddr))
+	if err == nil && host != "" {
+		return host
+	}
+	if strings.TrimSpace(r.RemoteAddr) != "" {
+		return strings.TrimSpace(r.RemoteAddr)
+	}
+	return ""
 }
 
 func canonicalOrigin(origin string) string {
@@ -627,7 +715,7 @@ func (h *Handler) isRateLimited(r *http.Request, now time.Time) bool {
 	if h.cfg.RateLimitRPS <= 0 {
 		return false
 	}
-	key := clientRateKey(r)
+	key := h.clientRateKey(r)
 	if key == "" {
 		key = "unknown"
 	}
@@ -650,27 +738,6 @@ func (h *Handler) isRateLimited(r *http.Request, now time.Time) bool {
 	}
 	entry.lastSeen = now
 	return !entry.limiter.Allow()
-}
-
-func clientRateKey(r *http.Request) string {
-	forwarded := strings.TrimSpace(r.Header.Get("X-Forwarded-For"))
-	if forwarded != "" {
-		if idx := strings.Index(forwarded, ","); idx >= 0 {
-			forwarded = forwarded[:idx]
-		}
-		forwarded = strings.TrimSpace(forwarded)
-		if forwarded != "" {
-			return forwarded
-		}
-	}
-	host, _, err := net.SplitHostPort(strings.TrimSpace(r.RemoteAddr))
-	if err == nil && host != "" {
-		return host
-	}
-	if strings.TrimSpace(r.RemoteAddr) != "" {
-		return strings.TrimSpace(r.RemoteAddr)
-	}
-	return ""
 }
 
 func (h *Handler) writeJSON(w http.ResponseWriter, status int, payload any) {
