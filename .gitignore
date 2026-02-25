@@ -12,3 +12,4 @@ deploy/.env
 dist/
 desktop/tauri-shell/node_modules/
 desktop/tauri-shell/src-tauri/target/
+desktop/tauri-shell/src-tauri/gen/
