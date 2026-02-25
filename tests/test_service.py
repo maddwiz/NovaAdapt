@@ -73,6 +73,16 @@ class _FlakyDirectShell:
         return ExecutionResult(action=action, status="ok", output="recovered")
 
 
+class _RecordingDirectShell(_StubDirectShell):
+    def __init__(self):
+        self.executed_actions = []
+
+    def execute_action(self, action, dry_run=True):
+        if not dry_run:
+            self.executed_actions.append(action)
+        return super().execute_action(action, dry_run=dry_run)
+
+
 class _StubDirectShellWithProbe(_StubDirectShell):
     def probe(self):
         return {"ok": True, "transport": "stub"}
@@ -256,6 +266,58 @@ class ServiceTests(unittest.TestCase):
             self.assertEqual(out["execution_results"][0]["status"], "failed")
             self.assertEqual(out["execution_results"][0]["attempts"], 2)
             self.assertEqual(flaky.execute_calls, 2)
+
+    def test_retry_failed_only_executes_subset_and_preserves_action_logs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            recorder = _RecordingDirectShell()
+            service = NovaAdaptService(
+                default_config=Path("unused.json"),
+                db_path=Path(tmp) / "actions.db",
+                plans_db_path=Path(tmp) / "plans.db",
+                router_loader=lambda _path: _StubRouter(),
+                directshell_factory=lambda: recorder,
+            )
+
+            plan = service._plans().create(
+                {
+                    "objective": "mixed outcomes",
+                    "actions": [
+                        {"type": "click", "target": "OK"},
+                        {"type": "delete", "target": "/tmp/something"},
+                    ],
+                }
+            )
+            first = service.approve_plan(plan["id"], {"execute": True, "allow_dangerous": False})
+            self.assertEqual(first["status"], "failed")
+            self.assertEqual(len(first["action_log_ids"]), 2)
+            self.assertEqual(len(recorder.executed_actions), 1)
+
+            retried = service.approve_plan(
+                plan["id"],
+                {"execute": True, "allow_dangerous": True, "retry_failed_only": True},
+            )
+            self.assertEqual(retried["status"], "executed")
+            self.assertEqual(len(retried["execution_results"]), 1)
+            self.assertEqual(retried["execution_results"][0]["status"], "ok")
+            self.assertEqual(len(retried["action_log_ids"]), 3)
+            self.assertEqual(len(recorder.executed_actions), 2)
+            self.assertEqual(recorder.executed_actions[-1]["type"], "delete")
+
+    def test_retry_failed_only_requires_prior_execution_and_execute_flag(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            service = NovaAdaptService(
+                default_config=Path("unused.json"),
+                db_path=Path(tmp) / "actions.db",
+                plans_db_path=Path(tmp) / "plans.db",
+                router_loader=lambda _path: _StubRouter(),
+                directshell_factory=_StubDirectShell,
+            )
+            created = service.create_plan({"objective": "click ok"})
+
+            with self.assertRaises(ValueError):
+                service.approve_plan(created["id"], {"execute": False, "retry_failed_only": True})
+            with self.assertRaises(ValueError):
+                service.approve_plan(created["id"], {"execute": True, "retry_failed_only": True})
 
     def test_events_reads_filtered_audit_log(self):
         with tempfile.TemporaryDirectory() as tmp:

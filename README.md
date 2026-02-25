@@ -119,6 +119,7 @@ novaadapt plan-create --objective "Open browser and go to example.com"
 novaadapt plans --limit 10
 novaadapt plan-approve --id PLAN_ID         # executes by default
 novaadapt plan-approve --id PLAN_ID --action-retry-attempts 2 --action-retry-backoff-seconds 0.2
+novaadapt plan-approve --id PLAN_ID --retry-failed-only --allow-dangerous
 novaadapt plan-reject --id PLAN_ID --reason "Not safe enough"
 ```
 
@@ -214,6 +215,7 @@ Audit persistence enables WAL mode, busy-timeout handling, and transient SQLite 
 Plan records expose execution progress fields (`progress_completed`, `progress_total`) and terminal error state (`execution_error`).
 Plans finalize as `failed` when one or more actions are blocked or fail during execution.
 Plan approvals support optional transient retry controls: `action_retry_attempts` and `action_retry_backoff_seconds`.
+Plan approvals also support `retry_failed_only` to rerun only previously failed/blocked actions.
 
 When token auth is enabled, browser dashboard usage supports:
 

@@ -154,6 +154,10 @@ class NovaAdaptService:
         max_actions = int(payload.get("max_actions", len(plan.get("actions", [])) or 1))
         action_retry_attempts = max(0, int(payload.get("action_retry_attempts", 0)))
         action_retry_backoff_seconds = max(0.0, float(payload.get("action_retry_backoff_seconds", 0.25)))
+        retry_failed_only = bool(payload.get("retry_failed_only", False))
+
+        if retry_failed_only and not execute:
+            raise ValueError("'retry_failed_only' requires execute=true")
 
         if not execute:
             approved = self._plans().approve(plan_id=plan_id, status="approved")
@@ -162,14 +166,40 @@ class NovaAdaptService:
             return approved
 
         actions = [item for item in plan.get("actions", []) if isinstance(item, dict)]
+        if retry_failed_only:
+            prior_results = plan.get("execution_results")
+            if not isinstance(prior_results, list):
+                raise ValueError("Plan has no prior execution results to retry")
+            retry_indexes = []
+            for idx, result in enumerate(prior_results):
+                if idx >= len(actions):
+                    break
+                if not isinstance(result, dict):
+                    continue
+                status = str(result.get("status", "")).strip().lower()
+                if status in {"failed", "blocked"}:
+                    retry_indexes.append(idx)
+            if not retry_indexes:
+                raise ValueError("No failed or blocked actions available for retry")
+            actions = [actions[idx] for idx in retry_indexes]
         actions = actions[: max(1, max_actions)]
+
+        existing_action_log_ids = plan.get("action_log_ids")
+        preserved_action_log_ids: list[int] = []
+        if isinstance(existing_action_log_ids, list):
+            for value in existing_action_log_ids:
+                try:
+                    preserved_action_log_ids.append(int(value))
+                except (TypeError, ValueError):
+                    continue
+
         policy = ActionPolicy()
         queue = UndoQueue(db_path=self.db_path)
         directshell = self.directshell_factory()
         self._plans().mark_executing(plan_id=plan_id, total_actions=len(actions))
 
         execution_results: list[dict[str, Any]] = []
-        action_log_ids: list[int] = []
+        action_log_ids: list[int] = list(preserved_action_log_ids)
         try:
             for idx, action in enumerate(actions, start=1):
                 decision = policy.evaluate(action, allow_dangerous=allow_dangerous)
