@@ -10,15 +10,25 @@ from typing import Any
 class JobStore:
     """Persists async job records in SQLite for restart-safe history."""
 
-    def __init__(self, db_path: str | Path | None = None) -> None:
+    def __init__(
+        self,
+        db_path: str | Path | None = None,
+        *,
+        sqlite_timeout_seconds: float = 5.0,
+    ) -> None:
         if db_path is None:
             db_path = Path.home() / ".novaadapt" / "jobs.db"
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        self.sqlite_timeout_seconds = max(0.1, float(sqlite_timeout_seconds))
         self._init()
 
     def _connect(self) -> sqlite3.Connection:
-        return sqlite3.connect(self.db_path)
+        conn = sqlite3.connect(self.db_path, timeout=self.sqlite_timeout_seconds)
+        conn.execute(f"PRAGMA busy_timeout={int(self.sqlite_timeout_seconds * 1000)}")
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
+        return conn
 
     @contextmanager
     def _connection(self):

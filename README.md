@@ -368,6 +368,7 @@ Environment variables:
 - Potentially destructive actions are blocked unless `--allow-dangerous` is set.
 - Plans are capped by `--max-actions` (default `25`) to reduce runaway execution.
 - Every action is logged in SQLite (`~/.novaadapt/actions.db`) for audit/undo workflows.
+- SQLite-backed state stores (plans/jobs/idempotency/audit/action log) run with WAL + busy-timeout defaults for safer concurrent access.
 - Core API can require bearer auth via `--api-token` / `NOVAADAPT_API_TOKEN`.
 - Bridge relay enforces independent ingress token and forwards with a separate core token.
 - Bridge relay propagates `X-Request-ID` for traceability and supports deep health probing at `/health?deep=1`.

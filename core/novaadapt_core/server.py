@@ -434,12 +434,6 @@ def _build_handler(
                         payload,
                         lambda: self._cancel_job(job_id),
                     )
-                    self._send_json(
-                        status_code,
-                        response_payload,
-                        replayed=replayed,
-                        idempotency_key=self._idempotency_key(),
-                    )
                     self._audit_event(
                         category="jobs",
                         action="cancel",
@@ -447,6 +441,12 @@ def _build_handler(
                         entity_type="job",
                         entity_id=job_id,
                         payload=response_payload if isinstance(response_payload, dict) else None,
+                    )
+                    self._send_json(
+                        status_code,
+                        response_payload,
+                        replayed=replayed,
+                        idempotency_key=self._idempotency_key(),
                     )
                     return
 
@@ -456,12 +456,6 @@ def _build_handler(
                         payload,
                         lambda: (201, service.create_plan(payload)),
                     )
-                    self._send_json(
-                        status_code,
-                        response_payload,
-                        replayed=replayed,
-                        idempotency_key=self._idempotency_key(),
-                    )
                     self._audit_event(
                         category="plans",
                         action="create",
@@ -469,6 +463,12 @@ def _build_handler(
                         entity_type="plan",
                         entity_id=str(response_payload.get("id")) if isinstance(response_payload, dict) else None,
                         payload=response_payload if isinstance(response_payload, dict) else None,
+                    )
+                    self._send_json(
+                        status_code,
+                        response_payload,
+                        replayed=replayed,
+                        idempotency_key=self._idempotency_key(),
                     )
                     return
 
@@ -483,12 +483,6 @@ def _build_handler(
                         payload,
                         lambda: (200, service.approve_plan(plan_id, payload)),
                     )
-                    self._send_json(
-                        status_code,
-                        response_payload,
-                        replayed=replayed,
-                        idempotency_key=self._idempotency_key(),
-                    )
                     self._audit_event(
                         category="plans",
                         action="approve",
@@ -496,6 +490,12 @@ def _build_handler(
                         entity_type="plan",
                         entity_id=plan_id,
                         payload=response_payload if isinstance(response_payload, dict) else None,
+                    )
+                    self._send_json(
+                        status_code,
+                        response_payload,
+                        replayed=replayed,
+                        idempotency_key=self._idempotency_key(),
                     )
                     return
 
@@ -517,12 +517,6 @@ def _build_handler(
                             },
                         ),
                     )
-                    self._send_json(
-                        status_code,
-                        response_payload,
-                        replayed=replayed,
-                        idempotency_key=self._idempotency_key(),
-                    )
                     self._audit_event(
                         category="plans",
                         action="approve_async",
@@ -530,6 +524,12 @@ def _build_handler(
                         entity_type="plan",
                         entity_id=plan_id,
                         payload=response_payload if isinstance(response_payload, dict) else None,
+                    )
+                    self._send_json(
+                        status_code,
+                        response_payload,
+                        replayed=replayed,
+                        idempotency_key=self._idempotency_key(),
                     )
                     return
 
@@ -548,12 +548,6 @@ def _build_handler(
                             service.reject_plan(plan_id, reason=str(reason) if reason is not None else None),
                         ),
                     )
-                    self._send_json(
-                        status_code,
-                        response_payload,
-                        replayed=replayed,
-                        idempotency_key=self._idempotency_key(),
-                    )
                     self._audit_event(
                         category="plans",
                         action="reject",
@@ -561,6 +555,12 @@ def _build_handler(
                         entity_type="plan",
                         entity_id=plan_id,
                         payload=response_payload if isinstance(response_payload, dict) else None,
+                    )
+                    self._send_json(
+                        status_code,
+                        response_payload,
+                        replayed=replayed,
+                        idempotency_key=self._idempotency_key(),
                     )
                     return
 
@@ -575,12 +575,6 @@ def _build_handler(
                         payload,
                         lambda: (200, service.undo_plan(plan_id, payload)),
                     )
-                    self._send_json(
-                        status_code,
-                        response_payload,
-                        replayed=replayed,
-                        idempotency_key=self._idempotency_key(),
-                    )
                     self._audit_event(
                         category="plans",
                         action="undo",
@@ -588,6 +582,12 @@ def _build_handler(
                         entity_type="plan",
                         entity_id=plan_id,
                         payload=response_payload if isinstance(response_payload, dict) else None,
+                    )
+                    self._send_json(
+                        status_code,
+                        response_payload,
+                        replayed=replayed,
+                        idempotency_key=self._idempotency_key(),
                     )
                     return
 
@@ -597,17 +597,17 @@ def _build_handler(
                         payload,
                         lambda: (200, service.run(payload)),
                     )
-                    self._send_json(
-                        status_code,
-                        response_payload,
-                        replayed=replayed,
-                        idempotency_key=self._idempotency_key(),
-                    )
                     self._audit_event(
                         category="run",
                         action="run",
                         status="replayed" if replayed else ("ok" if status_code < 400 else "error"),
                         payload=response_payload if isinstance(response_payload, dict) else None,
+                    )
+                    self._send_json(
+                        status_code,
+                        response_payload,
+                        replayed=replayed,
+                        idempotency_key=self._idempotency_key(),
                     )
                     return
 
@@ -620,12 +620,6 @@ def _build_handler(
                             {"job_id": job_manager.submit(service.run, payload), "status": "queued"},
                         ),
                     )
-                    self._send_json(
-                        status_code,
-                        response_payload,
-                        replayed=replayed,
-                        idempotency_key=self._idempotency_key(),
-                    )
                     self._audit_event(
                         category="run",
                         action="run_async",
@@ -633,6 +627,12 @@ def _build_handler(
                         entity_type="job",
                         entity_id=str(response_payload.get("job_id")) if isinstance(response_payload, dict) else None,
                         payload=response_payload if isinstance(response_payload, dict) else None,
+                    )
+                    self._send_json(
+                        status_code,
+                        response_payload,
+                        replayed=replayed,
+                        idempotency_key=self._idempotency_key(),
                     )
                     return
 
@@ -642,17 +642,17 @@ def _build_handler(
                         payload,
                         lambda: (200, service.undo(payload)),
                     )
-                    self._send_json(
-                        status_code,
-                        response_payload,
-                        replayed=replayed,
-                        idempotency_key=self._idempotency_key(),
-                    )
                     self._audit_event(
                         category="undo",
                         action="undo",
                         status="replayed" if replayed else ("ok" if status_code < 400 else "error"),
                         payload=response_payload if isinstance(response_payload, dict) else None,
+                    )
+                    self._send_json(
+                        status_code,
+                        response_payload,
+                        replayed=replayed,
+                        idempotency_key=self._idempotency_key(),
                     )
                     return
 
