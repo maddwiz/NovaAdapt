@@ -257,6 +257,18 @@ def _build_parser() -> argparse.ArgumentParser:
         default=float(os.getenv("NOVAADAPT_IDEMPOTENCY_CLEANUP_INTERVAL_SECONDS", "60")),
         help="How often idempotency expiry cleanup runs during writes",
     )
+    serve_cmd.add_argument(
+        "--audit-retention-seconds",
+        type=int,
+        default=int(os.getenv("NOVAADAPT_AUDIT_RETENTION_SECONDS", str(30 * 24 * 60 * 60))),
+        help="Retention window for persisted audit events (0 disables expiry)",
+    )
+    serve_cmd.add_argument(
+        "--audit-cleanup-interval-seconds",
+        type=float,
+        default=float(os.getenv("NOVAADAPT_AUDIT_CLEANUP_INTERVAL_SECONDS", "60")),
+        help="How often audit expiry cleanup runs during writes",
+    )
     serve_cmd.add_argument("--host", default="127.0.0.1")
     serve_cmd.add_argument("--port", type=int, default=8787)
     serve_cmd.add_argument(
@@ -323,6 +335,8 @@ def main() -> None:
                 trusted_proxy_cidrs=_parse_csv(args.trusted_proxy_cidrs),
                 idempotency_retention_seconds=max(0, int(args.idempotency_retention_seconds)),
                 idempotency_cleanup_interval_seconds=max(0.0, float(args.idempotency_cleanup_interval_seconds)),
+                audit_retention_seconds=max(0, int(args.audit_retention_seconds)),
+                audit_cleanup_interval_seconds=max(0.0, float(args.audit_cleanup_interval_seconds)),
                 max_request_body_bytes=max(1, int(args.max_body_bytes)),
                 jobs_db_path=str(args.jobs_db_path),
                 idempotency_db_path=str(args.idempotency_db_path),

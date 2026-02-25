@@ -1,10 +1,13 @@
 import io
 import json
 import logging
+import sqlite3
 import tempfile
 import threading
 import time
 import unittest
+from contextlib import closing
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib import error, request
 
@@ -621,6 +624,51 @@ class ServerTests(unittest.TestCase):
                         idempotency_key="idem-1",
                     )
                 self.assertEqual(err.exception.code, 409)
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=2)
+
+    def test_audit_retention_prunes_expired_events_on_write(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            events_db = Path(tmp) / "events.db"
+            service = NovaAdaptService(
+                default_config=Path("unused.json"),
+                db_path=Path(tmp) / "actions.db",
+                plans_db_path=Path(tmp) / "plans.db",
+                router_loader=lambda _path: _StubRouter(),
+                directshell_factory=_StubDirectShell,
+            )
+            server = create_server(
+                "127.0.0.1",
+                0,
+                service,
+                audit_db_path=str(events_db),
+                audit_retention_seconds=1,
+                audit_cleanup_interval_seconds=0,
+            )
+            host, port = server.server_address
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+
+            try:
+                _post_json(f"http://{host}:{port}/run", {"objective": "first run"})
+                first_events = _get_json(f"http://{host}:{port}/events?limit=10")
+                self.assertGreaterEqual(len(first_events), 1)
+                stale_event_id = int(first_events[0]["id"])
+
+                old_timestamp = datetime(2000, 1, 1, tzinfo=timezone.utc).isoformat()
+                with closing(sqlite3.connect(events_db)) as conn:
+                    conn.execute(
+                        "UPDATE audit_events SET created_at = ? WHERE id = ?",
+                        (old_timestamp, stale_event_id),
+                    )
+                    conn.commit()
+
+                _post_json(f"http://{host}:{port}/run", {"objective": "second run"})
+                second_events = _get_json(f"http://{host}:{port}/events?limit=10")
+                ids = {int(item["id"]) for item in second_events}
+                self.assertNotIn(stale_event_id, ids)
             finally:
                 server.shutdown()
                 server.server_close()

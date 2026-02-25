@@ -1,5 +1,7 @@
 import tempfile
 import unittest
+from contextlib import closing
+from datetime import datetime, timezone
 from pathlib import Path
 import sqlite3
 
@@ -61,6 +63,51 @@ class AuditStoreTests(unittest.TestCase):
             item = store.append(category="run", action="run", status="ok")
             self.assertEqual(item["category"], "run")
             self.assertEqual(store._append_attempts, 2)
+
+    def test_prune_expired_returns_removed_count(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "events.db"
+            store = AuditStore(
+                db,
+                retention_seconds=1,
+                cleanup_interval_seconds=3600,
+            )
+            created = store.append(category="run", action="run", status="ok")
+
+            old_timestamp = datetime(2000, 1, 1, tzinfo=timezone.utc).isoformat()
+            with closing(sqlite3.connect(db)) as conn:
+                conn.execute(
+                    "UPDATE audit_events SET created_at = ? WHERE id = ?",
+                    (old_timestamp, int(created["id"])),
+                )
+                conn.commit()
+
+            removed = store.prune_expired()
+            self.assertEqual(removed, 1)
+            self.assertEqual(store.list(limit=10), [])
+
+    def test_append_cleanup_expires_old_entries(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "events.db"
+            store = AuditStore(
+                db,
+                retention_seconds=1,
+                cleanup_interval_seconds=0,
+            )
+            first = store.append(category="run", action="first", status="ok")
+
+            old_timestamp = datetime(2000, 1, 1, tzinfo=timezone.utc).isoformat()
+            with closing(sqlite3.connect(db)) as conn:
+                conn.execute(
+                    "UPDATE audit_events SET created_at = ? WHERE id = ?",
+                    (old_timestamp, int(first["id"])),
+                )
+                conn.commit()
+
+            second = store.append(category="run", action="second", status="ok")
+            items = store.list(limit=10)
+            ids = {int(item["id"]) for item in items}
+            self.assertEqual(ids, {int(second["id"])})
 
 
 if __name__ == "__main__":

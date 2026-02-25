@@ -22,5 +22,6 @@ Contains:
 - Optional bearer auth guard on API routes.
 - Optional request rate limiting and max body-size enforcement.
 - Optional idempotency key store for mutating POST routes.
+- Optional audit retention cleanup for persisted event logs.
 - Core metrics endpoint (`/metrics`) for API counters.
 - Dashboard JSON endpoint (`/dashboard/data`) for live UI polling.

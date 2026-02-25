@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import threading
 import time
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -21,6 +22,8 @@ class AuditStore:
         retry_attempts: int = 3,
         retry_backoff_seconds: float = 0.02,
         sqlite_timeout_seconds: float = 5.0,
+        retention_seconds: int = 30 * 24 * 60 * 60,
+        cleanup_interval_seconds: float = 60.0,
     ) -> None:
         if db_path is None:
             db_path = Path.home() / ".novaadapt" / "events.db"
@@ -29,6 +32,10 @@ class AuditStore:
         self.retry_attempts = max(1, int(retry_attempts))
         self.retry_backoff_seconds = max(0.0, float(retry_backoff_seconds))
         self.sqlite_timeout_seconds = max(0.1, float(sqlite_timeout_seconds))
+        self.retention_seconds = max(0, int(retention_seconds))
+        self.cleanup_interval_seconds = max(0.0, float(cleanup_interval_seconds))
+        self._cleanup_lock = threading.Lock()
+        self._last_cleanup_monotonic = 0.0
         self._init()
 
     def append(
@@ -98,6 +105,9 @@ class AuditStore:
         )
         return [_row_to_dict(row) for row in rows]
 
+    def prune_expired(self) -> int:
+        return self._run_with_retry(self._prune_expired_once)
+
     def _init(self) -> None:
         self._run_with_retry(self._init_once)
 
@@ -133,6 +143,7 @@ class AuditStore:
         payload_json: str | None,
     ) -> int:
         with self._connection() as conn:
+            self._cleanup_expired_locked(conn)
             cur = conn.execute(
                 """
                 INSERT INTO audit_events(
@@ -152,6 +163,13 @@ class AuditStore:
             )
             conn.commit()
             return int(cur.lastrowid)
+
+    def _prune_expired_once(self) -> int:
+        with self._connection() as conn:
+            removed = self._cleanup_expired_locked(conn, force=True)
+            if removed > 0:
+                conn.commit()
+            return removed
 
     def _get_row(self, event_id: int) -> tuple[Any, ...] | None:
         with self._connection() as conn:
@@ -203,6 +221,21 @@ class AuditStore:
                 if delay > 0:
                     time.sleep(delay)
         raise RuntimeError("sqlite retry loop exhausted unexpectedly")
+
+    def _cleanup_expired_locked(self, conn: sqlite3.Connection, *, force: bool = False) -> int:
+        if self.retention_seconds <= 0:
+            return 0
+
+        now_monotonic = time.monotonic()
+        with self._cleanup_lock:
+            if not force and self.cleanup_interval_seconds > 0:
+                if (now_monotonic - self._last_cleanup_monotonic) < self.cleanup_interval_seconds:
+                    return 0
+            self._last_cleanup_monotonic = now_monotonic
+
+        cutoff = datetime.fromtimestamp(time.time() - self.retention_seconds, timezone.utc).isoformat()
+        cursor = conn.execute("DELETE FROM audit_events WHERE created_at < ?", (cutoff,))
+        return int(cursor.rowcount or 0)
 
 
 def _row_to_dict(row: tuple[Any, ...]) -> dict[str, Any]:

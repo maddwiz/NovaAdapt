@@ -139,6 +139,8 @@ novaadapt serve \
   --port 8787 \
   --jobs-db-path ~/.novaadapt/jobs.db \
   --audit-db-path ~/.novaadapt/events.db \
+  --audit-retention-seconds 2592000 \
+  --audit-cleanup-interval-seconds 60 \
   --api-token YOUR_CORE_TOKEN \
   --log-requests \
   --rate-limit-rps 20 \
@@ -178,6 +180,7 @@ Core API responses include `X-Request-ID` for tracing (and object responses also
 Mutating POST routes support idempotency via `Idempotency-Key`; replayed responses return `X-Idempotency-Replayed: true`.
 Idempotency records auto-expire (defaults: 7 days retention, 60s cleanup interval) to prevent unbounded DB growth.
 Audit events are persisted in SQLite (`--audit-db-path`) and include request IDs for forensic tracing.
+Audit events auto-expire by default (30 days retention, 60s cleanup interval) to cap storage growth.
 Audit persistence enables WAL mode, busy-timeout handling, and transient SQLite retry for improved resilience under load.
 Plan records expose execution progress fields (`progress_completed`, `progress_total`) and terminal error state (`execution_error`).
 Plans finalize as `failed` when one or more actions are blocked or fail during execution.
@@ -326,6 +329,7 @@ Optional env vars:
 - `NOVAADAPT_CORE_TOKEN`
 - `NOVAADAPT_CORE_TRUSTED_PROXY_CIDRS` (trusted proxy CIDRs/IPs for core forwarded client IP handling)
 - `NOVAADAPT_IDEMPOTENCY_RETENTION_SECONDS` / `NOVAADAPT_IDEMPOTENCY_CLEANUP_INTERVAL_SECONDS`
+- `NOVAADAPT_AUDIT_RETENTION_SECONDS` / `NOVAADAPT_AUDIT_CLEANUP_INTERVAL_SECONDS`
 - `NOVAADAPT_BRIDGE_TOKEN`
 - `NOVAADAPT_BRIDGE_ALLOWED_DEVICE_IDS`
 - `NOVAADAPT_BRIDGE_CORS_ALLOWED_ORIGINS` (defaults to local view origin when `NOVAADAPT_WITH_VIEW=1`)
@@ -416,6 +420,7 @@ Environment variables:
 - Core API only trusts `X-Forwarded-For` for rate-limit identity when `NOVAADAPT_TRUSTED_PROXY_CIDRS` is configured.
 - Core API request logging redacts sensitive query params (for example `token`) before writing access logs.
 - Core API supports persisted idempotency keys on `serve` (`--idempotency-db-path`) to prevent duplicate mutations on retries.
+- Core API supports persisted audit retention controls on `serve` (`--audit-retention-seconds`, `--audit-cleanup-interval-seconds`) to cap event-store growth.
 - Async job records can be persisted to SQLite (`--jobs-db-path`) for restart-safe history.
 - Plan approval records can be persisted to SQLite (`--plans-db-path`) for restart-safe approvals/audits.
 

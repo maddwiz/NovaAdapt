@@ -137,6 +137,8 @@ def create_server(
     trusted_proxy_cidrs: list[str] | None = None,
     idempotency_retention_seconds: int = 7 * 24 * 60 * 60,
     idempotency_cleanup_interval_seconds: float = 60.0,
+    audit_retention_seconds: int = 30 * 24 * 60 * 60,
+    audit_cleanup_interval_seconds: float = 60.0,
     max_request_body_bytes: int = DEFAULT_MAX_REQUEST_BODY_BYTES,
     jobs_db_path: str | None = None,
     idempotency_db_path: str | None = None,
@@ -152,7 +154,11 @@ def create_server(
         if idempotency_db_path
         else None
     )
-    audit_store = AuditStore(audit_db_path)
+    audit_store = AuditStore(
+        audit_db_path,
+        retention_seconds=audit_retention_seconds,
+        cleanup_interval_seconds=audit_cleanup_interval_seconds,
+    )
     metrics = _RequestMetrics()
 
     limiter = None
@@ -189,6 +195,8 @@ def run_server(
     trusted_proxy_cidrs: list[str] | None = None,
     idempotency_retention_seconds: int = 7 * 24 * 60 * 60,
     idempotency_cleanup_interval_seconds: float = 60.0,
+    audit_retention_seconds: int = 30 * 24 * 60 * 60,
+    audit_cleanup_interval_seconds: float = 60.0,
     max_request_body_bytes: int = DEFAULT_MAX_REQUEST_BODY_BYTES,
     jobs_db_path: str | None = None,
     idempotency_db_path: str | None = None,
@@ -206,6 +214,8 @@ def run_server(
         trusted_proxy_cidrs=trusted_proxy_cidrs,
         idempotency_retention_seconds=idempotency_retention_seconds,
         idempotency_cleanup_interval_seconds=idempotency_cleanup_interval_seconds,
+        audit_retention_seconds=audit_retention_seconds,
+        audit_cleanup_interval_seconds=audit_cleanup_interval_seconds,
         max_request_body_bytes=max_request_body_bytes,
         jobs_db_path=jobs_db_path,
         idempotency_db_path=idempotency_db_path,

@@ -64,3 +64,5 @@ curl -fsS http://127.0.0.1:9797/health?deep=1
 ```
 
 If bridge TLS is enabled, use `https://` and either trusted certs or `curl -k`.
+
+`core.env` also exposes `NOVAADAPT_AUDIT_RETENTION_SECONDS` and `NOVAADAPT_AUDIT_CLEANUP_INTERVAL_SECONDS` to bound audit log growth in long-running deployments.
