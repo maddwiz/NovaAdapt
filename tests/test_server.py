@@ -7,7 +7,11 @@ from pathlib import Path
 from urllib import error, request
 
 from novaadapt_core.directshell import ExecutionResult
-from novaadapt_core.server import create_server
+from novaadapt_core.server import (
+    _PerClientSlidingWindowRateLimiter,
+    _parse_trusted_proxy_cidrs,
+    create_server,
+)
 from novaadapt_core.service import NovaAdaptService
 from novaadapt_shared.model_router import RouterResult
 
@@ -426,6 +430,104 @@ class ServerTests(unittest.TestCase):
                 server.server_close()
                 thread.join(timeout=2)
 
+    def test_per_client_rate_limiter_keys_are_isolated(self):
+        limiter = _PerClientSlidingWindowRateLimiter(burst=1, window_seconds=1.0, idle_ttl_seconds=60.0)
+        self.assertTrue(limiter.allow("client-a"))
+        self.assertFalse(limiter.allow("client-a"))
+        self.assertTrue(limiter.allow("client-b"))
+
+    def test_parse_trusted_proxy_cidrs(self):
+        networks = _parse_trusted_proxy_cidrs(["127.0.0.1/32", "10.0.0.1"])
+        self.assertEqual(len(networks), 2)
+        with self.assertRaises(ValueError):
+            _parse_trusted_proxy_cidrs(["invalid-cidr"])
+
+    def test_rate_limit_ignores_forwarded_for_without_trusted_proxy(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            service = NovaAdaptService(
+                default_config=Path("unused.json"),
+                db_path=Path(tmp) / "actions.db",
+                plans_db_path=Path(tmp) / "plans.db",
+                router_loader=lambda _path: _StubRouter(),
+                directshell_factory=_StubDirectShell,
+            )
+            server = create_server(
+                "127.0.0.1",
+                0,
+                service,
+                api_token="secret",
+                rate_limit_rps=1,
+                rate_limit_burst=1,
+                audit_db_path=str(Path(tmp) / "events.db"),
+            )
+            host, port = server.server_address
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+
+            try:
+                _ = _get_json(
+                    f"http://{host}:{port}/models",
+                    token="secret",
+                    extra_headers={"X-Forwarded-For": "198.51.100.20"},
+                )
+                with self.assertRaises(error.HTTPError) as err:
+                    _get_json(
+                        f"http://{host}:{port}/models",
+                        token="secret",
+                        extra_headers={"X-Forwarded-For": "198.51.100.21"},
+                    )
+                self.assertEqual(err.exception.code, 429)
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=2)
+
+    def test_rate_limit_uses_forwarded_for_with_trusted_proxy(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            service = NovaAdaptService(
+                default_config=Path("unused.json"),
+                db_path=Path(tmp) / "actions.db",
+                plans_db_path=Path(tmp) / "plans.db",
+                router_loader=lambda _path: _StubRouter(),
+                directshell_factory=_StubDirectShell,
+            )
+            server = create_server(
+                "127.0.0.1",
+                0,
+                service,
+                api_token="secret",
+                rate_limit_rps=1,
+                rate_limit_burst=1,
+                trusted_proxy_cidrs=["127.0.0.1/32"],
+                audit_db_path=str(Path(tmp) / "events.db"),
+            )
+            host, port = server.server_address
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+
+            try:
+                _ = _get_json(
+                    f"http://{host}:{port}/models",
+                    token="secret",
+                    extra_headers={"X-Forwarded-For": "198.51.100.20"},
+                )
+                _ = _get_json(
+                    f"http://{host}:{port}/models",
+                    token="secret",
+                    extra_headers={"X-Forwarded-For": "198.51.100.21"},
+                )
+                with self.assertRaises(error.HTTPError) as err:
+                    _get_json(
+                        f"http://{host}:{port}/models",
+                        token="secret",
+                        extra_headers={"X-Forwarded-For": "198.51.100.21"},
+                    )
+                self.assertEqual(err.exception.code, 429)
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=2)
+
     def test_idempotency_replay_and_conflict(self):
         with tempfile.TemporaryDirectory() as tmp:
             service = NovaAdaptService(
@@ -479,8 +581,8 @@ class ServerTests(unittest.TestCase):
                 thread.join(timeout=2)
 
 
-def _get_json(url: str, token: str | None = None):
-    return _get_json_with_headers(url=url, token=token)[0]
+def _get_json(url: str, token: str | None = None, extra_headers: dict[str, str] | None = None):
+    return _get_json_with_headers(url=url, token=token, extra_headers=extra_headers)[0]
 
 
 def _post_json(
@@ -488,30 +590,41 @@ def _post_json(
     payload: dict,
     token: str | None = None,
     idempotency_key: str | None = None,
+    extra_headers: dict[str, str] | None = None,
 ):
     return _post_json_with_headers(
         url=url,
         payload=payload,
         token=token,
         idempotency_key=idempotency_key,
+        extra_headers=extra_headers,
     )[0]
 
 
-def _get_text(url: str, token: str | None = None):
+def _get_text(url: str, token: str | None = None, extra_headers: dict[str, str] | None = None):
     headers = {}
     if token:
         headers["Authorization"] = f"Bearer {token}"
+    if extra_headers:
+        headers.update(extra_headers)
     req = request.Request(url=url, headers=headers, method="GET")
     with request.urlopen(req, timeout=5) as response:
         return response.read().decode("utf-8")
 
 
-def _get_json_with_headers(url: str, token: str | None = None, request_id: str | None = None):
+def _get_json_with_headers(
+    url: str,
+    token: str | None = None,
+    request_id: str | None = None,
+    extra_headers: dict[str, str] | None = None,
+):
     headers = {}
     if token:
         headers["Authorization"] = f"Bearer {token}"
     if request_id:
         headers["X-Request-ID"] = request_id
+    if extra_headers:
+        headers.update(extra_headers)
     req = request.Request(url=url, headers=headers, method="GET")
     with request.urlopen(req, timeout=5) as response:
         body = json.loads(response.read().decode("utf-8"))
@@ -524,6 +637,7 @@ def _post_json_with_headers(
     token: str | None = None,
     request_id: str | None = None,
     idempotency_key: str | None = None,
+    extra_headers: dict[str, str] | None = None,
 ):
     data = json.dumps(payload).encode("utf-8")
     headers = {"Content-Type": "application/json"}
@@ -533,6 +647,8 @@ def _post_json_with_headers(
         headers["X-Request-ID"] = request_id
     if idempotency_key:
         headers["Idempotency-Key"] = idempotency_key
+    if extra_headers:
+        headers.update(extra_headers)
     req = request.Request(
         url=url,
         data=data,

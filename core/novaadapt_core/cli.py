@@ -235,6 +235,11 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Burst requests allowed inside 1 second window (defaults to rate limit rounded down)",
     )
     serve_cmd.add_argument(
+        "--trusted-proxy-cidrs",
+        default=os.getenv("NOVAADAPT_TRUSTED_PROXY_CIDRS", ""),
+        help="Comma-separated trusted reverse proxy CIDRs/IPs allowed to set X-Forwarded-For",
+    )
+    serve_cmd.add_argument(
         "--max-body-bytes",
         type=int,
         default=int(os.getenv("NOVAADAPT_MAX_BODY_BYTES", str(1 << 20))),
@@ -268,6 +273,7 @@ def main() -> None:
                 log_requests=args.log_requests,
                 rate_limit_rps=max(0.0, float(args.rate_limit_rps)),
                 rate_limit_burst=args.rate_limit_burst,
+                trusted_proxy_cidrs=_parse_csv(args.trusted_proxy_cidrs),
                 max_request_body_bytes=max(1, int(args.max_body_bytes)),
                 jobs_db_path=str(args.jobs_db_path),
                 idempotency_db_path=str(args.idempotency_db_path),
@@ -435,6 +441,11 @@ def main() -> None:
             return
     except ValueError as exc:
         raise SystemExit(str(exc)) from exc
+
+def _parse_csv(raw: str | None) -> list[str]:
+    if not raw:
+        return []
+    return [item.strip() for item in str(raw).split(",") if item.strip()]
 
 
 if __name__ == "__main__":

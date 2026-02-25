@@ -6,6 +6,7 @@ cd "$ROOT_DIR"
 
 CORE_HOST="${NOVAADAPT_CORE_HOST:-127.0.0.1}"
 CORE_PORT="${NOVAADAPT_CORE_PORT:-8787}"
+CORE_TRUSTED_PROXY_CIDRS="${NOVAADAPT_CORE_TRUSTED_PROXY_CIDRS:-}"
 BRIDGE_HOST="${NOVAADAPT_BRIDGE_HOST:-127.0.0.1}"
 BRIDGE_PORT="${NOVAADAPT_BRIDGE_PORT:-9797}"
 VIEW_PORT="${NOVAADAPT_VIEW_PORT:-8088}"
@@ -71,13 +72,21 @@ echo "Building bridge binary..."
 ./installer/build_bridge_go.sh >/dev/null
 
 echo "Starting core API..."
-PYTHONPATH=core:shared python3 -m novaadapt_core.cli serve \
-  --config "$MODEL_CONFIG" \
-  --host "$CORE_HOST" \
-  --port "$CORE_PORT" \
-  --api-token "$CORE_TOKEN" \
-  --log-requests \
-  >"$LOG_DIR/core.log" 2>&1 &
+core_cmd=(
+  python3
+  -m
+  novaadapt_core.cli
+  serve
+  --config "$MODEL_CONFIG"
+  --host "$CORE_HOST"
+  --port "$CORE_PORT"
+  --api-token "$CORE_TOKEN"
+  --log-requests
+)
+if [[ -n "$CORE_TRUSTED_PROXY_CIDRS" ]]; then
+  core_cmd+=(--trusted-proxy-cidrs "$CORE_TRUSTED_PROXY_CIDRS")
+fi
+PYTHONPATH=core:shared "${core_cmd[@]}" >"$LOG_DIR/core.log" 2>&1 &
 CORE_PID="$!"
 
 if ! wait_for_http "http://${CORE_HOST}:${CORE_PORT}/health" 18; then
@@ -156,6 +165,9 @@ fi
 echo ""
 echo "Core token:       ${CORE_TOKEN}"
 echo "Bridge token:     ${BRIDGE_TOKEN}"
+if [[ -n "$CORE_TRUSTED_PROXY_CIDRS" ]]; then
+  echo "Core trusted proxies: ${CORE_TRUSTED_PROXY_CIDRS}"
+fi
 if [[ -n "$ALLOWED_DEVICE_IDS" ]]; then
   echo "Allowed devices:  ${ALLOWED_DEVICE_IDS}"
 fi

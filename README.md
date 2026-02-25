@@ -135,6 +135,7 @@ novaadapt serve \
   --log-requests \
   --rate-limit-rps 20 \
   --rate-limit-burst 20 \
+  --trusted-proxy-cidrs 127.0.0.1/32 \
   --max-body-bytes 1048576
 ```
 
@@ -317,6 +318,7 @@ make run-local
 
 Optional env vars:
 - `NOVAADAPT_CORE_TOKEN`
+- `NOVAADAPT_CORE_TRUSTED_PROXY_CIDRS` (trusted proxy CIDRs/IPs for core forwarded client IP handling)
 - `NOVAADAPT_BRIDGE_TOKEN`
 - `NOVAADAPT_BRIDGE_ALLOWED_DEVICE_IDS`
 - `NOVAADAPT_BRIDGE_CORS_ALLOWED_ORIGINS` (defaults to local view origin when `NOVAADAPT_WITH_VIEW=1`)
@@ -402,7 +404,8 @@ Environment variables:
 - Bridge relay forwards `/dashboard` HTML for secure remote browser access.
 - Bridge relay supports optional per-client request throttling (`NOVAADAPT_BRIDGE_RATE_LIMIT_RPS` / `..._BURST`).
 - Bridge relay only trusts forwarded client/protocol headers from configured trusted proxy CIDRs (`NOVAADAPT_BRIDGE_TRUSTED_PROXY_CIDRS`).
-- Core API supports configurable request rate limiting and max body size on `serve`.
+- Core API supports per-client request rate limiting and max body size on `serve`.
+- Core API only trusts `X-Forwarded-For` for rate-limit identity when `NOVAADAPT_TRUSTED_PROXY_CIDRS` is configured.
 - Core API supports persisted idempotency keys on `serve` (`--idempotency-db-path`) to prevent duplicate mutations on retries.
 - Async job records can be persisted to SQLite (`--jobs-db-path`) for restart-safe history.
 - Plan approval records can be persisted to SQLite (`--plans-db-path`) for restart-safe approvals/audits.

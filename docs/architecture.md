@@ -35,6 +35,7 @@ Core also exposes `/metrics` and can enforce request-rate and request-body limit
 `GET /health?deep=1` provides a readiness snapshot covering model visibility and core SQLite-backed stores.
 Mutating POST routes support `Idempotency-Key` replay protection for safe retries.
 Async job records are persisted to SQLite when `--jobs-db-path` is configured.
+Core rate limiting is per-client and can trust `X-Forwarded-For` only from configured trusted proxy CIDRs.
 
 ## Relay Layer
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ipaddress
 import json
 import logging
 import secrets
@@ -25,24 +26,45 @@ class PayloadTooLargeError(ValueError):
     pass
 
 
-class _SlidingWindowRateLimiter:
-    """Simple thread-safe fixed-window limiter for API requests."""
+IPAddress = ipaddress.IPv4Address | ipaddress.IPv6Address
+IPNetwork = ipaddress.IPv4Network | ipaddress.IPv6Network
 
-    def __init__(self, burst: int, window_seconds: float = 1.0) -> None:
+
+class _PerClientSlidingWindowRateLimiter:
+    """Simple thread-safe fixed-window limiter keyed by client identity."""
+
+    def __init__(
+        self,
+        burst: int,
+        window_seconds: float = 1.0,
+        idle_ttl_seconds: float = 15 * 60,
+    ) -> None:
         self.burst = max(1, burst)
         self.window_seconds = window_seconds
-        self._timestamps: deque[float] = deque()
+        self.idle_ttl_seconds = max(60.0, float(idle_ttl_seconds))
+        self._timestamps: dict[str, deque[float]] = {}
+        self._last_seen: dict[str, float] = {}
         self._lock = threading.Lock()
 
-    def allow(self) -> bool:
+    def allow(self, key: str) -> bool:
+        normalized_key = str(key or "unknown").strip() or "unknown"
         now = time.monotonic()
         cutoff = now - self.window_seconds
+        idle_cutoff = now - self.idle_ttl_seconds
         with self._lock:
-            while self._timestamps and self._timestamps[0] < cutoff:
-                self._timestamps.popleft()
-            if len(self._timestamps) >= self.burst:
+            stale_keys = [item for item, last in self._last_seen.items() if last < idle_cutoff]
+            for item in stale_keys:
+                self._last_seen.pop(item, None)
+                self._timestamps.pop(item, None)
+
+            timestamps = self._timestamps.setdefault(normalized_key, deque())
+            while timestamps and timestamps[0] < cutoff:
+                timestamps.popleft()
+
+            self._last_seen[normalized_key] = now
+            if len(timestamps) >= self.burst:
                 return False
-            self._timestamps.append(now)
+            timestamps.append(now)
             return True
 
 
@@ -102,6 +124,7 @@ def create_server(
     logger: logging.Logger | None = None,
     rate_limit_rps: float = 0.0,
     rate_limit_burst: int | None = None,
+    trusted_proxy_cidrs: list[str] | None = None,
     max_request_body_bytes: int = DEFAULT_MAX_REQUEST_BODY_BYTES,
     jobs_db_path: str | None = None,
     idempotency_db_path: str | None = None,
@@ -115,7 +138,8 @@ def create_server(
     limiter = None
     if rate_limit_rps > 0:
         burst = rate_limit_burst if rate_limit_burst is not None else max(1, int(rate_limit_rps))
-        limiter = _SlidingWindowRateLimiter(burst=burst, window_seconds=1.0)
+        limiter = _PerClientSlidingWindowRateLimiter(burst=burst, window_seconds=1.0)
+    trusted_proxy_networks = _parse_trusted_proxy_cidrs(trusted_proxy_cidrs or [])
 
     handler_cls = _build_handler(
         service=service,
@@ -124,6 +148,7 @@ def create_server(
         log_requests=log_requests,
         logger=logger or logging.getLogger("novaadapt.api"),
         limiter=limiter,
+        trusted_proxy_networks=trusted_proxy_networks,
         idempotency_store=idempotency_store,
         audit_store=audit_store,
         metrics=metrics,
@@ -141,6 +166,7 @@ def run_server(
     logger: logging.Logger | None = None,
     rate_limit_rps: float = 0.0,
     rate_limit_burst: int | None = None,
+    trusted_proxy_cidrs: list[str] | None = None,
     max_request_body_bytes: int = DEFAULT_MAX_REQUEST_BODY_BYTES,
     jobs_db_path: str | None = None,
     idempotency_db_path: str | None = None,
@@ -155,6 +181,7 @@ def run_server(
         logger=logger,
         rate_limit_rps=rate_limit_rps,
         rate_limit_burst=rate_limit_burst,
+        trusted_proxy_cidrs=trusted_proxy_cidrs,
         max_request_body_bytes=max_request_body_bytes,
         jobs_db_path=jobs_db_path,
         idempotency_db_path=idempotency_db_path,
@@ -174,7 +201,8 @@ def _build_handler(
     job_manager: JobManager,
     log_requests: bool,
     logger: logging.Logger,
-    limiter: _SlidingWindowRateLimiter | None,
+    limiter: _PerClientSlidingWindowRateLimiter | None,
+    trusted_proxy_networks: list[IPNetwork],
     idempotency_store: IdempotencyStore | None,
     audit_store: AuditStore | None,
     metrics: _RequestMetrics,
@@ -727,7 +755,19 @@ def _build_handler(
                 return False
             if path in {"/health", "/metrics"}:
                 return False
-            return not limiter.allow()
+            return not limiter.allow(self._rate_limit_client_key())
+
+        def _rate_limit_client_key(self) -> str:
+            remote_ip = _parse_ip_token(self.client_address[0] if self.client_address else "")
+            if remote_ip is not None and _ip_in_networks(remote_ip, trusted_proxy_networks):
+                forwarded = _first_forwarded_ip(self.headers.get("X-Forwarded-For", ""))
+                if forwarded is not None:
+                    return str(forwarded)
+            if remote_ip is not None:
+                return str(remote_ip)
+            remote_host = self.client_address[0] if self.client_address else ""
+            remote_host = str(remote_host or "").strip()
+            return remote_host or "unknown"
 
         def _check_auth(self, path: str, query: dict[str, list[str]] | None = None) -> bool:
             if path == "/health" or not api_token:
@@ -1064,3 +1104,50 @@ def _normalize_request_id(value: str | None) -> str:
     if value and value.strip():
         return value.strip()
     return secrets.token_hex(12)
+
+
+def _parse_trusted_proxy_cidrs(values: list[str]) -> list[IPNetwork]:
+    networks: list[IPNetwork] = []
+    for raw in values:
+        item = str(raw).strip()
+        if not item:
+            continue
+        try:
+            if "/" in item:
+                network = ipaddress.ip_network(item, strict=False)
+            else:
+                ip = ipaddress.ip_address(item)
+                suffix = 32 if isinstance(ip, ipaddress.IPv4Address) else 128
+                network = ipaddress.ip_network(f"{ip}/{suffix}", strict=False)
+        except ValueError as exc:
+            raise ValueError(f"Invalid trusted proxy CIDR/IP: {item}") from exc
+        networks.append(network)
+    return networks
+
+
+def _ip_in_networks(ip: IPAddress, networks: list[IPNetwork]) -> bool:
+    return any(ip in network for network in networks)
+
+
+def _first_forwarded_ip(value: str) -> IPAddress | None:
+    for token in str(value).split(","):
+        parsed = _parse_ip_token(token)
+        if parsed is not None:
+            return parsed
+    return None
+
+
+def _parse_ip_token(value: str) -> IPAddress | None:
+    token = str(value or "").strip()
+    if not token:
+        return None
+    if token.startswith("[") and "]" in token:
+        token = token[1 : token.find("]")]
+    elif token.count(":") == 1 and "." in token:
+        host, port = token.rsplit(":", 1)
+        if port.isdigit():
+            token = host
+    try:
+        return ipaddress.ip_address(token)
+    except ValueError:
+        return None
