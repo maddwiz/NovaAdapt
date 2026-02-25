@@ -4,6 +4,19 @@ use reqwest::Method;
 use serde_json::{json, Value};
 
 #[tauri::command]
+async fn core_request(
+    method: String,
+    base_url: String,
+    token: Option<String>,
+    path: String,
+    payload: Option<Value>,
+) -> Result<Value, String> {
+    let parsed_method = Method::from_bytes(method.trim().to_uppercase().as_bytes())
+        .map_err(|err| format!("Unsupported HTTP method: {}", err))?;
+    request_json(parsed_method, &base_url, &path, token, payload).await
+}
+
+#[tauri::command]
 async fn fetch_dashboard_data(base_url: String, token: Option<String>) -> Result<Value, String> {
     request_json(Method::GET, &base_url, "/dashboard/data?plans_limit=100", token, None).await
 }
@@ -49,7 +62,14 @@ async fn request_json(
         return Err("Base URL is required".to_string());
     }
 
-    let url = format!("{}{}", base, path);
+    let normalized_path = if path.trim().is_empty() {
+        "/".to_string()
+    } else if path.starts_with('/') {
+        path.to_string()
+    } else {
+        format!("/{}", path)
+    };
+    let url = format!("{}{}", base, normalized_path);
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(20))
         .build()
@@ -77,12 +97,19 @@ async fn request_json(
         return Err(format!("Core API {}: {}", status.as_u16(), body_text));
     }
 
-    serde_json::from_str(&body_text).map_err(|e| format!("Invalid JSON from core: {}", e))
+    if body_text.trim().is_empty() {
+        return Ok(json!({}));
+    }
+    match serde_json::from_str(&body_text) {
+        Ok(value) => Ok(value),
+        Err(_) => Ok(json!({ "raw": body_text })),
+    }
 }
 
 fn main() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
+            core_request,
             fetch_dashboard_data,
             approve_plan,
             reject_plan

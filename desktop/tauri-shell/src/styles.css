@@ -50,6 +50,13 @@ body {
   align-items: flex-start;
 }
 
+.hero-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
 .eyebrow {
   margin: 0;
   letter-spacing: 0.09em;
@@ -80,6 +87,10 @@ h2 {
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
 }
 
+.grid.compact {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
 label {
   display: grid;
   gap: 6px;
@@ -94,16 +105,24 @@ label span {
 
 input,
 textarea,
+select,
 button {
   font: inherit;
 }
 
-input {
+input,
+textarea,
+select {
   width: 100%;
   border: 1px solid var(--line);
   border-radius: 12px;
   padding: 11px 12px;
   background: #fff;
+}
+
+textarea {
+  resize: vertical;
+  min-height: 68px;
 }
 
 button {
@@ -129,6 +148,11 @@ button.danger {
   background: var(--danger);
 }
 
+button:disabled {
+  opacity: 0.56;
+  cursor: not-allowed;
+}
+
 .section-head {
   display: flex;
   justify-content: space-between;
@@ -143,6 +167,18 @@ button.danger {
   padding: 4px 10px;
   border: 1px solid var(--line);
   background: #ffffff;
+}
+
+.badge.neutral {
+  color: #214e67;
+}
+
+.badge.ok {
+  color: #0f7a59;
+}
+
+.badge.error {
+  color: #af2e17;
 }
 
 .plans {
@@ -175,10 +211,61 @@ button.danger {
   color: #355064;
 }
 
+.plan-meta .status {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
 .row {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+}
+
+.toggle input {
+  width: auto;
+  margin: 0;
+}
+
+.checkbox-inline {
+  align-self: end;
+  min-height: 46px;
+}
+
+.events {
+  display: grid;
+  gap: 8px;
+}
+
+.event {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px;
+  background: #fff;
+}
+
+.event-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 12px;
+}
+
+.event-meta {
+  margin: 6px 0 0;
+  color: #355064;
+  font-size: 13px;
 }
 
 .summary {
@@ -197,5 +284,10 @@ button.danger {
 @media (max-width: 700px) {
   .hero {
     flex-direction: column;
+  }
+
+  .hero-actions {
+    width: 100%;
+    justify-content: space-between;
   }
 }

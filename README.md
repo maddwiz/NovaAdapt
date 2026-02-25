@@ -32,9 +32,9 @@ Implemented now:
 - `bridge` relay service in Go for secure remote forwarding into core API.
   - Includes realtime WebSocket control channel (`/ws`) for events + command relay.
 - `view` static realtime console UI for bridge operations (`view/realtime_console.html`).
-- `desktop` Tauri shell scaffold for first-party approval UX (`desktop/tauri-shell`) (not production-ready).
-- `mobile` iOS SwiftUI companion scaffold (`mobile/ios/NovaAdaptCompanion`) (not production-ready).
-- `wearables` Halo/Omi adapter scaffold (`wearables/halo_bridge.py`) (not production-ready).
+- `desktop` Tauri operator shell (`desktop/tauri-shell`) for objective queueing, plan approval/rejection/undo, job cancellation, and event visibility (alpha quality).
+- `mobile` iOS SwiftUI companion source (`mobile/ios/NovaAdaptCompanion`) with objective/plan/job controls plus websocket feed (alpha quality).
+- `wearables` Halo/Omi adapter (`wearables/halo_bridge.py`) with bridge session leasing + optional async wait flow.
 
 Planned next:
 
@@ -47,11 +47,11 @@ Planned next:
 ```text
 NovaAdapt/
 ├── core/          # Desktop orchestrator + DirectShell adapter
-├── desktop/       # Tauri desktop shell scaffold
+├── desktop/       # Tauri desktop operator shell
 ├── vibe/          # Wearable intent bridge prototype (`vibe_terminal.py`)
 ├── view/          # Realtime operator console + iPhone module seed
-├── mobile/        # Native mobile companion scaffolds
-├── wearables/     # Wearable device adapter scaffolds
+├── mobile/        # Native mobile companion sources
+├── wearables/     # Wearable intent adapters
 ├── bridge/        # Secure relay server (Go, production-ready)
 ├── shared/        # Model router + memory/security primitives
 ├── installer/     # Desktop setup scripts
@@ -350,6 +350,7 @@ from novaadapt_shared import NovaAdaptAPIClient
 
 client = NovaAdaptAPIClient(base_url="http://127.0.0.1:8787", token="YOUR_CORE_TOKEN")
 print(client.models())
+print(client.dashboard_data(plans_limit=10, jobs_limit=10, events_limit=10))
 print(client.run("Open browser and go to example.com"))
 print(client.job_stream("job-id", timeout_seconds=10))
 print(client.plan_stream("plan-id", timeout_seconds=10))
@@ -430,7 +431,7 @@ Optional env vars:
 - `NOVAADAPT_BRIDGE_SESSION_TTL` (seconds for leased vibe sessions)
 - `NOVAADAPT_WITH_VIEW=0` (skip static view server)
 
-Wearable intent bridge prototype:
+Wearable intent bridge:
 
 ```bash
 PYTHONPATH=core:shared python3 vibe/vibe_terminal.py \
@@ -440,7 +441,17 @@ PYTHONPATH=core:shared python3 vibe/vibe_terminal.py \
   --wait
 ```
 
-Desktop Tauri shell scaffold:
+Alternate Halo/Omi adapter:
+
+```bash
+PYTHONPATH=core:shared python3 wearables/halo_bridge.py \
+  --bridge-url http://127.0.0.1:9797 \
+  --admin-token YOUR_BRIDGE_ADMIN_TOKEN \
+  --objective "Open dashboard and summarize failed jobs" \
+  --wait
+```
+
+Desktop Tauri shell:
 
 ```bash
 cd desktop/tauri-shell
@@ -448,10 +459,10 @@ npm install
 npm run dev
 ```
 
-Native iOS scaffold and wearable adapter prototypes:
+Native iOS companion source and wearable adapters:
 
-- `mobile/ios/NovaAdaptCompanion` (SwiftUI source scaffold)
-- `wearables/halo_bridge.py` (normalized wearable intent submission helper)
+- `mobile/ios/NovaAdaptCompanion` (SwiftUI companion source)
+- `wearables/halo_bridge.py` (wearable intent submission + bridge session leasing helper)
 - `docs/realtime_protocol.md` + `config/protocols/realtime.v1.json` (shared realtime contract)
 
 ## Model-Agnostic Design

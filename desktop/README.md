@@ -8,9 +8,11 @@ Desktop operator layer for NovaAdapt.
 
 Current scope:
 - Core API endpoint/token settings.
-- Live dashboard fetch (`/dashboard/data`).
-- Pending plan approval/rejection actions.
-- Local-first shell for expanding into hotkeys, notifications, and one-tap undo.
+- Objective console (`/run_async`, `/plans`) with strategy/candidate controls.
+- Live dashboard fetch (`/dashboard/data`) with auto-refresh.
+- Plan actions: approve/reject and plan undo controls.
+- Job actions: cancel queued/running jobs.
+- Recent audit event and metrics snapshot feed.
 
 Run locally (requires Node + Rust + Tauri prerequisites):
 

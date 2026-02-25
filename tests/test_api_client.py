@@ -21,6 +21,19 @@ class _Handler(BaseHTTPRequestHandler):
         if self.path == "/openapi.json":
             self._send(200, {"openapi": "3.1.0", "paths": {"/run": {}}})
             return
+        if self.path.startswith("/dashboard/data"):
+            self._send(
+                200,
+                {
+                    "health": {"ok": True, "service": "novaadapt"},
+                    "models_count": 1,
+                    "plans": [{"id": "plan-1", "status": "pending"}],
+                    "jobs": [{"id": "job-1", "status": "queued"}],
+                    "events": [{"id": 1, "category": "run", "action": "run_async"}],
+                    "metrics": {"novaadapt_core_requests_total": 1},
+                },
+            )
+            return
         if self.path == "/models":
             _Handler.models_attempts += 1
             if _Handler.models_attempts == 1:
@@ -203,6 +216,7 @@ class APIClientTests(unittest.TestCase):
 
         self.assertTrue(client.health()["ok"])
         self.assertEqual(client.openapi()["openapi"], "3.1.0")
+        self.assertEqual(client.dashboard_data()["models_count"], 1)
         self.assertEqual(client.models()[0]["name"], "local")
         self.assertEqual(client.run("demo", idempotency_key="idem-1")["idempotency"], "idem-1")
         self.assertEqual(client.run_async("demo")["status"], "queued")

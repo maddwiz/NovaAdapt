@@ -11,6 +11,14 @@ NovaAdapt bridge websocket protocol used by desktop/mobile/wearable clients.
 
 All messages are JSON objects.
 
+### Initial Hello (server)
+
+Immediately after websocket upgrade, bridge emits:
+
+```json
+{ "type": "hello", "request_id": "trace-id", "service": "novaadapt-bridge-go" }
+```
+
 ### Ping
 
 ```json
@@ -29,44 +37,60 @@ All messages are JSON objects.
 }
 ```
 
-### Seek Audit Cursor
+### Set Audit Cursor
 
 ```json
-{ "type": "seek", "id": "req-3", "since_id": 120 }
+{ "type": "set_since_id", "id": "req-3", "since_id": 120 }
 ```
 
 ## Bridge -> Client Messages
 
-### Ack
+### Pong
 
 ```json
-{ "type": "ack", "id": "req-2", "request_id": "trace-id" }
+{ "type": "pong", "id": "req-1", "request_id": "trace-id" }
+```
+
+### Ack (for cursor updates)
+
+```json
+{
+  "type": "ack",
+  "id": "req-3",
+  "since_id": 120,
+  "request_id": "trace-id"
+}
 ```
 
 ### Command Result
 
 ```json
 {
-  "type": "result",
+  "type": "command_result",
   "id": "req-2",
   "status": 202,
-  "body": { "job_id": "...", "status": "queued" }
+  "payload": { "job_id": "...", "status": "queued" },
+  "core_request_id": "core-trace-id",
+  "idempotency_key": "idem-123",
+  "replayed": false,
+  "request_id": "trace-id"
 }
 ```
 
-### Audit Event Stream
+### Event Stream Envelope
 
 ```json
 {
-  "type": "audit",
-  "since_id": 121,
-  "event": {
+  "type": "event",
+  "event": "audit",
+  "data": {
     "id": 121,
     "category": "run",
     "action": "run_async",
     "status": "ok",
     "request_id": "trace-id"
-  }
+  },
+  "request_id": "trace-id"
 }
 ```
 

@@ -27,6 +27,25 @@ class NovaAdaptAPIClient:
     def openapi(self) -> dict[str, Any]:
         return self._get_json("/openapi.json")
 
+    def dashboard_data(
+        self,
+        plans_limit: int = 25,
+        jobs_limit: int = 25,
+        events_limit: int = 25,
+        config: str | None = None,
+    ) -> dict[str, Any]:
+        query = (
+            f"plans_limit={max(1, int(plans_limit))}"
+            f"&jobs_limit={max(1, int(jobs_limit))}"
+            f"&events_limit={max(1, int(events_limit))}"
+        )
+        if config:
+            query = f"{query}&config={config}"
+        payload = self._get_json(f"/dashboard/data?{query}")
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /dashboard/data")
+
     def models(self) -> list[dict[str, Any]]:
         payload = self._get_json("/models")
         if isinstance(payload, list):

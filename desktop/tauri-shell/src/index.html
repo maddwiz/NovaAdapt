@@ -11,10 +11,16 @@
       <header class="hero">
         <div>
           <p class="eyebrow">NovaAdapt Desktop</p>
-          <h1>Approval Control Surface</h1>
-          <p class="subtitle">Review live plans, approve/reject safely, and keep execution under operator control.</p>
+          <h1>Operator Control Plane</h1>
+          <p class="subtitle">Queue objectives, approve plans, manage jobs, and keep autonomous execution under human control.</p>
         </div>
-        <button id="refreshBtn" class="primary">Refresh</button>
+        <div class="hero-actions">
+          <label class="toggle">
+            <input id="autoRefresh" type="checkbox" checked />
+            <span>Auto refresh</span>
+          </label>
+          <button id="refreshBtn" class="primary">Refresh</button>
+        </div>
       </header>
 
       <section class="card settings">
@@ -33,10 +39,58 @@
 
       <section class="card">
         <div class="section-head">
+          <h2>Objective Console</h2>
+          <span id="actionStatus" class="badge neutral">Idle</span>
+        </div>
+        <label>
+          <span>Objective</span>
+          <textarea id="objectiveInput" rows="3" placeholder="Open dashboard and summarize failed jobs"></textarea>
+        </label>
+        <div class="grid compact">
+          <label>
+            <span>Strategy</span>
+            <select id="strategySelect">
+              <option value="single">single</option>
+              <option value="vote">vote</option>
+            </select>
+          </label>
+          <label>
+            <span>Vote Candidates (CSV)</span>
+            <input id="candidatesInput" type="text" placeholder="local-qwen,openai-gpt,gemini-pro" />
+          </label>
+          <label class="toggle checkbox-inline">
+            <input id="executeToggle" type="checkbox" />
+            <span>Execute actions immediately</span>
+          </label>
+        </div>
+        <div class="row">
+          <button id="runAsyncBtn" class="primary">Queue Async Run</button>
+          <button id="createPlanBtn" class="secondary">Create Plan</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="section-head">
           <h2>Pending Plans</h2>
           <span id="planCount" class="badge">0</span>
         </div>
         <div id="plans" class="plans"></div>
+      </section>
+
+      <section class="card">
+        <div class="section-head">
+          <h2>Jobs</h2>
+          <span id="jobCount" class="badge">0</span>
+        </div>
+        <div id="jobs" class="plans"></div>
+      </section>
+
+      <section class="card">
+        <div class="section-head">
+          <h2>Recent Events</h2>
+          <span id="eventCount" class="badge">0</span>
+        </div>
+        <div id="events" class="events"></div>
       </section>
 
       <section class="card">

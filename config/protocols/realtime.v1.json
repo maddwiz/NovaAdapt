@@ -2,8 +2,8 @@
   "version": "v1",
   "ws_path": "/ws",
   "message_types": {
-    "client": ["ping", "command", "seek"],
-    "server": ["ack", "result", "audit", "error"]
+    "client": ["ping", "command", "set_since_id"],
+    "server": ["hello", "pong", "ack", "command_result", "event", "error"]
   },
   "auth": {
     "header": "Authorization: Bearer <token>",
