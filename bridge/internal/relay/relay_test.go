@@ -407,6 +407,9 @@ func TestMetricsEndpoint(t *testing.T) {
 	if !strings.Contains(metrics, "novaadapt_bridge_unauthorized_total") {
 		t.Fatalf("expected unauthorized metric, got: %s", metrics)
 	}
+	if !strings.Contains(metrics, "novaadapt_bridge_rate_limited_total") {
+		t.Fatalf("expected rate limited metric, got: %s", metrics)
+	}
 }
 
 func TestDeviceAllowlist(t *testing.T) {
@@ -529,5 +532,60 @@ func TestCORSSameOriginAllowedWithoutConfig(t *testing.T) {
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected 200 got %d body=%s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestRateLimitPerClient(t *testing.T) {
+	core := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/models" {
+			_, _ = w.Write([]byte(`[{"name":"local"}]`))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"error":"not found"}`))
+	}))
+	defer core.Close()
+
+	h, err := NewHandler(
+		Config{
+			CoreBaseURL:    core.URL,
+			BridgeToken:    "secret",
+			RateLimitRPS:   1.0,
+			RateLimitBurst: 1,
+			Timeout:        5 * time.Second,
+		},
+	)
+	if err != nil {
+		t.Fatalf("new handler: %v", err)
+	}
+
+	first := httptest.NewRecorder()
+	reqFirst := httptest.NewRequest(http.MethodGet, "/models", nil)
+	reqFirst.Header.Set("Authorization", "Bearer secret")
+	reqFirst.RemoteAddr = "203.0.113.10:1234"
+	h.ServeHTTP(first, reqFirst)
+	if first.Code != http.StatusOK {
+		t.Fatalf("expected first request 200 got %d body=%s", first.Code, first.Body.String())
+	}
+
+	second := httptest.NewRecorder()
+	reqSecond := httptest.NewRequest(http.MethodGet, "/models", nil)
+	reqSecond.Header.Set("Authorization", "Bearer secret")
+	reqSecond.RemoteAddr = "203.0.113.10:1234"
+	h.ServeHTTP(second, reqSecond)
+	if second.Code != http.StatusTooManyRequests {
+		t.Fatalf("expected second request 429 got %d body=%s", second.Code, second.Body.String())
+	}
+	if second.Header().Get("Retry-After") != "1" {
+		t.Fatalf("expected retry-after header on rate-limited response")
+	}
+
+	otherClient := httptest.NewRecorder()
+	reqOtherClient := httptest.NewRequest(http.MethodGet, "/models", nil)
+	reqOtherClient.Header.Set("Authorization", "Bearer secret")
+	reqOtherClient.RemoteAddr = "203.0.113.11:5678"
+	h.ServeHTTP(otherClient, reqOtherClient)
+	if otherClient.Code != http.StatusOK {
+		t.Fatalf("expected different client to pass rate limit, got %d body=%s", otherClient.Code, otherClient.Body.String())
 	}
 }

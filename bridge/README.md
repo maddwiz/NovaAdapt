@@ -9,6 +9,7 @@ Secure relay service for remote clients (phone/glasses) to reach NovaAdapt core.
 - Optional scoped session token issuance (`POST /auth/session`) for least-privilege clients
 - Optional trusted-device allowlist via `X-Device-ID`
 - Optional cross-origin browser allowlist (`--cors-allowed-origins`)
+- Optional per-client rate limiting (`--rate-limit-rps`, `--rate-limit-burst`)
 - Token-authenticated upstream calls to core API (core token)
 - Request-id tracing (`X-Request-ID`) propagated to core
 - Idempotency key forwarding (`Idempotency-Key`) propagated to core
@@ -159,6 +160,8 @@ Container build uses:
   --session-signing-key your_session_hmac_key \
   --session-token-ttl-seconds 900 \
   --cors-allowed-origins http://127.0.0.1:8088 \
+  --rate-limit-rps 20 \
+  --rate-limit-burst 20 \
   --allowed-device-ids iphone-15-pro,halo-glasses-1 \
   --log-requests true
 ```
@@ -173,6 +176,8 @@ Environment variables are also supported:
 - `NOVAADAPT_BRIDGE_SESSION_SIGNING_KEY` (defaults to bridge token when unset)
 - `NOVAADAPT_BRIDGE_SESSION_TTL_SECONDS` (default issued session TTL)
 - `NOVAADAPT_BRIDGE_CORS_ALLOWED_ORIGINS` (comma-separated browser origins; `*` to allow any)
+- `NOVAADAPT_BRIDGE_RATE_LIMIT_RPS` (per-client requests/second; `<=0` disables)
+- `NOVAADAPT_BRIDGE_RATE_LIMIT_BURST` (per-client burst capacity)
 - `NOVAADAPT_BRIDGE_ALLOWED_DEVICE_IDS` (comma-separated trusted device IDs)
 - `NOVAADAPT_BRIDGE_TIMEOUT`
 - `NOVAADAPT_BRIDGE_LOG_REQUESTS`

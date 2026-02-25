@@ -13,6 +13,8 @@ MODEL_CONFIG="${NOVAADAPT_MODEL_CONFIG:-config/models.example.json}"
 WITH_VIEW="${NOVAADAPT_WITH_VIEW:-1}"
 ALLOWED_DEVICE_IDS="${NOVAADAPT_BRIDGE_ALLOWED_DEVICE_IDS:-}"
 CORS_ALLOWED_ORIGINS="${NOVAADAPT_BRIDGE_CORS_ALLOWED_ORIGINS:-}"
+RATE_LIMIT_RPS="${NOVAADAPT_BRIDGE_RATE_LIMIT_RPS:-0}"
+RATE_LIMIT_BURST="${NOVAADAPT_BRIDGE_RATE_LIMIT_BURST:-20}"
 LOG_DIR="${NOVAADAPT_LOCAL_LOG_DIR:-$ROOT_DIR/.novaadapt-local}"
 mkdir -p "$LOG_DIR"
 
@@ -89,6 +91,7 @@ fi
 if [[ -n "$CORS_ALLOWED_ORIGINS" ]]; then
   bridge_cmd+=(--cors-allowed-origins "$CORS_ALLOWED_ORIGINS")
 fi
+bridge_cmd+=(--rate-limit-rps "$RATE_LIMIT_RPS" --rate-limit-burst "$RATE_LIMIT_BURST")
 "${bridge_cmd[@]}" >"$LOG_DIR/bridge.log" 2>&1 &
 BRIDGE_PID="$!"
 
@@ -124,6 +127,8 @@ fi
 if [[ -n "$CORS_ALLOWED_ORIGINS" ]]; then
   echo "CORS origins:     ${CORS_ALLOWED_ORIGINS}"
 fi
+echo "Rate limit rps:   ${RATE_LIMIT_RPS}"
+echo "Rate limit burst: ${RATE_LIMIT_BURST}"
 echo ""
 echo "Logs:"
 echo "  $LOG_DIR/core.log"

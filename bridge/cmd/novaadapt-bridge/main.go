@@ -42,6 +42,16 @@ func main() {
 		envOrDefault("NOVAADAPT_BRIDGE_CORS_ALLOWED_ORIGINS", ""),
 		"Comma-separated allowed CORS origins for browser clients (use * to allow any)",
 	)
+	rateLimitRPS := flag.Float64(
+		"rate-limit-rps",
+		envOrDefaultFloat("NOVAADAPT_BRIDGE_RATE_LIMIT_RPS", 0),
+		"Per-client bridge request rate limit (requests/second, <=0 disables)",
+	)
+	rateLimitBurst := flag.Int(
+		"rate-limit-burst",
+		envOrDefaultInt("NOVAADAPT_BRIDGE_RATE_LIMIT_BURST", 20),
+		"Per-client bridge burst capacity for rate limit",
+	)
 	timeout := flag.Int("timeout", envOrDefaultInt("NOVAADAPT_BRIDGE_TIMEOUT", 30), "Core request timeout seconds")
 	logRequests := flag.Bool("log-requests", envOrDefaultBool("NOVAADAPT_BRIDGE_LOG_REQUESTS", true), "Enable per-request bridge logs")
 	flag.Parse()
@@ -54,6 +64,8 @@ func main() {
 		SessionTokenTTL:    time.Duration(max(60, *sessionTokenTTL)) * time.Second,
 		AllowedDeviceIDs:   parseCSV(*allowedDeviceIDs),
 		CORSAllowedOrigins: parseCSV(*corsAllowedOrigins),
+		RateLimitRPS:       *rateLimitRPS,
+		RateLimitBurst:     max(1, *rateLimitBurst),
 		Timeout:            time.Duration(max(1, *timeout)) * time.Second,
 		LogRequests:        *logRequests,
 		Logger:             log.Default(),
@@ -118,6 +130,18 @@ func envOrDefaultBool(key string, fallback bool) bool {
 		return fallback
 	}
 	parsed, err := strconv.ParseBool(value)
+	if err != nil {
+		return fallback
+	}
+	return parsed
+}
+
+func envOrDefaultFloat(key string, fallback float64) float64 {
+	value := os.Getenv(key)
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.ParseFloat(value, 64)
 	if err != nil {
 		return fallback
 	}

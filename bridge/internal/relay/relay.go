@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"path"
@@ -15,9 +16,18 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"golang.org/x/time/rate"
 )
 
 const maxRequestBodyBytes = 1 << 20 // 1 MiB
+
+const rateLimiterIdleTTL = 15 * time.Minute
+
+type clientLimiter struct {
+	limiter  *rate.Limiter
+	lastSeen time.Time
+}
 
 type corsState int
 
@@ -57,9 +67,13 @@ type Config struct {
 	// CORSAllowedOrigins controls which browser origins may call cross-origin bridge APIs.
 	// Empty keeps cross-origin requests blocked; same-origin requests are always allowed.
 	CORSAllowedOrigins []string
-	Timeout            time.Duration
-	LogRequests        bool
-	Logger             *log.Logger
+	// RateLimitRPS limits requests per client key (remote IP / forwarded IP). <=0 disables.
+	RateLimitRPS float64
+	// RateLimitBurst configures token bucket burst size when RateLimitRPS is enabled.
+	RateLimitBurst int
+	Timeout        time.Duration
+	LogRequests    bool
+	Logger         *log.Logger
 }
 
 // Handler is an HTTP handler that secures and forwards requests to NovaAdapt core.
@@ -70,11 +84,14 @@ type Handler struct {
 	requestsTotal       uint64
 	unauthorizedTotal   uint64
 	upstreamErrorsTotal uint64
+	rateLimitedTotal    uint64
 	allowedDevices      map[string]struct{}
 	corsAllowedOrigins  map[string]struct{}
 	corsAllowAll        bool
 	revokedSessionsMu   sync.RWMutex
 	revokedSessions     map[string]int64
+	rateLimitMu         sync.Mutex
+	rateLimiters        map[string]*clientLimiter
 }
 
 // NewHandler creates a configured bridge relay handler.
@@ -84,6 +101,9 @@ func NewHandler(cfg Config) (*Handler, error) {
 	}
 	if cfg.Timeout <= 0 {
 		cfg.Timeout = 30 * time.Second
+	}
+	if cfg.RateLimitBurst <= 0 {
+		cfg.RateLimitBurst = 20
 	}
 	if cfg.SessionTokenTTL <= 0 {
 		cfg.SessionTokenTTL = 15 * time.Minute
@@ -125,6 +145,7 @@ func NewHandler(cfg Config) (*Handler, error) {
 		corsAllowedOrigins: corsAllowedOrigins,
 		corsAllowAll:       corsAllowAll,
 		revokedSessions:    make(map[string]int64),
+		rateLimiters:       make(map[string]*clientLimiter),
 	}, nil
 }
 
@@ -171,6 +192,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path == "/metrics" {
 		statusCode = http.StatusOK
 		h.writeMetrics(w)
+		return
+	}
+	if h.isRateLimited(r, started) {
+		atomic.AddUint64(&h.rateLimitedTotal, 1)
+		statusCode = http.StatusTooManyRequests
+		w.Header().Set("Retry-After", "1")
+		h.writeJSON(w, statusCode, map[string]any{"error": "Rate limit exceeded", "request_id": requestID})
 		return
 	}
 
@@ -566,6 +594,56 @@ func canonicalOrigin(origin string) string {
 	return strings.TrimRight(strings.ToLower(strings.TrimSpace(origin)), "/")
 }
 
+func (h *Handler) isRateLimited(r *http.Request, now time.Time) bool {
+	if h.cfg.RateLimitRPS <= 0 {
+		return false
+	}
+	key := clientRateKey(r)
+	if key == "" {
+		key = "unknown"
+	}
+
+	h.rateLimitMu.Lock()
+	defer h.rateLimitMu.Unlock()
+
+	for k, entry := range h.rateLimiters {
+		if now.Sub(entry.lastSeen) > rateLimiterIdleTTL {
+			delete(h.rateLimiters, k)
+		}
+	}
+
+	entry, ok := h.rateLimiters[key]
+	if !ok {
+		entry = &clientLimiter{
+			limiter: rate.NewLimiter(rate.Limit(h.cfg.RateLimitRPS), max(1, h.cfg.RateLimitBurst)),
+		}
+		h.rateLimiters[key] = entry
+	}
+	entry.lastSeen = now
+	return !entry.limiter.Allow()
+}
+
+func clientRateKey(r *http.Request) string {
+	forwarded := strings.TrimSpace(r.Header.Get("X-Forwarded-For"))
+	if forwarded != "" {
+		if idx := strings.Index(forwarded, ","); idx >= 0 {
+			forwarded = forwarded[:idx]
+		}
+		forwarded = strings.TrimSpace(forwarded)
+		if forwarded != "" {
+			return forwarded
+		}
+	}
+	host, _, err := net.SplitHostPort(strings.TrimSpace(r.RemoteAddr))
+	if err == nil && host != "" {
+		return host
+	}
+	if strings.TrimSpace(r.RemoteAddr) != "" {
+		return strings.TrimSpace(r.RemoteAddr)
+	}
+	return ""
+}
+
 func (h *Handler) writeJSON(w http.ResponseWriter, status int, payload any) {
 	h.writeJSONWithStatus(w, status, payload, false)
 }
@@ -588,9 +666,11 @@ func (h *Handler) writeMetrics(w http.ResponseWriter) {
 	body := fmt.Sprintf(
 		"novaadapt_bridge_requests_total %d\n"+
 			"novaadapt_bridge_unauthorized_total %d\n"+
+			"novaadapt_bridge_rate_limited_total %d\n"+
 			"novaadapt_bridge_upstream_errors_total %d\n",
 		atomic.LoadUint64(&h.requestsTotal),
 		atomic.LoadUint64(&h.unauthorizedTotal),
+		atomic.LoadUint64(&h.rateLimitedTotal),
 		atomic.LoadUint64(&h.upstreamErrorsTotal),
 	)
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4")

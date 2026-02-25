@@ -296,6 +296,8 @@ Optional env vars:
 - `NOVAADAPT_BRIDGE_TOKEN`
 - `NOVAADAPT_BRIDGE_ALLOWED_DEVICE_IDS`
 - `NOVAADAPT_BRIDGE_CORS_ALLOWED_ORIGINS` (defaults to local view origin when `NOVAADAPT_WITH_VIEW=1`)
+- `NOVAADAPT_BRIDGE_RATE_LIMIT_RPS` (`<=0` disables bridge per-client rate limiting)
+- `NOVAADAPT_BRIDGE_RATE_LIMIT_BURST` (bridge per-client burst capacity)
 - `NOVAADAPT_WITH_VIEW=0` (skip static view server)
 
 Wearable intent bridge prototype:
@@ -366,6 +368,7 @@ Environment variables:
 - Bridge relay supports admin session revocation (`/auth/session/revoke`) with denylist enforcement for issued session IDs.
 - Bridge relay forwards `/openapi.json` so remote clients can discover contract shape.
 - Bridge relay forwards `/dashboard` HTML for secure remote browser access.
+- Bridge relay supports optional per-client request throttling (`NOVAADAPT_BRIDGE_RATE_LIMIT_RPS` / `..._BURST`).
 - Core API supports configurable request rate limiting and max body size on `serve`.
 - Core API supports persisted idempotency keys on `serve` (`--idempotency-db-path`) to prevent duplicate mutations on retries.
 - Async job records can be persisted to SQLite (`--jobs-db-path`) for restart-safe history.
