@@ -4,6 +4,7 @@ import hashlib
 import json
 import sqlite3
 import threading
+import time
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -18,13 +19,18 @@ class IdempotencyStore:
         db_path: str | Path | None = None,
         *,
         sqlite_timeout_seconds: float = 5.0,
+        retention_seconds: int = 7 * 24 * 60 * 60,
+        cleanup_interval_seconds: float = 60.0,
     ) -> None:
         if db_path is None:
             db_path = Path.home() / ".novaadapt" / "idempotency.db"
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self.sqlite_timeout_seconds = max(0.1, float(sqlite_timeout_seconds))
+        self.retention_seconds = max(0, int(retention_seconds))
+        self.cleanup_interval_seconds = max(0.0, float(cleanup_interval_seconds))
         self._lock = threading.Lock()
+        self._last_cleanup_monotonic = 0.0
         self._init()
 
     def begin(
@@ -37,6 +43,7 @@ class IdempotencyStore:
         payload_hash = _hash_payload(payload)
         now = _now_iso()
         with self._lock, self._connection() as conn:
+            self._cleanup_expired_locked(conn)
             row = conn.execute(
                 """
                 SELECT payload_hash, status, status_code, response_json
@@ -99,6 +106,13 @@ class IdempotencyStore:
             )
             conn.commit()
 
+    def prune_expired(self) -> int:
+        with self._lock, self._connection() as conn:
+            removed = self._cleanup_expired_locked(conn, force=True)
+            if removed > 0:
+                conn.commit()
+            return removed
+
     def _init(self) -> None:
         with self._connection() as conn:
             conn.execute(
@@ -133,6 +147,21 @@ class IdempotencyStore:
             yield conn
         finally:
             conn.close()
+
+    def _cleanup_expired_locked(self, conn: sqlite3.Connection, *, force: bool = False) -> int:
+        if self.retention_seconds <= 0:
+            return 0
+        now_monotonic = time.monotonic()
+        if not force and self.cleanup_interval_seconds > 0:
+            if (now_monotonic - self._last_cleanup_monotonic) < self.cleanup_interval_seconds:
+                return 0
+        cutoff = datetime.fromtimestamp(time.time() - self.retention_seconds, timezone.utc).isoformat()
+        cursor = conn.execute("DELETE FROM idempotency_entries WHERE updated_at < ?", (cutoff,))
+        self._last_cleanup_monotonic = now_monotonic
+        removed = int(cursor.rowcount or 0)
+        if removed > 0:
+            conn.commit()
+        return removed
 
 
 def _hash_payload(payload: dict[str, Any]) -> str:

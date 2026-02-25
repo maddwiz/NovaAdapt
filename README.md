@@ -168,6 +168,7 @@ API endpoints:
 
 Core API responses include `X-Request-ID` for tracing (and object responses also include `request_id` in JSON).
 Mutating POST routes support idempotency via `Idempotency-Key`; replayed responses return `X-Idempotency-Replayed: true`.
+Idempotency records auto-expire (defaults: 7 days retention, 60s cleanup interval) to prevent unbounded DB growth.
 Audit events are persisted in SQLite (`--audit-db-path`) and include request IDs for forensic tracing.
 Audit persistence enables WAL mode, busy-timeout handling, and transient SQLite retry for improved resilience under load.
 Plan records expose execution progress fields (`progress_completed`, `progress_total`) and terminal error state (`execution_error`).
@@ -316,6 +317,7 @@ make run-local
 Optional env vars:
 - `NOVAADAPT_CORE_TOKEN`
 - `NOVAADAPT_CORE_TRUSTED_PROXY_CIDRS` (trusted proxy CIDRs/IPs for core forwarded client IP handling)
+- `NOVAADAPT_IDEMPOTENCY_RETENTION_SECONDS` / `NOVAADAPT_IDEMPOTENCY_CLEANUP_INTERVAL_SECONDS`
 - `NOVAADAPT_BRIDGE_TOKEN`
 - `NOVAADAPT_BRIDGE_ALLOWED_DEVICE_IDS`
 - `NOVAADAPT_BRIDGE_CORS_ALLOWED_ORIGINS` (defaults to local view origin when `NOVAADAPT_WITH_VIEW=1`)

@@ -135,13 +135,23 @@ def create_server(
     rate_limit_rps: float = 0.0,
     rate_limit_burst: int | None = None,
     trusted_proxy_cidrs: list[str] | None = None,
+    idempotency_retention_seconds: int = 7 * 24 * 60 * 60,
+    idempotency_cleanup_interval_seconds: float = 60.0,
     max_request_body_bytes: int = DEFAULT_MAX_REQUEST_BODY_BYTES,
     jobs_db_path: str | None = None,
     idempotency_db_path: str | None = None,
     audit_db_path: str | None = None,
 ) -> ThreadingHTTPServer:
     managed_jobs = job_manager or JobManager(store=JobStore(jobs_db_path) if jobs_db_path else None)
-    idempotency_store = IdempotencyStore(idempotency_db_path) if idempotency_db_path else None
+    idempotency_store = (
+        IdempotencyStore(
+            idempotency_db_path,
+            retention_seconds=idempotency_retention_seconds,
+            cleanup_interval_seconds=idempotency_cleanup_interval_seconds,
+        )
+        if idempotency_db_path
+        else None
+    )
     audit_store = AuditStore(audit_db_path)
     metrics = _RequestMetrics()
 
@@ -177,6 +187,8 @@ def run_server(
     rate_limit_rps: float = 0.0,
     rate_limit_burst: int | None = None,
     trusted_proxy_cidrs: list[str] | None = None,
+    idempotency_retention_seconds: int = 7 * 24 * 60 * 60,
+    idempotency_cleanup_interval_seconds: float = 60.0,
     max_request_body_bytes: int = DEFAULT_MAX_REQUEST_BODY_BYTES,
     jobs_db_path: str | None = None,
     idempotency_db_path: str | None = None,
@@ -192,6 +204,8 @@ def run_server(
         rate_limit_rps=rate_limit_rps,
         rate_limit_burst=rate_limit_burst,
         trusted_proxy_cidrs=trusted_proxy_cidrs,
+        idempotency_retention_seconds=idempotency_retention_seconds,
+        idempotency_cleanup_interval_seconds=idempotency_cleanup_interval_seconds,
         max_request_body_bytes=max_request_body_bytes,
         jobs_db_path=jobs_db_path,
         idempotency_db_path=idempotency_db_path,

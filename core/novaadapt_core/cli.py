@@ -210,6 +210,18 @@ def _build_parser() -> argparse.ArgumentParser:
         default=default_audit_db,
         help="Path to audit events SQLite database",
     )
+    serve_cmd.add_argument(
+        "--idempotency-retention-seconds",
+        type=int,
+        default=int(os.getenv("NOVAADAPT_IDEMPOTENCY_RETENTION_SECONDS", str(7 * 24 * 60 * 60))),
+        help="Retention window for persisted idempotency records (0 disables expiry)",
+    )
+    serve_cmd.add_argument(
+        "--idempotency-cleanup-interval-seconds",
+        type=float,
+        default=float(os.getenv("NOVAADAPT_IDEMPOTENCY_CLEANUP_INTERVAL_SECONDS", "60")),
+        help="How often idempotency expiry cleanup runs during writes",
+    )
     serve_cmd.add_argument("--host", default="127.0.0.1")
     serve_cmd.add_argument("--port", type=int, default=8787)
     serve_cmd.add_argument(
@@ -274,6 +286,8 @@ def main() -> None:
                 rate_limit_rps=max(0.0, float(args.rate_limit_rps)),
                 rate_limit_burst=args.rate_limit_burst,
                 trusted_proxy_cidrs=_parse_csv(args.trusted_proxy_cidrs),
+                idempotency_retention_seconds=max(0, int(args.idempotency_retention_seconds)),
+                idempotency_cleanup_interval_seconds=max(0.0, float(args.idempotency_cleanup_interval_seconds)),
                 max_request_body_bytes=max(1, int(args.max_body_bytes)),
                 jobs_db_path=str(args.jobs_db_path),
                 idempotency_db_path=str(args.idempotency_db_path),
