@@ -187,6 +187,15 @@ def build_plugin_registry() -> PluginRegistry:
     novablox_base = str(os.getenv("NOVAADAPT_NOVABLOX_URL", "http://127.0.0.1:30010/bridge")).strip()
     novablox_headers = _build_headers({"X-API-Key": os.getenv("NOVABLOX_API_KEY")})
 
+    sib_bridge_base = str(os.getenv("NOVAADAPT_SIB_BRIDGE_URL", novabridge_base)).strip()
+    sib_bridge_headers = _build_headers(
+        {
+            "X-API-Key": os.getenv("SIB_BRIDGE_API_KEY") or os.getenv("NOVABRIDGE_API_KEY"),
+            "X-NovaBridge-Token": os.getenv("SIB_BRIDGE_RUNTIME_TOKEN") or os.getenv("NOVABRIDGE_RUNTIME_TOKEN"),
+            "X-NovaBridge-Role": os.getenv("SIB_BRIDGE_ROLE") or os.getenv("NOVABRIDGE_ROLE"),
+        }
+    )
+
     plugins = {
         "novabridge": PluginConfig(
             name="novabridge",
@@ -205,6 +214,12 @@ def build_plugin_registry() -> PluginRegistry:
             base_url=novablox_base,
             headers=novablox_headers,
             health_paths=("/health", "/stats"),
+        ),
+        "sib_bridge": PluginConfig(
+            name="sib_bridge",
+            base_url=sib_bridge_base,
+            headers=sib_bridge_headers,
+            health_paths=("/health", "/caps"),
         ),
     }
     return PluginRegistry(

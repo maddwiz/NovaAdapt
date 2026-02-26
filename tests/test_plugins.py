@@ -5,7 +5,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from unittest import mock
 from urllib import error
 
-from novaadapt_core.plugins.registry import PluginConfig, PluginRegistry
+from novaadapt_core.plugins.registry import PluginConfig, PluginRegistry, build_plugin_registry
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -145,6 +145,20 @@ class PluginRegistryTests(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertEqual(result["status_code"], 0)
         self.assertTrue(reason.closed)
+
+    def test_build_plugin_registry_includes_sib_bridge(self):
+        with mock.patch.dict(
+            "os.environ",
+            {
+                "NOVAADAPT_NOVABRIDGE_URL": f"http://{self.host}:{self.port}/nova",
+                "NOVAADAPT_NOVABLOX_URL": f"http://{self.host}:{self.port}/bridge",
+                "NOVAADAPT_SIB_BRIDGE_URL": f"http://{self.host}:{self.port}/nova",
+            },
+            clear=False,
+        ):
+            registry = build_plugin_registry()
+        names = {item["name"] for item in registry.list_plugins()}
+        self.assertIn("sib_bridge", names)
 
 
 if __name__ == "__main__":

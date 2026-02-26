@@ -77,6 +77,7 @@ def post_swarm_run(
         "activity": payload.get("activity"),
         "post_realm": payload.get("post_realm"),
         "post_activity": payload.get("post_activity"),
+        "toggle_mode": payload.get("toggle_mode"),
     }
 
     def _run_swarm() -> tuple[int, dict[str, object]]:

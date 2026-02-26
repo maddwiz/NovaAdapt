@@ -26,6 +26,7 @@ from . import server_terminal_browser as terminal_browser_routes
 from . import server_plan_job_routes as plan_job_routes
 from . import server_run_memory_routes as run_memory_routes
 from . import server_admin_routes as admin_routes
+from . import server_adapt_routes as adapt_routes
 from . import server_memory_routes as memory_routes
 from . import server_novaprime_routes as novaprime_routes
 from . import server_plugin_routes as plugin_routes
@@ -251,6 +252,12 @@ def _build_handler(
         def _get_novaprime_status(self, _query: dict[str, list[str]]) -> int:
             return novaprime_routes.get_novaprime_status(self, service)
 
+        def _get_adapt_toggle(self, query: dict[str, list[str]]) -> int:
+            return adapt_routes.get_adapt_toggle(self, service, _single, query)
+
+        def _get_adapt_bond(self, query: dict[str, list[str]]) -> int:
+            return adapt_routes.get_adapt_bond(self, service, _single, query)
+
         def _get_browser_status(self, _query: dict[str, list[str]]) -> int:
             return terminal_browser_routes.get_browser_status(self, service)
 
@@ -330,6 +337,9 @@ def _build_handler(
 
         def _post_memory_recall(self, _path: str, payload: dict[str, object]) -> int:
             return memory_routes.post_memory_recall(self, service, payload)
+
+        def _post_adapt_toggle(self, _path: str, payload: dict[str, object]) -> int:
+            return adapt_routes.post_adapt_toggle(self, service, payload)
 
         def _post_memory_ingest(self, path: str, payload: dict[str, object]) -> int:
             return memory_routes.post_memory_ingest(self, service, path, payload)

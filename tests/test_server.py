@@ -215,6 +215,8 @@ class ServerTests(unittest.TestCase):
                 self.assertIn("/feedback", openapi["paths"])
                 self.assertIn("/memory/status", openapi["paths"])
                 self.assertIn("/novaprime/status", openapi["paths"])
+                self.assertIn("/adapt/toggle", openapi["paths"])
+                self.assertIn("/adapt/bond", openapi["paths"])
                 self.assertIn("/memory/recall", openapi["paths"])
                 self.assertIn("/memory/ingest", openapi["paths"])
                 self.assertIn("/browser/status", openapi["paths"])
@@ -279,6 +281,16 @@ class ServerTests(unittest.TestCase):
                 novaprime_status, _ = _get_json_with_headers(f"http://{host}:{port}/novaprime/status")
                 self.assertIn("ok", novaprime_status)
                 self.assertIn("backend", novaprime_status)
+
+                adapt_toggle_set, _ = _post_json_with_headers(
+                    f"http://{host}:{port}/adapt/toggle",
+                    {"adapt_id": "adapt-1", "mode": "ask_only"},
+                )
+                self.assertEqual(adapt_toggle_set["mode"], "ask_only")
+                adapt_toggle_get, _ = _get_json_with_headers(f"http://{host}:{port}/adapt/toggle?adapt_id=adapt-1")
+                self.assertEqual(adapt_toggle_get["mode"], "ask_only")
+                adapt_bond, _ = _get_json_with_headers(f"http://{host}:{port}/adapt/bond?adapt_id=adapt-1")
+                self.assertIn("found", adapt_bond)
 
                 memory_recall, _ = _post_json_with_headers(
                     f"http://{host}:{port}/memory/recall",

@@ -41,6 +41,10 @@ class NovaAdaptMCPServer:
                         "activity": {"type": "string"},
                         "post_realm": {"type": "string"},
                         "post_activity": {"type": "string"},
+                        "toggle_mode": {
+                            "type": "string",
+                            "enum": ["free_speak", "in_game_only", "ask_only", "silent"],
+                        },
                     },
                     "required": ["objective"],
                 },
@@ -66,6 +70,10 @@ class NovaAdaptMCPServer:
                         "activity": {"type": "string"},
                         "post_realm": {"type": "string"},
                         "post_activity": {"type": "string"},
+                        "toggle_mode": {
+                            "type": "string",
+                            "enum": ["free_speak", "in_game_only", "ask_only", "silent"],
+                        },
                     },
                     "required": ["objectives"],
                 },
@@ -248,6 +256,40 @@ class NovaAdaptMCPServer:
                 name="novaadapt_novaprime_status",
                 description="Get NovaPrime integration backend readiness/status",
                 input_schema={"type": "object", "properties": {}},
+            ),
+            MCPTool(
+                name="novaadapt_adapt_toggle_get",
+                description="Get Adapt communication toggle mode",
+                input_schema={
+                    "type": "object",
+                    "properties": {"adapt_id": {"type": "string"}},
+                    "required": ["adapt_id"],
+                },
+            ),
+            MCPTool(
+                name="novaadapt_adapt_toggle_set",
+                description="Set Adapt communication toggle mode",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "adapt_id": {"type": "string"},
+                        "mode": {
+                            "type": "string",
+                            "enum": ["free_speak", "in_game_only", "ask_only", "silent"],
+                        },
+                        "source": {"type": "string"},
+                    },
+                    "required": ["adapt_id", "mode"],
+                },
+            ),
+            MCPTool(
+                name="novaadapt_adapt_bond_get",
+                description="Get cached local Adapt bond state",
+                input_schema={
+                    "type": "object",
+                    "properties": {"adapt_id": {"type": "string"}},
+                    "required": ["adapt_id"],
+                },
             ),
             MCPTool(
                 name="novaadapt_memory_recall",
@@ -468,6 +510,7 @@ class NovaAdaptMCPServer:
                     "activity": arguments.get("activity"),
                     "post_realm": arguments.get("post_realm"),
                     "post_activity": arguments.get("post_activity"),
+                    "toggle_mode": arguments.get("toggle_mode"),
                 }
                 jobs.append({"index": idx, "objective": objective, "result": self.service.run(run_payload)})
             return {
@@ -591,6 +634,28 @@ class NovaAdaptMCPServer:
             return self.service.memory_status()
         if tool_name == "novaadapt_novaprime_status":
             return self.service.novaprime_status()
+        if tool_name == "novaadapt_adapt_toggle_get":
+            adapt_id = str(arguments.get("adapt_id", "")).strip()
+            if not adapt_id:
+                raise ValueError("'adapt_id' is required")
+            return self.service.adapt_toggle_get(adapt_id)
+        if tool_name == "novaadapt_adapt_toggle_set":
+            adapt_id = str(arguments.get("adapt_id", "")).strip()
+            mode = str(arguments.get("mode", "")).strip()
+            source = str(arguments.get("source", "mcp")).strip() or "mcp"
+            if not adapt_id:
+                raise ValueError("'adapt_id' is required")
+            if not mode:
+                raise ValueError("'mode' is required")
+            return self.service.adapt_toggle_set(adapt_id, mode, source=source)
+        if tool_name == "novaadapt_adapt_bond_get":
+            adapt_id = str(arguments.get("adapt_id", "")).strip()
+            if not adapt_id:
+                raise ValueError("'adapt_id' is required")
+            return {
+                "adapt_id": adapt_id,
+                "cached": self.service.adapt_bond_get(adapt_id),
+            }
         if tool_name == "novaadapt_memory_recall":
             query = str(arguments.get("query", "")).strip()
             if not query:

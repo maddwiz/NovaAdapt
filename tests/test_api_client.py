@@ -68,6 +68,15 @@ class _Handler(BaseHTTPRequestHandler):
         if self.path == "/novaprime/status":
             self._send(200, {"ok": True, "enabled": True, "backend": "novaprime-http"})
             return
+        if self.path.startswith("/adapt/toggle?"):
+            self._send(200, {"adapt_id": "adapt-1", "mode": "ask_only", "source": "test"})
+            return
+        if self.path.startswith("/adapt/bond?"):
+            self._send(
+                200,
+                {"adapt_id": "adapt-1", "found": True, "cached": {"player_id": "player-1", "verified": True}},
+            )
+            return
         if self.path == "/browser/status":
             self._send(200, {"ok": True, "transport": "browser", "capabilities": ["navigate", "click_selector"]})
             return
@@ -217,6 +226,7 @@ class _Handler(BaseHTTPRequestHandler):
             "/plans/plan-1/undo",
             "/plugins/novabridge/call",
             "/feedback",
+            "/adapt/toggle",
             "/memory/recall",
             "/memory/ingest",
             "/browser/action",
@@ -284,6 +294,15 @@ class _Handler(BaseHTTPRequestHandler):
                 )
             elif self.path == "/feedback":
                 self._send(200, {"ok": True, "id": "feedback-1", "rating": payload.get("rating")})
+            elif self.path == "/adapt/toggle":
+                self._send(
+                    200,
+                    {
+                        "adapt_id": payload.get("adapt_id"),
+                        "mode": payload.get("mode"),
+                        "source": payload.get("source", "api_client"),
+                    },
+                )
             elif self.path == "/memory/recall":
                 self._send(
                     200,
@@ -515,6 +534,9 @@ class APIClientTests(unittest.TestCase):
         self.assertEqual(feedback_payload["rating"], 8)
         self.assertTrue(client.memory_status()["ok"])
         self.assertTrue(client.novaprime_status()["ok"])
+        self.assertEqual(client.set_adapt_toggle("adapt-1", "in_game_only")["mode"], "in_game_only")
+        self.assertEqual(client.adapt_toggle("adapt-1")["mode"], "ask_only")
+        self.assertTrue(client.adapt_bond("adapt-1")["found"])
         recall_payload = client.memory_recall("excel formatting", top_k=3)
         self.assertEqual(recall_payload["query"], "excel formatting")
         self.assertEqual(recall_payload["count"], 1)

@@ -129,6 +129,39 @@ class NovaAdaptAPIClient:
             return payload
         raise APIClientError("Expected object payload from /novaprime/status")
 
+    def adapt_toggle(self, adapt_id: str) -> dict[str, Any]:
+        payload = self._get_json(f"/adapt/toggle?adapt_id={quote(str(adapt_id), safe='')}")
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /adapt/toggle")
+
+    def set_adapt_toggle(
+        self,
+        adapt_id: str,
+        mode: str,
+        *,
+        source: str = "api_client",
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        payload = self._post_json(
+            "/adapt/toggle",
+            {
+                "adapt_id": str(adapt_id or ""),
+                "mode": str(mode or ""),
+                "source": str(source or "api_client"),
+            },
+            idempotency_key=idempotency_key,
+        )
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /adapt/toggle")
+
+    def adapt_bond(self, adapt_id: str) -> dict[str, Any]:
+        payload = self._get_json(f"/adapt/bond?adapt_id={quote(str(adapt_id), safe='')}")
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /adapt/bond")
+
     def memory_recall(self, query: str, top_k: int = 10) -> dict[str, Any]:
         payload = self._post_json(
             "/memory/recall",

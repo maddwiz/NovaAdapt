@@ -2,6 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from novaadapt_core.adapt import AdaptBondCache, AdaptToggleStore
 from novaadapt_core.audit_store import AuditStore
 from novaadapt_core.browser_executor import BrowserExecutionResult
 from novaadapt_core.directshell import ExecutionResult
@@ -193,6 +194,27 @@ class _StubNovaPrimeBackend:
                 "activity": activity or "idle",
             },
         }
+
+
+class _FailingNovaPrimeBackend:
+    def status(self):
+        return {"ok": True, "enabled": True, "backend": "novaprime-http"}
+
+    def identity_verify(self, adapt_id: str, player_id: str):
+        _ = (adapt_id, player_id)
+        raise RuntimeError("novaprime unavailable")
+
+    def identity_profile(self, adapt_id: str):
+        _ = adapt_id
+        raise RuntimeError("novaprime unavailable")
+
+    def presence_get(self, adapt_id: str):
+        _ = adapt_id
+        raise RuntimeError("novaprime unavailable")
+
+    def presence_update(self, adapt_id: str, realm: str = "", activity: str = ""):
+        _ = (adapt_id, realm, activity)
+        raise RuntimeError("novaprime unavailable")
 
 
 class _StubPluginRegistry:
@@ -699,6 +721,48 @@ class ServiceTests(unittest.TestCase):
         self.assertTrue(status["ok"])
         self.assertTrue(status["enabled"])
         self.assertEqual(status["backend"], "novaprime-http")
+
+    def test_adapt_toggle_set_and_get(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = AdaptToggleStore(state_path=Path(tmp) / "toggles.json")
+            service = NovaAdaptService(
+                default_config=Path("unused.json"),
+                router_loader=lambda _path: _StubRouter(),
+                directshell_factory=_StubDirectShell,
+                adapt_toggle_store=store,
+            )
+            updated = service.adapt_toggle_set("adapt-1", "in_game_only", source="test")
+            self.assertEqual(updated["mode"], "in_game_only")
+            current = service.adapt_toggle_get("adapt-1")
+            self.assertEqual(current["mode"], "in_game_only")
+
+    def test_run_uses_cached_bond_when_novaprime_unavailable(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            router = _CapturingRouter()
+            bond_cache = AdaptBondCache(state_path=Path(tmp) / "bonds.json")
+            _ = bond_cache.remember("adapt-123", "player-abc", verified=True, profile={"element": "light"})
+            service = NovaAdaptService(
+                default_config=Path("unused.json"),
+                db_path=Path(tmp) / "actions.db",
+                router_loader=lambda _path: router,
+                directshell_factory=_StubDirectShell,
+                novaprime_client=_FailingNovaPrimeBackend(),
+                adapt_bond_cache=bond_cache,
+            )
+
+            out = service.run(
+                {
+                    "objective": "Check cache fallback",
+                    "adapt_id": "adapt-123",
+                    "player_id": "player-abc",
+                }
+            )
+            self.assertEqual(out["results"][0]["status"], "preview")
+            self.assertIn("novaprime", out)
+            self.assertTrue(out["novaprime"]["bond_verified"])
+            self.assertEqual(out["novaprime"]["bond_verified_source"], "cache_fallback")
+            self.assertIn("adapt", out)
+            self.assertEqual(out["adapt"]["adapt_id"], "adapt-123")
 
     def test_plugin_registry_passthrough(self):
         service = NovaAdaptService(

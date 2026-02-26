@@ -334,6 +334,38 @@ def build_openapi_spec() -> dict:
                     "responses": {"200": {"description": "NovaPrime backend status"}},
                 }
             },
+            "/adapt/toggle": {
+                "get": {
+                    "summary": "Get Adapt communication toggle mode by adapt_id",
+                    "parameters": [
+                        {
+                            "name": "adapt_id",
+                            "in": "query",
+                            "required": True,
+                            "schema": {"type": "string"},
+                        }
+                    ],
+                    "responses": {"200": {"description": "Adapt toggle state"}},
+                },
+                "post": {
+                    "summary": "Set Adapt communication toggle mode",
+                    "responses": {"200": {"description": "Updated Adapt toggle state"}},
+                },
+            },
+            "/adapt/bond": {
+                "get": {
+                    "summary": "Get cached local bond state by adapt_id",
+                    "parameters": [
+                        {
+                            "name": "adapt_id",
+                            "in": "query",
+                            "required": True,
+                            "schema": {"type": "string"},
+                        }
+                    ],
+                    "responses": {"200": {"description": "Adapt bond cache record"}},
+                }
+            },
             "/memory/recall": {
                 "post": {
                     "summary": "Recall memory entries relevant to a query",

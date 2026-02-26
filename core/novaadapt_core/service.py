@@ -9,6 +9,7 @@ from typing import Any, Callable
 
 from novaadapt_shared import ModelRouter, UndoQueue
 
+from .adapt import AdaptBondCache, AdaptPersonaEngine, AdaptToggleStore
 from .audit_store import AuditStore
 from .agent import NovaAdaptAgent
 from .browser_executor import BrowserExecutor
@@ -34,6 +35,9 @@ class NovaAdaptService:
         browser_executor_factory: Callable[[], BrowserExecutor] | None = None,
         memory_backend: MemoryBackend | None = None,
         novaprime_client: NovaPrimeBackend | None = None,
+        adapt_toggle_store: AdaptToggleStore | None = None,
+        adapt_bond_cache: AdaptBondCache | None = None,
+        adapt_persona: AdaptPersonaEngine | None = None,
         plugin_registry: PluginRegistry | None = None,
     ) -> None:
         self.default_config = default_config
@@ -45,6 +49,9 @@ class NovaAdaptService:
         self.browser_executor_factory = browser_executor_factory or BrowserExecutor
         self.memory_backend = memory_backend or build_memory_backend()
         self.novaprime_client = novaprime_client or build_novaprime_client()
+        self.adapt_toggle_store = adapt_toggle_store or AdaptToggleStore()
+        self.adapt_bond_cache = adapt_bond_cache or AdaptBondCache()
+        self.adapt_persona = adapt_persona or AdaptPersonaEngine()
         self.plugin_registry = plugin_registry or build_plugin_registry()
         self._plan_store: PlanStore | None = None
         self._audit_store: AuditStore | None = None
@@ -167,6 +174,15 @@ class NovaAdaptService:
             "backend": "unknown",
             "error": "NovaPrime client returned invalid status payload",
         }
+
+    def adapt_toggle_get(self, adapt_id: str) -> dict[str, Any]:
+        return self.adapt_toggle_store.get(adapt_id)
+
+    def adapt_toggle_set(self, adapt_id: str, mode: str, *, source: str = "api") -> dict[str, Any]:
+        return self.adapt_toggle_store.set(adapt_id, mode, source=source)
+
+    def adapt_bond_get(self, adapt_id: str) -> dict[str, Any] | None:
+        return self.adapt_bond_cache.get(adapt_id)
 
     def memory_recall(self, query: str, *, top_k: int = 10) -> dict[str, Any]:
         normalized_query = str(query or "").strip()
@@ -298,18 +314,43 @@ class NovaAdaptService:
         activity = str(payload.get("activity") or "").strip()
         post_realm = str(payload.get("post_realm") or "").strip()
         post_activity = str(payload.get("post_activity") or "").strip()
+        toggle_mode_input = payload.get("toggle_mode")
+        toggle_mode = ""
+        if adapt_id:
+            if toggle_mode_input is not None:
+                _ = self.adapt_toggle_store.set(adapt_id, str(toggle_mode_input), source="run_payload")
+            toggle_mode = self.adapt_toggle_store.get_mode(adapt_id)
 
         novaprime_context: dict[str, Any] = {"enabled": bool(adapt_id)}
+        adapt_context: dict[str, Any] = {}
         identity_profile: dict[str, Any] | None = None
         bond_verified: bool | None = None
+        cached_bond: dict[str, Any] | None = None
+        if adapt_id:
+            adapt_context = {"adapt_id": adapt_id, "toggle_mode": toggle_mode}
+            cached_bond = self.adapt_bond_cache.get(adapt_id)
+            if isinstance(cached_bond, dict):
+                adapt_context["bond_cache"] = cached_bond
         if adapt_id:
             try:
                 if player_id:
                     bond_verified = bool(self.novaprime_client.identity_verify(adapt_id, player_id))
+                    if not bond_verified and self.adapt_bond_cache.verify_cached(adapt_id, player_id):
+                        bond_verified = True
+                        novaprime_context["bond_verified_source"] = "cache_fallback"
                     novaprime_context["bond_verified"] = bond_verified
                 identity_profile = self.novaprime_client.identity_profile(adapt_id)
                 if isinstance(identity_profile, dict):
                     novaprime_context["profile"] = identity_profile
+                if player_id and bond_verified is not None:
+                    cached_bond = self.adapt_bond_cache.remember(
+                        adapt_id,
+                        player_id,
+                        verified=bool(bond_verified),
+                        profile=identity_profile if isinstance(identity_profile, dict) else {},
+                    )
+                    if isinstance(cached_bond, dict):
+                        adapt_context["bond_cache"] = cached_bond
                 if realm or activity:
                     presence_before = self.novaprime_client.presence_update(
                         adapt_id,
@@ -322,6 +363,27 @@ class NovaAdaptService:
                     novaprime_context["presence_before"] = presence_before
             except Exception as exc:
                 novaprime_context["error"] = str(exc)
+                if player_id and self.adapt_bond_cache.verify_cached(adapt_id, player_id):
+                    bond_verified = True
+                    novaprime_context["bond_verified"] = True
+                    novaprime_context["bond_verified_source"] = "cache_fallback"
+
+        planning_identity_profile: dict[str, Any] | None = identity_profile
+        if adapt_id:
+            persona_context = self.adapt_persona.build_context(
+                adapt_id=adapt_id,
+                toggle_mode=toggle_mode,
+                bond_verified=bond_verified,
+                identity_profile=identity_profile,
+                cached_bond=cached_bond,
+            )
+            novaprime_context["persona"] = persona_context
+            adapt_context["persona"] = persona_context
+            if isinstance(identity_profile, dict):
+                planning_identity_profile = dict(identity_profile)
+                planning_identity_profile["persona"] = persona_context
+            else:
+                planning_identity_profile = {"persona": persona_context}
 
         router = self.router_loader(config_path)
         queue = UndoQueue(db_path=self.db_path)
@@ -341,7 +403,7 @@ class NovaAdaptService:
             record_history=record_history,
             allow_dangerous=allow_dangerous,
             max_actions=max(1, max_actions),
-            identity_profile=identity_profile,
+            identity_profile=planning_identity_profile,
             bond_verified=bond_verified,
         )
         if adapt_id:
@@ -358,6 +420,8 @@ class NovaAdaptService:
                     novaprime_context["error"] = str(exc)
         if novaprime_context.get("enabled"):
             result["novaprime"] = novaprime_context
+        if adapt_context:
+            result["adapt"] = adapt_context
         return result
 
     def create_plan(self, payload: dict[str, Any]) -> dict[str, Any]:

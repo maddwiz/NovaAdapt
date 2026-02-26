@@ -220,6 +220,8 @@ API endpoints:
 - `GET /plugins/{name}/health`
 - `GET /memory/status`
 - `GET /novaprime/status`
+- `GET /adapt/toggle?adapt_id=...`
+- `GET /adapt/bond?adapt_id=...`
 - `GET /browser/status`
 - `GET /browser/pages`
 - `GET /history?limit=20`
@@ -235,6 +237,7 @@ API endpoints:
 - `POST /swarm/run` with JSON payload (fan out multiple objectives into parallel jobs)
 - `POST /plugins/{name}/call` with JSON payload
 - `POST /feedback` with JSON payload (`rating` 1-10 required)
+- `POST /adapt/toggle` with JSON payload (`adapt_id`, `mode`)
 - `POST /memory/recall` with JSON payload (`query` required)
 - `POST /memory/ingest` with JSON payload (`text` required)
 - `POST /browser/action` with JSON payload (`action` object or top-level browser action fields)

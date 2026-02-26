@@ -89,6 +89,15 @@ class _StubService:
     def novaprime_status(self):
         return {"ok": True, "enabled": True, "backend": "novaprime-http"}
 
+    def adapt_toggle_get(self, adapt_id: str):
+        return {"adapt_id": adapt_id, "mode": "ask_only"}
+
+    def adapt_toggle_set(self, adapt_id: str, mode: str, *, source: str = "mcp"):
+        return {"adapt_id": adapt_id, "mode": mode, "source": source}
+
+    def adapt_bond_get(self, adapt_id: str):
+        return {"adapt_id": adapt_id, "player_id": "player-1", "verified": True}
+
     def memory_recall(self, query, top_k=10):
         return {"query": query, "top_k": top_k, "count": 1, "memories": [{"content": "remembered"}]}
 
@@ -138,6 +147,9 @@ class MCPServerTests(unittest.TestCase):
         self.assertIn("novaadapt_feedback", names)
         self.assertIn("novaadapt_memory_status", names)
         self.assertIn("novaadapt_novaprime_status", names)
+        self.assertIn("novaadapt_adapt_toggle_get", names)
+        self.assertIn("novaadapt_adapt_toggle_set", names)
+        self.assertIn("novaadapt_adapt_bond_get", names)
         self.assertIn("novaadapt_memory_recall", names)
         self.assertIn("novaadapt_memory_ingest", names)
         self.assertIn("novaadapt_browser_status", names)
@@ -366,6 +378,49 @@ class MCPServerTests(unittest.TestCase):
         )
         novaprime_status_payload = novaprime_status_resp["result"]["content"][0]["json"]
         self.assertTrue(novaprime_status_payload["ok"])
+
+        adapt_toggle_get_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 912,
+                "method": "tools/call",
+                "params": {
+                    "name": "novaadapt_adapt_toggle_get",
+                    "arguments": {"adapt_id": "adapt-1"},
+                },
+            }
+        )
+        adapt_toggle_get_payload = adapt_toggle_get_resp["result"]["content"][0]["json"]
+        self.assertEqual(adapt_toggle_get_payload["mode"], "ask_only")
+
+        adapt_toggle_set_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 913,
+                "method": "tools/call",
+                "params": {
+                    "name": "novaadapt_adapt_toggle_set",
+                    "arguments": {"adapt_id": "adapt-1", "mode": "in_game_only"},
+                },
+            }
+        )
+        adapt_toggle_set_payload = adapt_toggle_set_resp["result"]["content"][0]["json"]
+        self.assertEqual(adapt_toggle_set_payload["mode"], "in_game_only")
+
+        adapt_bond_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 914,
+                "method": "tools/call",
+                "params": {
+                    "name": "novaadapt_adapt_bond_get",
+                    "arguments": {"adapt_id": "adapt-1"},
+                },
+            }
+        )
+        adapt_bond_payload = adapt_bond_resp["result"]["content"][0]["json"]
+        self.assertEqual(adapt_bond_payload["adapt_id"], "adapt-1")
+        self.assertTrue(adapt_bond_payload["cached"]["verified"])
 
         memory_recall_resp = server.handle_request(
             {

@@ -24,6 +24,8 @@ def build_get_private_routes(handler: Any) -> dict[str, Any]:
         "/plugins": handler._get_plugins,
         "/memory/status": handler._get_memory_status,
         "/novaprime/status": handler._get_novaprime_status,
+        "/adapt/toggle": handler._get_adapt_toggle,
+        "/adapt/bond": handler._get_adapt_bond,
         "/terminal/sessions": handler._get_terminal_sessions,
         "/browser/status": handler._get_browser_status,
         "/browser/pages": handler._get_browser_pages,
@@ -51,6 +53,7 @@ def build_post_exact_routes(handler: Any) -> dict[str, Any]:
         "/undo": lambda body: handler._post_undo("/undo", body),
         "/check": handler._post_check,
         "/feedback": lambda body: handler._post_feedback("/feedback", body),
+        "/adapt/toggle": lambda body: handler._post_adapt_toggle("/adapt/toggle", body),
         "/memory/recall": lambda body: handler._post_memory_recall("/memory/recall", body),
         "/memory/ingest": lambda body: handler._post_memory_ingest("/memory/ingest", body),
         "/terminal/sessions": lambda body: handler._post_terminal_start("/terminal/sessions", body),
@@ -87,6 +90,8 @@ def is_idempotent_route(path: str) -> bool:
     if path in {"/run", "/run_async", "/swarm/run", "/undo", "/plans"}:
         return True
     if path in {"/feedback"}:
+        return True
+    if path in {"/adapt/toggle"}:
         return True
     if path in {"/memory/ingest"}:
         return True
