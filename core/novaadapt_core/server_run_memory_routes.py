@@ -71,6 +71,12 @@ def post_swarm_run(
         "execute": bool(payload.get("execute", False)),
         "allow_dangerous": bool(payload.get("allow_dangerous", False)),
         "max_actions": int(payload.get("max_actions", 25)),
+        "adapt_id": payload.get("adapt_id"),
+        "player_id": payload.get("player_id"),
+        "realm": payload.get("realm"),
+        "activity": payload.get("activity"),
+        "post_realm": payload.get("post_realm"),
+        "post_activity": payload.get("post_activity"),
     }
 
     def _run_swarm() -> tuple[int, dict[str, object]]:

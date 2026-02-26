@@ -35,6 +35,12 @@ class NovaAdaptMCPServer:
                         "execute": {"type": "boolean"},
                         "allow_dangerous": {"type": "boolean"},
                         "max_actions": {"type": "integer"},
+                        "adapt_id": {"type": "string"},
+                        "player_id": {"type": "string"},
+                        "realm": {"type": "string"},
+                        "activity": {"type": "string"},
+                        "post_realm": {"type": "string"},
+                        "post_activity": {"type": "string"},
                     },
                     "required": ["objective"],
                 },
@@ -54,6 +60,12 @@ class NovaAdaptMCPServer:
                         "allow_dangerous": {"type": "boolean"},
                         "max_actions": {"type": "integer"},
                         "max_agents": {"type": "integer"},
+                        "adapt_id": {"type": "string"},
+                        "player_id": {"type": "string"},
+                        "realm": {"type": "string"},
+                        "activity": {"type": "string"},
+                        "post_realm": {"type": "string"},
+                        "post_activity": {"type": "string"},
                     },
                     "required": ["objectives"],
                 },
@@ -230,6 +242,11 @@ class NovaAdaptMCPServer:
             MCPTool(
                 name="novaadapt_memory_status",
                 description="Get NovaSpine memory backend readiness/status",
+                input_schema={"type": "object", "properties": {}},
+            ),
+            MCPTool(
+                name="novaadapt_novaprime_status",
+                description="Get NovaPrime integration backend readiness/status",
                 input_schema={"type": "object", "properties": {}},
             ),
             MCPTool(
@@ -445,6 +462,12 @@ class NovaAdaptMCPServer:
                     "execute": bool(arguments.get("execute", False)),
                     "allow_dangerous": bool(arguments.get("allow_dangerous", False)),
                     "max_actions": int(arguments.get("max_actions", 25)),
+                    "adapt_id": arguments.get("adapt_id"),
+                    "player_id": arguments.get("player_id"),
+                    "realm": arguments.get("realm"),
+                    "activity": arguments.get("activity"),
+                    "post_realm": arguments.get("post_realm"),
+                    "post_activity": arguments.get("post_activity"),
                 }
                 jobs.append({"index": idx, "objective": objective, "result": self.service.run(run_payload)})
             return {
@@ -566,6 +589,8 @@ class NovaAdaptMCPServer:
             )
         if tool_name == "novaadapt_memory_status":
             return self.service.memory_status()
+        if tool_name == "novaadapt_novaprime_status":
+            return self.service.novaprime_status()
         if tool_name == "novaadapt_memory_recall":
             query = str(arguments.get("query", "")).strip()
             if not query:

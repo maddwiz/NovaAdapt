@@ -292,6 +292,36 @@ class NovaAdaptService:
         record_history = bool(payload.get("record_history", True))
         allow_dangerous = bool(payload.get("allow_dangerous", False))
         max_actions = int(payload.get("max_actions", 25))
+        adapt_id = str(payload.get("adapt_id") or "").strip()
+        player_id = str(payload.get("player_id") or "").strip()
+        realm = str(payload.get("realm") or "").strip()
+        activity = str(payload.get("activity") or "").strip()
+        post_realm = str(payload.get("post_realm") or "").strip()
+        post_activity = str(payload.get("post_activity") or "").strip()
+
+        novaprime_context: dict[str, Any] = {"enabled": bool(adapt_id)}
+        identity_profile: dict[str, Any] | None = None
+        bond_verified: bool | None = None
+        if adapt_id:
+            try:
+                if player_id:
+                    bond_verified = bool(self.novaprime_client.identity_verify(adapt_id, player_id))
+                    novaprime_context["bond_verified"] = bond_verified
+                identity_profile = self.novaprime_client.identity_profile(adapt_id)
+                if isinstance(identity_profile, dict):
+                    novaprime_context["profile"] = identity_profile
+                if realm or activity:
+                    presence_before = self.novaprime_client.presence_update(
+                        adapt_id,
+                        realm=realm,
+                        activity=activity or ("executing_objective" if execute else "planning_objective"),
+                    )
+                else:
+                    presence_before = self.novaprime_client.presence_get(adapt_id)
+                if isinstance(presence_before, dict):
+                    novaprime_context["presence_before"] = presence_before
+            except Exception as exc:
+                novaprime_context["error"] = str(exc)
 
         router = self.router_loader(config_path)
         queue = UndoQueue(db_path=self.db_path)
@@ -301,7 +331,7 @@ class NovaAdaptService:
             undo_queue=queue,
             memory_backend=self.memory_backend,
         )
-        return agent.run_objective(
+        result = agent.run_objective(
             objective=objective,
             strategy=strategy,
             model_name=model_name,
@@ -311,7 +341,24 @@ class NovaAdaptService:
             record_history=record_history,
             allow_dangerous=allow_dangerous,
             max_actions=max(1, max_actions),
+            identity_profile=identity_profile,
+            bond_verified=bond_verified,
         )
+        if adapt_id:
+            try:
+                presence_after = self.novaprime_client.presence_update(
+                    adapt_id,
+                    realm=post_realm or realm,
+                    activity=post_activity or ("objective_executed" if execute else "objective_planned"),
+                )
+                if isinstance(presence_after, dict):
+                    novaprime_context["presence_after"] = presence_after
+            except Exception as exc:
+                if "error" not in novaprime_context:
+                    novaprime_context["error"] = str(exc)
+        if novaprime_context.get("enabled"):
+            result["novaprime"] = novaprime_context
+        return result
 
     def create_plan(self, payload: dict[str, Any]) -> dict[str, Any]:
         plan_preview = self.run(

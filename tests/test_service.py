@@ -51,6 +51,28 @@ class _StubRouter:
         )
 
 
+class _CapturingRouter(_StubRouter):
+    def __init__(self):
+        self.last_messages = None
+
+    def chat(
+        self,
+        messages,
+        model_name=None,
+        strategy="single",
+        candidate_models=None,
+        fallback_models=None,
+    ):
+        self.last_messages = messages
+        return super().chat(
+            messages,
+            model_name=model_name,
+            strategy=strategy,
+            candidate_models=candidate_models,
+            fallback_models=fallback_models,
+        )
+
+
 class _StubDirectShell:
     def execute_action(self, action, dry_run=True):
         return ExecutionResult(
@@ -136,8 +158,41 @@ class _RecordingMemoryBackend:
 
 
 class _StubNovaPrimeBackend:
+    def __init__(self):
+        self.calls: list[dict[str, object]] = []
+
     def status(self):
         return {"ok": True, "enabled": True, "backend": "novaprime-http"}
+
+    def identity_verify(self, adapt_id: str, player_id: str):
+        self.calls.append({"method": "identity_verify", "adapt_id": adapt_id, "player_id": player_id})
+        return True
+
+    def identity_profile(self, adapt_id: str):
+        self.calls.append({"method": "identity_profile", "adapt_id": adapt_id})
+        return {"adapt_id": adapt_id, "element": "light", "form_stage": "symbiosis"}
+
+    def presence_get(self, adapt_id: str):
+        self.calls.append({"method": "presence_get", "adapt_id": adapt_id})
+        return {"adapt_id": adapt_id, "realm": "aetherion", "activity": "idle"}
+
+    def presence_update(self, adapt_id: str, realm: str = "", activity: str = ""):
+        self.calls.append(
+            {
+                "method": "presence_update",
+                "adapt_id": adapt_id,
+                "realm": realm,
+                "activity": activity,
+            }
+        )
+        return {
+            "ok": True,
+            "presence": {
+                "adapt_id": adapt_id,
+                "realm": realm or "aetherion",
+                "activity": activity or "idle",
+            },
+        }
 
 
 class _StubPluginRegistry:
@@ -283,6 +338,48 @@ class ServiceTests(unittest.TestCase):
         )
         with self.assertRaises(ValueError):
             service.run({})
+
+    def test_run_with_adapt_context_syncs_novaprime_and_injects_identity(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            router = _CapturingRouter()
+            novaprime = _StubNovaPrimeBackend()
+            service = NovaAdaptService(
+                default_config=Path("unused.json"),
+                db_path=Path(tmp) / "actions.db",
+                router_loader=lambda _path: router,
+                directshell_factory=_StubDirectShell,
+                novaprime_client=novaprime,
+            )
+
+            out = service.run(
+                {
+                    "objective": "Patrol the east gate",
+                    "adapt_id": "adapt-123",
+                    "player_id": "player-abc",
+                    "realm": "game_world",
+                    "activity": "patrol",
+                    "post_activity": "patrol_complete",
+                }
+            )
+
+            self.assertEqual(out["results"][0]["status"], "preview")
+            self.assertIn("novaprime", out)
+            self.assertTrue(out["novaprime"]["enabled"])
+            self.assertTrue(out["novaprime"]["bond_verified"])
+            self.assertIn("profile", out["novaprime"])
+            self.assertIn("presence_before", out["novaprime"])
+            self.assertIn("presence_after", out["novaprime"])
+
+            self.assertIsNotNone(router.last_messages)
+            identity_msgs = [
+                msg for msg in router.last_messages if "Adapt identity profile context for planning" in str(msg.get("content", ""))
+            ]
+            self.assertEqual(len(identity_msgs), 1)
+
+            method_names = [str(item.get("method")) for item in novaprime.calls]
+            self.assertIn("identity_verify", method_names)
+            self.assertIn("identity_profile", method_names)
+            self.assertGreaterEqual(method_names.count("presence_update"), 2)
 
     def test_approve_plan_marks_failed_on_blocked_action(self):
         with tempfile.TemporaryDirectory() as tmp:

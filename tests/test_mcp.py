@@ -86,6 +86,9 @@ class _StubService:
     def memory_status(self):
         return {"ok": True, "enabled": True, "backend": "novaspine-http"}
 
+    def novaprime_status(self):
+        return {"ok": True, "enabled": True, "backend": "novaprime-http"}
+
     def memory_recall(self, query, top_k=10):
         return {"query": query, "top_k": top_k, "count": 1, "memories": [{"content": "remembered"}]}
 
@@ -134,6 +137,7 @@ class MCPServerTests(unittest.TestCase):
         self.assertIn("novaadapt_plan_undo", names)
         self.assertIn("novaadapt_feedback", names)
         self.assertIn("novaadapt_memory_status", names)
+        self.assertIn("novaadapt_novaprime_status", names)
         self.assertIn("novaadapt_memory_recall", names)
         self.assertIn("novaadapt_memory_ingest", names)
         self.assertIn("novaadapt_browser_status", names)
@@ -348,6 +352,20 @@ class MCPServerTests(unittest.TestCase):
         )
         memory_status_payload = memory_status_resp["result"]["content"][0]["json"]
         self.assertTrue(memory_status_payload["ok"])
+
+        novaprime_status_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 911,
+                "method": "tools/call",
+                "params": {
+                    "name": "novaadapt_novaprime_status",
+                    "arguments": {},
+                },
+            }
+        )
+        novaprime_status_payload = novaprime_status_resp["result"]["content"][0]["json"]
+        self.assertTrue(novaprime_status_payload["ok"])
 
         memory_recall_resp = server.handle_request(
             {

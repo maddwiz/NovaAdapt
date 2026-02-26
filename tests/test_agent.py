@@ -135,6 +135,34 @@ class AgentSafetyTests(unittest.TestCase):
             memory_messages = [item for item in router.last_messages if "Relevant long-term memory context" in str(item.get("content", ""))]
             self.assertEqual(len(memory_messages), 1)
 
+    def test_identity_profile_and_bond_context_are_injected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            queue = UndoQueue(db_path=Path(tmp) / "actions.db")
+            directshell = _StubDirectShell()
+            router = _StubRouter('{"actions": [{"type": "note", "target": "identity"}]}')
+            agent = NovaAdaptAgent(router=router, directshell=directshell, undo_queue=queue)
+
+            _ = agent.run_objective(
+                objective="Plan next move",
+                dry_run=True,
+                identity_profile={"adapt_id": "adapt-123", "element": "light", "form_stage": "symbiosis"},
+                bond_verified=True,
+            )
+
+            self.assertIsNotNone(router.last_messages)
+            identity_messages = [
+                item
+                for item in router.last_messages
+                if "Adapt identity profile context for planning" in str(item.get("content", ""))
+            ]
+            self.assertEqual(len(identity_messages), 1)
+            bond_messages = [
+                item
+                for item in router.last_messages
+                if "Soulbond verification status with active player" in str(item.get("content", ""))
+            ]
+            self.assertEqual(len(bond_messages), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -47,6 +47,8 @@ class NovaAdaptAgent:
         record_history: bool = True,
         allow_dangerous: bool = False,
         max_actions: int = 25,
+        identity_profile: dict[str, Any] | None = None,
+        bond_verified: bool | None = None,
     ) -> dict[str, Any]:
         messages = [{"role": "system", "content": SYSTEM_PROMPT}]
         memory_context = self.memory_backend.augment(
@@ -62,6 +64,26 @@ class NovaAdaptAgent:
                     "content": (
                         "Relevant long-term memory context for this objective:\n"
                         f"{memory_context}"
+                    ),
+                }
+            )
+        if isinstance(identity_profile, dict) and identity_profile:
+            messages.append(
+                {
+                    "role": "system",
+                    "content": (
+                        "Adapt identity profile context for planning:\n"
+                        f"{json.dumps(identity_profile, ensure_ascii=True)}"
+                    ),
+                }
+            )
+        if bond_verified is not None:
+            messages.append(
+                {
+                    "role": "system",
+                    "content": (
+                        "Soulbond verification status with active player: "
+                        f"{'verified' if bond_verified else 'unverified'}."
                     ),
                 }
             )
