@@ -60,6 +60,14 @@ def get_health(
         checks["memory"] = {"ok": False, "error": str(exc)}
         health_payload["ok"] = False
 
+    try:
+        checks["novaprime"] = service.novaprime_status()
+        if not bool(checks["novaprime"].get("ok", False)) and bool(checks["novaprime"].get("enabled", True)):
+            health_payload["ok"] = False
+    except Exception as exc:
+        checks["novaprime"] = {"ok": False, "error": str(exc)}
+        health_payload["ok"] = False
+
     if include_execution_check:
         try:
             checks["directshell"] = service.directshell_probe()

@@ -14,6 +14,7 @@ from .agent import NovaAdaptAgent
 from .browser_executor import BrowserExecutor
 from .directshell import DirectShellClient
 from .memory import MemoryBackend, build_memory_backend
+from .novaprime import NovaPrimeBackend, build_novaprime_client
 from .plan_store import PlanStore
 from .policy import ActionPolicy
 from .plugins import PluginRegistry, build_plugin_registry
@@ -32,6 +33,7 @@ class NovaAdaptService:
         directshell_factory: Callable[[], DirectShellClient] | None = None,
         browser_executor_factory: Callable[[], BrowserExecutor] | None = None,
         memory_backend: MemoryBackend | None = None,
+        novaprime_client: NovaPrimeBackend | None = None,
         plugin_registry: PluginRegistry | None = None,
     ) -> None:
         self.default_config = default_config
@@ -42,6 +44,7 @@ class NovaAdaptService:
         self.directshell_factory = directshell_factory or DirectShellClient
         self.browser_executor_factory = browser_executor_factory or BrowserExecutor
         self.memory_backend = memory_backend or build_memory_backend()
+        self.novaprime_client = novaprime_client or build_novaprime_client()
         self.plugin_registry = plugin_registry or build_plugin_registry()
         self._plan_store: PlanStore | None = None
         self._audit_store: AuditStore | None = None
@@ -152,6 +155,17 @@ class NovaAdaptService:
             "enabled": True,
             "backend": "unknown",
             "error": "Memory backend returned invalid status payload",
+        }
+
+    def novaprime_status(self) -> dict[str, Any]:
+        status = self.novaprime_client.status()
+        if isinstance(status, dict):
+            return status
+        return {
+            "ok": False,
+            "enabled": True,
+            "backend": "unknown",
+            "error": "NovaPrime client returned invalid status payload",
         }
 
     def memory_recall(self, query: str, *, top_k: int = 10) -> dict[str, Any]:

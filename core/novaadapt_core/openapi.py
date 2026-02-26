@@ -328,6 +328,12 @@ def build_openapi_spec() -> dict:
                     "responses": {"200": {"description": "Memory backend status"}},
                 }
             },
+            "/novaprime/status": {
+                "get": {
+                    "summary": "Get NovaPrime integration backend readiness and configuration",
+                    "responses": {"200": {"description": "NovaPrime backend status"}},
+                }
+            },
             "/memory/recall": {
                 "post": {
                     "summary": "Recall memory entries relevant to a query",

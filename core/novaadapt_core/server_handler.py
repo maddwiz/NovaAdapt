@@ -27,6 +27,7 @@ from . import server_plan_job_routes as plan_job_routes
 from . import server_run_memory_routes as run_memory_routes
 from . import server_admin_routes as admin_routes
 from . import server_memory_routes as memory_routes
+from . import server_novaprime_routes as novaprime_routes
 from . import server_plugin_routes as plugin_routes
 from . import server_idempotency_utils as idempotency_utils
 from . import server_stream_utils as stream_utils
@@ -246,6 +247,9 @@ def _build_handler(
 
         def _get_memory_status(self, _query: dict[str, list[str]]) -> int:
             return memory_routes.get_memory_status(self, service)
+
+        def _get_novaprime_status(self, _query: dict[str, list[str]]) -> int:
+            return novaprime_routes.get_novaprime_status(self, service)
 
         def _get_browser_status(self, _query: dict[str, list[str]]) -> int:
             return terminal_browser_routes.get_browser_status(self, service)

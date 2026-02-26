@@ -219,6 +219,7 @@ API endpoints:
 - `GET /plugins`
 - `GET /plugins/{name}/health`
 - `GET /memory/status`
+- `GET /novaprime/status`
 - `GET /browser/status`
 - `GET /browser/pages`
 - `GET /history?limit=20`

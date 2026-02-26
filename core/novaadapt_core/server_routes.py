@@ -23,6 +23,7 @@ def build_get_private_routes(handler: Any) -> dict[str, Any]:
         "/plans": handler._get_plans,
         "/plugins": handler._get_plugins,
         "/memory/status": handler._get_memory_status,
+        "/novaprime/status": handler._get_novaprime_status,
         "/terminal/sessions": handler._get_terminal_sessions,
         "/browser/status": handler._get_browser_status,
         "/browser/pages": handler._get_browser_pages,

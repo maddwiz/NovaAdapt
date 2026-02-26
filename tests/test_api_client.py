@@ -65,6 +65,9 @@ class _Handler(BaseHTTPRequestHandler):
         if self.path == "/memory/status":
             self._send(200, {"ok": True, "enabled": True, "backend": "novaspine-http"})
             return
+        if self.path == "/novaprime/status":
+            self._send(200, {"ok": True, "enabled": True, "backend": "novaprime-http"})
+            return
         if self.path == "/browser/status":
             self._send(200, {"ok": True, "transport": "browser", "capabilities": ["navigate", "click_selector"]})
             return
@@ -511,6 +514,7 @@ class APIClientTests(unittest.TestCase):
         self.assertTrue(feedback_payload["ok"])
         self.assertEqual(feedback_payload["rating"], 8)
         self.assertTrue(client.memory_status()["ok"])
+        self.assertTrue(client.novaprime_status()["ok"])
         recall_payload = client.memory_recall("excel formatting", top_k=3)
         self.assertEqual(recall_payload["query"], "excel formatting")
         self.assertEqual(recall_payload["count"], 1)

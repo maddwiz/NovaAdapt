@@ -9,6 +9,12 @@
   },
   "models": [
     {
+      "name": "novaprime-dual",
+      "provider": "openai-compatible",
+      "model": "novaprime-dual",
+      "base_url": "http://127.0.0.1:8400/v1"
+    },
+    {
       "name": "local-qwen",
       "provider": "openai-compatible",
       "model": "qwen2.5-vl:latest",

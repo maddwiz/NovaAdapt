@@ -167,6 +167,8 @@ class ServerTests(unittest.TestCase):
                 self.assertTrue(deep_health["checks"]["audit_store"]["ok"])
                 self.assertIn("memory", deep_health["checks"])
                 self.assertIn("ok", deep_health["checks"]["memory"])
+                self.assertIn("novaprime", deep_health["checks"])
+                self.assertIn("ok", deep_health["checks"]["novaprime"])
                 self.assertIn("metrics", deep_health)
 
                 with self.assertRaises(error.HTTPError) as err:
@@ -212,6 +214,7 @@ class ServerTests(unittest.TestCase):
                 self.assertIn("/plugins/{name}/call", openapi["paths"])
                 self.assertIn("/feedback", openapi["paths"])
                 self.assertIn("/memory/status", openapi["paths"])
+                self.assertIn("/novaprime/status", openapi["paths"])
                 self.assertIn("/memory/recall", openapi["paths"])
                 self.assertIn("/memory/ingest", openapi["paths"])
                 self.assertIn("/browser/status", openapi["paths"])
@@ -272,6 +275,10 @@ class ServerTests(unittest.TestCase):
                 memory_status, _ = _get_json_with_headers(f"http://{host}:{port}/memory/status")
                 self.assertIn("ok", memory_status)
                 self.assertIn("backend", memory_status)
+
+                novaprime_status, _ = _get_json_with_headers(f"http://{host}:{port}/novaprime/status")
+                self.assertIn("ok", novaprime_status)
+                self.assertIn("backend", novaprime_status)
 
                 memory_recall, _ = _post_json_with_headers(
                     f"http://{host}:{port}/memory/recall",

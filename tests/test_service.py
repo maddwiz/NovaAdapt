@@ -135,6 +135,11 @@ class _RecordingMemoryBackend:
         return {"count": 1}
 
 
+class _StubNovaPrimeBackend:
+    def status(self):
+        return {"ok": True, "enabled": True, "backend": "novaprime-http"}
+
+
 class _StubPluginRegistry:
     def list_plugins(self):
         return [{"name": "novabridge"}, {"name": "novablox"}]
@@ -585,6 +590,18 @@ class ServiceTests(unittest.TestCase):
             self.assertEqual(executed["status"], "executed")
             self.assertTrue(memory.ingest_calls)
             self.assertTrue(any("novaadapt:plan:" in str(item["source_id"]) for item in memory.ingest_calls))
+
+    def test_novaprime_status_passthrough(self):
+        service = NovaAdaptService(
+            default_config=Path("unused.json"),
+            router_loader=lambda _path: _StubRouter(),
+            directshell_factory=_StubDirectShell,
+            novaprime_client=_StubNovaPrimeBackend(),
+        )
+        status = service.novaprime_status()
+        self.assertTrue(status["ok"])
+        self.assertTrue(status["enabled"])
+        self.assertEqual(status["backend"], "novaprime-http")
 
     def test_plugin_registry_passthrough(self):
         service = NovaAdaptService(

@@ -123,6 +123,12 @@ class NovaAdaptAPIClient:
             return payload
         raise APIClientError("Expected object payload from /memory/status")
 
+    def novaprime_status(self) -> dict[str, Any]:
+        payload = self._get_json("/novaprime/status")
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /novaprime/status")
+
     def memory_recall(self, query: str, top_k: int = 10) -> dict[str, Any]:
         payload = self._post_json(
             "/memory/recall",
