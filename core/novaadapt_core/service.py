@@ -176,6 +176,135 @@ class NovaAdaptService:
             "error": "NovaPrime client returned invalid status payload",
         }
 
+    def novaprime_identity_bond(
+        self,
+        adapt_id: str,
+        player_id: str,
+        *,
+        element: str = "",
+        subclass: str = "",
+    ) -> dict[str, Any]:
+        normalized_adapt = str(adapt_id or "").strip()
+        normalized_player = str(player_id or "").strip()
+        if not normalized_adapt:
+            raise ValueError("'adapt_id' is required")
+        if not normalized_player:
+            raise ValueError("'player_id' is required")
+        result = self.novaprime_client.identity_bond(
+            normalized_adapt,
+            normalized_player,
+            element=str(element or ""),
+            subclass=str(subclass or ""),
+        )
+        if isinstance(result, dict):
+            return result
+        return {"ok": False, "error": "invalid novaprime identity bond response"}
+
+    def novaprime_identity_verify(self, adapt_id: str, player_id: str) -> dict[str, Any]:
+        normalized_adapt = str(adapt_id or "").strip()
+        normalized_player = str(player_id or "").strip()
+        if not normalized_adapt:
+            raise ValueError("'adapt_id' is required")
+        if not normalized_player:
+            raise ValueError("'player_id' is required")
+        verified = bool(self.novaprime_client.identity_verify(normalized_adapt, normalized_player))
+        return {"ok": True, "adapt_id": normalized_adapt, "player_id": normalized_player, "verified": verified}
+
+    def novaprime_identity_profile(self, adapt_id: str) -> dict[str, Any]:
+        normalized_adapt = str(adapt_id or "").strip()
+        if not normalized_adapt:
+            raise ValueError("'adapt_id' is required")
+        profile = self.novaprime_client.identity_profile(normalized_adapt)
+        return {
+            "ok": True,
+            "adapt_id": normalized_adapt,
+            "profile": profile if isinstance(profile, dict) else None,
+            "found": isinstance(profile, dict),
+        }
+
+    def novaprime_identity_evolve(
+        self,
+        adapt_id: str,
+        *,
+        xp_gain: float = 0.0,
+        new_skill: str = "",
+    ) -> dict[str, Any]:
+        normalized_adapt = str(adapt_id or "").strip()
+        if not normalized_adapt:
+            raise ValueError("'adapt_id' is required")
+        result = self.novaprime_client.identity_evolve(
+            normalized_adapt,
+            xp_gain=float(xp_gain),
+            new_skill=str(new_skill or ""),
+        )
+        if isinstance(result, dict):
+            return result
+        return {"ok": False, "error": "invalid novaprime identity evolve response"}
+
+    def novaprime_presence_get(self, adapt_id: str) -> dict[str, Any]:
+        normalized_adapt = str(adapt_id or "").strip()
+        if not normalized_adapt:
+            raise ValueError("'adapt_id' is required")
+        presence = self.novaprime_client.presence_get(normalized_adapt)
+        normalized_presence: dict[str, Any]
+        if isinstance(presence, dict):
+            normalized_presence = presence
+        else:
+            normalized_presence = {
+                "adapt_id": normalized_adapt,
+                "realm": "aetherion",
+                "activity": "idle",
+            }
+        return {
+            "ok": True,
+            "adapt_id": normalized_adapt,
+            "presence": normalized_presence,
+        }
+
+    def novaprime_presence_update(
+        self,
+        adapt_id: str,
+        *,
+        realm: str = "",
+        activity: str = "",
+    ) -> dict[str, Any]:
+        normalized_adapt = str(adapt_id or "").strip()
+        if not normalized_adapt:
+            raise ValueError("'adapt_id' is required")
+        result = self.novaprime_client.presence_update(
+            normalized_adapt,
+            realm=str(realm or ""),
+            activity=str(activity or ""),
+        )
+        if isinstance(result, dict):
+            return result
+        return {"ok": False, "error": "invalid novaprime presence update response"}
+
+    def novaprime_resonance_score(self, player_profile: dict[str, Any]) -> dict[str, Any]:
+        result = self.novaprime_client.resonance_score(player_profile if isinstance(player_profile, dict) else {})
+        if isinstance(result, dict):
+            return result
+        return {"ok": False, "error": "invalid novaprime resonance score response"}
+
+    def novaprime_resonance_bond(
+        self,
+        player_id: str,
+        player_profile: dict[str, Any] | None = None,
+        *,
+        adapt_id: str = "",
+    ) -> dict[str, Any]:
+        normalized_player = str(player_id or "").strip()
+        if not normalized_player:
+            raise ValueError("'player_id' is required")
+        result = self.novaprime_client.resonance_bond(
+            normalized_player,
+            player_profile if isinstance(player_profile, dict) else {},
+            adapt_id=str(adapt_id or ""),
+        )
+        if isinstance(result, dict):
+            return result
+        return {"ok": False, "error": "invalid novaprime resonance bond response"}
+
     def adapt_toggle_get(self, adapt_id: str) -> dict[str, Any]:
         return self.adapt_toggle_store.get(adapt_id)
 
@@ -287,7 +416,10 @@ class NovaAdaptService:
         normalized_player = str(player_id or "").strip()
         if not normalized_player:
             raise ValueError("'player_id' is required")
-        return self._sib().resonance_start(normalized_player, profile=player_profile if isinstance(player_profile, dict) else None)
+        return self._sib().resonance_start(
+            normalized_player,
+            profile=player_profile if isinstance(player_profile, dict) else None,
+        )
 
     def sib_resonance_result(self, player_id: str, adapt_id: str, accepted: bool) -> dict[str, Any]:
         normalized_player = str(player_id or "").strip()

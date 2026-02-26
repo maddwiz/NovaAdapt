@@ -68,6 +68,27 @@ class _Handler(BaseHTTPRequestHandler):
         if self.path == "/novaprime/status":
             self._send(200, {"ok": True, "enabled": True, "backend": "novaprime-http"})
             return
+        if self.path.startswith("/novaprime/identity/profile?"):
+            self._send(
+                200,
+                {
+                    "ok": True,
+                    "adapt_id": "adapt-1",
+                    "found": True,
+                    "profile": {"adapt_id": "adapt-1", "element": "light", "form_stage": "symbiosis"},
+                },
+            )
+            return
+        if self.path.startswith("/novaprime/presence?"):
+            self._send(
+                200,
+                {
+                    "ok": True,
+                    "adapt_id": "adapt-1",
+                    "presence": {"adapt_id": "adapt-1", "realm": "aetherion", "activity": "idle"},
+                },
+            )
+            return
         if self.path == "/sib/status":
             self._send(200, {"ok": True, "plugin": "sib_bridge"})
             return
@@ -229,6 +250,12 @@ class _Handler(BaseHTTPRequestHandler):
             "/plans/plan-1/undo",
             "/plugins/novabridge/call",
             "/feedback",
+            "/novaprime/identity/bond",
+            "/novaprime/identity/verify",
+            "/novaprime/identity/evolve",
+            "/novaprime/presence/update",
+            "/novaprime/resonance/score",
+            "/novaprime/resonance/bond",
             "/sib/realm",
             "/sib/companion/state",
             "/sib/companion/speak",
@@ -303,6 +330,73 @@ class _Handler(BaseHTTPRequestHandler):
                 )
             elif self.path == "/feedback":
                 self._send(200, {"ok": True, "id": "feedback-1", "rating": payload.get("rating")})
+            elif self.path == "/novaprime/identity/bond":
+                self._send(
+                    200,
+                    {
+                        "ok": True,
+                        "bond": {
+                            "adapt_id": payload.get("adapt_id"),
+                            "player_id": payload.get("player_id"),
+                            "element": payload.get("element", "void"),
+                            "subclass": payload.get("subclass", "light"),
+                        },
+                    },
+                )
+            elif self.path == "/novaprime/identity/verify":
+                self._send(
+                    200,
+                    {
+                        "ok": True,
+                        "adapt_id": payload.get("adapt_id"),
+                        "player_id": payload.get("player_id"),
+                        "verified": True,
+                    },
+                )
+            elif self.path == "/novaprime/identity/evolve":
+                self._send(
+                    200,
+                    {
+                        "ok": True,
+                        "profile": {
+                            "adapt_id": payload.get("adapt_id"),
+                            "level": 2,
+                            "skills": [payload.get("new_skill")] if payload.get("new_skill") else [],
+                        },
+                    },
+                )
+            elif self.path == "/novaprime/presence/update":
+                self._send(
+                    200,
+                    {
+                        "ok": True,
+                        "presence": {
+                            "adapt_id": payload.get("adapt_id"),
+                            "realm": payload.get("realm", "aetherion"),
+                            "activity": payload.get("activity", "idle"),
+                        },
+                    },
+                )
+            elif self.path == "/novaprime/resonance/score":
+                self._send(
+                    200,
+                    {
+                        "ok": True,
+                        "chosen_element": "light",
+                        "chosen_subclass": "light",
+                        "scores": {"light": 0.9},
+                    },
+                )
+            elif self.path == "/novaprime/resonance/bond":
+                self._send(
+                    200,
+                    {
+                        "ok": True,
+                        "player_id": payload.get("player_id"),
+                        "adapt_id": payload.get("adapt_id", "") or "adapt-generated",
+                        "resonance": {"element": "light", "subclass": "light"},
+                    },
+                )
             elif self.path.startswith("/sib/"):
                 self._send(
                     200,
@@ -392,7 +486,14 @@ class _Handler(BaseHTTPRequestHandler):
                     },
                 )
             elif self.path == f"/terminal/sessions/{_Handler.terminal_session_id}/input":
-                self._send(200, {"id": _Handler.terminal_session_id, "accepted": True, "bytes": len(payload.get("input", ""))})
+                self._send(
+                    200,
+                    {
+                        "id": _Handler.terminal_session_id,
+                        "accepted": True,
+                        "bytes": len(payload.get("input", "")),
+                    },
+                )
             elif self.path == f"/terminal/sessions/{_Handler.terminal_session_id}/close":
                 self._send(200, {"id": _Handler.terminal_session_id, "closed": True})
             elif self.path == "/undo":
@@ -553,6 +654,19 @@ class APIClientTests(unittest.TestCase):
         self.assertEqual(feedback_payload["rating"], 8)
         self.assertTrue(client.memory_status()["ok"])
         self.assertTrue(client.novaprime_status()["ok"])
+        self.assertTrue(client.novaprime_identity_profile("adapt-1")["ok"])
+        self.assertTrue(client.novaprime_identity_profile("adapt-1")["found"])
+        self.assertTrue(client.novaprime_presence("adapt-1")["ok"])
+        self.assertTrue(client.novaprime_identity_bond("adapt-1", "player-1", element="light", subclass="light")["ok"])
+        self.assertTrue(client.novaprime_identity_verify("adapt-1", "player-1")["verified"])
+        self.assertTrue(client.novaprime_identity_evolve("adapt-1", xp_gain=120, new_skill="storm_slash")["ok"])
+        self.assertTrue(
+            client.novaprime_presence_update("adapt-1", realm="game_world", activity="patrol")["ok"]
+        )
+        self.assertTrue(client.novaprime_resonance_score({"class": "sentinel"})["ok"])
+        self.assertTrue(
+            client.novaprime_resonance_bond("player-1", {"class": "sentinel"}, adapt_id="adapt-1")["ok"]
+        )
         self.assertTrue(client.sib_status()["ok"])
         self.assertEqual(client.sib_realm("player-1", "game_world")["plugin"], "sib_bridge")
         self.assertEqual(

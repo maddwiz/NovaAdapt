@@ -220,6 +220,8 @@ API endpoints:
 - `GET /plugins/{name}/health`
 - `GET /memory/status`
 - `GET /novaprime/status`
+- `GET /novaprime/identity/profile?adapt_id=...`
+- `GET /novaprime/presence?adapt_id=...`
 - `GET /sib/status`
 - `GET /adapt/toggle?adapt_id=...`
 - `GET /adapt/bond?adapt_id=...`
@@ -238,6 +240,12 @@ API endpoints:
 - `POST /swarm/run` with JSON payload (fan out multiple objectives into parallel jobs)
 - `POST /plugins/{name}/call` with JSON payload
 - `POST /feedback` with JSON payload (`rating` 1-10 required)
+- `POST /novaprime/identity/bond` with JSON payload (`adapt_id`, `player_id`, optional `element`, `subclass`)
+- `POST /novaprime/identity/verify` with JSON payload (`adapt_id`, `player_id`)
+- `POST /novaprime/identity/evolve` with JSON payload (`adapt_id`, optional `xp_gain`, `new_skill`)
+- `POST /novaprime/presence/update` with JSON payload (`adapt_id`, optional `realm`, `activity`)
+- `POST /novaprime/resonance/score` with JSON payload (`player_profile` object)
+- `POST /novaprime/resonance/bond` with JSON payload (`player_id`, optional `player_profile`, `adapt_id`)
 - `POST /sib/realm` with JSON payload (`player_id`, `realm`)
 - `POST /sib/companion/state` with JSON payload (`adapt_id`, `state`)
 - `POST /sib/companion/speak` with JSON payload (`adapt_id`, `text`, `channel`)

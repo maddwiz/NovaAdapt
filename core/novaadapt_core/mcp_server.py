@@ -258,6 +258,97 @@ class NovaAdaptMCPServer:
                 input_schema={"type": "object", "properties": {}},
             ),
             MCPTool(
+                name="novaadapt_novaprime_identity_profile",
+                description="Get Adapt identity profile from NovaPrime",
+                input_schema={
+                    "type": "object",
+                    "properties": {"adapt_id": {"type": "string"}},
+                    "required": ["adapt_id"],
+                },
+            ),
+            MCPTool(
+                name="novaadapt_novaprime_presence_get",
+                description="Get Adapt presence (realm/activity) from NovaPrime",
+                input_schema={
+                    "type": "object",
+                    "properties": {"adapt_id": {"type": "string"}},
+                    "required": ["adapt_id"],
+                },
+            ),
+            MCPTool(
+                name="novaadapt_novaprime_identity_bond",
+                description="Create soulbound Adapt-player bond via NovaPrime",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "adapt_id": {"type": "string"},
+                        "player_id": {"type": "string"},
+                        "element": {"type": "string"},
+                        "subclass": {"type": "string"},
+                    },
+                    "required": ["adapt_id", "player_id"],
+                },
+            ),
+            MCPTool(
+                name="novaadapt_novaprime_identity_verify",
+                description="Verify Adapt-player bond via NovaPrime",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "adapt_id": {"type": "string"},
+                        "player_id": {"type": "string"},
+                    },
+                    "required": ["adapt_id", "player_id"],
+                },
+            ),
+            MCPTool(
+                name="novaadapt_novaprime_identity_evolve",
+                description="Apply Adapt XP/skill evolution via NovaPrime",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "adapt_id": {"type": "string"},
+                        "xp_gain": {"type": "number"},
+                        "new_skill": {"type": "string"},
+                    },
+                    "required": ["adapt_id"],
+                },
+            ),
+            MCPTool(
+                name="novaadapt_novaprime_presence_update",
+                description="Update Adapt presence (realm/activity) via NovaPrime",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "adapt_id": {"type": "string"},
+                        "realm": {"type": "string"},
+                        "activity": {"type": "string"},
+                    },
+                    "required": ["adapt_id"],
+                },
+            ),
+            MCPTool(
+                name="novaadapt_novaprime_resonance_score",
+                description="Score player resonance profile through NovaPrime",
+                input_schema={
+                    "type": "object",
+                    "properties": {"player_profile": {"type": "object"}},
+                },
+            ),
+            MCPTool(
+                name="novaadapt_novaprime_resonance_bond",
+                description="Run NovaPrime resonance and bond ceremony",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "player_id": {"type": "string"},
+                        "player_profile": {"type": "object"},
+                        "adapt_id": {"type": "string"},
+                    },
+                    "required": ["player_id"],
+                },
+            ),
+            MCPTool(
                 name="novaadapt_sib_status",
                 description="Get SIB bridge status",
                 input_schema={"type": "object", "properties": {}},
@@ -713,6 +804,70 @@ class NovaAdaptMCPServer:
             return self.service.memory_status()
         if tool_name == "novaadapt_novaprime_status":
             return self.service.novaprime_status()
+        if tool_name == "novaadapt_novaprime_identity_profile":
+            adapt_id = str(arguments.get("adapt_id", "")).strip()
+            if not adapt_id:
+                raise ValueError("'adapt_id' is required")
+            return self.service.novaprime_identity_profile(adapt_id)
+        if tool_name == "novaadapt_novaprime_presence_get":
+            adapt_id = str(arguments.get("adapt_id", "")).strip()
+            if not adapt_id:
+                raise ValueError("'adapt_id' is required")
+            return self.service.novaprime_presence_get(adapt_id)
+        if tool_name == "novaadapt_novaprime_identity_bond":
+            adapt_id = str(arguments.get("adapt_id", "")).strip()
+            player_id = str(arguments.get("player_id", "")).strip()
+            element = str(arguments.get("element", "")).strip()
+            subclass = str(arguments.get("subclass", "")).strip()
+            if not adapt_id:
+                raise ValueError("'adapt_id' is required")
+            if not player_id:
+                raise ValueError("'player_id' is required")
+            return self.service.novaprime_identity_bond(
+                adapt_id,
+                player_id,
+                element=element,
+                subclass=subclass,
+            )
+        if tool_name == "novaadapt_novaprime_identity_verify":
+            adapt_id = str(arguments.get("adapt_id", "")).strip()
+            player_id = str(arguments.get("player_id", "")).strip()
+            if not adapt_id:
+                raise ValueError("'adapt_id' is required")
+            if not player_id:
+                raise ValueError("'player_id' is required")
+            return self.service.novaprime_identity_verify(adapt_id, player_id)
+        if tool_name == "novaadapt_novaprime_identity_evolve":
+            adapt_id = str(arguments.get("adapt_id", "")).strip()
+            if not adapt_id:
+                raise ValueError("'adapt_id' is required")
+            return self.service.novaprime_identity_evolve(
+                adapt_id,
+                xp_gain=float(arguments.get("xp_gain", 0.0)),
+                new_skill=str(arguments.get("new_skill", "")).strip(),
+            )
+        if tool_name == "novaadapt_novaprime_presence_update":
+            adapt_id = str(arguments.get("adapt_id", "")).strip()
+            if not adapt_id:
+                raise ValueError("'adapt_id' is required")
+            return self.service.novaprime_presence_update(
+                adapt_id,
+                realm=str(arguments.get("realm", "")).strip(),
+                activity=str(arguments.get("activity", "")).strip(),
+            )
+        if tool_name == "novaadapt_novaprime_resonance_score":
+            profile = arguments.get("player_profile")
+            return self.service.novaprime_resonance_score(profile if isinstance(profile, dict) else {})
+        if tool_name == "novaadapt_novaprime_resonance_bond":
+            player_id = str(arguments.get("player_id", "")).strip()
+            if not player_id:
+                raise ValueError("'player_id' is required")
+            profile = arguments.get("player_profile")
+            return self.service.novaprime_resonance_bond(
+                player_id,
+                profile if isinstance(profile, dict) else {},
+                adapt_id=str(arguments.get("adapt_id", "")).strip(),
+            )
         if tool_name == "novaadapt_sib_status":
             return self.service.sib_status()
         if tool_name == "novaadapt_sib_realm":
@@ -751,7 +906,10 @@ class NovaAdaptMCPServer:
             player_profile = arguments.get("player_profile")
             if not player_id:
                 raise ValueError("'player_id' is required")
-            return self.service.sib_resonance_start(player_id, player_profile if isinstance(player_profile, dict) else None)
+            return self.service.sib_resonance_start(
+                player_id,
+                player_profile if isinstance(player_profile, dict) else None,
+            )
         if tool_name == "novaadapt_sib_resonance_result":
             player_id = str(arguments.get("player_id", "")).strip()
             adapt_id = str(arguments.get("adapt_id", "")).strip()

@@ -334,6 +334,70 @@ def build_openapi_spec() -> dict:
                     "responses": {"200": {"description": "NovaPrime backend status"}},
                 }
             },
+            "/novaprime/identity/profile": {
+                "get": {
+                    "summary": "Get Adapt identity profile from NovaPrime",
+                    "parameters": [
+                        {
+                            "name": "adapt_id",
+                            "in": "query",
+                            "required": True,
+                            "schema": {"type": "string"},
+                        }
+                    ],
+                    "responses": {"200": {"description": "Identity profile response"}},
+                }
+            },
+            "/novaprime/presence": {
+                "get": {
+                    "summary": "Get Adapt realm/activity presence from NovaPrime",
+                    "parameters": [
+                        {
+                            "name": "adapt_id",
+                            "in": "query",
+                            "required": True,
+                            "schema": {"type": "string"},
+                        }
+                    ],
+                    "responses": {"200": {"description": "Presence response"}},
+                }
+            },
+            "/novaprime/identity/bond": {
+                "post": {
+                    "summary": "Create a soulbound Adapt-player bond via NovaPrime",
+                    "responses": {"200": {"description": "Bond result"}},
+                }
+            },
+            "/novaprime/identity/verify": {
+                "post": {
+                    "summary": "Verify an Adapt-player bond via NovaPrime",
+                    "responses": {"200": {"description": "Bond verification"}},
+                }
+            },
+            "/novaprime/identity/evolve": {
+                "post": {
+                    "summary": "Apply Adapt progression updates via NovaPrime",
+                    "responses": {"200": {"description": "Identity evolution result"}},
+                }
+            },
+            "/novaprime/presence/update": {
+                "post": {
+                    "summary": "Update Adapt realm/activity presence via NovaPrime",
+                    "responses": {"200": {"description": "Presence update result"}},
+                }
+            },
+            "/novaprime/resonance/score": {
+                "post": {
+                    "summary": "Score player resonance profile via NovaPrime",
+                    "responses": {"200": {"description": "Resonance score result"}},
+                }
+            },
+            "/novaprime/resonance/bond": {
+                "post": {
+                    "summary": "Run resonance bonding flow via NovaPrime",
+                    "responses": {"200": {"description": "Resonance bond result"}},
+                }
+            },
             "/sib/status": {
                 "get": {
                     "summary": "Get SIB bridge status",

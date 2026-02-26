@@ -195,6 +195,64 @@ class _StubNovaPrimeBackend:
             },
         }
 
+    def identity_bond(self, adapt_id: str, player_id: str, element: str = "", subclass: str = ""):
+        self.calls.append(
+            {
+                "method": "identity_bond",
+                "adapt_id": adapt_id,
+                "player_id": player_id,
+                "element": element,
+                "subclass": subclass,
+            }
+        )
+        return {
+            "ok": True,
+            "bond": {
+                "adapt_id": adapt_id,
+                "player_id": player_id,
+                "element": element or "void",
+                "subclass": subclass or "light",
+            },
+        }
+
+    def identity_evolve(self, adapt_id: str, xp_gain: float = 0, new_skill: str = ""):
+        self.calls.append(
+            {
+                "method": "identity_evolve",
+                "adapt_id": adapt_id,
+                "xp_gain": xp_gain,
+                "new_skill": new_skill,
+            }
+        )
+        return {
+            "ok": True,
+            "profile": {
+                "adapt_id": adapt_id,
+                "level": 2 if xp_gain else 1,
+                "skills": [new_skill] if new_skill else [],
+            },
+        }
+
+    def resonance_score(self, player_profile: dict[str, object]):
+        self.calls.append({"method": "resonance_score", "player_profile": dict(player_profile)})
+        return {"ok": True, "chosen_element": "light", "chosen_subclass": "light", "scores": {"light": 0.9}}
+
+    def resonance_bond(self, player_id: str, player_profile: dict[str, object], adapt_id: str = ""):
+        self.calls.append(
+            {
+                "method": "resonance_bond",
+                "player_id": player_id,
+                "player_profile": dict(player_profile),
+                "adapt_id": adapt_id,
+            }
+        )
+        return {
+            "ok": True,
+            "player_id": player_id,
+            "adapt_id": adapt_id or "adapt-generated",
+            "resonance": {"element": "light", "subclass": "light"},
+        }
+
 
 class _FailingNovaPrimeBackend:
     def status(self):
@@ -394,7 +452,9 @@ class ServiceTests(unittest.TestCase):
 
             self.assertIsNotNone(router.last_messages)
             identity_msgs = [
-                msg for msg in router.last_messages if "Adapt identity profile context for planning" in str(msg.get("content", ""))
+                msg
+                for msg in router.last_messages
+                if "Adapt identity profile context for planning" in str(msg.get("content", ""))
             ]
             self.assertEqual(len(identity_msgs), 1)
 
@@ -721,6 +781,51 @@ class ServiceTests(unittest.TestCase):
         self.assertTrue(status["ok"])
         self.assertTrue(status["enabled"])
         self.assertEqual(status["backend"], "novaprime-http")
+
+    def test_novaprime_identity_presence_and_resonance_passthrough(self):
+        backend = _StubNovaPrimeBackend()
+        service = NovaAdaptService(
+            default_config=Path("unused.json"),
+            router_loader=lambda _path: _StubRouter(),
+            directshell_factory=_StubDirectShell,
+            novaprime_client=backend,
+        )
+
+        bond = service.novaprime_identity_bond("adapt-1", "player-1", element="fire", subclass="dark")
+        self.assertTrue(bond["ok"])
+        self.assertEqual(bond["bond"]["adapt_id"], "adapt-1")
+
+        verify = service.novaprime_identity_verify("adapt-1", "player-1")
+        self.assertTrue(verify["verified"])
+
+        profile = service.novaprime_identity_profile("adapt-1")
+        self.assertTrue(profile["found"])
+        self.assertEqual(profile["profile"]["adapt_id"], "adapt-1")
+
+        evolve = service.novaprime_identity_evolve("adapt-1", xp_gain=120, new_skill="storm_slash")
+        self.assertTrue(evolve["ok"])
+
+        presence = service.novaprime_presence_get("adapt-1")
+        self.assertEqual(presence["presence"]["adapt_id"], "adapt-1")
+
+        presence_update = service.novaprime_presence_update("adapt-1", realm="game_world", activity="patrol")
+        self.assertTrue(presence_update["ok"])
+
+        resonance_score = service.novaprime_resonance_score({"class": "sentinel"})
+        self.assertTrue(resonance_score["ok"])
+
+        resonance_bond = service.novaprime_resonance_bond("player-1", {"class": "sentinel"}, adapt_id="adapt-1")
+        self.assertTrue(resonance_bond["ok"])
+
+        method_names = [str(item.get("method")) for item in backend.calls]
+        self.assertIn("identity_bond", method_names)
+        self.assertIn("identity_verify", method_names)
+        self.assertIn("identity_profile", method_names)
+        self.assertIn("identity_evolve", method_names)
+        self.assertIn("presence_get", method_names)
+        self.assertIn("presence_update", method_names)
+        self.assertIn("resonance_score", method_names)
+        self.assertIn("resonance_bond", method_names)
 
     def test_adapt_toggle_set_and_get(self):
         with tempfile.TemporaryDirectory() as tmp:

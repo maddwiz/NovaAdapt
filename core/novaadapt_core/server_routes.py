@@ -24,6 +24,8 @@ def build_get_private_routes(handler: Any) -> dict[str, Any]:
         "/plugins": handler._get_plugins,
         "/memory/status": handler._get_memory_status,
         "/novaprime/status": handler._get_novaprime_status,
+        "/novaprime/identity/profile": handler._get_novaprime_identity_profile,
+        "/novaprime/presence": handler._get_novaprime_presence,
         "/sib/status": handler._get_sib_status,
         "/adapt/toggle": handler._get_adapt_toggle,
         "/adapt/bond": handler._get_adapt_bond,
@@ -60,6 +62,24 @@ def build_post_exact_routes(handler: Any) -> dict[str, Any]:
         "/sib/phase-event": lambda body: handler._post_sib_phase_event("/sib/phase-event", body),
         "/sib/resonance/start": lambda body: handler._post_sib_resonance_start("/sib/resonance/start", body),
         "/sib/resonance/result": lambda body: handler._post_sib_resonance_result("/sib/resonance/result", body),
+        "/novaprime/identity/bond": lambda body: handler._post_novaprime_identity_bond(
+            "/novaprime/identity/bond", body
+        ),
+        "/novaprime/identity/verify": lambda body: handler._post_novaprime_identity_verify(
+            "/novaprime/identity/verify", body
+        ),
+        "/novaprime/identity/evolve": lambda body: handler._post_novaprime_identity_evolve(
+            "/novaprime/identity/evolve", body
+        ),
+        "/novaprime/presence/update": lambda body: handler._post_novaprime_presence_update(
+            "/novaprime/presence/update", body
+        ),
+        "/novaprime/resonance/score": lambda body: handler._post_novaprime_resonance_score(
+            "/novaprime/resonance/score", body
+        ),
+        "/novaprime/resonance/bond": lambda body: handler._post_novaprime_resonance_bond(
+            "/novaprime/resonance/bond", body
+        ),
         "/adapt/toggle": lambda body: handler._post_adapt_toggle("/adapt/toggle", body),
         "/memory/recall": lambda body: handler._post_memory_recall("/memory/recall", body),
         "/memory/ingest": lambda body: handler._post_memory_ingest("/memory/ingest", body),
@@ -105,6 +125,12 @@ def is_idempotent_route(path: str) -> bool:
         "/sib/phase-event",
         "/sib/resonance/start",
         "/sib/resonance/result",
+        "/novaprime/identity/bond",
+        "/novaprime/identity/verify",
+        "/novaprime/identity/evolve",
+        "/novaprime/presence/update",
+        "/novaprime/resonance/score",
+        "/novaprime/resonance/bond",
     }:
         return True
     if path in {"/adapt/toggle"}:

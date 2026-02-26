@@ -129,6 +129,138 @@ class NovaAdaptAPIClient:
             return payload
         raise APIClientError("Expected object payload from /novaprime/status")
 
+    def novaprime_identity_profile(self, adapt_id: str) -> dict[str, Any]:
+        payload = self._get_json(f"/novaprime/identity/profile?adapt_id={quote(str(adapt_id), safe='')}")
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /novaprime/identity/profile")
+
+    def novaprime_presence(self, adapt_id: str) -> dict[str, Any]:
+        payload = self._get_json(f"/novaprime/presence?adapt_id={quote(str(adapt_id), safe='')}")
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /novaprime/presence")
+
+    def novaprime_identity_bond(
+        self,
+        adapt_id: str,
+        player_id: str,
+        *,
+        element: str = "",
+        subclass: str = "",
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        payload = self._post_json(
+            "/novaprime/identity/bond",
+            {
+                "adapt_id": str(adapt_id or ""),
+                "player_id": str(player_id or ""),
+                "element": str(element or ""),
+                "subclass": str(subclass or ""),
+            },
+            idempotency_key=idempotency_key,
+        )
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /novaprime/identity/bond")
+
+    def novaprime_identity_verify(
+        self,
+        adapt_id: str,
+        player_id: str,
+        *,
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        payload = self._post_json(
+            "/novaprime/identity/verify",
+            {
+                "adapt_id": str(adapt_id or ""),
+                "player_id": str(player_id or ""),
+            },
+            idempotency_key=idempotency_key,
+        )
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /novaprime/identity/verify")
+
+    def novaprime_identity_evolve(
+        self,
+        adapt_id: str,
+        *,
+        xp_gain: float = 0.0,
+        new_skill: str = "",
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        payload = self._post_json(
+            "/novaprime/identity/evolve",
+            {
+                "adapt_id": str(adapt_id or ""),
+                "xp_gain": float(xp_gain),
+                "new_skill": str(new_skill or ""),
+            },
+            idempotency_key=idempotency_key,
+        )
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /novaprime/identity/evolve")
+
+    def novaprime_presence_update(
+        self,
+        adapt_id: str,
+        *,
+        realm: str = "",
+        activity: str = "",
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        payload = self._post_json(
+            "/novaprime/presence/update",
+            {
+                "adapt_id": str(adapt_id or ""),
+                "realm": str(realm or ""),
+                "activity": str(activity or ""),
+            },
+            idempotency_key=idempotency_key,
+        )
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /novaprime/presence/update")
+
+    def novaprime_resonance_score(
+        self,
+        player_profile: dict[str, Any] | None = None,
+        *,
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        payload = self._post_json(
+            "/novaprime/resonance/score",
+            {"player_profile": player_profile if isinstance(player_profile, dict) else {}},
+            idempotency_key=idempotency_key,
+        )
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /novaprime/resonance/score")
+
+    def novaprime_resonance_bond(
+        self,
+        player_id: str,
+        player_profile: dict[str, Any] | None = None,
+        *,
+        adapt_id: str = "",
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        payload = self._post_json(
+            "/novaprime/resonance/bond",
+            {
+                "player_id": str(player_id or ""),
+                "player_profile": player_profile if isinstance(player_profile, dict) else {},
+                "adapt_id": str(adapt_id or ""),
+            },
+            idempotency_key=idempotency_key,
+        )
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /novaprime/resonance/bond")
+
     def sib_status(self) -> dict[str, Any]:
         payload = self._get_json("/sib/status")
         if isinstance(payload, dict):

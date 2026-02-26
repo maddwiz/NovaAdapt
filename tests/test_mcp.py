@@ -89,6 +89,69 @@ class _StubService:
     def novaprime_status(self):
         return {"ok": True, "enabled": True, "backend": "novaprime-http"}
 
+    def novaprime_identity_profile(self, adapt_id: str):
+        return {
+            "ok": True,
+            "adapt_id": adapt_id,
+            "found": True,
+            "profile": {"adapt_id": adapt_id, "element": "light"},
+        }
+
+    def novaprime_presence_get(self, adapt_id: str):
+        return {
+            "ok": True,
+            "adapt_id": adapt_id,
+            "presence": {
+                "adapt_id": adapt_id,
+                "realm": "aetherion",
+                "activity": "idle",
+            },
+        }
+
+    def novaprime_identity_bond(self, adapt_id: str, player_id: str, *, element: str = "", subclass: str = ""):
+        return {
+            "ok": True,
+            "bond": {
+                "adapt_id": adapt_id,
+                "player_id": player_id,
+                "element": element or "void",
+                "subclass": subclass or "light",
+            },
+        }
+
+    def novaprime_identity_verify(self, adapt_id: str, player_id: str):
+        return {"ok": True, "adapt_id": adapt_id, "player_id": player_id, "verified": True}
+
+    def novaprime_identity_evolve(self, adapt_id: str, *, xp_gain: float = 0.0, new_skill: str = ""):
+        return {"ok": True, "adapt_id": adapt_id, "xp_gain": xp_gain, "new_skill": new_skill}
+
+    def novaprime_presence_update(self, adapt_id: str, *, realm: str = "", activity: str = ""):
+        return {
+            "ok": True,
+            "presence": {
+                "adapt_id": adapt_id,
+                "realm": realm or "aetherion",
+                "activity": activity or "idle",
+            },
+        }
+
+    def novaprime_resonance_score(self, player_profile: dict):
+        _ = player_profile
+        return {
+            "ok": True,
+            "scores": {"light": 0.9},
+            "chosen_element": "light",
+            "chosen_subclass": "light",
+        }
+
+    def novaprime_resonance_bond(self, player_id: str, player_profile: dict | None = None, *, adapt_id: str = ""):
+        return {
+            "ok": True,
+            "player_id": player_id,
+            "adapt_id": adapt_id or "adapt-generated",
+            "resonance": {"element": "light", "subclass": "light"},
+        }
+
     def sib_status(self):
         return {"ok": True, "plugin": "sib_bridge"}
 
@@ -168,6 +231,14 @@ class MCPServerTests(unittest.TestCase):
         self.assertIn("novaadapt_feedback", names)
         self.assertIn("novaadapt_memory_status", names)
         self.assertIn("novaadapt_novaprime_status", names)
+        self.assertIn("novaadapt_novaprime_identity_profile", names)
+        self.assertIn("novaadapt_novaprime_presence_get", names)
+        self.assertIn("novaadapt_novaprime_identity_bond", names)
+        self.assertIn("novaadapt_novaprime_identity_verify", names)
+        self.assertIn("novaadapt_novaprime_identity_evolve", names)
+        self.assertIn("novaadapt_novaprime_presence_update", names)
+        self.assertIn("novaadapt_novaprime_resonance_score", names)
+        self.assertIn("novaadapt_novaprime_resonance_bond", names)
         self.assertIn("novaadapt_sib_status", names)
         self.assertIn("novaadapt_sib_realm", names)
         self.assertIn("novaadapt_sib_companion_state", names)
@@ -406,6 +477,118 @@ class MCPServerTests(unittest.TestCase):
         )
         novaprime_status_payload = novaprime_status_resp["result"]["content"][0]["json"]
         self.assertTrue(novaprime_status_payload["ok"])
+
+        novaprime_profile_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 91101,
+                "method": "tools/call",
+                "params": {
+                    "name": "novaadapt_novaprime_identity_profile",
+                    "arguments": {"adapt_id": "adapt-1"},
+                },
+            }
+        )
+        novaprime_profile_payload = novaprime_profile_resp["result"]["content"][0]["json"]
+        self.assertTrue(novaprime_profile_payload["found"])
+
+        novaprime_presence_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 91102,
+                "method": "tools/call",
+                "params": {
+                    "name": "novaadapt_novaprime_presence_get",
+                    "arguments": {"adapt_id": "adapt-1"},
+                },
+            }
+        )
+        novaprime_presence_payload = novaprime_presence_resp["result"]["content"][0]["json"]
+        self.assertEqual(novaprime_presence_payload["presence"]["realm"], "aetherion")
+
+        novaprime_bond_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 91103,
+                "method": "tools/call",
+                "params": {
+                    "name": "novaadapt_novaprime_identity_bond",
+                    "arguments": {"adapt_id": "adapt-1", "player_id": "player-1"},
+                },
+            }
+        )
+        novaprime_bond_payload = novaprime_bond_resp["result"]["content"][0]["json"]
+        self.assertTrue(novaprime_bond_payload["ok"])
+
+        novaprime_verify_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 91104,
+                "method": "tools/call",
+                "params": {
+                    "name": "novaadapt_novaprime_identity_verify",
+                    "arguments": {"adapt_id": "adapt-1", "player_id": "player-1"},
+                },
+            }
+        )
+        novaprime_verify_payload = novaprime_verify_resp["result"]["content"][0]["json"]
+        self.assertTrue(novaprime_verify_payload["verified"])
+
+        novaprime_evolve_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 91105,
+                "method": "tools/call",
+                "params": {
+                    "name": "novaadapt_novaprime_identity_evolve",
+                    "arguments": {"adapt_id": "adapt-1", "xp_gain": 120, "new_skill": "storm_slash"},
+                },
+            }
+        )
+        novaprime_evolve_payload = novaprime_evolve_resp["result"]["content"][0]["json"]
+        self.assertEqual(novaprime_evolve_payload["adapt_id"], "adapt-1")
+
+        novaprime_presence_update_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 91106,
+                "method": "tools/call",
+                "params": {
+                    "name": "novaadapt_novaprime_presence_update",
+                    "arguments": {"adapt_id": "adapt-1", "realm": "game_world", "activity": "patrol"},
+                },
+            }
+        )
+        novaprime_presence_update_payload = novaprime_presence_update_resp["result"]["content"][0]["json"]
+        self.assertEqual(novaprime_presence_update_payload["presence"]["realm"], "game_world")
+
+        novaprime_resonance_score_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 91107,
+                "method": "tools/call",
+                "params": {
+                    "name": "novaadapt_novaprime_resonance_score",
+                    "arguments": {"player_profile": {"class": "sentinel"}},
+                },
+            }
+        )
+        novaprime_resonance_score_payload = novaprime_resonance_score_resp["result"]["content"][0]["json"]
+        self.assertEqual(novaprime_resonance_score_payload["chosen_element"], "light")
+
+        novaprime_resonance_bond_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 91108,
+                "method": "tools/call",
+                "params": {
+                    "name": "novaadapt_novaprime_resonance_bond",
+                    "arguments": {"player_id": "player-1", "adapt_id": "adapt-1"},
+                },
+            }
+        )
+        novaprime_resonance_bond_payload = novaprime_resonance_bond_resp["result"]["content"][0]["json"]
+        self.assertEqual(novaprime_resonance_bond_payload["adapt_id"], "adapt-1")
 
         sib_status_resp = server.handle_request(
             {

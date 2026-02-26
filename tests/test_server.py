@@ -215,6 +215,14 @@ class ServerTests(unittest.TestCase):
                 self.assertIn("/feedback", openapi["paths"])
                 self.assertIn("/memory/status", openapi["paths"])
                 self.assertIn("/novaprime/status", openapi["paths"])
+                self.assertIn("/novaprime/identity/profile", openapi["paths"])
+                self.assertIn("/novaprime/presence", openapi["paths"])
+                self.assertIn("/novaprime/identity/bond", openapi["paths"])
+                self.assertIn("/novaprime/identity/verify", openapi["paths"])
+                self.assertIn("/novaprime/identity/evolve", openapi["paths"])
+                self.assertIn("/novaprime/presence/update", openapi["paths"])
+                self.assertIn("/novaprime/resonance/score", openapi["paths"])
+                self.assertIn("/novaprime/resonance/bond", openapi["paths"])
                 self.assertIn("/sib/status", openapi["paths"])
                 self.assertIn("/sib/realm", openapi["paths"])
                 self.assertIn("/sib/companion/state", openapi["paths"])
@@ -288,6 +296,55 @@ class ServerTests(unittest.TestCase):
                 novaprime_status, _ = _get_json_with_headers(f"http://{host}:{port}/novaprime/status")
                 self.assertIn("ok", novaprime_status)
                 self.assertIn("backend", novaprime_status)
+
+                novaprime_profile, _ = _get_json_with_headers(
+                    f"http://{host}:{port}/novaprime/identity/profile?adapt_id=adapt-1"
+                )
+                self.assertTrue(novaprime_profile["ok"])
+                self.assertEqual(novaprime_profile["adapt_id"], "adapt-1")
+
+                novaprime_presence, _ = _get_json_with_headers(
+                    f"http://{host}:{port}/novaprime/presence?adapt_id=adapt-1"
+                )
+                self.assertTrue(novaprime_presence["ok"])
+                self.assertEqual(novaprime_presence["adapt_id"], "adapt-1")
+
+                novaprime_bond, _ = _post_json_with_headers(
+                    f"http://{host}:{port}/novaprime/identity/bond",
+                    {"adapt_id": "adapt-1", "player_id": "player-1", "element": "light", "subclass": "light"},
+                )
+                self.assertIn("ok", novaprime_bond)
+
+                novaprime_verify, _ = _post_json_with_headers(
+                    f"http://{host}:{port}/novaprime/identity/verify",
+                    {"adapt_id": "adapt-1", "player_id": "player-1"},
+                )
+                self.assertTrue(novaprime_verify["ok"])
+                self.assertIn("verified", novaprime_verify)
+
+                novaprime_evolve, _ = _post_json_with_headers(
+                    f"http://{host}:{port}/novaprime/identity/evolve",
+                    {"adapt_id": "adapt-1", "xp_gain": 150, "new_skill": "storm_slash"},
+                )
+                self.assertIn("ok", novaprime_evolve)
+
+                novaprime_presence_update, _ = _post_json_with_headers(
+                    f"http://{host}:{port}/novaprime/presence/update",
+                    {"adapt_id": "adapt-1", "realm": "game_world", "activity": "patrol"},
+                )
+                self.assertIn("ok", novaprime_presence_update)
+
+                novaprime_resonance_score, _ = _post_json_with_headers(
+                    f"http://{host}:{port}/novaprime/resonance/score",
+                    {"player_profile": {"class": "sentinel"}},
+                )
+                self.assertIn("ok", novaprime_resonance_score)
+
+                novaprime_resonance_bond, _ = _post_json_with_headers(
+                    f"http://{host}:{port}/novaprime/resonance/bond",
+                    {"player_id": "player-1", "player_profile": {"class": "sentinel"}, "adapt_id": "adapt-1"},
+                )
+                self.assertIn("ok", novaprime_resonance_bond)
 
                 sib_status, _ = _get_json_with_headers(f"http://{host}:{port}/sib/status")
                 self.assertEqual(sib_status["plugin"], "sib_bridge")

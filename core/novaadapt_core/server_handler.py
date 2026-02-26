@@ -253,6 +253,12 @@ def _build_handler(
         def _get_novaprime_status(self, _query: dict[str, list[str]]) -> int:
             return novaprime_routes.get_novaprime_status(self, service)
 
+        def _get_novaprime_identity_profile(self, query: dict[str, list[str]]) -> int:
+            return novaprime_routes.get_novaprime_identity_profile(self, service, _single, query)
+
+        def _get_novaprime_presence(self, query: dict[str, list[str]]) -> int:
+            return novaprime_routes.get_novaprime_presence(self, service, _single, query)
+
         def _get_sib_status(self, _query: dict[str, list[str]]) -> int:
             return sib_routes.get_sib_status(self, service)
 
@@ -356,6 +362,24 @@ def _build_handler(
 
         def _post_sib_resonance_result(self, _path: str, payload: dict[str, object]) -> int:
             return sib_routes.post_sib_resonance_result(self, service, payload)
+
+        def _post_novaprime_identity_bond(self, _path: str, payload: dict[str, object]) -> int:
+            return novaprime_routes.post_novaprime_identity_bond(self, service, payload)
+
+        def _post_novaprime_identity_verify(self, _path: str, payload: dict[str, object]) -> int:
+            return novaprime_routes.post_novaprime_identity_verify(self, service, payload)
+
+        def _post_novaprime_identity_evolve(self, _path: str, payload: dict[str, object]) -> int:
+            return novaprime_routes.post_novaprime_identity_evolve(self, service, payload)
+
+        def _post_novaprime_presence_update(self, _path: str, payload: dict[str, object]) -> int:
+            return novaprime_routes.post_novaprime_presence_update(self, service, payload)
+
+        def _post_novaprime_resonance_score(self, _path: str, payload: dict[str, object]) -> int:
+            return novaprime_routes.post_novaprime_resonance_score(self, service, payload)
+
+        def _post_novaprime_resonance_bond(self, _path: str, payload: dict[str, object]) -> int:
+            return novaprime_routes.post_novaprime_resonance_bond(self, service, payload)
 
         def _post_memory_recall(self, _path: str, payload: dict[str, object]) -> int:
             return memory_routes.post_memory_recall(self, service, payload)
