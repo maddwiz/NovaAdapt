@@ -41,6 +41,72 @@ jobs:
         run: |
           make smoke
 
+  native-runtime:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Run native/runtime transport tests
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os
+          import subprocess
+          import sys
+
+          env = dict(os.environ)
+          sep = ';' if os.name == 'nt' else ':'
+          env['PYTHONPATH'] = f'core{sep}shared'
+
+          test_patterns = [
+              'test_native_executor.py',
+              'test_browser_executor.py',
+              'test_directshell.py',
+              'test_native_http.py',
+              'test_native_daemon.py',
+          ]
+          for pattern in test_patterns:
+              subprocess.check_call(
+                  [sys.executable, '-m', 'unittest', 'discover', '-s', 'tests', '-p', pattern, '-v'],
+                  env=env,
+              )
+          PY
+
+      - name: Run native runtime smoke test (HTTP + daemon)
+        shell: bash
+        run: |
+          python scripts/smoke_runtime.py
+
+  browser-runtime:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install browser deps
+        run: |
+          pip install -e '.[browser]'
+          python -m playwright install --with-deps chromium
+
+      - name: Run browser smoke test
+        run: |
+          NOVAADAPT_SMOKE_BROWSER_REQUIRED=1 ./scripts/smoke_browser.sh
+
   clients:
     runs-on: macos-latest
     steps:
@@ -58,3 +124,31 @@ jobs:
       - name: Run desktop/mobile source checks
         run: |
           ./scripts/check_clients.sh
+
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache-dependency-path: bridge/go.sum
+
+      - name: Build release artifacts
+        run: |
+          make release-artifacts
+
+      - name: Upload release artifact bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-release-artifacts
+          path: |
+            dist/*

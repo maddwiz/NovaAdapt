@@ -1,6 +1,6 @@
 PYTHONPATH := core:shared
 
-.PHONY: test test-py test-go test-clients build-bridge smoke run-local release-artifacts rotate-tokens-dry-run
+.PHONY: test test-py test-go test-clients build-bridge smoke smoke-browser run-local release-artifacts rotate-tokens-dry-run
 
 test: test-py test-go
 
@@ -19,6 +19,10 @@ build-bridge:
 smoke:
 	./scripts/smoke_bridge.sh
 	./scripts/smoke_runtime.sh
+	./scripts/smoke_browser.sh
+
+smoke-browser:
+	./scripts/smoke_browser.sh
 
 run-local:
 	./installer/run_local_operator_stack.sh

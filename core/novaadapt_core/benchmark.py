@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from dataclasses import dataclass
 from pathlib import Path
 from statistics import mean
@@ -227,3 +228,103 @@ def compare_benchmark_reports(
         "table": rows,
         "deltas": deltas,
     }
+
+
+def render_benchmark_comparison_markdown(
+    report: dict[str, Any],
+    *,
+    title: str = "NovaAdapt Benchmark Comparison",
+) -> str:
+    summary = report.get("summary")
+    if not isinstance(summary, dict):
+        raise ValueError("comparison report missing summary object")
+    table = report.get("table")
+    if not isinstance(table, list):
+        raise ValueError("comparison report missing table rows")
+
+    primary = str(summary.get("primary", "NovaAdapt")).strip() or "NovaAdapt"
+    ranked_by = str(summary.get("ranked_by", "success_rate")).strip() or "success_rate"
+    competitors_raw = summary.get("competitors")
+    competitors = competitors_raw if isinstance(competitors_raw, list) else []
+    generated_at = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+    def _as_int(value: Any) -> int:
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return 0
+
+    def _as_float(value: Any) -> float:
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return 0.0
+
+    primary_success = 0.0
+    for row in table:
+        if not isinstance(row, dict):
+            continue
+        name = str(row.get("name", "")).strip()
+        if name == primary:
+            primary_success = _as_float(row.get("success_rate", 0.0))
+            break
+
+    lines = [
+        f"# {title}",
+        "",
+        f"Generated: {generated_at}",
+        "",
+        f"- Primary: `{primary}`",
+        f"- Ranked by: `{ranked_by}`",
+    ]
+    if competitors:
+        lines.append("- Competitors: " + ", ".join(f"`{str(item)}`" for item in competitors))
+    lines.extend(
+        [
+            "",
+            "| Rank | System | Success | First-Try | Passed/Total | Failed | Avg Actions | Blocked | Delta vs Primary |",
+            "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+        ]
+    )
+
+    for index, row in enumerate(table, start=1):
+        if not isinstance(row, dict):
+            continue
+        name = str(row.get("name", "")).strip() or f"row-{index}"
+        total = max(0, _as_int(row.get("total", 0)))
+        passed = max(0, _as_int(row.get("passed", 0)))
+        failed = max(0, _as_int(row.get("failed", 0)))
+        blocked = max(0, _as_int(row.get("blocked_count", 0)))
+        success_rate = _as_float(row.get("success_rate", 0.0))
+        first_try_rate = _as_float(row.get("first_try_success_rate", 0.0))
+        avg_actions = _as_float(row.get("avg_action_count", 0.0))
+        delta_pp = (success_rate - primary_success) * 100.0
+        delta_text = f"{delta_pp:+.2f} pp" if name != primary else "0.00 pp"
+
+        lines.append(
+            "| "
+            f"{index} | "
+            f"{name} | "
+            f"{success_rate * 100:.2f}% | "
+            f"{first_try_rate * 100:.2f}% | "
+            f"{passed}/{total} | "
+            f"{failed} | "
+            f"{avg_actions:.3f} | "
+            f"{blocked} | "
+            f"{delta_text} |"
+        )
+
+    lines.append("")
+    return "\n".join(lines)
+
+
+def write_benchmark_comparison_markdown(
+    report: dict[str, Any],
+    output_path: str | Path,
+    *,
+    title: str = "NovaAdapt Benchmark Comparison",
+) -> Path:
+    path = Path(output_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(render_benchmark_comparison_markdown(report, title=title), encoding="utf-8")
+    return path

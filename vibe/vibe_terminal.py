@@ -23,6 +23,17 @@ def _env_int(key: str, fallback: int) -> int:
         return fallback
 
 
+def _env_bool(key: str, fallback: bool) -> bool:
+    raw = os.getenv(key, "").strip().lower()
+    if not raw:
+        return fallback
+    if raw in {"1", "true", "yes", "on"}:
+        return True
+    if raw in {"0", "false", "no", "off"}:
+        return False
+    return fallback
+
+
 def _parse_scopes(raw: str) -> list[str]:
     scopes = [item.strip() for item in raw.split(",") if item.strip()]
     if not scopes:
@@ -70,6 +81,12 @@ def _build_parser() -> argparse.ArgumentParser:
         "--session-subject",
         default=os.getenv("NOVAADAPT_BRIDGE_SESSION_SUBJECT", "vibe-terminal"),
         help="Subject used when issuing session token from --admin-token",
+    )
+    parser.add_argument(
+        "--ensure-device-allowlisted",
+        action="store_true",
+        default=_env_bool("NOVAADAPT_BRIDGE_ENSURE_DEVICE_ALLOWLISTED", False),
+        help="When using --admin-token, pre-add --session-device-id into bridge allowlist before issuing session",
     )
     parser.add_argument(
         "--no-revoke-session",
@@ -140,6 +157,7 @@ def _build_runtime_client(
     session_ttl: int,
     session_device_id: str | None,
     session_subject: str | None,
+    ensure_device_allowlisted: bool,
 ) -> tuple[NovaAdaptAPIClient, NovaAdaptAPIClient | None, str | None, dict[str, Any] | None]:
     direct_token = (token or "").strip()
     admin = (admin_token or "").strip()
@@ -152,10 +170,15 @@ def _build_runtime_client(
             max_retries=1,
             retry_backoff_seconds=0.25,
         )
+        normalized_device_id = (session_device_id or "").strip() or None
+        if ensure_device_allowlisted:
+            if not normalized_device_id:
+                raise ValueError("--ensure-device-allowlisted requires --session-device-id")
+            admin_client.add_allowed_device(normalized_device_id)
         issued = admin_client.issue_session_token(
             scopes=session_scopes,
             subject=(session_subject or "").strip() or "vibe-terminal",
-            device_id=(session_device_id or "").strip() or None,
+            device_id=normalized_device_id,
             ttl_seconds=max(60, int(session_ttl)),
         )
         leased_token = str(issued.get("token", "")).strip()
@@ -234,6 +257,7 @@ def main() -> int:
             session_ttl=int(args.session_ttl),
             session_device_id=args.session_device_id,
             session_subject=args.session_subject,
+            ensure_device_allowlisted=bool(args.ensure_device_allowlisted),
         )
     except (APIClientError, ValueError) as exc:
         print(json.dumps({"ok": False, "error": str(exc)}, indent=2))

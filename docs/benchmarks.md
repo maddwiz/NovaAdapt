@@ -30,7 +30,9 @@ PYTHONPATH=core:shared python3 -m novaadapt_core.cli benchmark-compare \
   --baseline OpenClaw=results/benchmark.openclaw.json \
   --baseline ClaudeComputerUse=results/benchmark.claude-computer-use.json \
   --baseline UITARS=results/benchmark.ui-tars.json \
-  --out results/benchmark.compare.json
+  --out results/benchmark.compare.json \
+  --out-md results/benchmark.compare.md \
+  --md-title "NovaAdapt Reliability Benchmark"
 ```
 
 The command outputs:
@@ -42,4 +44,8 @@ The command outputs:
 
 ## 4) Publish Table
 
-Use the generated `results/benchmark.compare.json` as the source of truth for README/blog/social benchmark claims.
+`benchmark-compare --out-md` writes a publication-ready Markdown table with rank, success metrics, and delta vs primary.
+Use generated outputs as source of truth for README/blog/social benchmark claims:
+
+- `results/benchmark.compare.json`
+- `results/benchmark.compare.md`

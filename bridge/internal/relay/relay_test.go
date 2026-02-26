@@ -199,6 +199,28 @@ func TestForwardArrayWithAuthAndRequestID(t *testing.T) {
 			_, _ = w.Write([]byte(`{"query":"test","top_k":5,"count":1,"memories":[{"content":"remembered"}]}`))
 		case "/memory/ingest":
 			_, _ = w.Write([]byte(`{"ok":true,"source_id":"bridge-test"}`))
+		case "/browser/status":
+			_, _ = w.Write([]byte(`{"ok":true,"transport":"browser","capabilities":["navigate","click_selector"]}`))
+		case "/browser/pages":
+			_, _ = w.Write([]byte(`{"status":"ok","count":1,"current_page_id":"page-1","pages":[{"page_id":"page-1","url":"https://example.com","current":true}]}`))
+		case "/browser/action":
+			_, _ = w.Write([]byte(`{"status":"ok","output":"browser action","action":{"type":"navigate"}}`))
+		case "/browser/navigate":
+			_, _ = w.Write([]byte(`{"status":"ok","output":"navigated","data":{"url":"https://example.com"}}`))
+		case "/browser/click":
+			_, _ = w.Write([]byte(`{"status":"ok","output":"clicked"}`))
+		case "/browser/fill":
+			_, _ = w.Write([]byte(`{"status":"ok","output":"filled"}`))
+		case "/browser/extract_text":
+			_, _ = w.Write([]byte(`{"status":"ok","output":"text extracted","data":{"text":"hello"}}`))
+		case "/browser/screenshot":
+			_, _ = w.Write([]byte(`{"status":"ok","output":"saved","data":{"path":"/tmp/shot.png"}}`))
+		case "/browser/wait_for_selector":
+			_, _ = w.Write([]byte(`{"status":"ok","output":"ready"}`))
+		case "/browser/evaluate_js":
+			_, _ = w.Write([]byte(`{"status":"ok","output":"script evaluated","data":{"result":42}}`))
+		case "/browser/close":
+			_, _ = w.Write([]byte(`{"status":"ok","output":"browser session closed"}`))
 		case "/terminal/sessions":
 			if r.Method == http.MethodGet {
 				_, _ = w.Write([]byte(`[{"id":"term1","open":true}]`))
@@ -477,6 +499,45 @@ func TestForwardArrayWithAuthAndRequestID(t *testing.T) {
 		t.Fatalf("expected 200 got %d body=%s", rrMemoryIngest.Code, rrMemoryIngest.Body.String())
 	}
 
+	rrBrowserStatus := httptest.NewRecorder()
+	reqBrowserStatus := httptest.NewRequest(http.MethodGet, "/browser/status", nil)
+	reqBrowserStatus.Header.Set("Authorization", "Bearer bridge")
+	h.ServeHTTP(rrBrowserStatus, reqBrowserStatus)
+	if rrBrowserStatus.Code != http.StatusOK {
+		t.Fatalf("expected 200 got %d body=%s", rrBrowserStatus.Code, rrBrowserStatus.Body.String())
+	}
+
+	rrBrowserPages := httptest.NewRecorder()
+	reqBrowserPages := httptest.NewRequest(http.MethodGet, "/browser/pages", nil)
+	reqBrowserPages.Header.Set("Authorization", "Bearer bridge")
+	h.ServeHTTP(rrBrowserPages, reqBrowserPages)
+	if rrBrowserPages.Code != http.StatusOK {
+		t.Fatalf("expected 200 got %d body=%s", rrBrowserPages.Code, rrBrowserPages.Body.String())
+	}
+	var browserPagesPayload map[string]any
+	if err := json.Unmarshal(rrBrowserPages.Body.Bytes(), &browserPagesPayload); err != nil {
+		t.Fatalf("unmarshal browser pages payload: %v", err)
+	}
+	if browserPagesPayload["count"] != float64(1) {
+		t.Fatalf("unexpected browser pages payload: %#v", browserPagesPayload)
+	}
+
+	rrBrowserAction := httptest.NewRecorder()
+	reqBrowserAction := httptest.NewRequest(http.MethodPost, "/browser/action", strings.NewReader(`{"type":"navigate","target":"https://example.com"}`))
+	reqBrowserAction.Header.Set("Authorization", "Bearer bridge")
+	h.ServeHTTP(rrBrowserAction, reqBrowserAction)
+	if rrBrowserAction.Code != http.StatusOK {
+		t.Fatalf("expected 200 got %d body=%s", rrBrowserAction.Code, rrBrowserAction.Body.String())
+	}
+
+	rrBrowserNavigate := httptest.NewRecorder()
+	reqBrowserNavigate := httptest.NewRequest(http.MethodPost, "/browser/navigate", strings.NewReader(`{"url":"https://example.com"}`))
+	reqBrowserNavigate.Header.Set("Authorization", "Bearer bridge")
+	h.ServeHTTP(rrBrowserNavigate, reqBrowserNavigate)
+	if rrBrowserNavigate.Code != http.StatusOK {
+		t.Fatalf("expected 200 got %d body=%s", rrBrowserNavigate.Code, rrBrowserNavigate.Body.String())
+	}
+
 	rrTerminalStart := httptest.NewRecorder()
 	reqTerminalStart := httptest.NewRequest(http.MethodPost, "/terminal/sessions", strings.NewReader(`{"command":"echo hi"}`))
 	reqTerminalStart.Header.Set("Authorization", "Bearer bridge")
@@ -604,6 +665,9 @@ func TestMetricsEndpoint(t *testing.T) {
 	}
 	if !strings.Contains(metrics, "novaadapt_bridge_ws_active_connections") {
 		t.Fatalf("expected ws active connections metric, got: %s", metrics)
+	}
+	if !strings.Contains(metrics, "novaadapt_bridge_device_allowlist_count") {
+		t.Fatalf("expected device allowlist metric, got: %s", metrics)
 	}
 }
 

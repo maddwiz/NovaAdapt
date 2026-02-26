@@ -82,6 +82,27 @@ if [[ "$unauth_status" != "401" ]]; then
   exit 1
 fi
 
+devices_before=$(curl -sS \
+  -H "Authorization: Bearer ${BRIDGE_TOKEN}" \
+  "http://127.0.0.1:${BRIDGE_PORT}/auth/devices")
+echo "$devices_before" | python3 -c 'import json,sys; data=json.load(sys.stdin); assert data.get("count")==0 and data.get("enabled") is False'
+
+device_add=$(curl -sS \
+  -H "Authorization: Bearer ${BRIDGE_TOKEN}" \
+  -H "X-Device-ID: smoke-device" \
+  -H "Content-Type: application/json" \
+  -d '{"device_id":"smoke-device"}' \
+  "http://127.0.0.1:${BRIDGE_PORT}/auth/devices")
+echo "$device_add" | python3 -c 'import json,sys; data=json.load(sys.stdin); assert data.get("added") is True and data.get("count")==1'
+
+device_remove=$(curl -sS \
+  -H "Authorization: Bearer ${BRIDGE_TOKEN}" \
+  -H "X-Device-ID: smoke-device" \
+  -H "Content-Type: application/json" \
+  -d '{"device_id":"smoke-device"}' \
+  "http://127.0.0.1:${BRIDGE_PORT}/auth/devices/remove")
+echo "$device_remove" | python3 -c 'import json,sys; data=json.load(sys.stdin); assert data.get("removed") is True and data.get("count")==0'
+
 models_json=$(curl -sS \
   -H "Authorization: Bearer ${BRIDGE_TOKEN}" \
   -H "X-Request-ID: ${RID}" \

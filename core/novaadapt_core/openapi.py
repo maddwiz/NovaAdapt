@@ -340,6 +340,72 @@ def build_openapi_spec() -> dict:
                     "responses": {"200": {"description": "Memory ingest result"}},
                 }
             },
+            "/browser/status": {
+                "get": {
+                    "summary": "Get browser automation runtime status and capabilities",
+                    "responses": {"200": {"description": "Browser runtime status"}},
+                }
+            },
+            "/browser/pages": {
+                "get": {
+                    "summary": "List active browser pages and current page selection",
+                    "responses": {"200": {"description": "Browser pages"}},
+                }
+            },
+            "/browser/action": {
+                "post": {
+                    "summary": "Execute a raw browser action payload",
+                    "responses": {"200": {"description": "Browser action result"}},
+                }
+            },
+            "/browser/navigate": {
+                "post": {
+                    "summary": "Navigate browser page to URL",
+                    "responses": {"200": {"description": "Navigate result"}},
+                }
+            },
+            "/browser/click": {
+                "post": {
+                    "summary": "Click browser element by selector",
+                    "responses": {"200": {"description": "Click result"}},
+                }
+            },
+            "/browser/fill": {
+                "post": {
+                    "summary": "Fill browser input by selector",
+                    "responses": {"200": {"description": "Fill result"}},
+                }
+            },
+            "/browser/extract_text": {
+                "post": {
+                    "summary": "Extract text from browser page/selector",
+                    "responses": {"200": {"description": "Extract result"}},
+                }
+            },
+            "/browser/screenshot": {
+                "post": {
+                    "summary": "Capture browser screenshot",
+                    "responses": {"200": {"description": "Screenshot result"}},
+                }
+            },
+            "/browser/wait_for_selector": {
+                "post": {
+                    "summary": "Wait for selector state in browser page",
+                    "responses": {"200": {"description": "Wait result"}},
+                }
+            },
+            "/browser/evaluate_js": {
+                "post": {
+                    "summary": "Evaluate JavaScript in browser context",
+                    "responses": {"200": {"description": "Script evaluation result"}},
+                }
+            },
+            "/browser/close": {
+                "post": {
+                    "summary": "Close browser session",
+                    "responses": {"200": {"description": "Browser closed"}},
+                }
+            },
             "/terminal/sessions": {
                 "get": {
                     "summary": "List terminal sessions",

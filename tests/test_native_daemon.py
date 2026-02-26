@@ -41,6 +41,14 @@ class NativeDaemonTests(unittest.TestCase):
                     daemon_socket=socket_path,
                     timeout_seconds=2,
                 )
+                deadline = time.time() + 2.0
+                probe = {"ok": False}
+                while time.time() < deadline:
+                    probe = client.probe()
+                    if bool(probe.get("ok")):
+                        break
+                    time.sleep(0.05)
+                self.assertTrue(bool(probe.get("ok")))
                 result = client.execute_action({"type": "note", "value": "hello"}, dry_run=False)
             finally:
                 daemon.shutdown()

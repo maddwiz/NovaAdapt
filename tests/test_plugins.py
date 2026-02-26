@@ -2,6 +2,8 @@ import json
 import threading
 import unittest
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from unittest import mock
+from urllib import error
 
 from novaadapt_core.plugins.registry import PluginConfig, PluginRegistry
 
@@ -92,6 +94,57 @@ class PluginRegistryTests(unittest.TestCase):
             self.registry.call("novabridge", route="missing-leading-slash")
         with self.assertRaises(ValueError):
             self.registry.call("unknown", route="/health")
+
+    def test_http_error_response_is_closed(self):
+        class _ClosingHTTPError(error.HTTPError):
+            def __init__(self):
+                super().__init__(
+                    url="http://plugin.local/missing",
+                    code=404,
+                    msg="Not Found",
+                    hdrs=None,
+                    fp=None,
+                )
+                self._body = b'{"error":"missing"}'
+                self.closed = False
+
+            def read(self, amt=None):
+                if amt is None or int(amt) < 0:
+                    return self._body
+                return self._body[: int(amt)]
+
+            def close(self):
+                self.closed = True
+
+        err = _ClosingHTTPError()
+        with mock.patch("novaadapt_core.plugins.registry.request.urlopen", side_effect=err):
+            result = self.registry.call("novabridge", route="/missing", method="GET")
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["status_code"], 404)
+        self.assertTrue(err.closed)
+
+    def test_url_error_reason_close_is_called(self):
+        class _Reason:
+            def __init__(self):
+                self.closed = False
+
+            def close(self):
+                self.closed = True
+
+            def __str__(self):
+                return "connection refused"
+
+        reason = _Reason()
+        with mock.patch(
+            "novaadapt_core.plugins.registry.request.urlopen",
+            side_effect=error.URLError(reason),
+        ):
+            result = self.registry.call("novabridge", route="/health", method="GET")
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["status_code"], 0)
+        self.assertTrue(reason.closed)
 
 
 if __name__ == "__main__":

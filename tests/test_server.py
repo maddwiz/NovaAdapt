@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from urllib import error, request
 
+from novaadapt_core.browser_executor import BrowserExecutionResult
 from novaadapt_core.directshell import ExecutionResult
 from novaadapt_core.server import (
     _PerClientSlidingWindowRateLimiter,
@@ -107,6 +108,31 @@ class _FlakyDirectShell:
         return ExecutionResult(action=action, status="ok", output="recovered")
 
 
+class _StubBrowserExecutor:
+    def __init__(self):
+        self.closed = False
+
+    def probe(self):
+        return {"ok": True, "transport": "browser", "capabilities": ["navigate", "click_selector"]}
+
+    def execute_action(self, action):
+        if action.get("type") == "list_pages":
+            return BrowserExecutionResult(
+                status="ok",
+                output="listed browser pages",
+                data={
+                    "count": 1,
+                    "current_page_id": "page-1",
+                    "pages": [{"page_id": "page-1", "url": "https://example.com", "current": True}],
+                },
+            )
+        return BrowserExecutionResult(status="ok", output="browser simulated", data={"action": action})
+
+    def close(self):
+        self.closed = True
+        return BrowserExecutionResult(status="ok", output="browser session closed")
+
+
 class ServerTests(unittest.TestCase):
     def test_http_endpoints(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -116,6 +142,7 @@ class ServerTests(unittest.TestCase):
                 plans_db_path=Path(tmp) / "plans.db",
                 router_loader=lambda _path: _StubRouter(),
                 directshell_factory=_StubDirectShell,
+                browser_executor_factory=_StubBrowserExecutor,
             )
             server = create_server(
                 "127.0.0.1",
@@ -145,7 +172,10 @@ class ServerTests(unittest.TestCase):
                 with self.assertRaises(error.HTTPError) as err:
                     _get_json(f"http://{host}:{port}/health?deep=1&execution=1")
                 self.assertEqual(err.exception.code, 503)
-                execution_health = json.loads(err.exception.read().decode("utf-8"))
+                try:
+                    execution_health = json.loads(err.exception.read().decode("utf-8"))
+                finally:
+                    err.exception.close()
                 self.assertFalse(execution_health["ok"])
                 self.assertIn("directshell", execution_health["checks"])
                 self.assertFalse(execution_health["checks"]["directshell"]["ok"])
@@ -184,6 +214,17 @@ class ServerTests(unittest.TestCase):
                 self.assertIn("/memory/status", openapi["paths"])
                 self.assertIn("/memory/recall", openapi["paths"])
                 self.assertIn("/memory/ingest", openapi["paths"])
+                self.assertIn("/browser/status", openapi["paths"])
+                self.assertIn("/browser/pages", openapi["paths"])
+                self.assertIn("/browser/action", openapi["paths"])
+                self.assertIn("/browser/navigate", openapi["paths"])
+                self.assertIn("/browser/click", openapi["paths"])
+                self.assertIn("/browser/fill", openapi["paths"])
+                self.assertIn("/browser/extract_text", openapi["paths"])
+                self.assertIn("/browser/screenshot", openapi["paths"])
+                self.assertIn("/browser/wait_for_selector", openapi["paths"])
+                self.assertIn("/browser/evaluate_js", openapi["paths"])
+                self.assertIn("/browser/close", openapi["paths"])
                 self.assertIn("/terminal/sessions", openapi["paths"])
                 self.assertIn("/terminal/sessions/{id}/output", openapi["paths"])
                 self.assertIn("/terminal/sessions/{id}/input", openapi["paths"])
@@ -245,6 +286,26 @@ class ServerTests(unittest.TestCase):
                 )
                 self.assertTrue(memory_ingest["ok"])
                 self.assertEqual(memory_ingest["source_id"], "test-source")
+
+                browser_status, _ = _get_json_with_headers(f"http://{host}:{port}/browser/status")
+                self.assertIn("ok", browser_status)
+                self.assertEqual(browser_status["transport"], "browser")
+
+                browser_pages, _ = _get_json_with_headers(f"http://{host}:{port}/browser/pages")
+                self.assertEqual(browser_pages["count"], 1)
+                self.assertEqual(browser_pages["current_page_id"], "page-1")
+
+                browser_action, _ = _post_json_with_headers(
+                    f"http://{host}:{port}/browser/action",
+                    {"type": "navigate", "target": "https://example.com"},
+                )
+                self.assertEqual(browser_action["status"], "ok")
+
+                browser_nav, _ = _post_json_with_headers(
+                    f"http://{host}:{port}/browser/navigate",
+                    {"url": "https://example.com"},
+                )
+                self.assertEqual(browser_nav["status"], "ok")
 
                 started_terminal, _ = _post_json_with_headers(
                     f"http://{host}:{port}/terminal/sessions",
@@ -309,6 +370,7 @@ class ServerTests(unittest.TestCase):
                         {"allow_dangerous": True},
                     )
                 self.assertEqual(err.exception.code, 400)
+                err.exception.close()
 
                 plan_stream = _get_text(
                     f"http://{host}:{port}/plans/{plan_id}/stream?timeout=2&interval=0.05"
@@ -329,6 +391,37 @@ class ServerTests(unittest.TestCase):
                 server.shutdown()
                 server.server_close()
                 thread.join(timeout=2)
+
+    def test_server_close_closes_browser_runtime(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            browser = _StubBrowserExecutor()
+            service = NovaAdaptService(
+                default_config=Path("unused.json"),
+                db_path=Path(tmp) / "actions.db",
+                plans_db_path=Path(tmp) / "plans.db",
+                router_loader=lambda _path: _StubRouter(),
+                directshell_factory=_StubDirectShell,
+                browser_executor_factory=lambda: browser,
+            )
+            server = create_server(
+                "127.0.0.1",
+                0,
+                service,
+                audit_db_path=str(Path(tmp) / "events.db"),
+            )
+            host, port = server.server_address
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+
+            try:
+                browser_status, _ = _get_json_with_headers(f"http://{host}:{port}/browser/status")
+                self.assertTrue(browser_status["ok"])
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=2)
+
+            self.assertTrue(browser.closed)
 
     def test_token_auth_and_async_jobs(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -356,10 +449,12 @@ class ServerTests(unittest.TestCase):
                 with self.assertRaises(error.HTTPError) as err:
                     _get_json(f"http://{host}:{port}/models")
                 self.assertEqual(err.exception.code, 401)
+                err.exception.close()
 
                 with self.assertRaises(error.HTTPError) as err:
                     _get_json(f"http://{host}:{port}/plugins")
                 self.assertEqual(err.exception.code, 401)
+                err.exception.close()
 
                 models = _get_json(f"http://{host}:{port}/models", token="secret")
                 self.assertEqual(models[0]["name"], "local")
@@ -382,6 +477,7 @@ class ServerTests(unittest.TestCase):
                 with self.assertRaises(error.HTTPError) as err:
                     _get_json(f"http://{host}:{port}/events")
                 self.assertEqual(err.exception.code, 401)
+                err.exception.close()
 
                 queued = _post_json(
                     f"http://{host}:{port}/run_async",
@@ -723,6 +819,7 @@ class ServerTests(unittest.TestCase):
                 with self.assertRaises(error.HTTPError) as err:
                     _get_text(f"http://{host}:{port}/metrics")
                 self.assertEqual(err.exception.code, 401)
+                err.exception.close()
 
                 _ = _get_json(f"http://{host}:{port}/models", token="secret")
                 metrics = _get_text(f"http://{host}:{port}/metrics", token="secret")
@@ -761,6 +858,7 @@ class ServerTests(unittest.TestCase):
                 with self.assertRaises(error.HTTPError) as err:
                     _get_json(f"http://{host}:{port}/models", token="secret")
                 self.assertEqual(err.exception.code, 429)
+                err.exception.close()
 
                 time.sleep(1.05)
                 with self.assertRaises(error.HTTPError) as err:
@@ -770,6 +868,7 @@ class ServerTests(unittest.TestCase):
                         token="secret",
                     )
                 self.assertEqual(err.exception.code, 413)
+                err.exception.close()
             finally:
                 server.shutdown()
                 server.server_close()
@@ -822,6 +921,7 @@ class ServerTests(unittest.TestCase):
                         extra_headers={"X-Forwarded-For": "198.51.100.21"},
                     )
                 self.assertEqual(err.exception.code, 429)
+                err.exception.close()
             finally:
                 server.shutdown()
                 server.server_close()
@@ -868,6 +968,7 @@ class ServerTests(unittest.TestCase):
                         extra_headers={"X-Forwarded-For": "198.51.100.21"},
                     )
                 self.assertEqual(err.exception.code, 429)
+                err.exception.close()
             finally:
                 server.shutdown()
                 server.server_close()
@@ -920,6 +1021,7 @@ class ServerTests(unittest.TestCase):
                         idempotency_key="idem-1",
                     )
                 self.assertEqual(err.exception.code, 409)
+                err.exception.close()
             finally:
                 server.shutdown()
                 server.server_close()
@@ -987,6 +1089,7 @@ class ServerTests(unittest.TestCase):
                         idempotency_key="idem-retry-1",
                     )
                 self.assertEqual(err.exception.code, 409)
+                err.exception.close()
             finally:
                 server.shutdown()
                 server.server_close()
@@ -1062,11 +1165,15 @@ def _get_text(url: str, token: str | None = None, extra_headers: dict[str, str] 
     headers = {}
     if token:
         headers["Authorization"] = f"Bearer {token}"
+    headers.setdefault("Connection", "close")
     if extra_headers:
         headers.update(extra_headers)
     req = request.Request(url=url, headers=headers, method="GET")
-    with request.urlopen(req, timeout=5) as response:
-        return response.read().decode("utf-8")
+    try:
+        with request.urlopen(req, timeout=5) as response:
+            return response.read().decode("utf-8")
+    except error.HTTPError as exc:
+        _reraise_http_error_with_buffer(exc)
 
 
 def _get_json_with_headers(
@@ -1078,14 +1185,18 @@ def _get_json_with_headers(
     headers = {}
     if token:
         headers["Authorization"] = f"Bearer {token}"
+    headers.setdefault("Connection", "close")
     if request_id:
         headers["X-Request-ID"] = request_id
     if extra_headers:
         headers.update(extra_headers)
     req = request.Request(url=url, headers=headers, method="GET")
-    with request.urlopen(req, timeout=5) as response:
-        body = json.loads(response.read().decode("utf-8"))
-        return body, dict(response.headers)
+    try:
+        with request.urlopen(req, timeout=5) as response:
+            body = json.loads(response.read().decode("utf-8"))
+            return body, dict(response.headers)
+    except error.HTTPError as exc:
+        _reraise_http_error_with_buffer(exc)
 
 
 def _post_json_with_headers(
@@ -1097,7 +1208,7 @@ def _post_json_with_headers(
     extra_headers: dict[str, str] | None = None,
 ):
     data = json.dumps(payload).encode("utf-8")
-    headers = {"Content-Type": "application/json"}
+    headers = {"Content-Type": "application/json", "Connection": "close"}
     if token:
         headers["Authorization"] = f"Bearer {token}"
     if request_id:
@@ -1112,9 +1223,41 @@ def _post_json_with_headers(
         headers=headers,
         method="POST",
     )
-    with request.urlopen(req, timeout=5) as response:
-        body = json.loads(response.read().decode("utf-8"))
-        return body, dict(response.headers)
+    try:
+        with request.urlopen(req, timeout=5) as response:
+            body = json.loads(response.read().decode("utf-8"))
+            return body, dict(response.headers)
+    except error.HTTPError as exc:
+        _reraise_http_error_with_buffer(exc)
+
+
+def _reraise_http_error_with_buffer(exc: error.HTTPError) -> None:
+    raw = b""
+    url = ""
+    code = 500
+    msg = "HTTP Error"
+    hdrs = None
+    try:
+        url = exc.geturl() or ""
+        code = int(exc.code)
+        msg = str(exc.msg)
+        hdrs = exc.headers
+        raw = exc.read()
+    finally:
+        try:
+            exc.close()
+        except Exception:
+            pass
+        try:
+            exc.fp = None
+            exc.file = None
+        except Exception:
+            pass
+    buffer = io.BytesIO(raw)
+    buffered = error.HTTPError(url=url, code=code, msg=msg, hdrs=hdrs, fp=buffer)
+    buffered.file = buffer
+    buffered.read = lambda amt=None, _raw=raw: _raw if amt is None else _raw[: max(0, int(amt))]
+    raise buffered from None
 
 
 if __name__ == "__main__":

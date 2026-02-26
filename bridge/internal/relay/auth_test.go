@@ -106,6 +106,12 @@ func TestRequiredScopeForTerminalAndMemoryRoutes(t *testing.T) {
 	if got := requiredScopeForRoute(http.MethodPost, "/memory/ingest"); got != scopeRun {
 		t.Fatalf("expected %q scope for memory ingest, got %q", scopeRun, got)
 	}
+	if got := requiredScopeForRoute(http.MethodPost, "/browser/action"); got != scopeRun {
+		t.Fatalf("expected %q scope for browser action, got %q", scopeRun, got)
+	}
+	if got := requiredScopeForRoute(http.MethodGet, "/browser/status"); got != scopeRead {
+		t.Fatalf("expected %q scope for browser status, got %q", scopeRead, got)
+	}
 }
 
 func TestSessionTokenCannotIssueSessionWithoutAdminScope(t *testing.T) {
@@ -190,6 +196,148 @@ func TestSessionTokenDeviceBinding(t *testing.T) {
 	h.ServeHTTP(rrBoundDevice, reqBoundDevice)
 	if rrBoundDevice.Code != http.StatusOK {
 		t.Fatalf("expected 200 for matching device, got %d body=%s", rrBoundDevice.Code, rrBoundDevice.Body.String())
+	}
+}
+
+func TestDeviceAllowlistAdminRoutes(t *testing.T) {
+	core := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/models" {
+			_, _ = w.Write([]byte(`[{"name":"local"}]`))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"error":"not found"}`))
+	}))
+	defer core.Close()
+
+	h, err := NewHandler(Config{
+		CoreBaseURL:      core.URL,
+		BridgeToken:      "bridge",
+		AllowedDeviceIDs: []string{"iphone-1"},
+		Timeout:          5 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("new handler: %v", err)
+	}
+
+	rrList := httptest.NewRecorder()
+	reqList := httptest.NewRequest(http.MethodGet, "/auth/devices", nil)
+	reqList.Header.Set("Authorization", "Bearer bridge")
+	reqList.Header.Set("X-Device-ID", "iphone-1")
+	h.ServeHTTP(rrList, reqList)
+	if rrList.Code != http.StatusOK {
+		t.Fatalf("expected 200 from /auth/devices, got %d body=%s", rrList.Code, rrList.Body.String())
+	}
+	var listPayload map[string]any
+	if err := json.Unmarshal(rrList.Body.Bytes(), &listPayload); err != nil {
+		t.Fatalf("unmarshal device list payload: %v", err)
+	}
+	if count := toInt(listPayload["count"]); count != 1 {
+		t.Fatalf("expected device count 1, got %#v", listPayload)
+	}
+
+	rrAdd := httptest.NewRecorder()
+	reqAdd := httptest.NewRequest(http.MethodPost, "/auth/devices", strings.NewReader(`{"device_id":"halo-1"}`))
+	reqAdd.Header.Set("Authorization", "Bearer bridge")
+	reqAdd.Header.Set("X-Device-ID", "iphone-1")
+	h.ServeHTTP(rrAdd, reqAdd)
+	if rrAdd.Code != http.StatusOK {
+		t.Fatalf("expected 200 from /auth/devices add, got %d body=%s", rrAdd.Code, rrAdd.Body.String())
+	}
+	var addPayload map[string]any
+	if err := json.Unmarshal(rrAdd.Body.Bytes(), &addPayload); err != nil {
+		t.Fatalf("unmarshal add payload: %v", err)
+	}
+	if added, ok := addPayload["added"].(bool); !ok || !added {
+		t.Fatalf("expected added=true payload, got %#v", addPayload)
+	}
+	if count := toInt(addPayload["count"]); count != 2 {
+		t.Fatalf("expected count=2 after add, got %#v", addPayload)
+	}
+
+	rrIssue := httptest.NewRecorder()
+	reqIssue := httptest.NewRequest(
+		http.MethodPost,
+		"/auth/session",
+		strings.NewReader(`{"subject":"halo","scopes":["read"],"device_id":"halo-1","ttl_seconds":120}`),
+	)
+	reqIssue.Header.Set("Authorization", "Bearer bridge")
+	reqIssue.Header.Set("X-Device-ID", "halo-1")
+	h.ServeHTTP(rrIssue, reqIssue)
+	if rrIssue.Code != http.StatusOK {
+		t.Fatalf("expected 200 issuing token for added device, got %d body=%s", rrIssue.Code, rrIssue.Body.String())
+	}
+
+	rrRemove := httptest.NewRecorder()
+	reqRemove := httptest.NewRequest(http.MethodPost, "/auth/devices/remove", strings.NewReader(`{"device_id":"halo-1"}`))
+	reqRemove.Header.Set("Authorization", "Bearer bridge")
+	reqRemove.Header.Set("X-Device-ID", "iphone-1")
+	h.ServeHTTP(rrRemove, reqRemove)
+	if rrRemove.Code != http.StatusOK {
+		t.Fatalf("expected 200 from /auth/devices/remove, got %d body=%s", rrRemove.Code, rrRemove.Body.String())
+	}
+	var removePayload map[string]any
+	if err := json.Unmarshal(rrRemove.Body.Bytes(), &removePayload); err != nil {
+		t.Fatalf("unmarshal remove payload: %v", err)
+	}
+	if removed, ok := removePayload["removed"].(bool); !ok || !removed {
+		t.Fatalf("expected removed=true payload, got %#v", removePayload)
+	}
+
+	rrIssueRemoved := httptest.NewRecorder()
+	reqIssueRemoved := httptest.NewRequest(
+		http.MethodPost,
+		"/auth/session",
+		strings.NewReader(`{"subject":"halo","scopes":["read"],"device_id":"halo-1","ttl_seconds":120}`),
+	)
+	reqIssueRemoved.Header.Set("Authorization", "Bearer bridge")
+	reqIssueRemoved.Header.Set("X-Device-ID", "iphone-1")
+	h.ServeHTTP(rrIssueRemoved, reqIssueRemoved)
+	if rrIssueRemoved.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 issuing token for removed device, got %d body=%s", rrIssueRemoved.Code, rrIssueRemoved.Body.String())
+	}
+	if !strings.Contains(rrIssueRemoved.Body.String(), "device_id is not in allowed list") {
+		t.Fatalf("expected removed-device validation error, got %s", rrIssueRemoved.Body.String())
+	}
+}
+
+func TestDeviceAllowlistRoutesRequireAdminScope(t *testing.T) {
+	h, err := NewHandler(Config{
+		CoreBaseURL: "http://example.com",
+		BridgeToken: "bridge",
+		Timeout:     5 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("new handler: %v", err)
+	}
+
+	readToken, _, err := h.issueSessionToken("reader", []string{scopeRead}, "", 120)
+	if err != nil {
+		t.Fatalf("issue read token: %v", err)
+	}
+
+	rrList := httptest.NewRecorder()
+	reqList := httptest.NewRequest(http.MethodGet, "/auth/devices", nil)
+	reqList.Header.Set("Authorization", "Bearer "+readToken)
+	h.ServeHTTP(rrList, reqList)
+	if rrList.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 on /auth/devices for non-admin token, got %d body=%s", rrList.Code, rrList.Body.String())
+	}
+
+	rrAdd := httptest.NewRecorder()
+	reqAdd := httptest.NewRequest(http.MethodPost, "/auth/devices", strings.NewReader(`{"device_id":"iphone-1"}`))
+	reqAdd.Header.Set("Authorization", "Bearer "+readToken)
+	h.ServeHTTP(rrAdd, reqAdd)
+	if rrAdd.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 on /auth/devices add for non-admin token, got %d body=%s", rrAdd.Code, rrAdd.Body.String())
+	}
+
+	rrRemove := httptest.NewRecorder()
+	reqRemove := httptest.NewRequest(http.MethodPost, "/auth/devices/remove", strings.NewReader(`{"device_id":"iphone-1"}`))
+	reqRemove.Header.Set("Authorization", "Bearer "+readToken)
+	h.ServeHTTP(rrRemove, reqRemove)
+	if rrRemove.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 on /auth/devices/remove for non-admin token, got %d body=%s", rrRemove.Code, rrRemove.Body.String())
 	}
 }
 

@@ -50,15 +50,18 @@ Core rate limiting is per-client and can trust `X-Forwarded-For` only from confi
 Core state stores apply hot-path SQLite indexes to keep list/filter/read operations efficient as rows grow.
 Core state stores also track schema upgrades through `schema_migrations` to keep DB evolution deterministic.
 Core can emit OpenTelemetry traces (OTLP HTTP) when `--otel-enabled` is configured.
+Core HTTP internals are split between `core/novaadapt_core/server.py` (lifecycle/bootstrap) and
+`core/novaadapt_core/server_handler.py` (route handling/dispatch) to keep the API layer maintainable as routes grow.
 
 ## Relay Layer
 
 `novaadapt-bridge` is a Go secure relay process for remote devices. It enforces a bridge ingress token and forwards to the core API using a separate upstream token.
 It can also enforce a trusted device allowlist via `X-Device-ID`.
 Bridge->core transport supports custom CA verification and optional client-certificate mTLS.
+Bridge admin APIs (`GET /auth/devices`, `POST /auth/devices`, `POST /auth/devices/remove`) support runtime trust-registry updates without restarts.
 
 It also preserves per-request tracing through `X-Request-ID` and supports deep upstream health checks for relay monitoring.
-The bridge additionally exposes `/metrics` for request and error counters.
+The bridge additionally exposes `/metrics` for request/error/session/websocket/device-allowlist counters.
 
 ## Delivery Tooling
 
@@ -71,6 +74,7 @@ The bridge additionally exposes `/metrics` for request and error counters.
 - Token rotation helper `installer/rotate_tokens.sh` updates core/bridge env files for secret rollover.
 - Benchmark runner (`novaadapt benchmark`) provides repeatable success-rate measurement from task suites.
 - MCP-compatible stdio server (`novaadapt mcp`) exposes core operations as tools for external agents.
+- Bridge admin CLI routes (`novaadapt bridge-*`) expose session/device trust operations for automation without raw curl.
 - Plugin adapter layer provides direct route-calling support for NovaBridge/Nova4D/NovaBlox workflows.
 - Backup command (`novaadapt backup`) snapshots SQLite state for rollback-safe upgrades.
 - Restore command (`novaadapt restore`) rehydrates SQLite state from snapshots with pre-restore safety archives.
@@ -87,11 +91,12 @@ The bridge additionally exposes `/metrics` for request and error counters.
 
 ## Next Integration Points
 
-- Expand built-in execution with a richer gRPC backend for deterministic UI control.
-- Add policy-driven bridge device trust registry management UI.
-- Expand Tauri/iOS/wearable scaffolds into signed production builds with full approval + terminal UX parity.
+- Harden bridge device trust registry UI flows with explicit confirm/audit prompts on top of existing `/auth/devices*` APIs.
+- Expand wearable clients into signed production builds with full approval + terminal UX parity.
+- Add optional external DirectShell gRPC adapter as an advanced backend (native runtime remains first-class/default).
 
 ## Current Constraints
 
-- Built-in native execution currently covers common action types; richer deterministic UI control is still planned via gRPC backend.
-- Desktop/mobile/wearable modules are scaffolds and not yet shippable client products.
+- Browser runtime requires Playwright browser binaries to be installed on the host.
+- Linux native keyboard/mouse actions require `xdotool`; shell/open-url/open-app still work without it.
+- Wearable clients are still the primary experimental surface and need further product polish for consumer-grade release.

@@ -3,6 +3,7 @@ import unittest
 from pathlib import Path
 
 from novaadapt_core.audit_store import AuditStore
+from novaadapt_core.browser_executor import BrowserExecutionResult
 from novaadapt_core.directshell import ExecutionResult
 from novaadapt_core.service import NovaAdaptService
 from novaadapt_shared.model_router import RouterResult
@@ -151,6 +152,33 @@ class _StubPluginRegistry:
         }
 
 
+class _StubBrowserExecutor:
+    def __init__(self):
+        self.actions: list[dict[str, object]] = []
+        self.close_calls = 0
+
+    def probe(self):
+        return {"ok": True, "transport": "browser", "capabilities": ["navigate", "click_selector"]}
+
+    def execute_action(self, action):
+        if action.get("type") == "list_pages":
+            return BrowserExecutionResult(
+                status="ok",
+                output="listed browser pages",
+                data={
+                    "count": 1,
+                    "current_page_id": "page-1",
+                    "pages": [{"page_id": "page-1", "url": "https://example.com", "current": True}],
+                },
+            )
+        self.actions.append(action)
+        return BrowserExecutionResult(status="ok", output="browser simulated", data={"action": action})
+
+    def close(self):
+        self.close_calls += 1
+        return BrowserExecutionResult(status="ok", output="browser session closed")
+
+
 class ServiceTests(unittest.TestCase):
     def test_models_and_check(self):
         service = NovaAdaptService(
@@ -184,6 +212,44 @@ class ServiceTests(unittest.TestCase):
         probe = service.directshell_probe()
         self.assertFalse(probe["ok"])
         self.assertIn("not implemented", probe["error"])
+
+    def test_browser_status_action_and_close(self):
+        browser = _StubBrowserExecutor()
+        service = NovaAdaptService(
+            default_config=Path("unused.json"),
+            router_loader=lambda _path: _StubRouter(),
+            directshell_factory=_StubDirectShell,
+            browser_executor_factory=lambda: browser,
+        )
+        status = service.browser_status()
+        self.assertTrue(status["ok"])
+        self.assertEqual(status["transport"], "browser")
+
+        pages = service.browser_pages()
+        self.assertEqual(pages["count"], 1)
+        self.assertEqual(pages["current_page_id"], "page-1")
+
+        action = service.browser_action({"type": "navigate", "target": "https://example.com"})
+        self.assertEqual(action["status"], "ok")
+        self.assertEqual(action["action"]["type"], "navigate")
+        self.assertEqual(len(browser.actions), 1)
+
+        close = service.browser_close()
+        self.assertEqual(close["status"], "ok")
+        self.assertEqual(browser.close_calls, 1)
+
+    def test_close_closes_browser_executor_once_and_is_idempotent(self):
+        browser = _StubBrowserExecutor()
+        service = NovaAdaptService(
+            default_config=Path("unused.json"),
+            router_loader=lambda _path: _StubRouter(),
+            directshell_factory=_StubDirectShell,
+            browser_executor_factory=lambda: browser,
+        )
+        _ = service.browser_status()
+        service.close()
+        service.close()
+        self.assertEqual(browser.close_calls, 1)
 
     def test_run_records_history_and_undo_mark_only(self):
         with tempfile.TemporaryDirectory() as tmp:

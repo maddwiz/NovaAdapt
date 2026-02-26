@@ -77,6 +77,10 @@
       box-shadow: 0 8px 18px rgba(59, 44, 27, 0.06);
     }
 
+    .span2 {
+      grid-column: 1 / -1;
+    }
+
     .card h2 {
       margin: 0 0 10px;
       font-size: 14px;
@@ -188,6 +192,11 @@
       word-break: break-word;
     }
 
+    .log.mini {
+      min-height: 120px;
+      max-height: 220px;
+    }
+
     .hint {
       margin-top: 8px;
       color: var(--muted);
@@ -295,6 +304,16 @@
         </div>
         <div class="row">
           <div>
+            <label for="allowlist-device-id">Allowlist Device ID</label>
+            <input id="allowlist-device-id" placeholder="device id to add/remove" />
+          </div>
+          <div>
+            <label for="allowlist-summary">Allowlist Summary</label>
+            <input id="allowlist-summary" value="unknown" readonly />
+          </div>
+        </div>
+        <div class="row">
+          <div>
             <label for="since-id">Since ID</label>
             <input id="since-id" type="number" value="0" min="0" />
           </div>
@@ -306,6 +325,9 @@
         <div class="controls">
           <button id="issue-session-btn">Issue Session Token</button>
           <button id="revoke-session-btn">Revoke Session Token</button>
+          <button id="devices-refresh-btn">List Devices</button>
+          <button id="device-add-btn">Add Device</button>
+          <button id="device-remove-btn">Remove Device</button>
           <button class="brand" id="connect-btn">Connect</button>
           <button class="warn" id="disconnect-btn">Disconnect</button>
           <button id="ping-btn">Ping</button>
@@ -354,7 +376,102 @@
           <button class="brand" id="send-command-btn">Send Command</button>
           <button id="set-since-btn">Set Cursor</button>
         </div>
-        <div class="hint">Forwarded routes include `/run*`, `/plans/*`, `/jobs/*`, `/plugins/*`, `/memory/*`, and `/terminal/sessions*`.</div>
+        <div class="hint">Forwarded routes include `/run*`, `/plans/*`, `/jobs/*`, `/plugins/*`, `/memory/*`, `/terminal/sessions*`, and `/browser/*`.</div>
+      </section>
+
+      <section class="card span2">
+        <h2>Browser Control</h2>
+        <div class="row triple">
+          <div>
+            <label for="browser-message-type">Message Type</label>
+            <select id="browser-message-type">
+              <option value="browser_status">browser_status</option>
+              <option value="browser_pages">browser_pages</option>
+              <option value="browser_navigate">browser_navigate</option>
+              <option value="browser_click">browser_click</option>
+              <option value="browser_fill">browser_fill</option>
+              <option value="browser_extract_text">browser_extract_text</option>
+              <option value="browser_screenshot">browser_screenshot</option>
+              <option value="browser_wait_for_selector">browser_wait_for_selector</option>
+              <option value="browser_evaluate_js">browser_evaluate_js</option>
+              <option value="browser_action">browser_action</option>
+              <option value="browser_close">browser_close</option>
+            </select>
+          </div>
+          <div>
+            <label for="browser-page-id">Page ID (optional)</label>
+            <input id="browser-page-id" placeholder="page-1" />
+          </div>
+          <div>
+            <label for="browser-idem">Idempotency Key (optional)</label>
+            <input id="browser-idem" placeholder="browser-op-123" />
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label for="browser-url">URL</label>
+            <input id="browser-url" placeholder="https://example.com" />
+          </div>
+          <div>
+            <label for="browser-selector">Selector</label>
+            <input id="browser-selector" placeholder="button.submit" />
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label for="browser-value">Value / Path</label>
+            <input id="browser-value" placeholder="form value or screenshot path" />
+          </div>
+          <div>
+            <label for="browser-state">Wait State</label>
+            <select id="browser-state">
+              <option value="visible">visible</option>
+              <option value="attached">attached</option>
+              <option value="hidden">hidden</option>
+              <option value="detached">detached</option>
+            </select>
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label for="browser-timeout-ms">Timeout (ms)</label>
+            <input id="browser-timeout-ms" type="number" value="15000" min="100" max="120000" />
+          </div>
+          <div>
+            <label for="browser-full-page">Screenshot Full Page</label>
+            <select id="browser-full-page">
+              <option value="true">true</option>
+              <option value="false">false</option>
+            </select>
+          </div>
+        </div>
+        <div class="row single">
+          <div>
+            <label for="browser-script">JS Script (evaluate_js)</label>
+            <textarea id="browser-script">document.title</textarea>
+          </div>
+        </div>
+        <div class="row single">
+          <div>
+            <label for="browser-action-json">Raw Action JSON (browser_action)</label>
+            <textarea id="browser-action-json">{"type":"navigate","target":"https://example.com"}</textarea>
+          </div>
+        </div>
+        <div class="row single">
+          <div>
+            <label for="browser-extra-json">Extra Body JSON (merged)</label>
+            <textarea id="browser-extra-json">{}</textarea>
+          </div>
+        </div>
+        <div class="controls">
+          <button id="browser-status-btn">Status</button>
+          <button id="browser-pages-btn">Pages</button>
+          <button id="browser-navigate-btn">Navigate</button>
+          <button id="browser-close-btn">Close</button>
+          <button class="brand" id="browser-run-btn">Run Selected</button>
+        </div>
+        <div class="status" id="browser-status">Browser idle</div>
+        <div class="log mini" id="browser-output"></div>
       </section>
     </div>
 
@@ -441,11 +558,33 @@
     let terminalPollInFlight = false;
     let terminalInputBuffer = "";
     let terminalInputFlushTimer = null;
+    const wsSuccessTypes = new Set([
+      "command_result",
+      "ack",
+      "pong",
+      "terminal_sessions",
+      "terminal_started",
+      "terminal_output",
+      "terminal_input_result",
+      "terminal_closed",
+      "browser_status",
+      "browser_pages",
+      "browser_action_result",
+      "browser_navigate_result",
+      "browser_click_result",
+      "browser_fill_result",
+      "browser_extract_text_result",
+      "browser_screenshot_result",
+      "browser_wait_for_selector_result",
+      "browser_evaluate_js_result",
+      "browser_closed",
+    ]);
 
     const $ = (id) => document.getElementById(id);
     const logEl = $("log");
     const statusEl = $("status");
     const terminalStatusEl = $("terminal-status");
+    const browserStatusEl = $("browser-status");
 
     function nowTime() {
       return new Date().toISOString().replace("T", " ").replace("Z", "");
@@ -465,6 +604,18 @@
     function setTerminalStatus(text, cls = "") {
       terminalStatusEl.textContent = text;
       terminalStatusEl.className = `status ${cls}`.trim();
+    }
+
+    function setBrowserStatus(text, cls = "") {
+      browserStatusEl.textContent = text;
+      browserStatusEl.className = `status ${cls}`.trim();
+    }
+
+    function setBrowserOutput(payload) {
+      const outputEl = $("browser-output");
+      const text = typeof payload === "string" ? payload : JSON.stringify(payload, null, 2);
+      outputEl.textContent = text;
+      outputEl.scrollTop = outputEl.scrollHeight;
     }
 
     function isWSOpen() {
@@ -628,6 +779,120 @@
       });
     }
 
+    async function bridgeAdminRequest(path, { method = "GET", body = null } = {}) {
+      const bridgeURL = buildBridgeHTTPURL();
+      const adminToken = $("admin-token").value.trim() || $("token").value.trim();
+      const requestDeviceID = $("device-id").value.trim();
+
+      if (!bridgeURL) {
+        throw new Error("bridge HTTP URL is required");
+      }
+      if (!adminToken) {
+        throw new Error("admin token is required");
+      }
+
+      const headers = {
+        "Authorization": `Bearer ${adminToken}`,
+      };
+      if (requestDeviceID) {
+        headers["X-Device-ID"] = requestDeviceID;
+      }
+      const init = { method, headers };
+      if (body !== null) {
+        headers["Content-Type"] = "application/json";
+        init.body = JSON.stringify(body);
+      }
+
+      const response = await fetch(`${bridgeURL}${path}`, init);
+      const raw = await response.text();
+      let payload = { raw };
+      try {
+        payload = raw ? JSON.parse(raw) : {};
+      } catch {
+        // Keep raw payload for logs.
+      }
+      if (!response.ok) {
+        const err = new Error(payload.error || `request failed (${response.status})`);
+        err.status = response.status;
+        err.payload = payload;
+        throw err;
+      }
+      return { bridgeURL, status: response.status, payload };
+    }
+
+    function updateAllowlistSummary(payload) {
+      const devices = Array.isArray(payload?.devices) ? payload.devices : [];
+      const count = Number(payload?.count || devices.length || 0);
+      const label = devices.length > 0
+        ? `${count} device(s): ${devices.join(", ")}`
+        : `${count} device(s)`;
+      $("allowlist-summary").value = label;
+    }
+
+    async function listAllowedDevices() {
+      try {
+        const response = await bridgeAdminRequest("/auth/devices");
+        updateAllowlistSummary(response.payload);
+        appendLog("devices_list", response.payload);
+        setStatus(`Loaded allowlist (${response.payload.count || 0})`, "ok");
+      } catch (err) {
+        appendLog("devices_list_error", {
+          error: String(err),
+          status: err?.status ?? null,
+          payload: err?.payload ?? null,
+        });
+        setStatus("Allowlist load failed", "bad");
+      }
+    }
+
+    async function addAllowedDevice() {
+      const deviceID = $("allowlist-device-id").value.trim();
+      if (!deviceID) {
+        appendLog("error", "allowlist device id is required");
+        return;
+      }
+      try {
+        const response = await bridgeAdminRequest("/auth/devices", {
+          method: "POST",
+          body: { device_id: deviceID },
+        });
+        updateAllowlistSummary(response.payload);
+        appendLog("device_added", response.payload);
+        setStatus(`Allowlisted ${deviceID}`, "ok");
+      } catch (err) {
+        appendLog("device_add_error", {
+          error: String(err),
+          status: err?.status ?? null,
+          payload: err?.payload ?? null,
+        });
+        setStatus("Allowlist add failed", "bad");
+      }
+    }
+
+    async function removeAllowedDevice() {
+      const deviceID = $("allowlist-device-id").value.trim();
+      if (!deviceID) {
+        appendLog("error", "allowlist device id is required");
+        return;
+      }
+      try {
+        const response = await bridgeAdminRequest("/auth/devices/remove", {
+          method: "POST",
+          body: { device_id: deviceID },
+        });
+        updateAllowlistSummary(response.payload);
+        appendLog("device_removed", response.payload);
+        setStatus(`Removed ${deviceID} from allowlist`, "ok");
+      } catch (err) {
+        appendLog("device_remove_error", {
+          error: String(err),
+          status: err?.status ?? null,
+          payload: err?.payload ?? null,
+        });
+        setStatus("Allowlist remove failed", "bad");
+      }
+    }
+
     async function issueSessionToken() {
       const bridgeURL = buildBridgeHTTPURL();
       const adminToken = $("admin-token").value.trim() || $("token").value.trim();
@@ -782,6 +1047,7 @@
       socket.onopen = () => {
         setStatus("Connected", "ok");
         setTerminalStatus("WebSocket connected", "ok");
+        setBrowserStatus("WebSocket connected", "ok");
         refreshTerminalSessions();
         if (terminalSessionID) {
           startTerminalPolling(true);
@@ -792,6 +1058,7 @@
         flushPendingCommandsOnDisconnect();
         setStatus(`Disconnected (${event.code})`, "bad");
         setTerminalStatus("Terminal disconnected", "bad");
+        setBrowserStatus("Browser controls disconnected", "bad");
         appendLog("close", { code: event.code, reason: event.reason });
       };
       socket.onerror = () => {
@@ -806,13 +1073,10 @@
           return;
         }
 
-        if (parsed.type === "command_result" && consumePendingResult(parsed, false)) {
+        if (wsSuccessTypes.has(parsed.type) && consumePendingResult(parsed, false)) {
           return;
         }
         if (parsed.type === "error" && consumePendingResult(parsed, true)) {
-          return;
-        }
-        if ((parsed.type === "ack" || parsed.type === "pong") && consumePendingResult(parsed, false)) {
           return;
         }
 
@@ -833,9 +1097,7 @@
       try {
         const response = await sendCommand(
           {
-            type: "command",
-            method: "GET",
-            path: "/terminal/sessions",
+            type: "terminal_list",
             id: `terminal-list-${Date.now()}`,
           },
           { log: false, silentResponse: true }
@@ -896,9 +1158,7 @@
       try {
         const response = await sendCommand(
           {
-            type: "command",
-            method: "POST",
-            path: "/terminal/sessions",
+            type: "terminal_start",
             body,
             id: `terminal-start-${Date.now()}`,
           },
@@ -934,10 +1194,8 @@
       try {
         const response = await sendCommand(
           {
-            type: "command",
-            method: "POST",
-            path: `/terminal/sessions/${encodeURIComponent(id)}/close`,
-            body: {},
+            type: "terminal_close",
+            session_id: id,
             id: `terminal-close-${Date.now()}`,
           },
           { log: true }
@@ -987,9 +1245,10 @@
       try {
         const response = await sendCommand(
           {
-            type: "command",
-            method: "GET",
-            path: `/terminal/sessions/${encodeURIComponent(terminalSessionID)}/output?since_seq=${terminalNextSeq}&limit=600`,
+            type: "terminal_poll",
+            session_id: terminalSessionID,
+            since_seq: terminalNextSeq,
+            limit: 600,
             id: `terminal-poll-${Date.now()}`,
           },
           { log: false, silentResponse: true, timeoutMs: 12000 }
@@ -1049,10 +1308,9 @@
       try {
         const response = await sendCommand(
           {
-            type: "command",
-            method: "POST",
-            path: `/terminal/sessions/${encodeURIComponent(terminalSessionID)}/input`,
-            body: { input: payload },
+            type: "terminal_input",
+            session_id: terminalSessionID,
+            input: payload,
             id: `terminal-input-${Date.now()}`,
           },
           { log: false, silentResponse: true }
@@ -1080,11 +1338,160 @@
       await flushTerminalInput();
     }
 
+    function parseOptionalJSONObject(raw, label) {
+      const trimmed = String(raw || "").trim();
+      if (!trimmed) {
+        return null;
+      }
+      let parsed = null;
+      try {
+        parsed = JSON.parse(trimmed);
+      } catch (err) {
+        throw new Error(`invalid ${label}: ${String(err)}`);
+      }
+      if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") {
+        throw new Error(`${label} must be a JSON object`);
+      }
+      return parsed;
+    }
+
+    function maybeAttachPageID(body) {
+      const pageID = $("browser-page-id").value.trim();
+      if (pageID) {
+        body.page_id = pageID;
+      }
+    }
+
+    function mergedBrowserBody(baseBody) {
+      const body = { ...baseBody };
+      const extra = parseOptionalJSONObject($("browser-extra-json").value, "browser extra json");
+      if (extra) {
+        Object.assign(body, extra);
+      }
+      return body;
+    }
+
+    function buildBrowserBody(msgType) {
+      const url = $("browser-url").value.trim();
+      const selector = $("browser-selector").value.trim();
+      const value = $("browser-value").value;
+      const script = $("browser-script").value.trim();
+      const timeoutMs = Math.max(100, Number($("browser-timeout-ms").value || 15000));
+
+      if (msgType === "browser_action") {
+        const action = parseOptionalJSONObject($("browser-action-json").value, "browser action json");
+        if (!action) {
+          throw new Error("browser action json is required");
+        }
+        maybeAttachPageID(action);
+        return mergedBrowserBody(action);
+      }
+
+      const body = {};
+      maybeAttachPageID(body);
+
+      if (msgType === "browser_navigate") {
+        if (!url) throw new Error("URL is required for browser_navigate");
+        body.url = url;
+        body.timeout_ms = timeoutMs;
+        return mergedBrowserBody(body);
+      }
+      if (msgType === "browser_click") {
+        if (!selector) throw new Error("Selector is required for browser_click");
+        body.selector = selector;
+        body.timeout_ms = timeoutMs;
+        return mergedBrowserBody(body);
+      }
+      if (msgType === "browser_fill") {
+        if (!selector) throw new Error("Selector is required for browser_fill");
+        body.selector = selector;
+        body.value = value;
+        body.timeout_ms = timeoutMs;
+        return mergedBrowserBody(body);
+      }
+      if (msgType === "browser_extract_text") {
+        if (!selector) throw new Error("Selector is required for browser_extract_text");
+        body.selector = selector;
+        body.timeout_ms = timeoutMs;
+        return mergedBrowserBody(body);
+      }
+      if (msgType === "browser_screenshot") {
+        const path = value.trim();
+        if (path) body.path = path;
+        body.full_page = $("browser-full-page").value === "true";
+        body.timeout_ms = timeoutMs;
+        return mergedBrowserBody(body);
+      }
+      if (msgType === "browser_wait_for_selector") {
+        if (!selector) throw new Error("Selector is required for browser_wait_for_selector");
+        body.selector = selector;
+        body.state = $("browser-state").value;
+        body.timeout_ms = timeoutMs;
+        return mergedBrowserBody(body);
+      }
+      if (msgType === "browser_evaluate_js") {
+        if (!script) throw new Error("Script is required for browser_evaluate_js");
+        body.script = script;
+        body.timeout_ms = timeoutMs;
+        return mergedBrowserBody(body);
+      }
+
+      return mergedBrowserBody(body);
+    }
+
+    async function sendBrowserCommand(msgType) {
+      if (!isWSOpen()) {
+        throw new Error("websocket is not connected");
+      }
+      const timeoutMs = Math.max(500, Number($("browser-timeout-ms").value || 15000));
+      const message = {
+        type: msgType,
+        id: `${msgType}-${Date.now()}`,
+      };
+      const idem = $("browser-idem").value.trim();
+      if (idem) {
+        message.idempotency_key = idem;
+      }
+
+      if (!["browser_status", "browser_pages", "browser_close"].includes(msgType)) {
+        message.body = buildBrowserBody(msgType);
+      }
+
+      const response = await sendCommand(message, { log: true, silentResponse: true, timeoutMs });
+      setBrowserOutput(response.payload ?? response);
+      if (response.status >= 200 && response.status < 300) {
+        setBrowserStatus(`${msgType} ok (${response.status})`, "ok");
+      } else {
+        setBrowserStatus(`${msgType} failed (${response.status})`, "bad");
+      }
+      appendLog("browser_result", response);
+      return response;
+    }
+
+    async function runSelectedBrowserCommand() {
+      const msgType = $("browser-message-type").value;
+      try {
+        await sendBrowserCommand(msgType);
+      } catch (err) {
+        appendLog("browser_error", String(err));
+        setBrowserStatus(String(err), "bad");
+      }
+    }
+
     $("issue-session-btn").addEventListener("click", () => {
       issueSessionToken();
     });
     $("revoke-session-btn").addEventListener("click", () => {
       revokeSessionToken();
+    });
+    $("devices-refresh-btn").addEventListener("click", () => {
+      listAllowedDevices();
+    });
+    $("device-add-btn").addEventListener("click", () => {
+      addAllowedDevice();
+    });
+    $("device-remove-btn").addEventListener("click", () => {
+      removeAllowedDevice();
     });
     $("connect-btn").addEventListener("click", connect);
     $("disconnect-btn").addEventListener("click", disconnect);
@@ -1178,6 +1585,30 @@
 
     $("terminal-send-ctrlc-btn").addEventListener("click", () => {
       sendTerminalCtrlC();
+    });
+
+    $("browser-run-btn").addEventListener("click", () => {
+      runSelectedBrowserCommand();
+    });
+
+    $("browser-status-btn").addEventListener("click", () => {
+      $("browser-message-type").value = "browser_status";
+      runSelectedBrowserCommand();
+    });
+
+    $("browser-pages-btn").addEventListener("click", () => {
+      $("browser-message-type").value = "browser_pages";
+      runSelectedBrowserCommand();
+    });
+
+    $("browser-navigate-btn").addEventListener("click", () => {
+      $("browser-message-type").value = "browser_navigate";
+      runSelectedBrowserCommand();
+    });
+
+    $("browser-close-btn").addEventListener("click", () => {
+      $("browser-message-type").value = "browser_close";
+      runSelectedBrowserCommand();
     });
 
     $("terminal-poll-ms").addEventListener("change", () => {

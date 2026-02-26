@@ -248,14 +248,13 @@ func (h *Handler) resolveAndValidateDeviceID(r *http.Request, tokenDeviceID stri
 		return "", false
 	}
 
-	if len(h.allowedDevices) == 0 {
+	if !h.hasAllowedDevices() {
 		return requestDeviceID, true
 	}
 	if requestDeviceID == "" {
 		return "", false
 	}
-	_, ok := h.allowedDevices[requestDeviceID]
-	return requestDeviceID, ok
+	return requestDeviceID, h.isAllowedDevice(requestDeviceID)
 }
 
 func requiredScopeForRoute(method string, path string) string {
@@ -273,6 +272,8 @@ func requiredScopeForRoute(method string, path string) string {
 		return scopeRun
 	case path == "/memory/recall":
 		return scopeRead
+	case strings.HasPrefix(path, "/browser/"):
+		return scopeRun
 	case path == "/terminal/sessions" || (strings.HasPrefix(path, "/terminal/sessions/") && strings.HasSuffix(path, "/input")):
 		return scopeRun
 	case strings.HasPrefix(path, "/terminal/sessions/") && strings.HasSuffix(path, "/close"):
@@ -393,13 +394,11 @@ func (h *Handler) handleIssueSessionToken(body []byte, auth authContext, request
 	if value := strings.TrimSpace(toString(payload["device_id"])); value != "" {
 		deviceID = value
 	}
-	if len(h.allowedDevices) > 0 && deviceID == "" {
+	if h.hasAllowedDevices() && deviceID == "" {
 		return nil, fmt.Errorf("'device_id' is required when device allowlist is enabled")
 	}
-	if len(h.allowedDevices) > 0 && deviceID != "" {
-		if _, ok := h.allowedDevices[deviceID]; !ok {
-			return nil, fmt.Errorf("device_id is not in allowed list")
-		}
+	if h.hasAllowedDevices() && deviceID != "" && !h.isAllowedDevice(deviceID) {
+		return nil, fmt.Errorf("device_id is not in allowed list")
 	}
 
 	ttlSeconds := int(h.cfg.SessionTokenTTL.Seconds())

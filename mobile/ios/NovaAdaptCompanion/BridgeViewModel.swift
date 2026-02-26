@@ -35,13 +35,49 @@ struct TerminalSessionSummary: Identifiable {
 
 @MainActor
 final class BridgeViewModel: ObservableObject {
-    @Published var apiBaseURL: String = "http://127.0.0.1:9797"
-    @Published var bridgeWSURL: String = "ws://127.0.0.1:9797/ws"
-    @Published var token: String = ""
-    @Published var objective: String = ""
-    @Published var strategy: String = "single"
-    @Published var candidatesCSV: String = ""
-    @Published var execute: Bool = false
+    @Published var apiBaseURL: String = "http://127.0.0.1:9797" {
+        didSet { persistSettings() }
+    }
+    @Published var bridgeWSURL: String = "ws://127.0.0.1:9797/ws" {
+        didSet { persistSettings() }
+    }
+    @Published var token: String = "" {
+        didSet { persistSecrets() }
+    }
+    @Published var adminToken: String = "" {
+        didSet { persistSecrets() }
+    }
+    @Published var bridgeDeviceID: String = "" {
+        didSet { persistSettings() }
+    }
+    @Published var objective: String = "" {
+        didSet { persistSettings() }
+    }
+    @Published var strategy: String = "single" {
+        didSet { persistSettings() }
+    }
+    @Published var candidatesCSV: String = "" {
+        didSet { persistSettings() }
+    }
+    @Published var execute: Bool = false {
+        didSet { persistSettings() }
+    }
+    @Published var sessionScopesCSV: String = "read,run,plan,approve,reject,undo,cancel" {
+        didSet { persistSettings() }
+    }
+    @Published var sessionTTLSeconds: Int = 900 {
+        didSet { persistSettings() }
+    }
+    @Published var issuedSessionID: String = "" {
+        didSet { persistSettings() }
+    }
+    @Published var revokeExpiresAt: String = "" {
+        didSet { persistSettings() }
+    }
+    @Published var allowlistDeviceID: String = "" {
+        didSet { persistSettings() }
+    }
+    @Published var allowlistSummary: String = "unknown"
     @Published var plans: [PlanSummary] = []
     @Published var jobs: [JobSummary] = []
     @Published var events: [AuditEventSummary] = []
@@ -50,17 +86,54 @@ final class BridgeViewModel: ObservableObject {
 
     @Published var terminalSessions: [TerminalSessionSummary] = []
     @Published var terminalSessionID: String = ""
-    @Published var terminalCommand: String = ""
-    @Published var terminalCWD: String = ""
-    @Published var terminalShell: String = ""
+    @Published var terminalCommand: String = "" {
+        didSet { persistSettings() }
+    }
+    @Published var terminalCWD: String = "" {
+        didSet { persistSettings() }
+    }
+    @Published var terminalShell: String = "" {
+        didSet { persistSettings() }
+    }
     @Published var terminalInput: String = ""
     @Published var terminalOutput: String = ""
-    @Published var terminalPollIntervalMs: Int = 250
+    @Published var terminalPollIntervalMs: Int = 250 {
+        didSet { persistSettings() }
+    }
 
     private var socketTask: URLSessionWebSocketTask?
     private var wsCommandResolvers: [String: (Result<[String: Any], Error>) -> Void] = [:]
     private var terminalPollTask: Task<Void, Never>?
     private var terminalNextSeq: Int = 0
+    private var hydrating = false
+
+    private enum DefaultsKey {
+        static let apiBaseURL = "novaadapt.mobile.apiBaseURL"
+        static let bridgeWSURL = "novaadapt.mobile.bridgeWSURL"
+        static let bridgeDeviceID = "novaadapt.mobile.bridgeDeviceID"
+        static let objective = "novaadapt.mobile.objective"
+        static let strategy = "novaadapt.mobile.strategy"
+        static let candidatesCSV = "novaadapt.mobile.candidatesCSV"
+        static let execute = "novaadapt.mobile.execute"
+        static let sessionScopesCSV = "novaadapt.mobile.sessionScopesCSV"
+        static let sessionTTLSeconds = "novaadapt.mobile.sessionTTLSeconds"
+        static let issuedSessionID = "novaadapt.mobile.issuedSessionID"
+        static let revokeExpiresAt = "novaadapt.mobile.revokeExpiresAt"
+        static let allowlistDeviceID = "novaadapt.mobile.allowlistDeviceID"
+        static let terminalCommand = "novaadapt.mobile.terminalCommand"
+        static let terminalCWD = "novaadapt.mobile.terminalCWD"
+        static let terminalShell = "novaadapt.mobile.terminalShell"
+        static let terminalPollIntervalMs = "novaadapt.mobile.terminalPollIntervalMs"
+    }
+
+    private enum SecretKey {
+        static let token = "operatorToken"
+        static let adminToken = "adminToken"
+    }
+
+    init() {
+        hydratePersistedState()
+    }
 
     var pendingPlans: [PlanSummary] {
         plans.filter { $0.status.lowercased() == "pending" }
@@ -78,8 +151,8 @@ final class BridgeViewModel: ObservableObject {
     }
 
     func connect() {
-        guard let url = URL(string: bridgeWSURL) else {
-            status = "Invalid WebSocket URL"
+        guard let url = normalizedWebSocketURL() else {
+            status = "Invalid WebSocket URL (ws/wss required)"
             return
         }
         var request = URLRequest(url: url)
@@ -87,11 +160,29 @@ final class BridgeViewModel: ObservableObject {
         if !bearer.isEmpty {
             request.setValue("Bearer \(bearer)", forHTTPHeaderField: "Authorization")
         }
+        let deviceID = bridgeDeviceID.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !deviceID.isEmpty {
+            request.setValue(deviceID, forHTTPHeaderField: "X-Device-ID")
+        }
         disconnect()
         socketTask = URLSession.shared.webSocketTask(with: request)
         socketTask?.resume()
         status = "WebSocket connected"
         receiveLoop()
+    }
+
+    func testConnection() {
+        Task {
+            await runAction(label: "Testing core connection") {
+                _ = try await self.requestJSON(method: "GET", path: "/health", body: nil)
+            }
+        }
+    }
+
+    func clearStoredCredentials() {
+        token = ""
+        adminToken = ""
+        status = "Stored credentials cleared"
     }
 
     func disconnect() {
@@ -204,6 +295,150 @@ final class BridgeViewModel: ObservableObject {
             await runAction(label: "Canceling job \(jobId)") {
                 _ = try await self.requestJSON(method: "POST", path: "/jobs/\(jobId)/cancel", body: [:])
                 try await self.refreshDashboardAsync()
+            }
+        }
+    }
+
+    func refreshAllowedDevices() {
+        Task {
+            let adminBearer = adminOrPrimaryToken()
+            guard !adminBearer.isEmpty else {
+                status = "Admin token is empty"
+                return
+            }
+            await runAction(label: "Refreshing allowlist") {
+                let payload = try await self.requestJSON(
+                    method: "GET",
+                    path: "/auth/devices",
+                    body: nil,
+                    tokenOverride: adminBearer
+                )
+                self.applyAllowedDevices(payload)
+            }
+        }
+    }
+
+    func issueSessionToken() {
+        Task {
+            let adminBearer = adminOrPrimaryToken()
+            guard !adminBearer.isEmpty else {
+                status = "Admin token is empty"
+                return
+            }
+            let scopes = sessionScopesCSV
+                .split(separator: ",")
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+            guard !scopes.isEmpty else {
+                status = "Session scopes are empty"
+                return
+            }
+            let ttl = max(60, min(86400, sessionTTLSeconds))
+            await runAction(label: "Issuing session token") {
+                var body: [String: Any] = [
+                    "scopes": scopes,
+                    "ttl_seconds": ttl,
+                ]
+                let deviceID = self.bridgeDeviceID.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !deviceID.isEmpty {
+                    body["device_id"] = deviceID
+                }
+                let payload = try await self.requestJSON(
+                    method: "POST",
+                    path: "/auth/session",
+                    body: body,
+                    tokenOverride: adminBearer
+                )
+                let issuedToken = self.string(payload["token"])
+                guard !issuedToken.isEmpty else {
+                    throw NSError(domain: "NovaAdaptCompanion", code: -2, userInfo: [NSLocalizedDescriptionKey: "session token missing in response"])
+                }
+                self.token = issuedToken
+                self.issuedSessionID = self.string(payload["session_id"])
+            }
+        }
+    }
+
+    func revokeSessionToken() {
+        Task {
+            let adminBearer = adminOrPrimaryToken()
+            guard !adminBearer.isEmpty else {
+                status = "Admin token is empty"
+                return
+            }
+            let tokenToRevoke = token.trimmingCharacters(in: .whitespacesAndNewlines)
+            let sessionID = issuedSessionID.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !tokenToRevoke.isEmpty || !sessionID.isEmpty else {
+                status = "Session token or session id is required"
+                return
+            }
+
+            await runAction(label: "Revoking session token") {
+                var body: [String: Any] = [:]
+                if !tokenToRevoke.isEmpty {
+                    body["token"] = tokenToRevoke
+                }
+                if !sessionID.isEmpty {
+                    body["session_id"] = sessionID
+                }
+                let expiresAt = Int(self.revokeExpiresAt.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
+                if expiresAt > 0 {
+                    body["expires_at"] = expiresAt
+                }
+                _ = try await self.requestJSON(
+                    method: "POST",
+                    path: "/auth/session/revoke",
+                    body: body,
+                    tokenOverride: adminBearer
+                )
+            }
+        }
+    }
+
+    func addAllowedDevice() {
+        Task {
+            let adminBearer = adminOrPrimaryToken()
+            guard !adminBearer.isEmpty else {
+                status = "Admin token is empty"
+                return
+            }
+            let deviceID = allowlistDeviceID.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !deviceID.isEmpty else {
+                status = "Allowlist device id is empty"
+                return
+            }
+            await runAction(label: "Adding allowlisted device \(deviceID)") {
+                let payload = try await self.requestJSON(
+                    method: "POST",
+                    path: "/auth/devices",
+                    body: ["device_id": deviceID],
+                    tokenOverride: adminBearer
+                )
+                self.applyAllowedDevices(payload)
+            }
+        }
+    }
+
+    func removeAllowedDevice() {
+        Task {
+            let adminBearer = adminOrPrimaryToken()
+            guard !adminBearer.isEmpty else {
+                status = "Admin token is empty"
+                return
+            }
+            let deviceID = allowlistDeviceID.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !deviceID.isEmpty else {
+                status = "Allowlist device id is empty"
+                return
+            }
+            await runAction(label: "Removing allowlisted device \(deviceID)") {
+                let payload = try await self.requestJSON(
+                    method: "POST",
+                    path: "/auth/devices/remove",
+                    body: ["device_id": deviceID],
+                    tokenOverride: adminBearer
+                )
+                self.applyAllowedDevices(payload)
             }
         }
     }
@@ -403,6 +638,106 @@ final class BridgeViewModel: ObservableObject {
             status = "\(label) OK"
         } catch {
             status = "\(label) failed: \(error.localizedDescription)"
+        }
+    }
+
+    private func hydratePersistedState() {
+        hydrating = true
+        defer { hydrating = false }
+
+        let defaults = UserDefaults.standard
+        if let value = defaults.string(forKey: DefaultsKey.apiBaseURL), !value.isEmpty {
+            apiBaseURL = value
+        }
+        if let value = defaults.string(forKey: DefaultsKey.bridgeWSURL), !value.isEmpty {
+            bridgeWSURL = value
+        }
+        if let value = defaults.string(forKey: DefaultsKey.bridgeDeviceID) {
+            bridgeDeviceID = value
+        }
+        if let value = defaults.string(forKey: DefaultsKey.objective) {
+            objective = value
+        }
+        if let value = defaults.string(forKey: DefaultsKey.strategy), !value.isEmpty {
+            strategy = value
+        }
+        if let value = defaults.string(forKey: DefaultsKey.candidatesCSV) {
+            candidatesCSV = value
+        }
+        execute = defaults.bool(forKey: DefaultsKey.execute)
+        if let value = defaults.string(forKey: DefaultsKey.sessionScopesCSV), !value.isEmpty {
+            sessionScopesCSV = value
+        }
+        let ttl = defaults.integer(forKey: DefaultsKey.sessionTTLSeconds)
+        if ttl > 0 {
+            sessionTTLSeconds = max(60, min(86400, ttl))
+        }
+        if let value = defaults.string(forKey: DefaultsKey.issuedSessionID) {
+            issuedSessionID = value
+        }
+        if let value = defaults.string(forKey: DefaultsKey.revokeExpiresAt) {
+            revokeExpiresAt = value
+        }
+        if let value = defaults.string(forKey: DefaultsKey.allowlistDeviceID) {
+            allowlistDeviceID = value
+        }
+        if let value = defaults.string(forKey: DefaultsKey.terminalCommand) {
+            terminalCommand = value
+        }
+        if let value = defaults.string(forKey: DefaultsKey.terminalCWD) {
+            terminalCWD = value
+        }
+        if let value = defaults.string(forKey: DefaultsKey.terminalShell) {
+            terminalShell = value
+        }
+        let pollMs = defaults.integer(forKey: DefaultsKey.terminalPollIntervalMs)
+        if pollMs > 0 {
+            terminalPollIntervalMs = max(75, min(2000, pollMs))
+        }
+
+        token = KeychainStore.get(SecretKey.token) ?? ""
+        adminToken = KeychainStore.get(SecretKey.adminToken) ?? ""
+    }
+
+    private func persistSettings() {
+        if hydrating {
+            return
+        }
+        let defaults = UserDefaults.standard
+        defaults.set(apiBaseURL, forKey: DefaultsKey.apiBaseURL)
+        defaults.set(bridgeWSURL, forKey: DefaultsKey.bridgeWSURL)
+        defaults.set(bridgeDeviceID, forKey: DefaultsKey.bridgeDeviceID)
+        defaults.set(objective, forKey: DefaultsKey.objective)
+        defaults.set(strategy, forKey: DefaultsKey.strategy)
+        defaults.set(candidatesCSV, forKey: DefaultsKey.candidatesCSV)
+        defaults.set(execute, forKey: DefaultsKey.execute)
+        defaults.set(sessionScopesCSV, forKey: DefaultsKey.sessionScopesCSV)
+        defaults.set(max(60, min(86400, sessionTTLSeconds)), forKey: DefaultsKey.sessionTTLSeconds)
+        defaults.set(issuedSessionID, forKey: DefaultsKey.issuedSessionID)
+        defaults.set(revokeExpiresAt, forKey: DefaultsKey.revokeExpiresAt)
+        defaults.set(allowlistDeviceID, forKey: DefaultsKey.allowlistDeviceID)
+        defaults.set(terminalCommand, forKey: DefaultsKey.terminalCommand)
+        defaults.set(terminalCWD, forKey: DefaultsKey.terminalCWD)
+        defaults.set(terminalShell, forKey: DefaultsKey.terminalShell)
+        defaults.set(max(75, min(2000, terminalPollIntervalMs)), forKey: DefaultsKey.terminalPollIntervalMs)
+    }
+
+    private func persistSecrets() {
+        if hydrating {
+            return
+        }
+        let operatorToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        if operatorToken.isEmpty {
+            KeychainStore.delete(SecretKey.token)
+        } else {
+            KeychainStore.set(operatorToken, for: SecretKey.token)
+        }
+
+        let adminBearer = adminToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        if adminBearer.isEmpty {
+            KeychainStore.delete(SecretKey.adminToken)
+        } else {
+            KeychainStore.set(adminBearer, for: SecretKey.adminToken)
         }
     }
 
@@ -623,10 +958,19 @@ final class BridgeViewModel: ObservableObject {
         return payload
     }
 
+    private func adminOrPrimaryToken() -> String {
+        let admin = adminToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !admin.isEmpty {
+            return admin
+        }
+        return token.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     private func requestJSON(
         method: String,
         path: String,
-        body: [String: Any]?
+        body: [String: Any]?,
+        tokenOverride: String? = nil
     ) async throws -> [String: Any] {
         guard let url = makeURL(path: path) else {
             throw URLError(.badURL)
@@ -635,9 +979,13 @@ final class BridgeViewModel: ObservableObject {
         request.httpMethod = method.uppercased()
         request.timeoutInterval = 20
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        let bearer = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        let bearer = (tokenOverride ?? token).trimmingCharacters(in: .whitespacesAndNewlines)
         if !bearer.isEmpty {
             request.setValue("Bearer \(bearer)", forHTTPHeaderField: "Authorization")
+        }
+        let deviceID = bridgeDeviceID.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !deviceID.isEmpty {
+            request.setValue(deviceID, forHTTPHeaderField: "X-Device-ID")
         }
         if let body {
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
@@ -660,16 +1008,45 @@ final class BridgeViewModel: ObservableObject {
     }
 
     private func makeURL(path: String) -> URL? {
-        let base = apiBaseURL
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        guard !base.isEmpty else {
+        guard let base = normalizedAPIBaseURL() else {
             return nil
         }
-        if path.hasPrefix("/") {
-            return URL(string: base + path)
+        let baseText = base.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let normalizedPath = path.hasPrefix("/") ? path : "/\(path)"
+        return URL(string: baseText + normalizedPath)
+    }
+
+    private func normalizedAPIBaseURL() -> URL? {
+        let raw = apiBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !raw.isEmpty, let parsed = URL(string: raw), let scheme = parsed.scheme?.lowercased() else {
+            return nil
         }
-        return URL(string: base + "/" + path)
+        guard scheme == "http" || scheme == "https" else {
+            return nil
+        }
+        guard parsed.host != nil else {
+            return nil
+        }
+        var components = URLComponents(url: parsed, resolvingAgainstBaseURL: false)
+        components?.query = nil
+        components?.fragment = nil
+        return components?.url
+    }
+
+    private func normalizedWebSocketURL() -> URL? {
+        let raw = bridgeWSURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !raw.isEmpty, let parsed = URL(string: raw), let scheme = parsed.scheme?.lowercased() else {
+            return nil
+        }
+        guard scheme == "ws" || scheme == "wss" else {
+            return nil
+        }
+        guard parsed.host != nil else {
+            return nil
+        }
+        var components = URLComponents(url: parsed, resolvingAgainstBaseURL: false)
+        components?.fragment = nil
+        return components?.url
     }
 
     private func parseJSONObject(_ data: Data) -> [String: Any]? {
@@ -680,6 +1057,27 @@ final class BridgeViewModel: ObservableObject {
             return nil
         }
         return raw as? [String: Any]
+    }
+
+    private func applyAllowedDevices(_ payload: [String: Any]) {
+        let devices = parseStringArray(payload["devices"])
+        let count = toInt(payload["count"]) ?? devices.count
+        if devices.isEmpty {
+            allowlistSummary = "\(count) device(s)"
+        } else {
+            allowlistSummary = "\(count) device(s): \(devices.joined(separator: ", "))"
+        }
+    }
+
+    private func parseStringArray(_ value: Any?) -> [String] {
+        guard let values = value as? [Any] else {
+            return []
+        }
+        return values
+            .compactMap { item -> String? in
+                let text = string(item).trimmingCharacters(in: .whitespacesAndNewlines)
+                return text.isEmpty ? nil : text
+            }
     }
 
     private func parsePlans(_ value: Any?) -> [PlanSummary] {

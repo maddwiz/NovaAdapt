@@ -2,13 +2,16 @@ import json
 import threading
 import unittest
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from urllib import error
 
+from novaadapt_shared import api_client as api_client_module
 from novaadapt_shared.api_client import APIClientError, NovaAdaptAPIClient
 
 
 class _Handler(BaseHTTPRequestHandler):
     models_attempts = 0
     terminal_session_id = "term-1"
+    allowed_devices = set()
 
     def do_GET(self):
         auth = self.headers.get("Authorization")
@@ -18,6 +21,17 @@ class _Handler(BaseHTTPRequestHandler):
 
         if self.path == "/health":
             self._send(200, {"ok": True})
+            return
+        if self.path == "/auth/devices":
+            devices = sorted(_Handler.allowed_devices)
+            self._send(
+                200,
+                {
+                    "enabled": len(devices) > 0,
+                    "count": len(devices),
+                    "devices": devices,
+                },
+            )
             return
         if self.path == "/openapi.json":
             self._send(200, {"openapi": "3.1.0", "paths": {"/run": {}}})
@@ -50,6 +64,22 @@ class _Handler(BaseHTTPRequestHandler):
             return
         if self.path == "/memory/status":
             self._send(200, {"ok": True, "enabled": True, "backend": "novaspine-http"})
+            return
+        if self.path == "/browser/status":
+            self._send(200, {"ok": True, "transport": "browser", "capabilities": ["navigate", "click_selector"]})
+            return
+        if self.path == "/browser/pages":
+            self._send(
+                200,
+                {
+                    "status": "ok",
+                    "count": 1,
+                    "current_page_id": "page-1",
+                    "pages": [
+                        {"page_id": "page-1", "url": "https://example.com", "current": True}
+                    ],
+                },
+            )
             return
         if self.path == "/terminal/sessions":
             self._send(
@@ -172,6 +202,8 @@ class _Handler(BaseHTTPRequestHandler):
             "/check",
             "/auth/session",
             "/auth/session/revoke",
+            "/auth/devices",
+            "/auth/devices/remove",
             "/jobs/job-1/cancel",
             "/plans",
             "/plans/plan-1/approve",
@@ -184,6 +216,15 @@ class _Handler(BaseHTTPRequestHandler):
             "/feedback",
             "/memory/recall",
             "/memory/ingest",
+            "/browser/action",
+            "/browser/navigate",
+            "/browser/click",
+            "/browser/fill",
+            "/browser/extract_text",
+            "/browser/screenshot",
+            "/browser/wait_for_selector",
+            "/browser/evaluate_js",
+            "/browser/close",
             "/terminal/sessions",
             f"/terminal/sessions/{_Handler.terminal_session_id}/input",
             f"/terminal/sessions/{_Handler.terminal_session_id}/close",
@@ -259,6 +300,46 @@ class _Handler(BaseHTTPRequestHandler):
                         "result": {"ingested": True},
                     },
                 )
+            elif self.path == "/browser/action":
+                action_payload = payload.get("action") if isinstance(payload.get("action"), dict) else payload
+                self._send(
+                    200,
+                    {
+                        "status": "ok",
+                        "output": "browser action",
+                        "action": action_payload,
+                    },
+                )
+            elif self.path == "/browser/navigate":
+                self._send(
+                    200,
+                    {
+                        "status": "ok",
+                        "output": "navigated",
+                        "data": {"url": payload.get("url")},
+                    },
+                )
+            elif self.path == "/browser/click":
+                self._send(200, {"status": "ok", "output": "clicked", "data": {"selector": payload.get("selector")}})
+            elif self.path == "/browser/fill":
+                self._send(200, {"status": "ok", "output": "filled", "data": {"selector": payload.get("selector")}})
+            elif self.path == "/browser/extract_text":
+                self._send(
+                    200,
+                    {
+                        "status": "ok",
+                        "output": "extracted",
+                        "data": {"text": "hello world", "selector": payload.get("selector", "body")},
+                    },
+                )
+            elif self.path == "/browser/screenshot":
+                self._send(200, {"status": "ok", "output": "saved", "data": {"path": "/tmp/shot.png"}})
+            elif self.path == "/browser/wait_for_selector":
+                self._send(200, {"status": "ok", "output": "ready", "data": {"selector": payload.get("selector")}})
+            elif self.path == "/browser/evaluate_js":
+                self._send(200, {"status": "ok", "output": "evaluated", "data": {"result": 42}})
+            elif self.path == "/browser/close":
+                self._send(200, {"status": "ok", "output": "browser session closed"})
             elif self.path == "/terminal/sessions":
                 self._send(
                     201,
@@ -298,6 +379,44 @@ class _Handler(BaseHTTPRequestHandler):
                         "expires_at": 9999999999,
                     },
                 )
+            elif self.path == "/auth/devices":
+                device_id = str(payload.get("device_id", "")).strip()
+                if not device_id:
+                    self._send(400, {"error": "'device_id' is required"})
+                    return
+                added = device_id not in _Handler.allowed_devices
+                _Handler.allowed_devices.add(device_id)
+                devices = sorted(_Handler.allowed_devices)
+                self._send(
+                    200,
+                    {
+                        "status": "ok",
+                        "added": added,
+                        "device_id": device_id,
+                        "enabled": len(devices) > 0,
+                        "count": len(devices),
+                        "devices": devices,
+                    },
+                )
+            elif self.path == "/auth/devices/remove":
+                device_id = str(payload.get("device_id", "")).strip()
+                if not device_id:
+                    self._send(400, {"error": "'device_id' is required"})
+                    return
+                removed = device_id in _Handler.allowed_devices
+                _Handler.allowed_devices.discard(device_id)
+                devices = sorted(_Handler.allowed_devices)
+                self._send(
+                    200,
+                    {
+                        "status": "ok",
+                        "removed": removed,
+                        "device_id": device_id,
+                        "enabled": len(devices) > 0,
+                        "count": len(devices),
+                        "devices": devices,
+                    },
+                )
             else:
                 self._send(200, [{"name": "local", "ok": True}])
             return
@@ -320,6 +439,7 @@ class APIClientTests(unittest.TestCase):
     def setUp(self):
         _Handler.models_attempts = 0
         _Handler.terminal_session_id = "term-1"
+        _Handler.allowed_devices = set()
         self.server = HTTPServer(("127.0.0.1", 0), _Handler)
         self.host, self.port = self.server.server_address
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
@@ -380,6 +500,13 @@ class APIClientTests(unittest.TestCase):
         self.assertTrue(revoke_payload["revoked"])
         revoke_by_id_payload = client.revoke_session_id("session-1", expires_at=9999999999)
         self.assertTrue(revoke_by_id_payload["revoked"])
+        self.assertEqual(client.allowed_devices()["count"], 0)
+        add_device_payload = client.add_allowed_device("iphone-1")
+        self.assertTrue(add_device_payload["added"])
+        self.assertEqual(add_device_payload["count"], 1)
+        remove_device_payload = client.remove_allowed_device("iphone-1")
+        self.assertTrue(remove_device_payload["removed"])
+        self.assertEqual(remove_device_payload["count"], 0)
         feedback_payload = client.submit_feedback(rating=8, objective="demo", notes="good flow")
         self.assertTrue(feedback_payload["ok"])
         self.assertEqual(feedback_payload["rating"], 8)
@@ -394,6 +521,23 @@ class APIClientTests(unittest.TestCase):
             idempotency_key="idem-memory-1",
         )
         self.assertTrue(ingest_payload["ok"])
+        browser_status = client.browser_status()
+        self.assertTrue(browser_status["ok"])
+        self.assertEqual(browser_status["transport"], "browser")
+        browser_pages = client.browser_pages()
+        self.assertEqual(browser_pages["count"], 1)
+        self.assertEqual(browser_pages["current_page_id"], "page-1")
+        browser_action = client.browser_action({"type": "navigate", "target": "https://example.com"})
+        self.assertEqual(browser_action["status"], "ok")
+        self.assertEqual(browser_action["action"]["type"], "navigate")
+        self.assertEqual(client.browser_navigate("https://example.com")["status"], "ok")
+        self.assertEqual(client.browser_click("#ok")["status"], "ok")
+        self.assertEqual(client.browser_fill("#search", "novaadapt")["status"], "ok")
+        self.assertEqual(client.browser_extract_text("#title")["status"], "ok")
+        self.assertEqual(client.browser_screenshot(path="shot.png")["status"], "ok")
+        self.assertEqual(client.browser_wait_for_selector("#app")["status"], "ok")
+        self.assertEqual(client.browser_evaluate_js("() => 42")["status"], "ok")
+        self.assertEqual(client.browser_close()["status"], "ok")
         session = client.start_terminal_session(command="echo hi")
         session_id = session["id"]
         self.assertEqual(client.terminal_session(session_id)["id"], session_id)
@@ -420,6 +564,75 @@ class APIClientTests(unittest.TestCase):
         models = client.models()
         self.assertEqual(models[0]["name"], "local")
         self.assertGreaterEqual(_Handler.models_attempts, 2)
+
+    def test_http_error_response_is_closed(self):
+        class _ClosingHTTPError(error.HTTPError):
+            def __init__(self):
+                super().__init__(
+                    url="http://127.0.0.1:1/models",
+                    code=502,
+                    msg="Bad Gateway",
+                    hdrs=None,
+                    fp=None,
+                )
+                self.closed = False
+
+            def read(self):
+                return b'{"error":"temporary upstream"}'
+
+            def close(self):
+                self.closed = True
+
+        err = _ClosingHTTPError()
+
+        def _raise(*_args, **_kwargs):
+            raise err
+
+        original = api_client_module.request.urlopen
+        api_client_module.request.urlopen = _raise
+        try:
+            client = NovaAdaptAPIClient(
+                base_url="http://127.0.0.1:1",
+                token="token",
+                max_retries=0,
+            )
+            with self.assertRaises(APIClientError):
+                client.models()
+        finally:
+            api_client_module.request.urlopen = original
+
+        self.assertTrue(err.closed)
+
+    def test_url_error_reason_close_is_called(self):
+        class _ClosableReason:
+            def __init__(self):
+                self.closed = False
+
+            def close(self):
+                self.closed = True
+
+            def __str__(self):
+                return "transport down"
+
+        reason = _ClosableReason()
+
+        def _raise(*_args, **_kwargs):
+            raise error.URLError(reason)
+
+        original = api_client_module.request.urlopen
+        api_client_module.request.urlopen = _raise
+        try:
+            client = NovaAdaptAPIClient(
+                base_url="http://127.0.0.1:1",
+                token="token",
+                max_retries=0,
+            )
+            with self.assertRaises(APIClientError):
+                client.models()
+        finally:
+            api_client_module.request.urlopen = original
+
+        self.assertTrue(reason.closed)
 
 
 if __name__ == "__main__":

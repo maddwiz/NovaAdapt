@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -36,6 +37,10 @@ type wsClientMessage struct {
 	Body           map[string]any `json:"body,omitempty"`
 	IdempotencyKey string         `json:"idempotency_key,omitempty"`
 	SinceID        *int64         `json:"since_id,omitempty"`
+	SessionID      string         `json:"session_id,omitempty"`
+	SinceSeq       *int64         `json:"since_seq,omitempty"`
+	Limit          *int           `json:"limit,omitempty"`
+	Input          string         `json:"input,omitempty"`
 }
 
 type wsSSEEvent struct {
@@ -238,6 +243,45 @@ func (h *Handler) handleWSClientMessage(
 		next := max64(0, *msg.SinceID)
 		atomic.StoreInt64(lastEventID, next)
 		return writer.write(map[string]any{"type": "ack", "id": msg.ID, "request_id": requestID, "since_id": next})
+	case "terminal_list":
+		return h.handleWSTerminalList(writer, requestID, msg, auth)
+	case "terminal_start":
+		return h.handleWSTerminalStart(writer, requestID, msg, auth)
+	case "terminal_poll":
+		return h.handleWSTerminalPoll(writer, requestID, msg, auth)
+	case "terminal_input":
+		return h.handleWSTerminalInput(writer, requestID, msg, auth)
+	case "terminal_close":
+		return h.handleWSTerminalClose(writer, requestID, msg, auth)
+	case "browser_status":
+		return h.handleWSBrowserGet(writer, requestID, msg, auth, "/browser/status", "browser_status")
+	case "browser_pages":
+		return h.handleWSBrowserGet(writer, requestID, msg, auth, "/browser/pages", "browser_pages")
+	case "browser_action":
+		return h.handleWSBrowserPost(writer, requestID, msg, auth, "/browser/action", "browser_action_result")
+	case "browser_navigate":
+		return h.handleWSBrowserPost(writer, requestID, msg, auth, "/browser/navigate", "browser_navigate_result")
+	case "browser_click":
+		return h.handleWSBrowserPost(writer, requestID, msg, auth, "/browser/click", "browser_click_result")
+	case "browser_fill":
+		return h.handleWSBrowserPost(writer, requestID, msg, auth, "/browser/fill", "browser_fill_result")
+	case "browser_extract_text":
+		return h.handleWSBrowserPost(writer, requestID, msg, auth, "/browser/extract_text", "browser_extract_text_result")
+	case "browser_screenshot":
+		return h.handleWSBrowserPost(writer, requestID, msg, auth, "/browser/screenshot", "browser_screenshot_result")
+	case "browser_wait_for_selector":
+		return h.handleWSBrowserPost(
+			writer,
+			requestID,
+			msg,
+			auth,
+			"/browser/wait_for_selector",
+			"browser_wait_for_selector_result",
+		)
+	case "browser_evaluate_js":
+		return h.handleWSBrowserPost(writer, requestID, msg, auth, "/browser/evaluate_js", "browser_evaluate_js_result")
+	case "browser_close":
+		return h.handleWSBrowserPost(writer, requestID, msg, auth, "/browser/close", "browser_closed")
 	case "command":
 		return h.handleWSCommand(writer, requestID, msg, auth)
 	default:
@@ -250,6 +294,378 @@ func (h *Handler) handleWSClientMessage(
 			},
 		)
 	}
+}
+
+func (h *Handler) handleWSTerminalList(
+	writer *wsJSONWriter,
+	requestID string,
+	msg wsClientMessage,
+	auth authContext,
+) error {
+	path := "/terminal/sessions"
+	if !auth.canAccess(http.MethodGet, path) {
+		return writer.write(
+			map[string]any{
+				"type":       "error",
+				"id":         msg.ID,
+				"error":      "forbidden by token scope",
+				"path":       path,
+				"method":     http.MethodGet,
+				"request_id": requestID,
+			},
+		)
+	}
+
+	commandRequestID := normalizeRequestID("")
+	coreResult, err := h.coreJSONRequest(
+		http.MethodGet,
+		path,
+		"",
+		commandRequestID,
+		"",
+		nil,
+	)
+	if err != nil {
+		return writer.write(map[string]any{"type": "error", "id": msg.ID, "error": err.Error(), "request_id": requestID})
+	}
+
+	return writer.write(
+		map[string]any{
+			"type":            "terminal_sessions",
+			"id":              msg.ID,
+			"status":          coreResult.StatusCode,
+			"payload":         coreResult.Payload,
+			"core_request":    commandRequestID,
+			"core_request_id": coreResult.CoreRequestID,
+			"request_id":      requestID,
+		},
+	)
+}
+
+func (h *Handler) handleWSTerminalStart(
+	writer *wsJSONWriter,
+	requestID string,
+	msg wsClientMessage,
+	auth authContext,
+) error {
+	path := "/terminal/sessions"
+	if !auth.canAccess(http.MethodPost, path) {
+		return writer.write(
+			map[string]any{
+				"type":       "error",
+				"id":         msg.ID,
+				"error":      "forbidden by token scope",
+				"path":       path,
+				"method":     http.MethodPost,
+				"request_id": requestID,
+			},
+		)
+	}
+
+	commandRequestID := normalizeRequestID("")
+	coreResult, err := h.coreJSONRequest(
+		http.MethodPost,
+		path,
+		"",
+		commandRequestID,
+		strings.TrimSpace(msg.IdempotencyKey),
+		msg.Body,
+	)
+	if err != nil {
+		return writer.write(map[string]any{"type": "error", "id": msg.ID, "error": err.Error(), "request_id": requestID})
+	}
+
+	return writer.write(
+		map[string]any{
+			"type":            "terminal_started",
+			"id":              msg.ID,
+			"status":          coreResult.StatusCode,
+			"payload":         coreResult.Payload,
+			"core_request":    commandRequestID,
+			"core_request_id": coreResult.CoreRequestID,
+			"idempotency_key": coreResult.IdempotencyKey,
+			"replayed":        coreResult.ReplayDetected,
+			"request_id":      requestID,
+		},
+	)
+}
+
+func (h *Handler) handleWSTerminalPoll(
+	writer *wsJSONWriter,
+	requestID string,
+	msg wsClientMessage,
+	auth authContext,
+) error {
+	sessionID, err := normalizeTerminalSessionID(msg.SessionID)
+	if err != nil {
+		return writer.write(map[string]any{"type": "error", "id": msg.ID, "error": err.Error(), "request_id": requestID})
+	}
+	path := "/terminal/sessions/" + url.PathEscape(sessionID) + "/output"
+	if !auth.canAccess(http.MethodGet, path) {
+		return writer.write(
+			map[string]any{
+				"type":       "error",
+				"id":         msg.ID,
+				"error":      "forbidden by token scope",
+				"path":       path,
+				"method":     http.MethodGet,
+				"request_id": requestID,
+			},
+		)
+	}
+
+	sinceSeq := int64(0)
+	if msg.SinceSeq != nil {
+		sinceSeq = max64(0, *msg.SinceSeq)
+	}
+	limit := 600
+	if msg.Limit != nil {
+		limit = max(1, min(*msg.Limit, 5000))
+	}
+	query := fmt.Sprintf("since_seq=%d&limit=%d", sinceSeq, limit)
+
+	commandRequestID := normalizeRequestID("")
+	coreResult, err := h.coreJSONRequest(
+		http.MethodGet,
+		path,
+		query,
+		commandRequestID,
+		"",
+		nil,
+	)
+	if err != nil {
+		return writer.write(map[string]any{"type": "error", "id": msg.ID, "error": err.Error(), "request_id": requestID})
+	}
+
+	return writer.write(
+		map[string]any{
+			"type":            "terminal_output",
+			"id":              msg.ID,
+			"session_id":      sessionID,
+			"status":          coreResult.StatusCode,
+			"payload":         coreResult.Payload,
+			"core_request":    commandRequestID,
+			"core_request_id": coreResult.CoreRequestID,
+			"request_id":      requestID,
+		},
+	)
+}
+
+func (h *Handler) handleWSTerminalInput(
+	writer *wsJSONWriter,
+	requestID string,
+	msg wsClientMessage,
+	auth authContext,
+) error {
+	sessionID, err := normalizeTerminalSessionID(msg.SessionID)
+	if err != nil {
+		return writer.write(map[string]any{"type": "error", "id": msg.ID, "error": err.Error(), "request_id": requestID})
+	}
+
+	input := msg.Input
+	if strings.TrimSpace(input) == "" && msg.Body != nil {
+		rawInput := msg.Body["input"]
+		if rawInput != nil {
+			input = fmt.Sprintf("%v", rawInput)
+		}
+	}
+	if input == "" {
+		return writer.write(map[string]any{"type": "error", "id": msg.ID, "error": "'input' is required", "request_id": requestID})
+	}
+
+	path := "/terminal/sessions/" + url.PathEscape(sessionID) + "/input"
+	if !auth.canAccess(http.MethodPost, path) {
+		return writer.write(
+			map[string]any{
+				"type":       "error",
+				"id":         msg.ID,
+				"error":      "forbidden by token scope",
+				"path":       path,
+				"method":     http.MethodPost,
+				"request_id": requestID,
+			},
+		)
+	}
+
+	commandRequestID := normalizeRequestID("")
+	coreResult, err := h.coreJSONRequest(
+		http.MethodPost,
+		path,
+		"",
+		commandRequestID,
+		"",
+		map[string]any{"input": input},
+	)
+	if err != nil {
+		return writer.write(map[string]any{"type": "error", "id": msg.ID, "error": err.Error(), "request_id": requestID})
+	}
+
+	return writer.write(
+		map[string]any{
+			"type":            "terminal_input_result",
+			"id":              msg.ID,
+			"session_id":      sessionID,
+			"status":          coreResult.StatusCode,
+			"payload":         coreResult.Payload,
+			"core_request":    commandRequestID,
+			"core_request_id": coreResult.CoreRequestID,
+			"request_id":      requestID,
+		},
+	)
+}
+
+func (h *Handler) handleWSTerminalClose(
+	writer *wsJSONWriter,
+	requestID string,
+	msg wsClientMessage,
+	auth authContext,
+) error {
+	sessionID, err := normalizeTerminalSessionID(msg.SessionID)
+	if err != nil {
+		return writer.write(map[string]any{"type": "error", "id": msg.ID, "error": err.Error(), "request_id": requestID})
+	}
+	path := "/terminal/sessions/" + url.PathEscape(sessionID) + "/close"
+	if !auth.canAccess(http.MethodPost, path) {
+		return writer.write(
+			map[string]any{
+				"type":       "error",
+				"id":         msg.ID,
+				"error":      "forbidden by token scope",
+				"path":       path,
+				"method":     http.MethodPost,
+				"request_id": requestID,
+			},
+		)
+	}
+
+	commandRequestID := normalizeRequestID("")
+	coreResult, err := h.coreJSONRequest(
+		http.MethodPost,
+		path,
+		"",
+		commandRequestID,
+		"",
+		msg.Body,
+	)
+	if err != nil {
+		return writer.write(map[string]any{"type": "error", "id": msg.ID, "error": err.Error(), "request_id": requestID})
+	}
+
+	return writer.write(
+		map[string]any{
+			"type":            "terminal_closed",
+			"id":              msg.ID,
+			"session_id":      sessionID,
+			"status":          coreResult.StatusCode,
+			"payload":         coreResult.Payload,
+			"core_request":    commandRequestID,
+			"core_request_id": coreResult.CoreRequestID,
+			"request_id":      requestID,
+		},
+	)
+}
+
+func (h *Handler) handleWSBrowserGet(
+	writer *wsJSONWriter,
+	requestID string,
+	msg wsClientMessage,
+	auth authContext,
+	path string,
+	responseType string,
+) error {
+	if !auth.canAccess(http.MethodGet, path) {
+		return writer.write(
+			map[string]any{
+				"type":       "error",
+				"id":         msg.ID,
+				"error":      "forbidden by token scope",
+				"path":       path,
+				"method":     http.MethodGet,
+				"request_id": requestID,
+			},
+		)
+	}
+
+	commandRequestID := normalizeRequestID("")
+	coreResult, err := h.coreJSONRequest(
+		http.MethodGet,
+		path,
+		"",
+		commandRequestID,
+		"",
+		nil,
+	)
+	if err != nil {
+		return writer.write(map[string]any{"type": "error", "id": msg.ID, "error": err.Error(), "request_id": requestID})
+	}
+
+	return writer.write(
+		map[string]any{
+			"type":            responseType,
+			"id":              msg.ID,
+			"status":          coreResult.StatusCode,
+			"payload":         coreResult.Payload,
+			"path":            path,
+			"core_request":    commandRequestID,
+			"core_request_id": coreResult.CoreRequestID,
+			"request_id":      requestID,
+		},
+	)
+}
+
+func (h *Handler) handleWSBrowserPost(
+	writer *wsJSONWriter,
+	requestID string,
+	msg wsClientMessage,
+	auth authContext,
+	path string,
+	responseType string,
+) error {
+	if !auth.canAccess(http.MethodPost, path) {
+		return writer.write(
+			map[string]any{
+				"type":       "error",
+				"id":         msg.ID,
+				"error":      "forbidden by token scope",
+				"path":       path,
+				"method":     http.MethodPost,
+				"request_id": requestID,
+			},
+		)
+	}
+
+	body := msg.Body
+	if body == nil {
+		body = map[string]any{}
+	}
+
+	commandRequestID := normalizeRequestID("")
+	coreResult, err := h.coreJSONRequest(
+		http.MethodPost,
+		path,
+		"",
+		commandRequestID,
+		strings.TrimSpace(msg.IdempotencyKey),
+		body,
+	)
+	if err != nil {
+		return writer.write(map[string]any{"type": "error", "id": msg.ID, "error": err.Error(), "request_id": requestID})
+	}
+
+	return writer.write(
+		map[string]any{
+			"type":            responseType,
+			"id":              msg.ID,
+			"status":          coreResult.StatusCode,
+			"payload":         coreResult.Payload,
+			"path":            path,
+			"core_request":    commandRequestID,
+			"core_request_id": coreResult.CoreRequestID,
+			"idempotency_key": coreResult.IdempotencyKey,
+			"replayed":        coreResult.ReplayDetected,
+			"request_id":      requestID,
+		},
+	)
 }
 
 func (h *Handler) handleWSCommand(writer *wsJSONWriter, requestID string, msg wsClientMessage, auth authContext) error {
@@ -527,6 +943,17 @@ func normalizeWSPath(path string) string {
 		value = "/" + value
 	}
 	return value
+}
+
+func normalizeTerminalSessionID(value string) (string, error) {
+	sessionID := strings.TrimSpace(value)
+	if sessionID == "" {
+		return "", fmt.Errorf("'session_id' is required")
+	}
+	if strings.Contains(sessionID, "/") || strings.Contains(sessionID, "?") {
+		return "", fmt.Errorf("invalid 'session_id'")
+	}
+	return sessionID, nil
 }
 
 func parseInt64OrDefault(value string, fallback int64) int64 {

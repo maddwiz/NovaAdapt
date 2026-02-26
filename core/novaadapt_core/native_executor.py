@@ -258,11 +258,23 @@ class NativeDesktopExecutor:
             return NativeExecutionResult(status="failed", output="open_app requires target or value")
 
         if self._is_macos():
-            completed = self._run_subprocess(["open", "-a", app], shell=False)
+            tokens = self._split_command_tokens(app)
+            if not tokens:
+                return NativeExecutionResult(status="failed", output="open_app requires target or value")
+            cmd = ["open", "-a", tokens[0]]
+            if len(tokens) > 1:
+                cmd.extend(["--args", *tokens[1:]])
+            completed = self._run_subprocess(cmd, shell=False)
         elif self._is_linux():
-            completed = self._run_subprocess(["nohup", app], shell=False)
+            tokens = self._split_command_tokens(app)
+            if not tokens:
+                return NativeExecutionResult(status="failed", output="open_app requires target or value")
+            completed = self._run_subprocess(["nohup", *tokens], shell=False)
         elif self._is_windows():
-            completed = self._run_subprocess(["cmd", "/c", "start", "", app], shell=False)
+            tokens = self._split_command_tokens(app, windows=True)
+            if not tokens:
+                return NativeExecutionResult(status="failed", output="open_app requires target or value")
+            completed = self._run_subprocess(["cmd", "/c", "start", "", *tokens], shell=False)
         else:
             return NativeExecutionResult(status="failed", output=f"Unsupported platform: {self.platform_name}")
         return self._result_from_completed(completed)
@@ -596,3 +608,23 @@ class NativeDesktopExecutor:
             [powershell, "-NoProfile", "-NonInteractive", "-Command", script],
             shell=False,
         )
+
+    @staticmethod
+    def _split_command_tokens(raw: str, *, windows: bool = False) -> list[str]:
+        text = str(raw or "").strip()
+        if not text:
+            return []
+        try:
+            tokens = shlex.split(text, posix=not windows)
+        except ValueError:
+            tokens = [text]
+        out: list[str] = []
+        for token in tokens:
+            item = str(token).strip()
+            if not item:
+                continue
+            if windows and len(item) >= 2 and ((item[0] == item[-1] == '"') or (item[0] == item[-1] == "'")):
+                item = item[1:-1]
+            if item:
+                out.append(item)
+        return out

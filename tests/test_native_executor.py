@@ -31,6 +31,16 @@ class _RecordingWindowsExecutor(NativeDesktopExecutor):
         return self._run_subprocess(cmd, shell=False)
 
 
+class _RecordingMacExecutor(NativeDesktopExecutor):
+    def __init__(self):
+        super().__init__(platform_name="darwin")
+        self.calls: list[tuple[list[str] | str, bool]] = []
+
+    def _run_subprocess(self, cmd, *, shell: bool):
+        self.calls.append((cmd, shell))
+        return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="ok", stderr="")
+
+
 class NativeExecutorTests(unittest.TestCase):
     def test_note_action(self):
         executor = NativeDesktopExecutor(platform_name="darwin")
@@ -155,6 +165,33 @@ class NativeExecutorTests(unittest.TestCase):
         cmd, shell = executor.calls[-1]
         self.assertFalse(shell)
         self.assertIn("$i -lt 2", cmd[-1])
+
+    def test_macos_open_app_supports_args(self):
+        executor = _RecordingMacExecutor()
+        result = executor.execute_action({"type": "open_app", "target": "\"Google Chrome\" --incognito https://example.com"})
+        self.assertEqual(result.status, "ok")
+        cmd, shell = executor.calls[-1]
+        self.assertFalse(shell)
+        self.assertEqual(
+            cmd,
+            ["open", "-a", "Google Chrome", "--args", "--incognito", "https://example.com"],
+        )
+
+    def test_linux_open_app_splits_arguments(self):
+        executor = _RecordingLinuxExecutor()
+        result = executor.execute_action({"type": "open_app", "target": "code --new-window /tmp/demo"})
+        self.assertEqual(result.status, "ok")
+        cmd, shell = executor.calls[-1]
+        self.assertFalse(shell)
+        self.assertEqual(cmd, ["nohup", "code", "--new-window", "/tmp/demo"])
+
+    def test_windows_open_app_splits_arguments(self):
+        executor = _RecordingWindowsExecutor()
+        result = executor.execute_action({"type": "open_app", "target": "notepad.exe C:\\temp\\demo.txt"})
+        self.assertEqual(result.status, "ok")
+        cmd, shell = executor.calls[-1]
+        self.assertFalse(shell)
+        self.assertEqual(cmd, ["cmd", "/c", "start", "", "notepad.exe", "C:\\temp\\demo.txt"])
 
 
 if __name__ == "__main__":

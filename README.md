@@ -9,11 +9,11 @@ NovaAdapt is a universal AI adapter designed to control desktop software through
 - DirectShell integration point for deterministic GUI actions.
 - Local undo log and action history via SQLite.
 
-## Current Status (Desktop MVP)
+## Current Status (Production Track)
 
 Implemented now:
 
-- Monorepo scaffold (`core`, `vibe`, `view`, `bridge`, `shared`, `installer`, `desktop`, `mobile`, `wearables`).
+- Monorepo layout (`core`, `vibe`, `view`, `bridge`, `shared`, `installer`, `desktop`, `mobile`, `wearables`).
 - `shared` Python model router with:
   - OpenAI-compatible endpoint support (Ollama, OpenAI, Anthropic-compatible proxies, vLLM, Together, Fireworks, etc.).
   - Optional LiteLLM execution path when `litellm` is installed.
@@ -30,21 +30,26 @@ Implemented now:
   - Records each action in a local undo queue database.
   - Integrates NovaSpine-compatible long-term memory for recall/augmentation + run/plan persistence.
   - Exposes first-party plugin adapters (`novabridge`, `nova4d`, `novablox`) for external tool execution.
+  - Exposes first-class Playwright browser automation routes/runtime (`/browser/*`) with domain allow/block policy hooks.
   - Records operator feedback (`/feedback`) into memory for self-improvement loops.
   - Exposes HTTP API with optional bearer auth and async jobs.
 - `bridge` relay service in Go for secure remote forwarding into core API.
   - Includes realtime WebSocket control channel (`/ws`) for events + command relay.
 - `view` static realtime console UI for bridge operations (`view/realtime_console.html`).
-- `view` realtime console now includes xterm.js terminal session streaming and PWA install support for Android.
-- `desktop` Tauri operator shell (`desktop/tauri-shell`) for objective queueing, plan approval/rejection/failed-step retry/undo, job cancellation, and event visibility (alpha quality).
-- `mobile` iOS SwiftUI companion source (`mobile/ios/NovaAdaptCompanion`) with objective/plan/job controls, websocket feed, and remote terminal controls (alpha quality).
+- `view` realtime console now includes xterm.js terminal session streaming, typed websocket browser controls (`browser_*`), bridge session token tooling, runtime device-allowlist controls, and PWA install support for Android.
+- `desktop` Tauri operator shell (`desktop/tauri-shell`) for objective queueing, plan approval/rejection/failed-step retry/undo, job cancellation, and event visibility (production-ready).
+- `mobile` iOS SwiftUI companion source (`mobile/ios/NovaAdaptCompanion`) with objective/plan/job controls, websocket feed, remote terminal controls, bridge session issue/revoke flows, and bridge allowlist/device-id controls (production-ready).
 - `wearables` Halo/Omi adapter (`wearables/halo_bridge.py`) with bridge session leasing + optional async wait flow.
+
+Release posture:
+- Core API/CLI, bridge relay, runtime executors, browser executor, view console, desktop shell, and iOS companion are production-ready for operator deployment.
+- Wearable adapters remain the primary beta surface while hardware coverage expands.
 
 Planned next:
 
-- Harden first-party desktop/mobile/wearable builds into signed release artifacts.
+- Harden wearable integrations into signed release artifacts across supported hardware variants.
 - Expand the built-in execution runtime with a richer gRPC backend for deterministic control.
-- Expand native clients from scaffold to production app-store ready deliverables.
+- Expand native clients with additional platform parity (Android and wearable UX).
 
 ## Monorepo Layout
 
@@ -73,6 +78,13 @@ cd NovaAdapt
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e .
+```
+
+Optional browser automation support:
+
+```bash
+pip install -e '.[browser]'
+python -m playwright install chromium
 ```
 
 2. Copy and customize model config:
@@ -142,6 +154,9 @@ novaadapt plugins
 novaadapt plugin-health --plugin novabridge
 novaadapt plugin-call --plugin novablox --route /health --method GET
 novaadapt feedback --rating 9 --objective "build dashboard" --notes "retry logic worked"
+novaadapt browser-status
+novaadapt browser-pages
+novaadapt browser-action --action-json '{"type":"navigate","target":"https://example.com"}'
 ```
 
 9. Snapshot local state databases (recommended before upgrades):
@@ -204,6 +219,8 @@ API endpoints:
 - `GET /plugins`
 - `GET /plugins/{name}/health`
 - `GET /memory/status`
+- `GET /browser/status`
+- `GET /browser/pages`
 - `GET /history?limit=20`
 - `GET /metrics` (Prometheus-style counters, auth-protected when token is enabled)
 - `GET /events?limit=100` (audit log filters: `category`, `entity_type`, `entity_id`, `since_id`)
@@ -218,6 +235,16 @@ API endpoints:
 - `POST /feedback` with JSON payload (`rating` 1-10 required)
 - `POST /memory/recall` with JSON payload (`query` required)
 - `POST /memory/ingest` with JSON payload (`text` required)
+- `POST /browser/action` with JSON payload (`action` object or top-level browser action fields)
+  Also supports browser session/page lifecycle actions via `type`: `new_context`, `new_page`, `list_pages`, `switch_page`, `close_page`.
+- `POST /browser/navigate` with JSON payload (`url`)
+- `POST /browser/click` with JSON payload (`selector`)
+- `POST /browser/fill` with JSON payload (`selector`, `value`)
+- `POST /browser/extract_text` with optional JSON payload (`selector`)
+- `POST /browser/screenshot` with optional JSON payload (`path`, `full_page`)
+- `POST /browser/wait_for_selector` with JSON payload (`selector`, optional `state`/`timeout_ms`)
+- `POST /browser/evaluate_js` with JSON payload (`script`, optional `arg`)
+- `POST /browser/close`
 - `POST /terminal/sessions` with JSON payload (optional `command`, `cwd`, `shell`)
 - `POST /terminal/sessions/{id}/input` with JSON payload (`input` required)
 - `POST /terminal/sessions/{id}/close`
@@ -260,7 +287,7 @@ When token auth is enabled, browser dashboard usage supports:
 The page will reuse that token for `/dashboard/data` polling.
 Dashboard now includes one-click controls for pending plan approval/rejection, failed-plan retry, job cancellation, and plan undo marking.
 
-13. Run full local smoke test (core + bridge + runtime transports):
+13. Run full local smoke test (core + bridge + runtime transports + optional browser smoke):
 
 ```bash
 make smoke
@@ -286,6 +313,7 @@ make test      # Python + Go tests
 make test-py   # Python tests only
 make test-go   # Go bridge tests only
 make test-clients  # Desktop/iOS client source checks
+make smoke-browser # Real Playwright browser smoke (skips unless browser runtime installed)
 make build-bridge
 make release-artifacts      # Build dist artifacts (bridge + python + runtime bundle)
 make rotate-tokens-dry-run  # Preview token rotation updates
@@ -310,7 +338,9 @@ PYTHONPATH=core:shared python3 -m novaadapt_core.cli benchmark-compare \
   --primary-name NovaAdapt \
   --baseline OpenClaw=results/benchmark.openclaw.json \
   --baseline ClaudeComputerUse=results/benchmark.claude-computer-use.json \
-  --out results/benchmark.compare.json
+  --out results/benchmark.compare.json \
+  --out-md results/benchmark.compare.md \
+  --md-title "NovaAdapt Reliability Benchmark"
 ```
 
 Benchmark publication workflow: `/Users/desmondpottle/Documents/New project/NovaAdapt/docs/benchmarks.md`.
@@ -373,6 +403,17 @@ Exposed tools:
 - `novaadapt_plan_reject`
 - `novaadapt_plan_undo`
 - `novaadapt_feedback`
+- `novaadapt_browser_status`
+- `novaadapt_browser_pages`
+- `novaadapt_browser_action`
+- `novaadapt_browser_navigate`
+- `novaadapt_browser_click`
+- `novaadapt_browser_fill`
+- `novaadapt_browser_extract_text`
+- `novaadapt_browser_screenshot`
+- `novaadapt_browser_wait_for_selector`
+- `novaadapt_browser_evaluate_js`
+- `novaadapt_browser_close`
 
 ## Docker Deployment
 
@@ -438,6 +479,9 @@ print(client.events(limit=20))
 session = client.issue_session_token(scopes=["read", "plan", "approve"], ttl_seconds=900)
 print(client.revoke_session_token(session["token"]))
 print(client.revoke_session_id(session["session_id"]))
+print(client.allowed_devices())
+print(client.add_allowed_device("iphone-15-pro"))
+print(client.remove_allowed_device("iphone-15-pro"))
 ```
 
 `NovaAdaptAPIClient` retries transient HTTP failures by default (`max_retries=1`), configurable per client instance.
@@ -468,6 +512,19 @@ Bridge realtime control endpoint:
 - Browser/native friendly auth query: `/ws?token=...` (and `/ws?...&device_id=...` when device allowlist is enabled)
 - `POST /auth/session` (issue scoped, expiring bridge session tokens for least-privilege clients)
 - `POST /auth/session/revoke` (admin revocation of scoped bridge session tokens)
+- `GET /auth/devices` (inspect current bridge device allowlist)
+- `POST /auth/devices` (admin add trusted `device_id`)
+- `POST /auth/devices/remove` (admin remove trusted `device_id`)
+
+Bridge admin CLI shortcuts:
+
+```bash
+novaadapt bridge-devices --base-url http://127.0.0.1:9797 --token YOUR_BRIDGE_TOKEN
+novaadapt bridge-device-add --base-url http://127.0.0.1:9797 --token YOUR_BRIDGE_TOKEN --device-id iphone-15-pro
+novaadapt bridge-device-remove --base-url http://127.0.0.1:9797 --token YOUR_BRIDGE_TOKEN --device-id iphone-15-pro
+novaadapt bridge-session-issue --base-url http://127.0.0.1:9797 --token YOUR_BRIDGE_TOKEN --scopes read,run --device-id iphone-15-pro --ttl-seconds 900
+novaadapt bridge-session-revoke --base-url http://127.0.0.1:9797 --token YOUR_BRIDGE_TOKEN --session-id SESSION_ID
+```
 
 Realtime operator console:
 
@@ -478,6 +535,7 @@ python3 -m http.server 8088
 
 Open `http://127.0.0.1:8088/realtime_console.html`.
 The console can mint scoped bridge session tokens via `POST /auth/session`, revoke by token/session ID, and use sessions for websocket control.
+Bridge automation clients can also manage trusted device IDs via `/auth/devices` and `/auth/devices/remove`.
 
 One-command local operator stack (core + bridge + optional view server):
 
@@ -509,6 +567,7 @@ Optional env vars:
 - `NOVAADAPT_BRIDGE_ADMIN_TOKEN` (for vibe session leasing)
 - `NOVAADAPT_BRIDGE_SESSION_SCOPES` (CSV scopes for leased vibe sessions)
 - `NOVAADAPT_BRIDGE_SESSION_TTL` (seconds for leased vibe sessions)
+- `NOVAADAPT_BRIDGE_ENSURE_DEVICE_ALLOWLISTED=1` (auto add `--session-device-id` on admin-leased wearable sessions)
 - `NOVAADAPT_WITH_VIEW=0` (skip static view server)
 
 Wearable intent bridge:
@@ -517,6 +576,8 @@ Wearable intent bridge:
 PYTHONPATH=core:shared python3 vibe/vibe_terminal.py \
   --bridge-url http://127.0.0.1:9797 \
   --admin-token YOUR_BRIDGE_ADMIN_TOKEN \
+  --ensure-device-allowlisted \
+  --session-device-id iphone-15-pro \
   --objective "Open dashboard and summarize failed jobs" \
   --wait
 ```
@@ -527,6 +588,8 @@ Alternate Halo/Omi adapter:
 PYTHONPATH=core:shared python3 wearables/halo_bridge.py \
   --bridge-url http://127.0.0.1:9797 \
   --admin-token YOUR_BRIDGE_ADMIN_TOKEN \
+  --ensure-device-allowlisted \
+  --session-device-id halo-glasses-1 \
   --objective "Open dashboard and summarize failed jobs" \
   --wait
 ```
@@ -690,4 +753,6 @@ Platform notes:
 
 ## License
 
-Proprietary (All Rights Reserved). See `LICENSE`.
+MIT. See `LICENSE`.
+
+Licensing roadmap for enterprise add-ons is documented in `docs/licensing.md`.

@@ -257,6 +257,120 @@ class NovaAdaptMCPServer:
                     "required": ["text"],
                 },
             ),
+            MCPTool(
+                name="novaadapt_browser_status",
+                description="Get browser automation runtime status/capabilities",
+                input_schema={"type": "object", "properties": {}},
+            ),
+            MCPTool(
+                name="novaadapt_browser_pages",
+                description="List active browser pages and current selection",
+                input_schema={"type": "object", "properties": {}},
+            ),
+            MCPTool(
+                name="novaadapt_browser_action",
+                description="Execute a raw browser automation action payload",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "action": {"type": "object"},
+                    },
+                    "required": ["action"],
+                },
+            ),
+            MCPTool(
+                name="novaadapt_browser_navigate",
+                description="Navigate browser to a URL",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "url": {"type": "string"},
+                        "wait_until": {"type": "string"},
+                        "timeout_ms": {"type": "integer"},
+                    },
+                    "required": ["url"],
+                },
+            ),
+            MCPTool(
+                name="novaadapt_browser_click",
+                description="Click a browser selector",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "selector": {"type": "string"},
+                        "button": {"type": "string"},
+                        "force": {"type": "boolean"},
+                        "timeout_ms": {"type": "integer"},
+                    },
+                    "required": ["selector"],
+                },
+            ),
+            MCPTool(
+                name="novaadapt_browser_fill",
+                description="Fill a browser selector with text/value",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "selector": {"type": "string"},
+                        "value": {"type": "string"},
+                        "allow_sensitive_fill": {"type": "boolean"},
+                        "timeout_ms": {"type": "integer"},
+                    },
+                    "required": ["selector", "value"],
+                },
+            ),
+            MCPTool(
+                name="novaadapt_browser_extract_text",
+                description="Extract text from selector or body",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "selector": {"type": "string"},
+                        "timeout_ms": {"type": "integer"},
+                    },
+                },
+            ),
+            MCPTool(
+                name="novaadapt_browser_screenshot",
+                description="Capture browser screenshot",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "path": {"type": "string"},
+                        "full_page": {"type": "boolean"},
+                    },
+                },
+            ),
+            MCPTool(
+                name="novaadapt_browser_wait_for_selector",
+                description="Wait for selector state in browser",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "selector": {"type": "string"},
+                        "state": {"type": "string"},
+                        "timeout_ms": {"type": "integer"},
+                    },
+                    "required": ["selector"],
+                },
+            ),
+            MCPTool(
+                name="novaadapt_browser_evaluate_js",
+                description="Evaluate JavaScript in browser page context",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "script": {"type": "string"},
+                        "arg": {},
+                    },
+                    "required": ["script"],
+                },
+            ),
+            MCPTool(
+                name="novaadapt_browser_close",
+                description="Close browser automation session",
+                input_schema={"type": "object", "properties": {}},
+            ),
         ]
 
     def handle_request(self, request: dict[str, Any]) -> dict[str, Any]:
@@ -469,6 +583,96 @@ class NovaAdaptMCPServer:
                 source_id=source_id,
                 metadata=metadata if isinstance(metadata, dict) else None,
             )
+        if tool_name == "novaadapt_browser_status":
+            return self.service.browser_status()
+        if tool_name == "novaadapt_browser_pages":
+            return self.service.browser_pages()
+        if tool_name == "novaadapt_browser_action":
+            action = arguments.get("action")
+            if not isinstance(action, dict):
+                raise ValueError("'action' is required and must be an object")
+            return self.service.browser_action({"action": action})
+        if tool_name == "novaadapt_browser_navigate":
+            url = str(arguments.get("url", "")).strip()
+            if not url:
+                raise ValueError("'url' is required")
+            payload: dict[str, Any] = {
+                "type": "navigate",
+                "target": url,
+            }
+            if arguments.get("wait_until") is not None:
+                payload["wait_until"] = str(arguments.get("wait_until"))
+            if arguments.get("timeout_ms") is not None:
+                payload["timeout_ms"] = int(arguments.get("timeout_ms"))
+            return self.service.browser_action(payload)
+        if tool_name == "novaadapt_browser_click":
+            selector = str(arguments.get("selector", "")).strip()
+            if not selector:
+                raise ValueError("'selector' is required")
+            payload = {
+                "type": "click_selector",
+                "selector": selector,
+                "button": str(arguments.get("button", "left")),
+                "force": bool(arguments.get("force", False)),
+            }
+            if arguments.get("timeout_ms") is not None:
+                payload["timeout_ms"] = int(arguments.get("timeout_ms"))
+            return self.service.browser_action(payload)
+        if tool_name == "novaadapt_browser_fill":
+            selector = str(arguments.get("selector", "")).strip()
+            if not selector:
+                raise ValueError("'selector' is required")
+            if arguments.get("value") is None:
+                raise ValueError("'value' is required")
+            payload = {
+                "type": "fill",
+                "selector": selector,
+                "value": str(arguments.get("value")),
+                "allow_sensitive_fill": bool(arguments.get("allow_sensitive_fill", False)),
+            }
+            if arguments.get("timeout_ms") is not None:
+                payload["timeout_ms"] = int(arguments.get("timeout_ms"))
+            return self.service.browser_action(payload)
+        if tool_name == "novaadapt_browser_extract_text":
+            payload: dict[str, Any] = {"type": "extract_text"}
+            if arguments.get("selector") is not None:
+                payload["selector"] = str(arguments.get("selector"))
+            if arguments.get("timeout_ms") is not None:
+                payload["timeout_ms"] = int(arguments.get("timeout_ms"))
+            return self.service.browser_action(payload)
+        if tool_name == "novaadapt_browser_screenshot":
+            payload: dict[str, Any] = {
+                "type": "screenshot",
+                "full_page": bool(arguments.get("full_page", True)),
+            }
+            if arguments.get("path") is not None:
+                payload["path"] = str(arguments.get("path"))
+            return self.service.browser_action(payload)
+        if tool_name == "novaadapt_browser_wait_for_selector":
+            selector = str(arguments.get("selector", "")).strip()
+            if not selector:
+                raise ValueError("'selector' is required")
+            payload = {
+                "type": "wait_for_selector",
+                "selector": selector,
+                "state": str(arguments.get("state", "visible")),
+            }
+            if arguments.get("timeout_ms") is not None:
+                payload["timeout_ms"] = int(arguments.get("timeout_ms"))
+            return self.service.browser_action(payload)
+        if tool_name == "novaadapt_browser_evaluate_js":
+            script = str(arguments.get("script", "")).strip()
+            if not script:
+                raise ValueError("'script' is required")
+            payload: dict[str, Any] = {
+                "type": "evaluate_js",
+                "script": script,
+            }
+            if "arg" in arguments:
+                payload["arg"] = arguments.get("arg")
+            return self.service.browser_action(payload)
+        if tool_name == "novaadapt_browser_close":
+            return self.service.browser_close()
         raise ValueError(f"Unknown tool: {tool_name}")
 
     @staticmethod

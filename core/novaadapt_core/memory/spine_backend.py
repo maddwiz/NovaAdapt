@@ -250,10 +250,35 @@ class NovaSpineHTTPMemoryBackend:
             with request.urlopen(req, timeout=self.timeout_seconds) as response:
                 body = response.read().decode("utf-8")
         except error.HTTPError as exc:
-            detail = exc.read().decode("utf-8", errors="ignore")
-            raise RuntimeError(f"NovaSpine HTTP {exc.code}: {detail}") from exc
+            detail = ""
+            code = int(exc.code)
+            try:
+                detail = exc.read().decode("utf-8", errors="ignore")
+            finally:
+                try:
+                    exc.close()
+                except Exception:
+                    pass
+                try:
+                    exc.fp = None
+                    exc.file = None
+                except Exception:
+                    pass
+            raise RuntimeError(f"NovaSpine HTTP {code}: {detail}") from None
         except error.URLError as exc:
-            raise RuntimeError(f"NovaSpine transport error: {exc.reason}") from exc
+            reason = exc.reason
+            close_fn = getattr(reason, "close", None)
+            if callable(close_fn):
+                try:
+                    close_fn()
+                except Exception:
+                    pass
+            try:
+                setattr(reason, "fp", None)
+                setattr(reason, "file", None)
+            except Exception:
+                pass
+            raise RuntimeError(f"NovaSpine transport error: {reason}") from None
 
         if not body.strip():
             return {}

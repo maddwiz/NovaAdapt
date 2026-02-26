@@ -3,7 +3,14 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from novaadapt_core.benchmark import BenchmarkRunner, compare_benchmark_reports, load_benchmark_report, run_benchmark
+from novaadapt_core.benchmark import (
+    BenchmarkRunner,
+    compare_benchmark_reports,
+    load_benchmark_report,
+    render_benchmark_comparison_markdown,
+    run_benchmark,
+    write_benchmark_comparison_markdown,
+)
 
 
 class BenchmarkTests(unittest.TestCase):
@@ -133,6 +140,58 @@ class BenchmarkTests(unittest.TestCase):
         self.assertEqual(compared["summary"]["primary"], "NovaAdapt")
         self.assertEqual(compared["table"][0]["name"], "NovaAdapt")
         self.assertGreater(compared["deltas"]["OtherAgent"]["success_rate_delta_vs_primary"], 0)
+
+    def test_render_and_write_comparison_markdown(self):
+        report = {
+            "summary": {
+                "primary": "NovaAdapt",
+                "competitors": ["OtherAgent"],
+                "ranked_by": "success_rate",
+            },
+            "table": [
+                {
+                    "name": "NovaAdapt",
+                    "total": 10,
+                    "passed": 9,
+                    "failed": 1,
+                    "success_rate": 0.9,
+                    "first_try_success_rate": 0.9,
+                    "avg_action_count": 4.2,
+                    "blocked_count": 1,
+                },
+                {
+                    "name": "OtherAgent",
+                    "total": 10,
+                    "passed": 6,
+                    "failed": 4,
+                    "success_rate": 0.6,
+                    "first_try_success_rate": 0.6,
+                    "avg_action_count": 5.0,
+                    "blocked_count": 2,
+                },
+            ],
+            "deltas": {
+                "OtherAgent": {
+                    "success_rate_delta_vs_primary": 0.3,
+                    "first_try_success_rate_delta_vs_primary": 0.3,
+                }
+            },
+        }
+
+        markdown = render_benchmark_comparison_markdown(report, title="Bench Run")
+        self.assertIn("# Bench Run", markdown)
+        self.assertIn("| Rank | System | Success |", markdown)
+        self.assertIn("| 1 | NovaAdapt | 90.00% |", markdown)
+        self.assertIn("| 2 | OtherAgent | 60.00% |", markdown)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            out_path = Path(tmp) / "report.md"
+            written_path = write_benchmark_comparison_markdown(report, out_path, title="Bench Run")
+            self.assertEqual(written_path, out_path)
+            self.assertTrue(out_path.exists())
+            text = out_path.read_text()
+            self.assertIn("Bench Run", text)
+            self.assertIn("Delta vs Primary", text)
 
 
 if __name__ == "__main__":

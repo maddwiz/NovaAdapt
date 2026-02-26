@@ -61,6 +61,10 @@ class _StubAPIClient:
         self.issue_kwargs = kwargs
         return dict(_StubAPIClient.issued_payload)
 
+    def add_allowed_device(self, device_id):
+        self.added_device_id = device_id
+        return {"status": "ok", "device_id": device_id, "added": True}
+
 
 class HaloBridgeTests(unittest.TestCase):
     def setUp(self):
@@ -148,6 +152,7 @@ class HaloBridgeTests(unittest.TestCase):
             session_ttl=300,
             session_device_id="halo-1",
             session_subject="halo",
+            ensure_device_allowlisted=False,
         )
         self.assertEqual(admin_client.token, "admin-token")
         self.assertEqual(runtime_client.token, "na1.session")
@@ -167,6 +172,7 @@ class HaloBridgeTests(unittest.TestCase):
                 session_ttl=300,
                 session_device_id=None,
                 session_subject="halo",
+                ensure_device_allowlisted=False,
             )
 
     @mock.patch("wearables.halo_bridge.NovaAdaptAPIClient", _StubAPIClient)
@@ -181,6 +187,38 @@ class HaloBridgeTests(unittest.TestCase):
                 session_ttl=300,
                 session_device_id=None,
                 session_subject="halo",
+                ensure_device_allowlisted=False,
+            )
+
+    @mock.patch("wearables.halo_bridge.NovaAdaptAPIClient", _StubAPIClient)
+    def test_build_runtime_client_can_ensure_device_allowlist(self):
+        runtime_client, admin_client, leased_token, issued = _build_runtime_client(
+            endpoint_url="http://127.0.0.1:9797",
+            token=None,
+            admin_token="admin-token",
+            session_scopes=["read", "run"],
+            session_ttl=300,
+            session_device_id="halo-1",
+            session_subject="halo",
+            ensure_device_allowlisted=True,
+        )
+        self.assertEqual(admin_client.added_device_id, "halo-1")
+        self.assertEqual(runtime_client.token, "na1.session")
+        self.assertEqual(leased_token, "na1.session")
+        self.assertEqual(issued["session_id"], "sess-1")
+
+    @mock.patch("wearables.halo_bridge.NovaAdaptAPIClient", _StubAPIClient)
+    def test_build_runtime_client_ensure_allowlist_requires_device_id(self):
+        with self.assertRaises(ValueError):
+            _build_runtime_client(
+                endpoint_url="http://127.0.0.1:9797",
+                token=None,
+                admin_token="admin-token",
+                session_scopes=["read", "run"],
+                session_ttl=300,
+                session_device_id="",
+                session_subject="halo",
+                ensure_device_allowlisted=True,
             )
 
 

@@ -119,7 +119,13 @@ class PluginRegistry:
                     output["response_truncated"] = True
                 return output
         except error.HTTPError as exc:
-            raw = exc.read(self.max_response_bytes + 1)
+            try:
+                raw = exc.read(self.max_response_bytes + 1)
+            finally:
+                try:
+                    exc.close()
+                except Exception:
+                    pass
             truncated = len(raw) > self.max_response_bytes
             if truncated:
                 raw = raw[: self.max_response_bytes]
@@ -138,6 +144,13 @@ class PluginRegistry:
                 output["response_truncated"] = True
             return output
         except error.URLError as exc:
+            reason = exc.reason
+            close_fn = getattr(reason, "close", None)
+            if callable(close_fn):
+                try:
+                    close_fn()
+                except Exception:
+                    pass
             return {
                 "ok": False,
                 "plugin": cfg.name,

@@ -11,6 +11,7 @@ from novaadapt_shared import ModelRouter, UndoQueue
 
 from .audit_store import AuditStore
 from .agent import NovaAdaptAgent
+from .browser_executor import BrowserExecutor
 from .directshell import DirectShellClient
 from .memory import MemoryBackend, build_memory_backend
 from .plan_store import PlanStore
@@ -29,6 +30,7 @@ class NovaAdaptService:
         audit_db_path: Path | None = None,
         router_loader: Callable[[Path], ModelRouter] | None = None,
         directshell_factory: Callable[[], DirectShellClient] | None = None,
+        browser_executor_factory: Callable[[], BrowserExecutor] | None = None,
         memory_backend: MemoryBackend | None = None,
         plugin_registry: PluginRegistry | None = None,
     ) -> None:
@@ -38,10 +40,24 @@ class NovaAdaptService:
         self.audit_db_path = audit_db_path
         self.router_loader = router_loader or ModelRouter.from_config_file
         self.directshell_factory = directshell_factory or DirectShellClient
+        self.browser_executor_factory = browser_executor_factory or BrowserExecutor
         self.memory_backend = memory_backend or build_memory_backend()
         self.plugin_registry = plugin_registry or build_plugin_registry()
         self._plan_store: PlanStore | None = None
         self._audit_store: AuditStore | None = None
+        self._browser_executor: BrowserExecutor | None = None
+
+    def close(self) -> None:
+        browser = self._browser_executor
+        self._browser_executor = None
+        if browser is None:
+            return
+        close_fn = getattr(browser, "close", None)
+        if callable(close_fn):
+            try:
+                close_fn()
+            except Exception:
+                pass
 
     def models(self, config_path: Path | None = None) -> list[dict[str, Any]]:
         router = self.router_loader(config_path or self.default_config)
@@ -78,6 +94,53 @@ class NovaAdaptService:
         return {
             "ok": False,
             "error": "DirectShell probe returned invalid payload",
+        }
+
+    def browser_status(self) -> dict[str, Any]:
+        result = self._browser().probe()
+        if isinstance(result, dict):
+            return result
+        return {
+            "ok": False,
+            "transport": "browser",
+            "error": "Browser probe returned invalid payload",
+        }
+
+    def browser_pages(self) -> dict[str, Any]:
+        result = self._browser().execute_action({"type": "list_pages"})
+        out: dict[str, Any] = {
+            "status": str(result.status),
+            "output": str(result.output),
+        }
+        if isinstance(result.data, dict):
+            out.update(result.data)
+        return out
+
+    def browser_action(self, payload: dict[str, Any]) -> dict[str, Any]:
+        raw_action = payload.get("action")
+        action: dict[str, Any]
+        if isinstance(raw_action, dict):
+            action = dict(raw_action)
+        elif isinstance(payload, dict) and payload.get("type") is not None:
+            action = dict(payload)
+        else:
+            raise ValueError("'action' must be an object or provide a top-level 'type'")
+
+        result = self._browser().execute_action(action)
+        out: dict[str, Any] = {
+            "status": str(result.status),
+            "output": str(result.output),
+            "action": action,
+        }
+        if isinstance(result.data, dict):
+            out["data"] = result.data
+        return out
+
+    def browser_close(self) -> dict[str, Any]:
+        result = self._browser().close()
+        return {
+            "status": str(result.status),
+            "output": str(result.output),
         }
 
     def memory_status(self) -> dict[str, Any]:
@@ -667,3 +730,8 @@ class NovaAdaptService:
         if self._audit_store is None:
             self._audit_store = AuditStore(self.audit_db_path)
         return self._audit_store
+
+    def _browser(self) -> BrowserExecutor:
+        if self._browser_executor is None:
+            self._browser_executor = self.browser_executor_factory()
+        return self._browser_executor

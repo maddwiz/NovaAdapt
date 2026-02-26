@@ -9,6 +9,7 @@ from typing import Any
 from urllib import error, request
 from urllib.parse import urlparse
 
+from .browser_executor import BrowserExecutor
 from .native_executor import NativeDesktopExecutor
 
 
@@ -38,6 +39,7 @@ class DirectShellClient:
         daemon_token: str | None = None,
         native_fallback_transport: str | None = None,
         native_executor: NativeDesktopExecutor | None = None,
+        browser_executor: BrowserExecutor | None = None,
         timeout_seconds: int = 30,
     ) -> None:
         self.binary = binary or os.getenv("DIRECTSHELL_BIN", "directshell")
@@ -65,16 +67,17 @@ class DirectShellClient:
             self.native_fallback_transport = None
         self.timeout_seconds = timeout_seconds
         self.native_executor = native_executor or NativeDesktopExecutor(timeout_seconds=timeout_seconds)
-        self._supported_transports = {"native", "subprocess", "http", "daemon"}
+        self.browser_executor = browser_executor or BrowserExecutor(timeout_seconds=timeout_seconds)
+        self._supported_transports = {"native", "subprocess", "http", "daemon", "browser"}
         if self.transport not in self._supported_transports:
             raise RuntimeError(
                 f"Unsupported DirectShell transport '{self.transport}'. "
-                "Use 'native', 'subprocess', 'http', or 'daemon'."
+                "Use 'native', 'subprocess', 'http', 'daemon', or 'browser'."
             )
         if self.native_fallback_transport and self.native_fallback_transport not in self._supported_transports:
             raise RuntimeError(
                 f"Unsupported DirectShell native fallback transport '{self.native_fallback_transport}'. "
-                "Use 'subprocess', 'http', or 'daemon'."
+                "Use 'subprocess', 'http', 'daemon', or 'browser'."
             )
 
     def execute_action(self, action: dict[str, Any], dry_run: bool = True) -> ExecutionResult:
@@ -123,13 +126,15 @@ class DirectShellClient:
             return self._probe_http()
         if transport == "daemon":
             return self._probe_daemon()
+        if transport == "browser":
+            return self._probe_browser()
         if transport == "subprocess":
             return self._probe_subprocess()
         return {
             "ok": False,
             "transport": transport,
             "error": "unsupported transport",
-            "supported_transports": ["native", "subprocess", "http", "daemon"],
+            "supported_transports": ["native", "subprocess", "http", "daemon", "browser"],
         }
 
     def _probe_transport(self, transport: str) -> dict[str, Any]:
@@ -141,6 +146,8 @@ class DirectShellClient:
             return self._probe_http()
         if transport == "daemon":
             return self._probe_daemon()
+        if transport == "browser":
+            return self._probe_browser()
         return {
             "ok": False,
             "transport": transport,
@@ -156,8 +163,10 @@ class DirectShellClient:
             return self._execute_http(action)
         if transport == "daemon":
             return self._execute_daemon(action)
+        if transport == "browser":
+            return self._execute_browser(action)
         raise RuntimeError(
-            f"Unsupported DirectShell transport '{transport}'. Use 'native', 'subprocess', 'http', or 'daemon'."
+            f"Unsupported DirectShell transport '{transport}'. Use 'native', 'subprocess', 'http', 'daemon', or 'browser'."
         )
 
     def _execute_native(self, action: dict[str, Any]) -> ExecutionResult:
@@ -170,6 +179,17 @@ class DirectShellClient:
 
     def _probe_native(self) -> dict[str, Any]:
         return self.native_executor.probe()
+
+    def _execute_browser(self, action: dict[str, Any]) -> ExecutionResult:
+        result = self.browser_executor.execute_action(action)
+        return ExecutionResult(
+            action=action,
+            status=str(result.status),
+            output=str(result.output),
+        )
+
+    def _probe_browser(self) -> dict[str, Any]:
+        return self.browser_executor.probe()
 
     def _execute_subprocess(self, action: dict[str, Any]) -> ExecutionResult:
         cmd = [self.binary, "exec", "--json", json.dumps(action, ensure_ascii=True)]
@@ -238,9 +258,22 @@ class DirectShellClient:
             with request.urlopen(req, timeout=self.timeout_seconds) as response:
                 raw_body = response.read().decode("utf-8")
         except error.HTTPError as exc:
-            body = exc.read().decode("utf-8", errors="ignore")
+            try:
+                body = exc.read().decode("utf-8", errors="ignore")
+            finally:
+                try:
+                    exc.close()
+                except Exception:
+                    pass
             return ExecutionResult(action=action, status="failed", output=f"HTTP {exc.code}: {body}")
         except error.URLError as exc:
+            reason = exc.reason
+            close_fn = getattr(reason, "close", None)
+            if callable(close_fn):
+                try:
+                    close_fn()
+                except Exception:
+                    pass
             return ExecutionResult(action=action, status="failed", output=f"HTTP transport error: {exc.reason}")
 
         try:
@@ -277,6 +310,13 @@ class DirectShellClient:
                     "status_code": status_code,
                 }
         except error.HTTPError as exc:
+            try:
+                _ = exc.read()
+            finally:
+                try:
+                    exc.close()
+                except Exception:
+                    pass
             return {
                 "ok": False,
                 "transport": "http",
@@ -286,6 +326,13 @@ class DirectShellClient:
                 "error": f"HTTP {exc.code}",
             }
         except error.URLError as exc:
+            reason = exc.reason
+            close_fn = getattr(reason, "close", None)
+            if callable(close_fn):
+                try:
+                    close_fn()
+                except Exception:
+                    pass
             return {
                 "ok": False,
                 "transport": "http",

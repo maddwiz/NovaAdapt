@@ -2,10 +2,6 @@ name: release
 
 on:
   push:
-    branches:
-      - "**"
-    tags:
-      - "*"
   workflow_dispatch:
     inputs:
       release_tag:

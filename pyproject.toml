@@ -7,12 +7,14 @@ name = "novaadapt"
 version = "0.1.0"
 description = "NovaAdapt desktop-first MVP with model-agnostic routing and DirectShell orchestration"
 readme = "README.md"
-license = { file = "LICENSE" }
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.10"
 dependencies = []
 
 [project.optional-dependencies]
 litellm = ["litellm>=1.61.0"]
+browser = ["playwright>=1.51.0"]
 observability = [
   "opentelemetry-sdk>=1.25.0",
   "opentelemetry-exporter-otlp-proto-http>=1.25.0",

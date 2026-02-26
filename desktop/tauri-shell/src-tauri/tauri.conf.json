@@ -19,7 +19,13 @@
     ]
   },
   "bundle": {
-    "active": false,
-    "targets": "all"
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/icon.png"
+    ],
+    "category": "DeveloperTool",
+    "shortDescription": "NovaAdapt desktop operator control plane",
+    "longDescription": "NovaAdapt Desktop provides production control of NovaAdapt runs, plan approvals, job operations, and live audit visibility."
   }
 }

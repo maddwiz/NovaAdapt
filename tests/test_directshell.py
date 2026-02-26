@@ -3,7 +3,10 @@ import socketserver
 import threading
 import unittest
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from urllib import error
 
+from novaadapt_core import directshell as directshell_module
+from novaadapt_core.browser_executor import BrowserExecutionResult
 from novaadapt_core.directshell import DirectShellClient
 from novaadapt_core.native_executor import NativeDesktopExecutor
 
@@ -87,6 +90,18 @@ class _DaemonHandler(socketserver.StreamRequestHandler):
 
 class _DaemonServer(socketserver.ThreadingTCPServer):
     allow_reuse_address = True
+
+
+class _StubBrowserExecutor:
+    def execute_action(self, action):
+        return BrowserExecutionResult(
+            status="ok",
+            output=f"browser:{action.get('type', 'unknown')}",
+            data={"action": action},
+        )
+
+    def probe(self):
+        return {"ok": True, "transport": "browser", "capabilities": ["navigate"]}
 
 
 class DirectShellClientTests(unittest.TestCase):
@@ -225,6 +240,18 @@ class DirectShellClientTests(unittest.TestCase):
         self.assertEqual(result.status, "ok")
         self.assertEqual(_DaemonHandler.last_token, "secret-daemon")
 
+    def test_browser_transport_executes_action(self):
+        client = DirectShellClient(transport="browser", browser_executor=_StubBrowserExecutor())
+        result = client.execute_action({"type": "navigate", "target": "https://example.com"}, dry_run=False)
+        self.assertEqual(result.status, "ok")
+        self.assertIn("browser:navigate", result.output)
+
+    def test_probe_browser_transport(self):
+        client = DirectShellClient(transport="browser", browser_executor=_StubBrowserExecutor())
+        probe = client.probe()
+        self.assertTrue(probe["ok"])
+        self.assertEqual(probe["transport"], "browser")
+
     def test_probe_http_transport(self):
         _Handler.required_token = None
         _Handler.last_token = None
@@ -263,6 +290,77 @@ class DirectShellClientTests(unittest.TestCase):
 
         self.assertFalse(probe["ok"])
         self.assertEqual(probe["status_code"], 401)
+
+    def test_execute_http_closes_http_error_response(self):
+        class _ClosingHTTPError(error.HTTPError):
+            def __init__(self):
+                super().__init__(
+                    url="http://127.0.0.1:1/execute",
+                    code=502,
+                    msg="Bad Gateway",
+                    hdrs=None,
+                    fp=None,
+                )
+                self.closed = False
+
+            def read(self):
+                return b'{"error":"upstream failed"}'
+
+            def close(self):
+                self.closed = True
+
+        err = _ClosingHTTPError()
+
+        def _raise(*_args, **_kwargs):
+            raise err
+
+        original = directshell_module.request.urlopen
+        directshell_module.request.urlopen = _raise
+        try:
+            client = DirectShellClient(
+                transport="http",
+                http_url="http://127.0.0.1:1/execute",
+                timeout_seconds=1,
+            )
+            result = client.execute_action({"type": "note", "value": "x"}, dry_run=False)
+        finally:
+            directshell_module.request.urlopen = original
+
+        self.assertEqual(result.status, "failed")
+        self.assertIn("HTTP 502", result.output)
+        self.assertTrue(err.closed)
+
+    def test_probe_http_closes_url_error_reason(self):
+        class _ClosableReason:
+            def __init__(self):
+                self.closed = False
+
+            def close(self):
+                self.closed = True
+
+            def __str__(self):
+                return "network down"
+
+        reason = _ClosableReason()
+
+        def _raise(*_args, **_kwargs):
+            raise error.URLError(reason)
+
+        original = directshell_module.request.urlopen
+        directshell_module.request.urlopen = _raise
+        try:
+            client = DirectShellClient(
+                transport="http",
+                http_url="http://127.0.0.1:1/execute",
+                timeout_seconds=1,
+            )
+            probe = client.probe()
+        finally:
+            directshell_module.request.urlopen = original
+
+        self.assertFalse(probe["ok"])
+        self.assertIn("transport error", str(probe.get("error", "")).lower())
+        self.assertTrue(reason.closed)
 
     def test_probe_daemon_transport(self):
         _DaemonHandler.required_token = None
@@ -318,6 +416,18 @@ class DirectShellClientTests(unittest.TestCase):
         self.assertEqual(probe["fallback_transport"], "http")
         self.assertIn("fallback_probe", probe)
         self.assertTrue(probe["fallback_probe"]["ok"])
+
+    def test_native_transport_falls_back_to_browser(self):
+        client = DirectShellClient(
+            transport="native",
+            native_executor=NativeDesktopExecutor(platform_name="plan9"),
+            native_fallback_transport="browser",
+            browser_executor=_StubBrowserExecutor(),
+        )
+        result = client.execute_action({"type": "click_selector", "target": "#ok"}, dry_run=False)
+        self.assertEqual(result.status, "ok")
+        self.assertIn("browser:click_selector", result.output)
+        self.assertIn("native fallback after:", result.output)
 
 
 if __name__ == "__main__":

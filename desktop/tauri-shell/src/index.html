@@ -9,16 +9,25 @@
   <body>
     <main class="app">
       <header class="hero">
-        <div>
-          <p class="eyebrow">NovaAdapt Desktop</p>
-          <h1>Operator Control Plane</h1>
-          <p class="subtitle">Queue objectives, approve plans, manage jobs, and keep autonomous execution under human control.</p>
+        <div class="hero-brand">
+          <div>
+            <p class="eyebrow">NovaAI Theme</p>
+            <h1>NovaAdapt Control Plane</h1>
+            <p class="subtitle">Queue objectives, approve plans, manage jobs, and keep autonomous execution under human control.</p>
+          </div>
+          <img
+            class="hero-logo-mark"
+            src="./assets/novaai-logo-user.png"
+            alt="NovaAI logo"
+          />
         </div>
         <div class="hero-actions">
+          <span id="connectionStatus" class="badge neutral">Not connected</span>
           <label class="toggle">
             <input id="autoRefresh" type="checkbox" checked />
             <span>Auto refresh</span>
           </label>
+          <button id="testConnectionBtn" class="secondary">Test Connection</button>
           <button id="refreshBtn" class="primary">Refresh</button>
         </div>
       </header>
@@ -33,6 +42,10 @@
           <label>
             <span>API Token</span>
             <input id="token" type="password" placeholder="optional" />
+          </label>
+          <label class="toggle checkbox-inline">
+            <input id="rememberToken" type="checkbox" />
+            <span>Remember token on this device</span>
           </label>
         </div>
       </section>

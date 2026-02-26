@@ -4,6 +4,8 @@ import threading
 import unittest
 from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from unittest import mock
+from urllib import error
 
 from novaadapt_core.memory.spine_backend import NoopMemoryBackend, NovaSpineHTTPMemoryBackend
 
@@ -124,7 +126,54 @@ class MemoryBackendTests(unittest.TestCase):
             server.server_close()
             thread.join(timeout=2)
 
+    def test_http_error_response_is_closed(self):
+        class _ClosingHTTPError(error.HTTPError):
+            def __init__(self):
+                super().__init__(
+                    url="http://127.0.0.1:8420/api/v1/health",
+                    code=503,
+                    msg="Service Unavailable",
+                    hdrs=None,
+                    fp=None,
+                )
+                self._closed = False
+
+            def read(self):
+                return b'{"error":"unavailable"}'
+
+            def close(self):
+                self._closed = True
+
+        backend = NovaSpineHTTPMemoryBackend(base_url="http://127.0.0.1:8420", timeout_seconds=0.1)
+        err = _ClosingHTTPError()
+        with mock.patch("novaadapt_core.memory.spine_backend.request.urlopen", side_effect=err):
+            status = backend.status()
+
+        self.assertFalse(status["enabled"])
+        self.assertTrue(err._closed)
+
+    def test_url_error_reason_close_is_called(self):
+        class _Reason:
+            def __init__(self):
+                self.closed = False
+
+            def close(self):
+                self.closed = True
+
+            def __str__(self):
+                return "synthetic transport error"
+
+        reason = _Reason()
+        backend = NovaSpineHTTPMemoryBackend(base_url="http://127.0.0.1:8420", timeout_seconds=0.1)
+        with mock.patch(
+            "novaadapt_core.memory.spine_backend.request.urlopen",
+            side_effect=error.URLError(reason),
+        ):
+            status = backend.status()
+
+        self.assertFalse(status["enabled"])
+        self.assertTrue(reason.closed)
+
 
 if __name__ == "__main__":
     unittest.main()
-

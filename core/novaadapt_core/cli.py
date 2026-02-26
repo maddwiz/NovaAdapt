@@ -6,7 +6,12 @@ import os
 from pathlib import Path
 
 from .backup import backup_databases, restore_databases
-from .benchmark import compare_benchmark_reports, load_benchmark_report, run_benchmark
+from .benchmark import (
+    compare_benchmark_reports,
+    load_benchmark_report,
+    run_benchmark,
+    write_benchmark_comparison_markdown,
+)
 from .cleanup import prune_local_state
 from .directshell import DirectShellClient
 from .mcp_server import NovaAdaptMCPServer
@@ -14,6 +19,7 @@ from .native_daemon import NativeExecutionDaemon
 from .native_http import NativeExecutionHTTPServer
 from .server import run_server
 from .service import NovaAdaptService
+from novaadapt_shared.api_client import APIClientError, NovaAdaptAPIClient
 
 
 def _default_config_path() -> Path:
@@ -34,6 +40,26 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     default_audit_db = Path(os.getenv("NOVAADAPT_AUDIT_DB", str(Path.home() / ".novaadapt" / "events.db")))
     default_backup_dir = Path(os.getenv("NOVAADAPT_BACKUP_DIR", str(Path.home() / ".novaadapt" / "backups")))
+    default_bridge_url = os.getenv("NOVAADAPT_BRIDGE_URL", "http://127.0.0.1:9797")
+    default_bridge_token = os.getenv("NOVAADAPT_BRIDGE_TOKEN", "")
+
+    def _add_bridge_client_args(command: argparse.ArgumentParser) -> None:
+        command.add_argument(
+            "--base-url",
+            default=default_bridge_url,
+            help="Bridge base URL (default: NOVAADAPT_BRIDGE_URL or http://127.0.0.1:9797)",
+        )
+        command.add_argument(
+            "--token",
+            default=default_bridge_token,
+            help="Bridge admin/static bearer token (default: NOVAADAPT_BRIDGE_TOKEN)",
+        )
+        command.add_argument(
+            "--timeout-seconds",
+            type=int,
+            default=30,
+            help="HTTP request timeout in seconds",
+        )
 
     list_cmd = sub.add_parser("models", help="List configured model endpoints")
     list_cmd.add_argument("--config", type=Path, default=_default_config_path())
@@ -268,13 +294,13 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     directshell_check_cmd.add_argument(
         "--transport",
-        choices=["native", "subprocess", "http", "daemon"],
+        choices=["native", "subprocess", "http", "daemon", "browser"],
         default=None,
         help="Optional DirectShell transport override for probe",
     )
     directshell_check_cmd.add_argument(
         "--native-fallback-transport",
-        choices=["subprocess", "http", "daemon"],
+        choices=["subprocess", "http", "daemon", "browser"],
         default=None,
         help="Fallback transport used when native transport action execution fails",
     )
@@ -294,6 +320,35 @@ def _build_parser() -> argparse.ArgumentParser:
         default=5,
         help="Probe timeout in seconds",
     )
+
+    browser_status_cmd = sub.add_parser(
+        "browser-status",
+        help="Probe browser automation runtime readiness",
+    )
+    browser_status_cmd.add_argument("--config", type=Path, default=_default_config_path())
+
+    browser_pages_cmd = sub.add_parser(
+        "browser-pages",
+        help="List active browser automation pages",
+    )
+    browser_pages_cmd.add_argument("--config", type=Path, default=_default_config_path())
+
+    browser_action_cmd = sub.add_parser(
+        "browser-action",
+        help="Execute a browser action payload (JSON object)",
+    )
+    browser_action_cmd.add_argument("--config", type=Path, default=_default_config_path())
+    browser_action_cmd.add_argument(
+        "--action-json",
+        required=True,
+        help='Browser action object, for example: {"type":"navigate","target":"https://example.com"}',
+    )
+
+    browser_close_cmd = sub.add_parser(
+        "browser-close",
+        help="Close browser automation session",
+    )
+    browser_close_cmd.add_argument("--config", type=Path, default=_default_config_path())
 
     native_daemon_cmd = sub.add_parser(
         "native-daemon",
@@ -397,6 +452,17 @@ def _build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=None,
         help="Optional output JSON path for comparison report",
+    )
+    bench_compare_cmd.add_argument(
+        "--out-md",
+        type=Path,
+        default=None,
+        help="Optional output Markdown path for comparison report table",
+    )
+    bench_compare_cmd.add_argument(
+        "--md-title",
+        default="NovaAdapt Benchmark Comparison",
+        help="Markdown report title used with --out-md",
     )
 
     backup_cmd = sub.add_parser("backup", help="Create timestamped SQLite backups for local NovaAdapt state")
@@ -614,7 +680,85 @@ def _build_parser() -> argparse.ArgumentParser:
     mcp_cmd.add_argument("--db-path", type=Path, default=None)
     mcp_cmd.add_argument("--audit-db-path", type=Path, default=default_audit_db)
 
+    bridge_devices_cmd = sub.add_parser(
+        "bridge-devices",
+        help="List bridge trusted device IDs from /auth/devices",
+    )
+    _add_bridge_client_args(bridge_devices_cmd)
+
+    bridge_device_add_cmd = sub.add_parser(
+        "bridge-device-add",
+        help="Add trusted bridge device ID via /auth/devices",
+    )
+    _add_bridge_client_args(bridge_device_add_cmd)
+    bridge_device_add_cmd.add_argument("--device-id", required=True, help="Device ID to allowlist")
+
+    bridge_device_remove_cmd = sub.add_parser(
+        "bridge-device-remove",
+        help="Remove trusted bridge device ID via /auth/devices/remove",
+    )
+    _add_bridge_client_args(bridge_device_remove_cmd)
+    bridge_device_remove_cmd.add_argument("--device-id", required=True, help="Device ID to remove from allowlist")
+
+    bridge_session_issue_cmd = sub.add_parser(
+        "bridge-session-issue",
+        help="Issue scoped bridge session token via /auth/session",
+    )
+    _add_bridge_client_args(bridge_session_issue_cmd)
+    bridge_session_issue_cmd.add_argument(
+        "--scopes",
+        default="read,run,plan,approve,reject,undo,cancel",
+        help="Comma-separated session scopes",
+    )
+    bridge_session_issue_cmd.add_argument("--subject", default="", help="Optional session subject label")
+    bridge_session_issue_cmd.add_argument(
+        "--device-id",
+        default="",
+        help="Optional bound device ID (required when bridge allowlist is enabled)",
+    )
+    bridge_session_issue_cmd.add_argument(
+        "--ttl-seconds",
+        type=int,
+        default=900,
+        help="Session token lifetime in seconds",
+    )
+
+    bridge_session_revoke_cmd = sub.add_parser(
+        "bridge-session-revoke",
+        help="Revoke bridge session token via /auth/session/revoke",
+    )
+    _add_bridge_client_args(bridge_session_revoke_cmd)
+    bridge_session_revoke_cmd.add_argument(
+        "--session-token",
+        default="",
+        help="Issued session token to revoke",
+    )
+    bridge_session_revoke_cmd.add_argument(
+        "--session-id",
+        default="",
+        help="Session ID to revoke (alternative to --session-token)",
+    )
+    bridge_session_revoke_cmd.add_argument(
+        "--expires-at",
+        type=int,
+        default=0,
+        help="Optional unix timestamp for revocation expiry metadata",
+    )
+
     return parser
+
+
+def _build_bridge_api_client(args: argparse.Namespace) -> NovaAdaptAPIClient:
+    base_url = str(args.base_url or "").strip()
+    if not base_url:
+        raise ValueError("--base-url is required")
+    token = str(args.token or "").strip() or None
+    timeout_seconds = max(1, int(args.timeout_seconds))
+    return NovaAdaptAPIClient(
+        base_url=base_url,
+        token=token,
+        timeout_seconds=timeout_seconds,
+    )
 
 
 def main() -> None:
@@ -863,6 +1007,29 @@ def main() -> None:
             print(json.dumps(client.probe(), indent=2))
             return
 
+        if args.command == "browser-status":
+            service = NovaAdaptService(default_config=args.config)
+            print(json.dumps(service.browser_status(), indent=2))
+            return
+
+        if args.command == "browser-pages":
+            service = NovaAdaptService(default_config=args.config)
+            print(json.dumps(service.browser_pages(), indent=2))
+            return
+
+        if args.command == "browser-action":
+            service = NovaAdaptService(default_config=args.config)
+            parsed = json.loads(str(args.action_json))
+            if not isinstance(parsed, dict):
+                raise ValueError("--action-json must be a JSON object")
+            print(json.dumps(service.browser_action(parsed), indent=2))
+            return
+
+        if args.command == "browser-close":
+            service = NovaAdaptService(default_config=args.config)
+            print(json.dumps(service.browser_close(), indent=2))
+            return
+
         if args.command == "native-daemon":
             daemon = NativeExecutionDaemon(
                 socket_path=str(args.socket or ""),
@@ -918,6 +1085,12 @@ def main() -> None:
             if args.out is not None:
                 args.out.parent.mkdir(parents=True, exist_ok=True)
                 args.out.write_text(json.dumps(result, indent=2))
+            if args.out_md is not None:
+                write_benchmark_comparison_markdown(
+                    result,
+                    args.out_md,
+                    title=str(args.md_title).strip() or "NovaAdapt Benchmark Comparison",
+                )
             print(json.dumps(result, indent=2))
             return
 
@@ -968,6 +1141,59 @@ def main() -> None:
             print(json.dumps(result, indent=2))
             return
 
+        if args.command == "bridge-devices":
+            client = _build_bridge_api_client(args)
+            print(json.dumps(client.allowed_devices(), indent=2))
+            return
+
+        if args.command == "bridge-device-add":
+            client = _build_bridge_api_client(args)
+            device_id = str(args.device_id or "").strip()
+            if not device_id:
+                raise ValueError("--device-id is required")
+            print(json.dumps(client.add_allowed_device(device_id), indent=2))
+            return
+
+        if args.command == "bridge-device-remove":
+            client = _build_bridge_api_client(args)
+            device_id = str(args.device_id or "").strip()
+            if not device_id:
+                raise ValueError("--device-id is required")
+            print(json.dumps(client.remove_allowed_device(device_id), indent=2))
+            return
+
+        if args.command == "bridge-session-issue":
+            client = _build_bridge_api_client(args)
+            scopes = [item.strip() for item in str(args.scopes or "").split(",") if item.strip()]
+            if not scopes:
+                raise ValueError("--scopes must contain at least one scope")
+            subject = str(args.subject or "").strip() or None
+            device_id = str(args.device_id or "").strip() or None
+            ttl_seconds = max(1, int(args.ttl_seconds))
+            payload = client.issue_session_token(
+                scopes=scopes,
+                subject=subject,
+                device_id=device_id,
+                ttl_seconds=ttl_seconds,
+            )
+            print(json.dumps(payload, indent=2))
+            return
+
+        if args.command == "bridge-session-revoke":
+            client = _build_bridge_api_client(args)
+            session_token = str(args.session_token or "").strip() or None
+            session_id = str(args.session_id or "").strip() or None
+            if not session_token and not session_id:
+                raise ValueError("--session-token or --session-id is required")
+            expires_at = int(args.expires_at)
+            payload = client.revoke_session(
+                session_token=session_token,
+                session_id=session_id,
+                expires_at=expires_at if expires_at > 0 else None,
+            )
+            print(json.dumps(payload, indent=2))
+            return
+
         if args.command == "mcp":
             service = NovaAdaptService(
                 default_config=args.config,
@@ -982,7 +1208,7 @@ def main() -> None:
             service = NovaAdaptService(default_config=args.config)
             print(json.dumps(service.models(), indent=2))
             return
-    except ValueError as exc:
+    except (ValueError, APIClientError) as exc:
         raise SystemExit(str(exc)) from exc
 
 def _parse_csv(raw: str | None) -> list[str]:

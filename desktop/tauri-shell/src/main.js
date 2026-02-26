@@ -2,11 +2,14 @@ import { invoke } from "@tauri-apps/api/core";
 
 const DEFAULT_BASE_URL = "http://127.0.0.1:8787";
 const DEFAULT_REFRESH_INTERVAL_MS = 5000;
+const DEFAULT_REQUEST_TIMEOUT_MS = 20000;
 const hasTauri = typeof window !== "undefined" && !!window.__TAURI_INTERNALS__;
 
 const baseUrlInput = document.querySelector("#baseUrl");
 const tokenInput = document.querySelector("#token");
+const rememberTokenInput = document.querySelector("#rememberToken");
 const autoRefreshInput = document.querySelector("#autoRefresh");
+const testConnectionBtn = document.querySelector("#testConnectionBtn");
 const refreshBtn = document.querySelector("#refreshBtn");
 const objectiveInput = document.querySelector("#objectiveInput");
 const strategySelect = document.querySelector("#strategySelect");
@@ -22,20 +25,49 @@ const actionStatusEl = document.querySelector("#actionStatus");
 const planCountEl = document.querySelector("#planCount");
 const jobCountEl = document.querySelector("#jobCount");
 const eventCountEl = document.querySelector("#eventCount");
+const connectionStatusEl = document.querySelector("#connectionStatus");
 
 let refreshTimer = null;
 
+function normalizeBaseUrl(value) {
+  const raw = String(value || "").trim();
+  if (!raw) throw new Error("Base URL is required");
+  let parsed;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    throw new Error("Base URL must be a valid http(s) URL");
+  }
+  const scheme = parsed.protocol.toLowerCase();
+  if (scheme !== "http:" && scheme !== "https:") {
+    throw new Error("Base URL scheme must be http or https");
+  }
+  parsed.hash = "";
+  return parsed.toString().replace(/\/$/, "");
+}
+
 function currentConfig() {
   return {
-    baseUrl: (baseUrlInput?.value || DEFAULT_BASE_URL).trim(),
+    baseUrl: normalizeBaseUrl(baseUrlInput?.value || DEFAULT_BASE_URL),
     token: (tokenInput?.value || "").trim(),
   };
 }
 
 function saveConfig() {
-  const { baseUrl, token } = currentConfig();
+  let baseUrl = DEFAULT_BASE_URL;
+  try {
+    baseUrl = normalizeBaseUrl(baseUrlInput?.value || DEFAULT_BASE_URL);
+  } catch {
+    baseUrl = DEFAULT_BASE_URL;
+  }
+  const token = (tokenInput?.value || "").trim();
   localStorage.setItem("novaadapt.desktop.baseUrl", baseUrl);
-  localStorage.setItem("novaadapt.desktop.token", token);
+  localStorage.setItem("novaadapt.desktop.rememberToken", rememberTokenInput?.checked ? "1" : "0");
+  if (rememberTokenInput?.checked) {
+    localStorage.setItem("novaadapt.desktop.token", token);
+  } else {
+    localStorage.removeItem("novaadapt.desktop.token");
+  }
   localStorage.setItem("novaadapt.desktop.objective", (objectiveInput?.value || "").trim());
   localStorage.setItem("novaadapt.desktop.strategy", strategySelect?.value || "single");
   localStorage.setItem("novaadapt.desktop.candidates", (candidatesInput?.value || "").trim());
@@ -44,8 +76,15 @@ function saveConfig() {
 }
 
 function loadConfig() {
-  baseUrlInput.value = localStorage.getItem("novaadapt.desktop.baseUrl") || DEFAULT_BASE_URL;
-  tokenInput.value = localStorage.getItem("novaadapt.desktop.token") || "";
+  const rememberedBase = localStorage.getItem("novaadapt.desktop.baseUrl") || DEFAULT_BASE_URL;
+  try {
+    baseUrlInput.value = normalizeBaseUrl(rememberedBase);
+  } catch {
+    baseUrlInput.value = DEFAULT_BASE_URL;
+  }
+  const rememberToken = (localStorage.getItem("novaadapt.desktop.rememberToken") || "0") === "1";
+  rememberTokenInput.checked = rememberToken;
+  tokenInput.value = rememberToken ? (localStorage.getItem("novaadapt.desktop.token") || "") : "";
   objectiveInput.value = localStorage.getItem("novaadapt.desktop.objective") || "";
   strategySelect.value = localStorage.getItem("novaadapt.desktop.strategy") || "single";
   candidatesInput.value = localStorage.getItem("novaadapt.desktop.candidates") || "";
@@ -57,24 +96,28 @@ async function coreRequest(method, path, payload = null) {
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
   const { baseUrl, token } = currentConfig();
   if (hasTauri) {
-    return invoke("core_request", {
-      method: String(method || "GET"),
-      baseUrl,
-      token: token || null,
-      path: normalizedPath,
-      payload,
-    });
+    return requestWithRetries(async () =>
+      invoke("core_request", {
+        method: String(method || "GET"),
+        baseUrl,
+        token: token || null,
+        path: normalizedPath,
+        payload,
+      }),
+    );
   }
 
   const headers = {};
   if (token) headers.Authorization = `Bearer ${token}`;
   if (payload !== null) headers["Content-Type"] = "application/json";
 
-  const response = await fetch(`${baseUrl.replace(/\/$/, "")}${normalizedPath}`, {
-    method: String(method || "GET").toUpperCase(),
-    headers,
-    body: payload === null ? undefined : JSON.stringify(payload),
-  });
+  const response = await requestWithRetries(() =>
+    fetchWithTimeout(`${baseUrl.replace(/\/$/, "")}${normalizedPath}`, {
+      method: String(method || "GET").toUpperCase(),
+      headers,
+      body: payload === null ? undefined : JSON.stringify(payload),
+    }),
+  );
 
   const raw = await response.text();
   let parsed;
@@ -87,6 +130,42 @@ async function coreRequest(method, path, payload = null) {
     throw new Error(`Core API ${response.status}: ${typeof parsed === "object" ? JSON.stringify(parsed) : String(parsed)}`);
   }
   return parsed;
+}
+
+async function fetchWithTimeout(url, options) {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), DEFAULT_REQUEST_TIMEOUT_MS);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
+
+async function requestWithRetries(fn, maxAttempts = 3) {
+  let lastError = null;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      const out = await fn();
+      if (!out || typeof out.status !== "number") {
+        return out;
+      }
+      if ([429, 502, 503, 504].includes(out.status) && attempt < maxAttempts) {
+        await sleep(150 * attempt);
+        continue;
+      }
+      return out;
+    } catch (error) {
+      lastError = error;
+      if (attempt >= maxAttempts) break;
+      await sleep(150 * attempt);
+    }
+  }
+  throw lastError || new Error("request failed");
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
 async function dashboardData() {
@@ -161,9 +240,16 @@ function setActionStatus(message, kind = "neutral") {
   actionStatusEl.className = `badge ${kind}`;
 }
 
+function setConnectionStatus(message, kind = "neutral") {
+  const text = String(message || "").trim() || "Not connected";
+  connectionStatusEl.textContent = text;
+  connectionStatusEl.className = `badge ${kind}`;
+}
+
 function setBusy(value) {
   const busy = Boolean(value);
   refreshBtn.disabled = busy;
+  testConnectionBtn.disabled = busy;
   runAsyncBtn.disabled = busy;
   createPlanBtn.disabled = busy;
   for (const btn of document.querySelectorAll("[data-mutate='1']")) {
@@ -386,8 +472,19 @@ function render(data) {
 
 async function refresh() {
   saveConfig();
-  const data = await dashboardData();
-  render(data);
+  try {
+    const data = await dashboardData();
+    render(data);
+    setConnectionStatus("Connected", "ok");
+  } catch (error) {
+    setConnectionStatus("Connection failed", "error");
+    throw error;
+  }
+}
+
+async function testConnection() {
+  await coreRequest("GET", "/health");
+  setConnectionStatus("Connected", "ok");
 }
 
 function startAutoRefresh() {
@@ -431,14 +528,27 @@ function escapeHTML(value) {
 refreshBtn.addEventListener("click", () => {
   runAction("Refreshing", () => refresh(), false).catch(() => {});
 });
+testConnectionBtn.addEventListener("click", () => {
+  runAction("Testing connection", () => testConnection(), false).catch(() => {});
+});
 runAsyncBtn.addEventListener("click", () => {
   runAction("Queueing objective", () => queueRun(), true).catch(() => {});
 });
 createPlanBtn.addEventListener("click", () => {
   runAction("Creating plan", () => createPlan(), true).catch(() => {});
 });
-baseUrlInput.addEventListener("change", saveConfig);
+baseUrlInput.addEventListener("change", () => {
+  try {
+    baseUrlInput.value = normalizeBaseUrl(baseUrlInput.value || DEFAULT_BASE_URL);
+    setConnectionStatus("Not connected", "neutral");
+    saveConfig();
+  } catch (err) {
+    setConnectionStatus("Invalid base URL", "error");
+    summaryEl.textContent = String(err?.message || err);
+  }
+});
 tokenInput.addEventListener("change", saveConfig);
+rememberTokenInput.addEventListener("change", saveConfig);
 objectiveInput.addEventListener("change", saveConfig);
 strategySelect.addEventListener("change", saveConfig);
 candidatesInput.addEventListener("change", saveConfig);
@@ -450,6 +560,7 @@ autoRefreshInput.addEventListener("change", () => {
 
 loadConfig();
 setActionStatus("Idle", "neutral");
+setConnectionStatus("Not connected", "neutral");
 refresh()
   .catch((err) => {
     setActionStatus("Initial refresh failed", "error");

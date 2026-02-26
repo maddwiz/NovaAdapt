@@ -15,6 +15,7 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -41,25 +42,36 @@ const (
 )
 
 var allowedPaths = map[string]struct{}{
-	"/models":            {},
-	"/openapi.json":      {},
-	"/dashboard":         {},
-	"/dashboard/data":    {},
-	"/history":           {},
-	"/run":               {},
-	"/run_async":         {},
-	"/swarm/run":         {},
-	"/undo":              {},
-	"/check":             {},
-	"/jobs":              {},
-	"/plans":             {},
-	"/plugins":           {},
-	"/feedback":          {},
-	"/memory/status":     {},
-	"/memory/recall":     {},
-	"/memory/ingest":     {},
-	"/terminal/sessions": {},
-	"/events":            {},
+	"/models":                    {},
+	"/openapi.json":              {},
+	"/dashboard":                 {},
+	"/dashboard/data":            {},
+	"/history":                   {},
+	"/run":                       {},
+	"/run_async":                 {},
+	"/swarm/run":                 {},
+	"/undo":                      {},
+	"/check":                     {},
+	"/jobs":                      {},
+	"/plans":                     {},
+	"/plugins":                   {},
+	"/feedback":                  {},
+	"/memory/status":             {},
+	"/memory/recall":             {},
+	"/memory/ingest":             {},
+	"/browser/status":            {},
+	"/browser/pages":             {},
+	"/browser/action":            {},
+	"/browser/navigate":          {},
+	"/browser/click":             {},
+	"/browser/fill":              {},
+	"/browser/extract_text":      {},
+	"/browser/screenshot":        {},
+	"/browser/wait_for_selector": {},
+	"/browser/evaluate_js":       {},
+	"/browser/close":             {},
+	"/terminal/sessions":         {},
+	"/events":                    {},
 }
 
 // Config controls bridge relay behavior.
@@ -115,6 +127,7 @@ type Handler struct {
 	sessionRevokedTotal uint64
 	wsRejectedTotal     uint64
 	wsActiveConnections int64
+	allowedDevicesMu    sync.RWMutex
 	allowedDevices      map[string]struct{}
 	corsAllowedOrigins  map[string]struct{}
 	corsAllowAll        bool
@@ -322,6 +335,66 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.writeJSON(w, statusCode, revoked)
 		return
 	}
+	if r.URL.Path == "/auth/devices" {
+		if !auth.hasScope(scopeAdmin) {
+			statusCode = http.StatusForbidden
+			h.writeJSON(w, statusCode, map[string]any{"error": "Forbidden", "request_id": requestID})
+			return
+		}
+		switch r.Method {
+		case http.MethodGet:
+			statusCode = http.StatusOK
+			h.writeJSON(w, statusCode, h.handleListAllowedDevices(requestID))
+			return
+		case http.MethodPost:
+			body, err := h.readBody(r)
+			if err != nil {
+				statusCode = http.StatusBadRequest
+				h.writeJSON(w, statusCode, map[string]any{"error": err.Error(), "request_id": requestID})
+				return
+			}
+			payload, err := h.handleAddAllowedDevice(body, requestID)
+			if err != nil {
+				statusCode = http.StatusBadRequest
+				h.writeJSON(w, statusCode, map[string]any{"error": err.Error(), "request_id": requestID})
+				return
+			}
+			statusCode = http.StatusOK
+			h.writeJSON(w, statusCode, payload)
+			return
+		default:
+			statusCode = http.StatusMethodNotAllowed
+			h.writeJSON(w, statusCode, map[string]any{"error": "Method not allowed", "request_id": requestID})
+			return
+		}
+	}
+	if r.URL.Path == "/auth/devices/remove" {
+		if r.Method != http.MethodPost {
+			statusCode = http.StatusMethodNotAllowed
+			h.writeJSON(w, statusCode, map[string]any{"error": "Method not allowed", "request_id": requestID})
+			return
+		}
+		if !auth.hasScope(scopeAdmin) {
+			statusCode = http.StatusForbidden
+			h.writeJSON(w, statusCode, map[string]any{"error": "Forbidden", "request_id": requestID})
+			return
+		}
+		body, err := h.readBody(r)
+		if err != nil {
+			statusCode = http.StatusBadRequest
+			h.writeJSON(w, statusCode, map[string]any{"error": err.Error(), "request_id": requestID})
+			return
+		}
+		payload, err := h.handleRemoveAllowedDevice(body, requestID)
+		if err != nil {
+			statusCode = http.StatusBadRequest
+			h.writeJSON(w, statusCode, map[string]any{"error": err.Error(), "request_id": requestID})
+			return
+		}
+		statusCode = http.StatusOK
+		h.writeJSON(w, statusCode, payload)
+		return
+	}
 
 	if r.URL.Path == "/ws" {
 		statusCode = h.handleWebSocket(w, r, requestID, auth)
@@ -432,18 +505,125 @@ func (h *Handler) bridgeHealthSnapshot() map[string]any {
 	h.rateLimitMu.Lock()
 	trackedClients := len(h.rateLimiters)
 	h.rateLimitMu.Unlock()
+	allowedDeviceCount := h.allowedDeviceCount()
 
 	return map[string]any{
-		"rate_limit_rps":        h.cfg.RateLimitRPS,
-		"rate_limit_burst":      h.cfg.RateLimitBurst,
-		"rate_limit_clients":    trackedClients,
-		"ws_max_connections":    h.cfg.MaxWSConnections,
-		"ws_active_connections": atomic.LoadInt64(&h.wsActiveConnections),
-		"revoked_sessions":      revokedCount,
-		"revocation_store_path": strings.TrimSpace(h.cfg.RevocationStorePath),
-		"core_tls_enabled":      strings.HasPrefix(strings.ToLower(strings.TrimSpace(h.cfg.CoreBaseURL)), "https://"),
-		"core_mtls_enabled":     strings.TrimSpace(h.cfg.CoreClientCertFile) != "",
+		"rate_limit_rps":           h.cfg.RateLimitRPS,
+		"rate_limit_burst":         h.cfg.RateLimitBurst,
+		"rate_limit_clients":       trackedClients,
+		"ws_max_connections":       h.cfg.MaxWSConnections,
+		"ws_active_connections":    atomic.LoadInt64(&h.wsActiveConnections),
+		"revoked_sessions":         revokedCount,
+		"revocation_store_path":    strings.TrimSpace(h.cfg.RevocationStorePath),
+		"core_tls_enabled":         strings.HasPrefix(strings.ToLower(strings.TrimSpace(h.cfg.CoreBaseURL)), "https://"),
+		"core_mtls_enabled":        strings.TrimSpace(h.cfg.CoreClientCertFile) != "",
+		"device_allowlist_count":   allowedDeviceCount,
+		"device_allowlist_enabled": allowedDeviceCount > 0,
 	}
+}
+
+func (h *Handler) allowedDeviceCount() int {
+	h.allowedDevicesMu.RLock()
+	defer h.allowedDevicesMu.RUnlock()
+	return len(h.allowedDevices)
+}
+
+func (h *Handler) isAllowedDevice(deviceID string) bool {
+	candidate := strings.TrimSpace(deviceID)
+	if candidate == "" {
+		return false
+	}
+	h.allowedDevicesMu.RLock()
+	defer h.allowedDevicesMu.RUnlock()
+	_, ok := h.allowedDevices[candidate]
+	return ok
+}
+
+func (h *Handler) hasAllowedDevices() bool {
+	return h.allowedDeviceCount() > 0
+}
+
+func (h *Handler) listAllowedDevices() []string {
+	h.allowedDevicesMu.RLock()
+	items := make([]string, 0, len(h.allowedDevices))
+	for deviceID := range h.allowedDevices {
+		items = append(items, deviceID)
+	}
+	h.allowedDevicesMu.RUnlock()
+	sort.Strings(items)
+	return items
+}
+
+func (h *Handler) addAllowedDevice(deviceID string) (bool, error) {
+	candidate := strings.TrimSpace(deviceID)
+	if candidate == "" {
+		return false, fmt.Errorf("'device_id' is required")
+	}
+	h.allowedDevicesMu.Lock()
+	defer h.allowedDevicesMu.Unlock()
+	_, exists := h.allowedDevices[candidate]
+	h.allowedDevices[candidate] = struct{}{}
+	return !exists, nil
+}
+
+func (h *Handler) removeAllowedDevice(deviceID string) (bool, error) {
+	candidate := strings.TrimSpace(deviceID)
+	if candidate == "" {
+		return false, fmt.Errorf("'device_id' is required")
+	}
+	h.allowedDevicesMu.Lock()
+	defer h.allowedDevicesMu.Unlock()
+	if _, exists := h.allowedDevices[candidate]; !exists {
+		return false, nil
+	}
+	delete(h.allowedDevices, candidate)
+	return true, nil
+}
+
+func (h *Handler) handleListAllowedDevices(requestID string) map[string]any {
+	devices := h.listAllowedDevices()
+	return map[string]any{
+		"enabled":    len(devices) > 0,
+		"count":      len(devices),
+		"devices":    devices,
+		"request_id": requestID,
+	}
+}
+
+func (h *Handler) handleAddAllowedDevice(body []byte, requestID string) (map[string]any, error) {
+	payload := map[string]any{}
+	if len(bytesTrimSpace(body)) > 0 {
+		if err := json.Unmarshal(body, &payload); err != nil {
+			return nil, fmt.Errorf("request body must be valid JSON object")
+		}
+	}
+	added, err := h.addAllowedDevice(toString(payload["device_id"]))
+	if err != nil {
+		return nil, err
+	}
+	out := h.handleListAllowedDevices(requestID)
+	out["status"] = "ok"
+	out["added"] = added
+	out["device_id"] = strings.TrimSpace(toString(payload["device_id"]))
+	return out, nil
+}
+
+func (h *Handler) handleRemoveAllowedDevice(body []byte, requestID string) (map[string]any, error) {
+	payload := map[string]any{}
+	if len(bytesTrimSpace(body)) > 0 {
+		if err := json.Unmarshal(body, &payload); err != nil {
+			return nil, fmt.Errorf("request body must be valid JSON object")
+		}
+	}
+	removed, err := h.removeAllowedDevice(toString(payload["device_id"]))
+	if err != nil {
+		return nil, err
+	}
+	out := h.handleListAllowedDevices(requestID)
+	out["status"] = "ok"
+	out["removed"] = removed
+	out["device_id"] = strings.TrimSpace(toString(payload["device_id"]))
+	return out, nil
 }
 
 func isForwardedPath(p string) bool {
@@ -889,6 +1069,7 @@ func (h *Handler) writeJSONWithStatus(w http.ResponseWriter, status int, payload
 }
 
 func (h *Handler) writeMetrics(w http.ResponseWriter) {
+	allowedDeviceCount := h.allowedDeviceCount()
 	body := fmt.Sprintf(
 		"novaadapt_bridge_requests_total %d\n"+
 			"novaadapt_bridge_unauthorized_total %d\n"+
@@ -897,6 +1078,7 @@ func (h *Handler) writeMetrics(w http.ResponseWriter) {
 			"novaadapt_bridge_session_revoked_total %d\n"+
 			"novaadapt_bridge_ws_rejected_total %d\n"+
 			"novaadapt_bridge_ws_active_connections %d\n"+
+			"novaadapt_bridge_device_allowlist_count %d\n"+
 			"novaadapt_bridge_upstream_errors_total %d\n",
 		atomic.LoadUint64(&h.requestsTotal),
 		atomic.LoadUint64(&h.unauthorizedTotal),
@@ -905,6 +1087,7 @@ func (h *Handler) writeMetrics(w http.ResponseWriter) {
 		atomic.LoadUint64(&h.sessionRevokedTotal),
 		atomic.LoadUint64(&h.wsRejectedTotal),
 		atomic.LoadInt64(&h.wsActiveConnections),
+		allowedDeviceCount,
 		atomic.LoadUint64(&h.upstreamErrorsTotal),
 	)
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4")

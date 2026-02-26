@@ -151,6 +151,153 @@ class NovaAdaptAPIClient:
             return payload
         raise APIClientError("Expected object payload from /memory/ingest")
 
+    def browser_status(self) -> dict[str, Any]:
+        payload = self._get_json("/browser/status")
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /browser/status")
+
+    def browser_pages(self) -> dict[str, Any]:
+        payload = self._get_json("/browser/pages")
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /browser/pages")
+
+    def browser_action(self, action: dict[str, Any], idempotency_key: str | None = None) -> dict[str, Any]:
+        payload = self._post_json(
+            "/browser/action",
+            {"action": action},
+            idempotency_key=idempotency_key,
+        )
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /browser/action")
+
+    def browser_navigate(self, url: str, idempotency_key: str | None = None, **kwargs: Any) -> dict[str, Any]:
+        payload = self._post_json(
+            "/browser/navigate",
+            {"url": str(url), **kwargs},
+            idempotency_key=idempotency_key,
+        )
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /browser/navigate")
+
+    def browser_click(self, selector: str, idempotency_key: str | None = None, **kwargs: Any) -> dict[str, Any]:
+        payload = self._post_json(
+            "/browser/click",
+            {"selector": str(selector), **kwargs},
+            idempotency_key=idempotency_key,
+        )
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /browser/click")
+
+    def browser_fill(
+        self,
+        selector: str,
+        value: str,
+        idempotency_key: str | None = None,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        payload = self._post_json(
+            "/browser/fill",
+            {"selector": str(selector), "value": str(value), **kwargs},
+            idempotency_key=idempotency_key,
+        )
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /browser/fill")
+
+    def browser_extract_text(
+        self,
+        selector: str | None = None,
+        idempotency_key: str | None = None,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = dict(kwargs)
+        if selector is not None:
+            body["selector"] = str(selector)
+        payload = self._post_json(
+            "/browser/extract_text",
+            body,
+            idempotency_key=idempotency_key,
+        )
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /browser/extract_text")
+
+    def browser_screenshot(
+        self,
+        *,
+        path: str | None = None,
+        full_page: bool = True,
+        idempotency_key: str | None = None,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {"full_page": bool(full_page), **kwargs}
+        if path is not None:
+            body["path"] = str(path)
+        payload = self._post_json(
+            "/browser/screenshot",
+            body,
+            idempotency_key=idempotency_key,
+        )
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /browser/screenshot")
+
+    def browser_wait_for_selector(
+        self,
+        selector: str,
+        *,
+        state: str = "visible",
+        timeout_ms: int | None = None,
+        idempotency_key: str | None = None,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {"selector": str(selector), "state": str(state), **kwargs}
+        if timeout_ms is not None:
+            body["timeout_ms"] = int(timeout_ms)
+        payload = self._post_json(
+            "/browser/wait_for_selector",
+            body,
+            idempotency_key=idempotency_key,
+        )
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /browser/wait_for_selector")
+
+    def browser_evaluate_js(
+        self,
+        script: str,
+        *,
+        arg: Any = None,
+        idempotency_key: str | None = None,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {"script": str(script), **kwargs}
+        if arg is not None:
+            body["arg"] = arg
+        payload = self._post_json(
+            "/browser/evaluate_js",
+            body,
+            idempotency_key=idempotency_key,
+        )
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /browser/evaluate_js")
+
+    def browser_close(self, idempotency_key: str | None = None) -> dict[str, Any]:
+        payload = self._post_json(
+            "/browser/close",
+            {},
+            idempotency_key=idempotency_key,
+        )
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /browser/close")
+
     def terminal_sessions(self) -> list[dict[str, Any]]:
         payload = self._get_json("/terminal/sessions")
         if isinstance(payload, list):
@@ -497,6 +644,26 @@ class NovaAdaptAPIClient:
             return payload
         raise APIClientError("Expected object payload from /auth/session/revoke")
 
+    def allowed_devices(self) -> dict[str, Any]:
+        payload = self._get_json("/auth/devices")
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /auth/devices")
+
+    def add_allowed_device(self, device_id: str) -> dict[str, Any]:
+        body = {"device_id": (device_id or "").strip()}
+        payload = self._post_json("/auth/devices", body)
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /auth/devices")
+
+    def remove_allowed_device(self, device_id: str) -> dict[str, Any]:
+        body = {"device_id": (device_id or "").strip()}
+        payload = self._post_json("/auth/devices/remove", body)
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /auth/devices/remove")
+
     def metrics_text(self) -> str:
         return self._request_text("GET", "/metrics")
 
@@ -572,11 +739,24 @@ class NovaAdaptAPIClient:
                 with request.urlopen(req, timeout=self.timeout_seconds) as response:
                     return response.read().decode("utf-8")
             except error.HTTPError as exc:
-                body_text = exc.read().decode("utf-8", errors="ignore")
+                try:
+                    body_text = exc.read().decode("utf-8", errors="ignore")
+                finally:
+                    try:
+                        exc.close()
+                    except Exception:
+                        pass
                 last_error = APIClientError(f"HTTP {exc.code}: {body_text}")
                 if not self._should_retry_http(exc.code) or attempt >= attempts - 1:
                     raise last_error from exc
             except error.URLError as exc:
+                reason = exc.reason
+                close_fn = getattr(reason, "close", None)
+                if callable(close_fn):
+                    try:
+                        close_fn()
+                    except Exception:
+                        pass
                 last_error = APIClientError(f"Request failed: {exc.reason}")
                 if attempt >= attempts - 1:
                     raise last_error from exc

@@ -1,6 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use reqwest::Method;
+use reqwest::{Method, Url};
 use serde_json::{json, Value};
 
 #[tauri::command]
@@ -70,12 +70,17 @@ async fn request_json(
         format!("/{}", path)
     };
     let url = format!("{}{}", base, normalized_path);
+    let parsed_url = Url::parse(&url).map_err(|e| format!("Invalid URL: {}", e))?;
+    let scheme = parsed_url.scheme().to_ascii_lowercase();
+    if scheme != "http" && scheme != "https" {
+        return Err("Only http/https base URLs are supported".to_string());
+    }
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(20))
         .build()
         .map_err(|e| format!("HTTP client init failed: {}", e))?;
 
-    let mut req = client.request(method, &url);
+    let mut req = client.request(method, parsed_url);
     if let Some(tok) = token {
         let trimmed = tok.trim().to_string();
         if !trimmed.is_empty() {

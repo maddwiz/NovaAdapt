@@ -8,6 +8,7 @@ Realtime companion console for NovaAdapt bridge WebSocket control and remote ter
   - Connects to bridge `/ws`.
   - Issues scoped session tokens via `/auth/session`.
   - Revokes scoped sessions via `/auth/session/revoke` (token or `session_id`).
+  - Lists/adds/removes bridge trusted device IDs via `/auth/devices` and `/auth/devices/remove`.
   - Streams live audit events.
   - Sends authenticated command requests (run/plan approve/job cancel/etc.).
   - Starts/attaches remote terminal sessions (`/terminal/sessions*`) with live stdin/stdout over websocket command relay.

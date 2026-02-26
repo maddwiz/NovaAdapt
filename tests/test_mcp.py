@@ -92,6 +92,24 @@ class _StubService:
     def memory_ingest(self, text, source_id="", metadata=None):
         return {"ok": True, "source_id": source_id, "metadata": metadata or {}, "result": {"ingested": text}}
 
+    def browser_status(self):
+        return {"ok": True, "transport": "browser", "capabilities": ["navigate", "click_selector"]}
+
+    def browser_pages(self):
+        return {
+            "status": "ok",
+            "count": 1,
+            "current_page_id": "page-1",
+            "pages": [{"page_id": "page-1", "url": "https://example.com", "current": True}],
+        }
+
+    def browser_action(self, payload):
+        action = payload.get("action") if isinstance(payload.get("action"), dict) else payload
+        return {"status": "ok", "output": "browser action", "action": action}
+
+    def browser_close(self):
+        return {"status": "ok", "output": "browser session closed"}
+
 
 class MCPServerTests(unittest.TestCase):
     def test_initialize_and_tools(self):
@@ -118,6 +136,17 @@ class MCPServerTests(unittest.TestCase):
         self.assertIn("novaadapt_memory_status", names)
         self.assertIn("novaadapt_memory_recall", names)
         self.assertIn("novaadapt_memory_ingest", names)
+        self.assertIn("novaadapt_browser_status", names)
+        self.assertIn("novaadapt_browser_pages", names)
+        self.assertIn("novaadapt_browser_action", names)
+        self.assertIn("novaadapt_browser_navigate", names)
+        self.assertIn("novaadapt_browser_click", names)
+        self.assertIn("novaadapt_browser_fill", names)
+        self.assertIn("novaadapt_browser_extract_text", names)
+        self.assertIn("novaadapt_browser_screenshot", names)
+        self.assertIn("novaadapt_browser_wait_for_selector", names)
+        self.assertIn("novaadapt_browser_evaluate_js", names)
+        self.assertIn("novaadapt_browser_close", names)
 
     def test_tools_call(self):
         server = NovaAdaptMCPServer(service=_StubService())
@@ -348,6 +377,161 @@ class MCPServerTests(unittest.TestCase):
         )
         memory_ingest_payload = memory_ingest_resp["result"]["content"][0]["json"]
         self.assertEqual(memory_ingest_payload["source_id"], "mcp-test")
+
+        browser_status_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 94,
+                "method": "tools/call",
+                "params": {
+                    "name": "novaadapt_browser_status",
+                    "arguments": {},
+                },
+            }
+        )
+        browser_status_payload = browser_status_resp["result"]["content"][0]["json"]
+        self.assertTrue(browser_status_payload["ok"])
+
+        browser_pages_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 941,
+                "method": "tools/call",
+                "params": {
+                    "name": "novaadapt_browser_pages",
+                    "arguments": {},
+                },
+            }
+        )
+        browser_pages_payload = browser_pages_resp["result"]["content"][0]["json"]
+        self.assertEqual(browser_pages_payload["count"], 1)
+        self.assertEqual(browser_pages_payload["current_page_id"], "page-1")
+
+        browser_action_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 95,
+                "method": "tools/call",
+                "params": {
+                    "name": "novaadapt_browser_action",
+                    "arguments": {"action": {"type": "navigate", "target": "https://example.com"}},
+                },
+            }
+        )
+        browser_action_payload = browser_action_resp["result"]["content"][0]["json"]
+        self.assertEqual(browser_action_payload["action"]["type"], "navigate")
+
+        browser_nav_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 96,
+                "method": "tools/call",
+                "params": {
+                    "name": "novaadapt_browser_navigate",
+                    "arguments": {"url": "https://example.com"},
+                },
+            }
+        )
+        browser_nav_payload = browser_nav_resp["result"]["content"][0]["json"]
+        self.assertEqual(browser_nav_payload["action"]["type"], "navigate")
+
+        browser_click_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 97,
+                "method": "tools/call",
+                "params": {
+                    "name": "novaadapt_browser_click",
+                    "arguments": {"selector": "#submit"},
+                },
+            }
+        )
+        browser_click_payload = browser_click_resp["result"]["content"][0]["json"]
+        self.assertEqual(browser_click_payload["action"]["type"], "click_selector")
+
+        browser_fill_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 98,
+                "method": "tools/call",
+                "params": {
+                    "name": "novaadapt_browser_fill",
+                    "arguments": {"selector": "#name", "value": "NovaAdapt"},
+                },
+            }
+        )
+        browser_fill_payload = browser_fill_resp["result"]["content"][0]["json"]
+        self.assertEqual(browser_fill_payload["action"]["type"], "fill")
+
+        browser_extract_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 99,
+                "method": "tools/call",
+                "params": {
+                    "name": "novaadapt_browser_extract_text",
+                    "arguments": {"selector": "h1"},
+                },
+            }
+        )
+        browser_extract_payload = browser_extract_resp["result"]["content"][0]["json"]
+        self.assertEqual(browser_extract_payload["action"]["type"], "extract_text")
+
+        browser_shot_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 100,
+                "method": "tools/call",
+                "params": {
+                    "name": "novaadapt_browser_screenshot",
+                    "arguments": {"path": "demo.png"},
+                },
+            }
+        )
+        browser_shot_payload = browser_shot_resp["result"]["content"][0]["json"]
+        self.assertEqual(browser_shot_payload["action"]["type"], "screenshot")
+
+        browser_wait_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 101,
+                "method": "tools/call",
+                "params": {
+                    "name": "novaadapt_browser_wait_for_selector",
+                    "arguments": {"selector": "#app"},
+                },
+            }
+        )
+        browser_wait_payload = browser_wait_resp["result"]["content"][0]["json"]
+        self.assertEqual(browser_wait_payload["action"]["type"], "wait_for_selector")
+
+        browser_eval_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 102,
+                "method": "tools/call",
+                "params": {
+                    "name": "novaadapt_browser_evaluate_js",
+                    "arguments": {"script": "() => 42"},
+                },
+            }
+        )
+        browser_eval_payload = browser_eval_resp["result"]["content"][0]["json"]
+        self.assertEqual(browser_eval_payload["action"]["type"], "evaluate_js")
+
+        browser_close_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 103,
+                "method": "tools/call",
+                "params": {
+                    "name": "novaadapt_browser_close",
+                    "arguments": {},
+                },
+            }
+        )
+        browser_close_payload = browser_close_resp["result"]["content"][0]["json"]
+        self.assertEqual(browser_close_payload["status"], "ok")
 
     def test_unknown_method_returns_error(self):
         server = NovaAdaptMCPServer(service=_StubService())

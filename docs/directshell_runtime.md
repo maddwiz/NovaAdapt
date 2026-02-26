@@ -19,11 +19,48 @@ Supported action types:
 - `run_shell`
 - `note`
 
+`open_app` accepts app arguments on all platforms.
+For app names containing spaces, quote the app name in the action value/target (example: `"Google Chrome" --incognito`).
+
 Linux note:
 - `type`, `key`, `hotkey`, and `click` use `xdotool`; install it for full Linux desktop action support.
 
 Windows note:
 - `type`, `key`, `hotkey`, and `click` use PowerShell (`powershell` or `pwsh`) with `System.Windows.Forms.SendKeys`.
+
+## Browser Runtime (Playwright)
+
+NovaAdapt also supports a Playwright-backed browser execution runtime for web apps.
+
+Supported browser action types:
+
+- `navigate`
+- `click_selector`
+- `fill`
+- `extract_text`
+- `screenshot`
+- `wait_for_selector`
+- `evaluate_js`
+- `new_context` (reset browser context/session state)
+- `new_page`
+- `list_pages`
+- `switch_page` (`page_id` or `index`)
+- `close_page` (`page_id` or `index`, defaults to current)
+
+Install browser support:
+
+```bash
+pip install -e '.[browser]'
+python -m playwright install chromium
+```
+
+Optional browser safety env vars:
+
+- `NOVAADAPT_BROWSER_ALLOWLIST` (comma-separated domains)
+- `NOVAADAPT_BROWSER_BLOCKLIST` (comma-separated domains)
+- `NOVAADAPT_BROWSER_ALLOW_SENSITIVE_FILL` (`true` to allow password/token autofill)
+- `NOVAADAPT_BROWSER_SCREENSHOT_DIR` (default `~/.novaadapt/browser_screenshots`)
+- `NOVAADAPT_BROWSER_HEADLESS` (`true` by default)
 
 ## Optional External Transports
 
@@ -31,6 +68,7 @@ Windows note:
 - `subprocess`: invokes `directshell exec --json ...`
 - `http`: posts JSON action payloads to a DirectShell HTTP endpoint
 - `daemon`: framed JSON over Unix socket or TCP
+- `browser`: built-in Playwright browser runtime
 
 `daemon` can point to:
 
@@ -53,6 +91,7 @@ Use the built-in check before enabling live execution:
 
 ```bash
 novaadapt directshell-check
+novaadapt directshell-check --transport browser
 ```
 
 Outputs include `ok`, selected transport, and transport-specific diagnostics.
