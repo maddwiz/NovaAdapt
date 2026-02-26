@@ -215,6 +215,13 @@ class ServerTests(unittest.TestCase):
                 self.assertIn("/feedback", openapi["paths"])
                 self.assertIn("/memory/status", openapi["paths"])
                 self.assertIn("/novaprime/status", openapi["paths"])
+                self.assertIn("/sib/status", openapi["paths"])
+                self.assertIn("/sib/realm", openapi["paths"])
+                self.assertIn("/sib/companion/state", openapi["paths"])
+                self.assertIn("/sib/companion/speak", openapi["paths"])
+                self.assertIn("/sib/phase-event", openapi["paths"])
+                self.assertIn("/sib/resonance/start", openapi["paths"])
+                self.assertIn("/sib/resonance/result", openapi["paths"])
                 self.assertIn("/adapt/toggle", openapi["paths"])
                 self.assertIn("/adapt/bond", openapi["paths"])
                 self.assertIn("/memory/recall", openapi["paths"])
@@ -281,6 +288,45 @@ class ServerTests(unittest.TestCase):
                 novaprime_status, _ = _get_json_with_headers(f"http://{host}:{port}/novaprime/status")
                 self.assertIn("ok", novaprime_status)
                 self.assertIn("backend", novaprime_status)
+
+                sib_status, _ = _get_json_with_headers(f"http://{host}:{port}/sib/status")
+                self.assertEqual(sib_status["plugin"], "sib_bridge")
+
+                sib_realm, _ = _post_json_with_headers(
+                    f"http://{host}:{port}/sib/realm",
+                    {"player_id": "player-1", "realm": "game_world"},
+                )
+                self.assertEqual(sib_realm["plugin"], "sib_bridge")
+
+                sib_state, _ = _post_json_with_headers(
+                    f"http://{host}:{port}/sib/companion/state",
+                    {"adapt_id": "adapt-1", "state": {"mode": "combat"}},
+                )
+                self.assertEqual(sib_state["plugin"], "sib_bridge")
+
+                sib_speak, _ = _post_json_with_headers(
+                    f"http://{host}:{port}/sib/companion/speak",
+                    {"adapt_id": "adapt-1", "text": "On your left", "channel": "in_game"},
+                )
+                self.assertEqual(sib_speak["plugin"], "sib_bridge")
+
+                sib_phase, _ = _post_json_with_headers(
+                    f"http://{host}:{port}/sib/phase-event",
+                    {"event_type": "entropy_spike", "payload": {"severity": "high"}},
+                )
+                self.assertEqual(sib_phase["plugin"], "sib_bridge")
+
+                sib_start, _ = _post_json_with_headers(
+                    f"http://{host}:{port}/sib/resonance/start",
+                    {"player_id": "player-1", "player_profile": {"class": "sentinel"}},
+                )
+                self.assertEqual(sib_start["plugin"], "sib_bridge")
+
+                sib_result, _ = _post_json_with_headers(
+                    f"http://{host}:{port}/sib/resonance/result",
+                    {"player_id": "player-1", "adapt_id": "adapt-1", "accepted": True},
+                )
+                self.assertEqual(sib_result["plugin"], "sib_bridge")
 
                 adapt_toggle_set, _ = _post_json_with_headers(
                     f"http://{host}:{port}/adapt/toggle",

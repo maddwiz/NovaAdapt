@@ -220,6 +220,7 @@ API endpoints:
 - `GET /plugins/{name}/health`
 - `GET /memory/status`
 - `GET /novaprime/status`
+- `GET /sib/status`
 - `GET /adapt/toggle?adapt_id=...`
 - `GET /adapt/bond?adapt_id=...`
 - `GET /browser/status`
@@ -237,6 +238,12 @@ API endpoints:
 - `POST /swarm/run` with JSON payload (fan out multiple objectives into parallel jobs)
 - `POST /plugins/{name}/call` with JSON payload
 - `POST /feedback` with JSON payload (`rating` 1-10 required)
+- `POST /sib/realm` with JSON payload (`player_id`, `realm`)
+- `POST /sib/companion/state` with JSON payload (`adapt_id`, `state`)
+- `POST /sib/companion/speak` with JSON payload (`adapt_id`, `text`, `channel`)
+- `POST /sib/phase-event` with JSON payload (`event_type`, optional `payload`)
+- `POST /sib/resonance/start` with JSON payload (`player_id`, optional `player_profile`)
+- `POST /sib/resonance/result` with JSON payload (`player_id`, `adapt_id`, `accepted`)
 - `POST /adapt/toggle` with JSON payload (`adapt_id`, `mode`)
 - `POST /memory/recall` with JSON payload (`query` required)
 - `POST /memory/ingest` with JSON payload (`text` required)

@@ -258,6 +258,85 @@ class NovaAdaptMCPServer:
                 input_schema={"type": "object", "properties": {}},
             ),
             MCPTool(
+                name="novaadapt_sib_status",
+                description="Get SIB bridge status",
+                input_schema={"type": "object", "properties": {}},
+            ),
+            MCPTool(
+                name="novaadapt_sib_realm",
+                description="Sync player realm to SIB bridge",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "player_id": {"type": "string"},
+                        "realm": {"type": "string"},
+                    },
+                    "required": ["player_id", "realm"],
+                },
+            ),
+            MCPTool(
+                name="novaadapt_sib_companion_state",
+                description="Sync Adapt companion state to SIB bridge",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "adapt_id": {"type": "string"},
+                        "state": {"type": "object"},
+                    },
+                    "required": ["adapt_id", "state"],
+                },
+            ),
+            MCPTool(
+                name="novaadapt_sib_companion_speak",
+                description="Send Adapt dialogue to SIB bridge",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "adapt_id": {"type": "string"},
+                        "text": {"type": "string"},
+                        "channel": {"type": "string"},
+                    },
+                    "required": ["adapt_id", "text"],
+                },
+            ),
+            MCPTool(
+                name="novaadapt_sib_phase_event",
+                description="Trigger SIB phase event route",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "event_type": {"type": "string"},
+                        "payload": {"type": "object"},
+                    },
+                    "required": ["event_type"],
+                },
+            ),
+            MCPTool(
+                name="novaadapt_sib_resonance_start",
+                description="Start SIB resonance ceremony",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "player_id": {"type": "string"},
+                        "player_profile": {"type": "object"},
+                    },
+                    "required": ["player_id"],
+                },
+            ),
+            MCPTool(
+                name="novaadapt_sib_resonance_result",
+                description="Finalize SIB resonance result",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "player_id": {"type": "string"},
+                        "adapt_id": {"type": "string"},
+                        "accepted": {"type": "boolean"},
+                    },
+                    "required": ["player_id", "adapt_id", "accepted"],
+                },
+            ),
+            MCPTool(
                 name="novaadapt_adapt_toggle_get",
                 description="Get Adapt communication toggle mode",
                 input_schema={
@@ -634,6 +713,54 @@ class NovaAdaptMCPServer:
             return self.service.memory_status()
         if tool_name == "novaadapt_novaprime_status":
             return self.service.novaprime_status()
+        if tool_name == "novaadapt_sib_status":
+            return self.service.sib_status()
+        if tool_name == "novaadapt_sib_realm":
+            player_id = str(arguments.get("player_id", "")).strip()
+            realm = str(arguments.get("realm", "")).strip()
+            if not player_id:
+                raise ValueError("'player_id' is required")
+            if not realm:
+                raise ValueError("'realm' is required")
+            return self.service.sib_realm(player_id, realm)
+        if tool_name == "novaadapt_sib_companion_state":
+            adapt_id = str(arguments.get("adapt_id", "")).strip()
+            state = arguments.get("state")
+            if not adapt_id:
+                raise ValueError("'adapt_id' is required")
+            if not isinstance(state, dict):
+                raise ValueError("'state' is required and must be an object")
+            return self.service.sib_companion_state(adapt_id, state)
+        if tool_name == "novaadapt_sib_companion_speak":
+            adapt_id = str(arguments.get("adapt_id", "")).strip()
+            text = str(arguments.get("text", "")).strip()
+            channel = str(arguments.get("channel", "in_game")).strip() or "in_game"
+            if not adapt_id:
+                raise ValueError("'adapt_id' is required")
+            if not text:
+                raise ValueError("'text' is required")
+            return self.service.sib_companion_speak(adapt_id, text, channel=channel)
+        if tool_name == "novaadapt_sib_phase_event":
+            event_type = str(arguments.get("event_type", "")).strip()
+            payload = arguments.get("payload")
+            if not event_type:
+                raise ValueError("'event_type' is required")
+            return self.service.sib_phase_event(event_type, payload if isinstance(payload, dict) else None)
+        if tool_name == "novaadapt_sib_resonance_start":
+            player_id = str(arguments.get("player_id", "")).strip()
+            player_profile = arguments.get("player_profile")
+            if not player_id:
+                raise ValueError("'player_id' is required")
+            return self.service.sib_resonance_start(player_id, player_profile if isinstance(player_profile, dict) else None)
+        if tool_name == "novaadapt_sib_resonance_result":
+            player_id = str(arguments.get("player_id", "")).strip()
+            adapt_id = str(arguments.get("adapt_id", "")).strip()
+            accepted = bool(arguments.get("accepted", False))
+            if not player_id:
+                raise ValueError("'player_id' is required")
+            if not adapt_id:
+                raise ValueError("'adapt_id' is required")
+            return self.service.sib_resonance_result(player_id, adapt_id, accepted)
         if tool_name == "novaadapt_adapt_toggle_get":
             adapt_id = str(arguments.get("adapt_id", "")).strip()
             if not adapt_id:

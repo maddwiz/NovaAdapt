@@ -334,6 +334,48 @@ def build_openapi_spec() -> dict:
                     "responses": {"200": {"description": "NovaPrime backend status"}},
                 }
             },
+            "/sib/status": {
+                "get": {
+                    "summary": "Get SIB bridge status",
+                    "responses": {"200": {"description": "SIB bridge status"}},
+                }
+            },
+            "/sib/realm": {
+                "post": {
+                    "summary": "Set player realm in SIB bridge",
+                    "responses": {"200": {"description": "Realm sync response"}},
+                }
+            },
+            "/sib/companion/state": {
+                "post": {
+                    "summary": "Sync Adapt companion state to SIB bridge",
+                    "responses": {"200": {"description": "Companion state response"}},
+                }
+            },
+            "/sib/companion/speak": {
+                "post": {
+                    "summary": "Send Adapt companion speech to SIB bridge",
+                    "responses": {"200": {"description": "Companion speech response"}},
+                }
+            },
+            "/sib/phase-event": {
+                "post": {
+                    "summary": "Trigger SIB phase event route",
+                    "responses": {"200": {"description": "Phase event response"}},
+                }
+            },
+            "/sib/resonance/start": {
+                "post": {
+                    "summary": "Start SIB resonance ceremony",
+                    "responses": {"200": {"description": "Resonance start response"}},
+                }
+            },
+            "/sib/resonance/result": {
+                "post": {
+                    "summary": "Finalize SIB resonance result",
+                    "responses": {"200": {"description": "Resonance result response"}},
+                }
+            },
             "/adapt/toggle": {
                 "get": {
                     "summary": "Get Adapt communication toggle mode by adapt_id",

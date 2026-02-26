@@ -18,7 +18,7 @@ from .memory import MemoryBackend, build_memory_backend
 from .novaprime import NovaPrimeBackend, build_novaprime_client
 from .plan_store import PlanStore
 from .policy import ActionPolicy
-from .plugins import PluginRegistry, build_plugin_registry
+from .plugins import PluginRegistry, SIBBridge, build_plugin_registry
 
 
 class NovaAdaptService:
@@ -56,6 +56,7 @@ class NovaAdaptService:
         self._plan_store: PlanStore | None = None
         self._audit_store: AuditStore | None = None
         self._browser_executor: BrowserExecutor | None = None
+        self._sib_bridge: SIBBridge | None = None
 
     def close(self) -> None:
         browser = self._browser_executor
@@ -246,6 +247,56 @@ class NovaAdaptService:
             payload=request_payload,
             method=method,
         )
+
+    def sib_status(self) -> dict[str, Any]:
+        return self._sib().health()
+
+    def sib_realm(self, player_id: str, realm: str) -> dict[str, Any]:
+        normalized_player = str(player_id or "").strip()
+        normalized_realm = str(realm or "").strip()
+        if not normalized_player:
+            raise ValueError("'player_id' is required")
+        if not normalized_realm:
+            raise ValueError("'realm' is required")
+        return self._sib().realm(normalized_player, normalized_realm)
+
+    def sib_companion_state(self, adapt_id: str, state: dict[str, Any]) -> dict[str, Any]:
+        normalized_adapt = str(adapt_id or "").strip()
+        if not normalized_adapt:
+            raise ValueError("'adapt_id' is required")
+        if not isinstance(state, dict):
+            raise ValueError("'state' must be an object")
+        return self._sib().companion_state(normalized_adapt, state)
+
+    def sib_companion_speak(self, adapt_id: str, text: str, channel: str = "in_game") -> dict[str, Any]:
+        normalized_adapt = str(adapt_id or "").strip()
+        normalized_text = str(text or "").strip()
+        if not normalized_adapt:
+            raise ValueError("'adapt_id' is required")
+        if not normalized_text:
+            raise ValueError("'text' is required")
+        return self._sib().companion_speak(normalized_adapt, normalized_text, channel=str(channel or "in_game"))
+
+    def sib_phase_event(self, event_type: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+        normalized_event = str(event_type or "").strip()
+        if not normalized_event:
+            raise ValueError("'event_type' is required")
+        return self._sib().phase_event(normalized_event, payload if isinstance(payload, dict) else None)
+
+    def sib_resonance_start(self, player_id: str, player_profile: dict[str, Any] | None = None) -> dict[str, Any]:
+        normalized_player = str(player_id or "").strip()
+        if not normalized_player:
+            raise ValueError("'player_id' is required")
+        return self._sib().resonance_start(normalized_player, profile=player_profile if isinstance(player_profile, dict) else None)
+
+    def sib_resonance_result(self, player_id: str, adapt_id: str, accepted: bool) -> dict[str, Any]:
+        normalized_player = str(player_id or "").strip()
+        normalized_adapt = str(adapt_id or "").strip()
+        if not normalized_player:
+            raise ValueError("'player_id' is required")
+        if not normalized_adapt:
+            raise ValueError("'adapt_id' is required")
+        return self._sib().resonance_result(normalized_player, normalized_adapt, bool(accepted))
 
     def record_feedback(self, payload: dict[str, Any]) -> dict[str, Any]:
         objective = str(payload.get("objective") or "").strip()
@@ -860,3 +911,8 @@ class NovaAdaptService:
         if self._browser_executor is None:
             self._browser_executor = self.browser_executor_factory()
         return self._browser_executor
+
+    def _sib(self) -> SIBBridge:
+        if self._sib_bridge is None:
+            self._sib_bridge = SIBBridge(self.plugin_registry)
+        return self._sib_bridge

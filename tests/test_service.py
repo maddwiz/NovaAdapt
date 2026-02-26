@@ -219,7 +219,7 @@ class _FailingNovaPrimeBackend:
 
 class _StubPluginRegistry:
     def list_plugins(self):
-        return [{"name": "novabridge"}, {"name": "novablox"}]
+        return [{"name": "novabridge"}, {"name": "novablox"}, {"name": "sib_bridge"}]
 
     def health(self, plugin_name):
         return {"plugin": plugin_name, "ok": True}
@@ -784,6 +784,35 @@ class ServiceTests(unittest.TestCase):
         )
         self.assertEqual(called["route"], "/scene/list")
         self.assertEqual(called["method"], "GET")
+
+    def test_sib_bridge_methods(self):
+        service = NovaAdaptService(
+            default_config=Path("unused.json"),
+            router_loader=lambda _path: _StubRouter(),
+            directshell_factory=_StubDirectShell,
+            plugin_registry=_StubPluginRegistry(),
+        )
+        status = service.sib_status()
+        self.assertEqual(status["plugin"], "sib_bridge")
+
+        realm = service.sib_realm("player-1", "game_world")
+        self.assertEqual(realm["route"], "/game/realm")
+        self.assertEqual(realm["plugin"], "sib_bridge")
+
+        state = service.sib_companion_state("adapt-1", {"mode": "combat"})
+        self.assertEqual(state["route"], "/game/companion/state")
+
+        speak = service.sib_companion_speak("adapt-1", "On your left", channel="in_game")
+        self.assertEqual(speak["route"], "/game/companion/speak")
+
+        phase = service.sib_phase_event("entropy_spike", {"severity": "high"})
+        self.assertEqual(phase["route"], "/game/phase_event")
+
+        start = service.sib_resonance_start("player-1", {"class": "sentinel"})
+        self.assertEqual(start["route"], "/game/resonance/start")
+
+        result = service.sib_resonance_result("player-1", "adapt-1", True)
+        self.assertEqual(result["route"], "/game/resonance/result")
 
     def test_record_feedback_writes_memory(self):
         memory = _RecordingMemoryBackend()

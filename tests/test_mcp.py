@@ -89,6 +89,27 @@ class _StubService:
     def novaprime_status(self):
         return {"ok": True, "enabled": True, "backend": "novaprime-http"}
 
+    def sib_status(self):
+        return {"ok": True, "plugin": "sib_bridge"}
+
+    def sib_realm(self, player_id: str, realm: str):
+        return {"ok": True, "player_id": player_id, "realm": realm}
+
+    def sib_companion_state(self, adapt_id: str, state: dict):
+        return {"ok": True, "adapt_id": adapt_id, "state": state}
+
+    def sib_companion_speak(self, adapt_id: str, text: str, channel: str = "in_game"):
+        return {"ok": True, "adapt_id": adapt_id, "text": text, "channel": channel}
+
+    def sib_phase_event(self, event_type: str, payload=None):
+        return {"ok": True, "event_type": event_type, "payload": payload or {}}
+
+    def sib_resonance_start(self, player_id: str, player_profile=None):
+        return {"ok": True, "player_id": player_id, "player_profile": player_profile or {}}
+
+    def sib_resonance_result(self, player_id: str, adapt_id: str, accepted: bool):
+        return {"ok": True, "player_id": player_id, "adapt_id": adapt_id, "accepted": bool(accepted)}
+
     def adapt_toggle_get(self, adapt_id: str):
         return {"adapt_id": adapt_id, "mode": "ask_only"}
 
@@ -147,6 +168,13 @@ class MCPServerTests(unittest.TestCase):
         self.assertIn("novaadapt_feedback", names)
         self.assertIn("novaadapt_memory_status", names)
         self.assertIn("novaadapt_novaprime_status", names)
+        self.assertIn("novaadapt_sib_status", names)
+        self.assertIn("novaadapt_sib_realm", names)
+        self.assertIn("novaadapt_sib_companion_state", names)
+        self.assertIn("novaadapt_sib_companion_speak", names)
+        self.assertIn("novaadapt_sib_phase_event", names)
+        self.assertIn("novaadapt_sib_resonance_start", names)
+        self.assertIn("novaadapt_sib_resonance_result", names)
         self.assertIn("novaadapt_adapt_toggle_get", names)
         self.assertIn("novaadapt_adapt_toggle_set", names)
         self.assertIn("novaadapt_adapt_bond_get", names)
@@ -378,6 +406,104 @@ class MCPServerTests(unittest.TestCase):
         )
         novaprime_status_payload = novaprime_status_resp["result"]["content"][0]["json"]
         self.assertTrue(novaprime_status_payload["ok"])
+
+        sib_status_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 9111,
+                "method": "tools/call",
+                "params": {
+                    "name": "novaadapt_sib_status",
+                    "arguments": {},
+                },
+            }
+        )
+        sib_status_payload = sib_status_resp["result"]["content"][0]["json"]
+        self.assertTrue(sib_status_payload["ok"])
+
+        sib_realm_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 9112,
+                "method": "tools/call",
+                "params": {
+                    "name": "novaadapt_sib_realm",
+                    "arguments": {"player_id": "player-1", "realm": "game_world"},
+                },
+            }
+        )
+        sib_realm_payload = sib_realm_resp["result"]["content"][0]["json"]
+        self.assertEqual(sib_realm_payload["realm"], "game_world")
+
+        sib_state_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 9113,
+                "method": "tools/call",
+                "params": {
+                    "name": "novaadapt_sib_companion_state",
+                    "arguments": {"adapt_id": "adapt-1", "state": {"mode": "combat"}},
+                },
+            }
+        )
+        sib_state_payload = sib_state_resp["result"]["content"][0]["json"]
+        self.assertEqual(sib_state_payload["adapt_id"], "adapt-1")
+
+        sib_speak_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 9114,
+                "method": "tools/call",
+                "params": {
+                    "name": "novaadapt_sib_companion_speak",
+                    "arguments": {"adapt_id": "adapt-1", "text": "On your six", "channel": "in_game"},
+                },
+            }
+        )
+        sib_speak_payload = sib_speak_resp["result"]["content"][0]["json"]
+        self.assertEqual(sib_speak_payload["text"], "On your six")
+
+        sib_phase_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 9115,
+                "method": "tools/call",
+                "params": {
+                    "name": "novaadapt_sib_phase_event",
+                    "arguments": {"event_type": "entropy_spike", "payload": {"severity": "high"}},
+                },
+            }
+        )
+        sib_phase_payload = sib_phase_resp["result"]["content"][0]["json"]
+        self.assertEqual(sib_phase_payload["event_type"], "entropy_spike")
+
+        sib_start_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 9116,
+                "method": "tools/call",
+                "params": {
+                    "name": "novaadapt_sib_resonance_start",
+                    "arguments": {"player_id": "player-1", "player_profile": {"class": "sentinel"}},
+                },
+            }
+        )
+        sib_start_payload = sib_start_resp["result"]["content"][0]["json"]
+        self.assertEqual(sib_start_payload["player_id"], "player-1")
+
+        sib_result_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 9117,
+                "method": "tools/call",
+                "params": {
+                    "name": "novaadapt_sib_resonance_result",
+                    "arguments": {"player_id": "player-1", "adapt_id": "adapt-1", "accepted": True},
+                },
+            }
+        )
+        sib_result_payload = sib_result_resp["result"]["content"][0]["json"]
+        self.assertTrue(sib_result_payload["accepted"])
 
         adapt_toggle_get_resp = server.handle_request(
             {

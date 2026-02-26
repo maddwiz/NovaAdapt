@@ -68,6 +68,9 @@ class _Handler(BaseHTTPRequestHandler):
         if self.path == "/novaprime/status":
             self._send(200, {"ok": True, "enabled": True, "backend": "novaprime-http"})
             return
+        if self.path == "/sib/status":
+            self._send(200, {"ok": True, "plugin": "sib_bridge"})
+            return
         if self.path.startswith("/adapt/toggle?"):
             self._send(200, {"adapt_id": "adapt-1", "mode": "ask_only", "source": "test"})
             return
@@ -226,6 +229,12 @@ class _Handler(BaseHTTPRequestHandler):
             "/plans/plan-1/undo",
             "/plugins/novabridge/call",
             "/feedback",
+            "/sib/realm",
+            "/sib/companion/state",
+            "/sib/companion/speak",
+            "/sib/phase-event",
+            "/sib/resonance/start",
+            "/sib/resonance/result",
             "/adapt/toggle",
             "/memory/recall",
             "/memory/ingest",
@@ -294,6 +303,16 @@ class _Handler(BaseHTTPRequestHandler):
                 )
             elif self.path == "/feedback":
                 self._send(200, {"ok": True, "id": "feedback-1", "rating": payload.get("rating")})
+            elif self.path.startswith("/sib/"):
+                self._send(
+                    200,
+                    {
+                        "ok": True,
+                        "plugin": "sib_bridge",
+                        "route": self.path,
+                        "payload": payload,
+                    },
+                )
             elif self.path == "/adapt/toggle":
                 self._send(
                     200,
@@ -534,6 +553,28 @@ class APIClientTests(unittest.TestCase):
         self.assertEqual(feedback_payload["rating"], 8)
         self.assertTrue(client.memory_status()["ok"])
         self.assertTrue(client.novaprime_status()["ok"])
+        self.assertTrue(client.sib_status()["ok"])
+        self.assertEqual(client.sib_realm("player-1", "game_world")["plugin"], "sib_bridge")
+        self.assertEqual(
+            client.sib_companion_state("adapt-1", {"mode": "combat"})["plugin"],
+            "sib_bridge",
+        )
+        self.assertEqual(
+            client.sib_companion_speak("adapt-1", "On your left", channel="in_game")["plugin"],
+            "sib_bridge",
+        )
+        self.assertEqual(
+            client.sib_phase_event("entropy_spike", {"severity": "high"})["plugin"],
+            "sib_bridge",
+        )
+        self.assertEqual(
+            client.sib_resonance_start("player-1", {"class": "sentinel"})["plugin"],
+            "sib_bridge",
+        )
+        self.assertEqual(
+            client.sib_resonance_result("player-1", "adapt-1", True)["plugin"],
+            "sib_bridge",
+        )
         self.assertEqual(client.set_adapt_toggle("adapt-1", "in_game_only")["mode"], "in_game_only")
         self.assertEqual(client.adapt_toggle("adapt-1")["mode"], "ask_only")
         self.assertTrue(client.adapt_bond("adapt-1")["found"])

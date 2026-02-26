@@ -129,6 +129,106 @@ class NovaAdaptAPIClient:
             return payload
         raise APIClientError("Expected object payload from /novaprime/status")
 
+    def sib_status(self) -> dict[str, Any]:
+        payload = self._get_json("/sib/status")
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /sib/status")
+
+    def sib_realm(self, player_id: str, realm: str, idempotency_key: str | None = None) -> dict[str, Any]:
+        payload = self._post_json(
+            "/sib/realm",
+            {"player_id": str(player_id or ""), "realm": str(realm or "")},
+            idempotency_key=idempotency_key,
+        )
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /sib/realm")
+
+    def sib_companion_state(
+        self,
+        adapt_id: str,
+        state: dict[str, Any],
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        payload = self._post_json(
+            "/sib/companion/state",
+            {"adapt_id": str(adapt_id or ""), "state": state if isinstance(state, dict) else {}},
+            idempotency_key=idempotency_key,
+        )
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /sib/companion/state")
+
+    def sib_companion_speak(
+        self,
+        adapt_id: str,
+        text: str,
+        *,
+        channel: str = "in_game",
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        payload = self._post_json(
+            "/sib/companion/speak",
+            {
+                "adapt_id": str(adapt_id or ""),
+                "text": str(text or ""),
+                "channel": str(channel or "in_game"),
+            },
+            idempotency_key=idempotency_key,
+        )
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /sib/companion/speak")
+
+    def sib_phase_event(
+        self,
+        event_type: str,
+        payload: dict[str, Any] | None = None,
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {"event_type": str(event_type or "")}
+        if isinstance(payload, dict):
+            body["payload"] = payload
+        resp = self._post_json("/sib/phase-event", body, idempotency_key=idempotency_key)
+        if isinstance(resp, dict):
+            return resp
+        raise APIClientError("Expected object payload from /sib/phase-event")
+
+    def sib_resonance_start(
+        self,
+        player_id: str,
+        player_profile: dict[str, Any] | None = None,
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {"player_id": str(player_id or "")}
+        if isinstance(player_profile, dict):
+            body["player_profile"] = player_profile
+        resp = self._post_json("/sib/resonance/start", body, idempotency_key=idempotency_key)
+        if isinstance(resp, dict):
+            return resp
+        raise APIClientError("Expected object payload from /sib/resonance/start")
+
+    def sib_resonance_result(
+        self,
+        player_id: str,
+        adapt_id: str,
+        accepted: bool,
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        resp = self._post_json(
+            "/sib/resonance/result",
+            {
+                "player_id": str(player_id or ""),
+                "adapt_id": str(adapt_id or ""),
+                "accepted": bool(accepted),
+            },
+            idempotency_key=idempotency_key,
+        )
+        if isinstance(resp, dict):
+            return resp
+        raise APIClientError("Expected object payload from /sib/resonance/result")
+
     def adapt_toggle(self, adapt_id: str) -> dict[str, Any]:
         payload = self._get_json(f"/adapt/toggle?adapt_id={quote(str(adapt_id), safe='')}")
         if isinstance(payload, dict):

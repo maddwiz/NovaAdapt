@@ -29,6 +29,7 @@ from . import server_admin_routes as admin_routes
 from . import server_adapt_routes as adapt_routes
 from . import server_memory_routes as memory_routes
 from . import server_novaprime_routes as novaprime_routes
+from . import server_sib_routes as sib_routes
 from . import server_plugin_routes as plugin_routes
 from . import server_idempotency_utils as idempotency_utils
 from . import server_stream_utils as stream_utils
@@ -252,6 +253,9 @@ def _build_handler(
         def _get_novaprime_status(self, _query: dict[str, list[str]]) -> int:
             return novaprime_routes.get_novaprime_status(self, service)
 
+        def _get_sib_status(self, _query: dict[str, list[str]]) -> int:
+            return sib_routes.get_sib_status(self, service)
+
         def _get_adapt_toggle(self, query: dict[str, list[str]]) -> int:
             return adapt_routes.get_adapt_toggle(self, service, _single, query)
 
@@ -334,6 +338,24 @@ def _build_handler(
 
         def _post_feedback(self, path: str, payload: dict[str, object]) -> int:
             return run_memory_routes.post_feedback(self, service, path, payload)
+
+        def _post_sib_realm(self, _path: str, payload: dict[str, object]) -> int:
+            return sib_routes.post_sib_realm(self, service, payload)
+
+        def _post_sib_companion_state(self, _path: str, payload: dict[str, object]) -> int:
+            return sib_routes.post_sib_companion_state(self, service, payload)
+
+        def _post_sib_companion_speak(self, _path: str, payload: dict[str, object]) -> int:
+            return sib_routes.post_sib_companion_speak(self, service, payload)
+
+        def _post_sib_phase_event(self, _path: str, payload: dict[str, object]) -> int:
+            return sib_routes.post_sib_phase_event(self, service, payload)
+
+        def _post_sib_resonance_start(self, _path: str, payload: dict[str, object]) -> int:
+            return sib_routes.post_sib_resonance_start(self, service, payload)
+
+        def _post_sib_resonance_result(self, _path: str, payload: dict[str, object]) -> int:
+            return sib_routes.post_sib_resonance_result(self, service, payload)
 
         def _post_memory_recall(self, _path: str, payload: dict[str, object]) -> int:
             return memory_routes.post_memory_recall(self, service, payload)
