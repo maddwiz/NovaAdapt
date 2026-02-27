@@ -3,6 +3,8 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 from .backup import backup_databases, restore_databases
@@ -917,6 +919,103 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Optional unix timestamp for revocation expiry metadata",
     )
 
+    xreal_cmd = sub.add_parser(
+        "xreal-intent",
+        help="Submit XREAL X1 wearable objective via bridge/core with optional leased session",
+    )
+    xreal_cmd.add_argument(
+        "--bridge-url",
+        default=os.getenv("NOVAADAPT_BRIDGE_URL", ""),
+        help="Bridge base URL (preferred for remote/session workflows)",
+    )
+    xreal_cmd.add_argument(
+        "--core-url",
+        default=os.getenv("NOVAADAPT_CORE_URL", "http://127.0.0.1:8787"),
+        help="Core API URL fallback when --bridge-url is not provided",
+    )
+    xreal_cmd.add_argument(
+        "--token",
+        default=os.getenv("NOVAADAPT_BRIDGE_TOKEN") or os.getenv("NOVAADAPT_API_TOKEN", ""),
+        help="Bearer token for selected endpoint (--bridge-url or --core-url)",
+    )
+    xreal_cmd.add_argument(
+        "--admin-token",
+        default=os.getenv("NOVAADAPT_BRIDGE_ADMIN_TOKEN", ""),
+        help="Bridge admin token used to mint a scoped short-lived session token",
+    )
+    xreal_cmd.add_argument(
+        "--session-scopes",
+        default=os.getenv("NOVAADAPT_BRIDGE_SESSION_SCOPES", "read,run,plan,approve,reject,undo,cancel"),
+        help="Comma-separated scopes for minted bridge session token",
+    )
+    xreal_cmd.add_argument(
+        "--session-ttl",
+        type=int,
+        default=int(os.getenv("NOVAADAPT_BRIDGE_SESSION_TTL", "900")),
+        help="TTL seconds for issued bridge session token",
+    )
+    xreal_cmd.add_argument(
+        "--session-device-id",
+        default=os.getenv("NOVAADAPT_XREAL_DEVICE_ID") or os.getenv("NOVAADAPT_BRIDGE_DEVICE_ID", ""),
+        help="Optional bridge device_id claim for session token",
+    )
+    xreal_cmd.add_argument(
+        "--session-subject",
+        default=(
+            os.getenv("NOVAADAPT_XREAL_SESSION_SUBJECT")
+            or os.getenv("NOVAADAPT_BRIDGE_SESSION_SUBJECT")
+            or "xreal-bridge"
+        ),
+        help="Bridge session subject value",
+    )
+    xreal_cmd.add_argument(
+        "--ensure-device-allowlisted",
+        action="store_true",
+        default=str(os.getenv("NOVAADAPT_BRIDGE_ENSURE_DEVICE_ALLOWLISTED", "")).strip().lower()
+        in {"1", "true", "yes", "on"},
+        help="When using --admin-token, pre-add --session-device-id into bridge allowlist before issuing session",
+    )
+    xreal_cmd.add_argument(
+        "--no-revoke-session",
+        action="store_true",
+        help="Do not revoke leased bridge session token on exit",
+    )
+    xreal_cmd.add_argument("--objective", required=True, help="Intent transcript/objective to submit")
+    xreal_cmd.add_argument("--confidence", type=float, default=0.92, help="Intent confidence [0,1]")
+    xreal_cmd.add_argument("--source", default="xreal", help="Intent source tag (xreal, xreal_x1, etc.)")
+    xreal_cmd.add_argument(
+        "--device-model",
+        default=os.getenv("NOVAADAPT_XREAL_DEVICE_MODEL", "xreal-x1"),
+        help="XREAL device model metadata",
+    )
+    xreal_cmd.add_argument(
+        "--display-mode",
+        choices=("ar_overlay", "follow", "anchor", "air_cast"),
+        default=os.getenv("NOVAADAPT_XREAL_DISPLAY_MODE", "ar_overlay"),
+        help="Glasses display mode metadata",
+    )
+    xreal_cmd.add_argument(
+        "--firmware-version",
+        default=os.getenv("NOVAADAPT_XREAL_FIRMWARE", ""),
+        help="Optional XREAL firmware version metadata",
+    )
+    xreal_cmd.add_argument(
+        "--hand-tracking",
+        action="store_true",
+        default=str(os.getenv("NOVAADAPT_XREAL_HAND_TRACKING", "")).strip().lower() in {"1", "true", "yes", "on"},
+        help="Include hand-tracking metadata in submitted objective",
+    )
+    xreal_cmd.add_argument(
+        "--submission-mode",
+        choices=("run_async", "plan"),
+        default="run_async",
+        help="Submit as immediate async run or pending plan",
+    )
+    xreal_cmd.add_argument("--wait", action="store_true", help="Poll for terminal state when possible")
+    xreal_cmd.add_argument("--wait-timeout", type=float, default=90.0, help="Max wait seconds with --wait")
+    xreal_cmd.add_argument("--poll-interval", type=float, default=1.0, help="Polling interval seconds")
+    xreal_cmd.add_argument("--idempotency-prefix", default="xreal", help="Idempotency key prefix")
+
     return parser
 
 
@@ -1538,6 +1637,63 @@ def main() -> None:
             print(json.dumps(payload, indent=2))
             return
 
+        if args.command == "xreal-intent":
+            endpoint_url = str(args.bridge_url or args.core_url or "").strip()
+            if not endpoint_url:
+                raise ValueError("bridge/core URL is required")
+            runtime_client, admin_client, leased_token, issued = _build_runtime_xreal_client(
+                endpoint_url=endpoint_url,
+                token=args.token,
+                admin_token=args.admin_token,
+                session_scopes=_parse_scopes_csv(args.session_scopes, "--session-scopes"),
+                session_ttl=max(60, int(args.session_ttl)),
+                session_device_id=str(args.session_device_id or "").strip() or None,
+                session_subject=str(args.session_subject or "").strip() or None,
+                ensure_device_allowlisted=bool(args.ensure_device_allowlisted),
+            )
+            intent = {
+                "objective": str(args.objective or "").strip(),
+                "source": str(args.source or "").strip() or "xreal",
+                "confidence": _clamp_confidence(args.confidence),
+                "device_model": str(args.device_model or "").strip() or "xreal-x1",
+                "display_mode": str(args.display_mode or "").strip() or "ar_overlay",
+                "firmware_version": str(args.firmware_version or "").strip(),
+                "hand_tracking": bool(args.hand_tracking),
+            }
+            if not intent["objective"]:
+                raise ValueError("objective must not be empty")
+            output: dict[str, object] = {
+                "ok": True,
+                "endpoint_url": endpoint_url,
+            }
+            if isinstance(issued, dict):
+                output["session"] = {
+                    "session_id": issued.get("session_id"),
+                    "subject": issued.get("subject"),
+                    "scopes": issued.get("scopes"),
+                    "device_id": issued.get("device_id"),
+                    "expires_at": issued.get("expires_at"),
+                }
+            started = time.monotonic()
+            try:
+                payload = _submit_xreal_intent(
+                    client=runtime_client,
+                    intent=intent,
+                    submission_mode=str(args.submission_mode or "run_async"),
+                    wait=bool(args.wait),
+                    wait_timeout_seconds=max(1.0, float(args.wait_timeout)),
+                    poll_interval_seconds=max(0.1, float(args.poll_interval)),
+                    idempotency_prefix=str(args.idempotency_prefix or "").strip() or "xreal",
+                )
+            finally:
+                if admin_client and leased_token and not bool(args.no_revoke_session):
+                    admin_client.revoke_session_token(leased_token)
+            output["elapsed_ms"] = int((time.monotonic() - started) * 1000)
+            output["intent"] = intent
+            output.update(payload)
+            print(json.dumps(output, indent=2))
+            return
+
         if args.command == "mcp":
             service = NovaAdaptService(
                 default_config=args.config,
@@ -1569,6 +1725,174 @@ def _parse_optional_json_object(raw: object, arg_name: str) -> dict[str, object]
     if not isinstance(parsed, dict):
         raise ValueError(f"{arg_name} must be a JSON object")
     return parsed
+
+
+def _parse_scopes_csv(raw: object, arg_name: str) -> list[str]:
+    text = str(raw or "").strip()
+    scopes = [item.strip() for item in text.split(",") if item.strip()]
+    if not scopes:
+        raise ValueError(f"{arg_name} must contain at least one scope")
+    return scopes
+
+
+def _clamp_confidence(value: object) -> float:
+    return max(0.0, min(1.0, float(value)))
+
+
+def _build_runtime_xreal_client(
+    *,
+    endpoint_url: str,
+    token: object,
+    admin_token: object,
+    session_scopes: list[str],
+    session_ttl: int,
+    session_device_id: str | None,
+    session_subject: str | None,
+    ensure_device_allowlisted: bool,
+) -> tuple[NovaAdaptAPIClient, NovaAdaptAPIClient | None, str | None, dict[str, object] | None]:
+    direct_token = str(token or "").strip()
+    admin = str(admin_token or "").strip()
+    if admin:
+        admin_client = NovaAdaptAPIClient(
+            base_url=endpoint_url,
+            token=admin,
+            timeout_seconds=30,
+            max_retries=1,
+            retry_backoff_seconds=0.25,
+        )
+        normalized_device_id = str(session_device_id or "").strip() or None
+        if ensure_device_allowlisted:
+            if not normalized_device_id:
+                raise ValueError("--ensure-device-allowlisted requires --session-device-id")
+            admin_client.add_allowed_device(normalized_device_id)
+        issued = admin_client.issue_session_token(
+            scopes=session_scopes,
+            subject=str(session_subject or "").strip() or "xreal-bridge",
+            device_id=normalized_device_id,
+            ttl_seconds=max(60, int(session_ttl)),
+        )
+        leased_token = str(issued.get("token", "")).strip()
+        if not leased_token:
+            raise APIClientError("session token issuance succeeded without token")
+        runtime_client = NovaAdaptAPIClient(
+            base_url=endpoint_url,
+            token=leased_token,
+            timeout_seconds=30,
+            max_retries=1,
+            retry_backoff_seconds=0.25,
+        )
+        return runtime_client, admin_client, leased_token, issued
+    if not direct_token:
+        raise ValueError("either --token or --admin-token is required")
+    runtime_client = NovaAdaptAPIClient(
+        base_url=endpoint_url,
+        token=direct_token,
+        timeout_seconds=30,
+        max_retries=1,
+        retry_backoff_seconds=0.25,
+    )
+    return runtime_client, None, None, None
+
+
+def _wait_xreal_job(
+    *,
+    client: NovaAdaptAPIClient,
+    job_id: str,
+    timeout_seconds: float,
+    interval_seconds: float,
+) -> dict[str, object]:
+    interval = min(5.0, max(0.1, float(interval_seconds)))
+    deadline = time.monotonic() + max(1.0, float(timeout_seconds))
+    terminal = {"succeeded", "failed", "canceled"}
+    last: dict[str, object] = {}
+    while True:
+        last = client.job(job_id)
+        status = str(last.get("status", "")).strip().lower()
+        if status in terminal:
+            return last
+        if time.monotonic() >= deadline:
+            return {"id": job_id, "status": status or "timeout", "timeout": True, "last": last}
+        time.sleep(interval)
+
+
+def _wait_xreal_plan(
+    *,
+    client: NovaAdaptAPIClient,
+    plan_id: str,
+    timeout_seconds: float,
+    interval_seconds: float,
+) -> dict[str, object]:
+    interval = min(5.0, max(0.1, float(interval_seconds)))
+    deadline = time.monotonic() + max(1.0, float(timeout_seconds))
+    terminal = {"executed", "failed", "rejected"}
+    last: dict[str, object] = {}
+    while True:
+        last = client.plan(plan_id)
+        status = str(last.get("status", "")).strip().lower()
+        if status in terminal:
+            return last
+        if time.monotonic() >= deadline:
+            return {"id": plan_id, "status": status or "timeout", "timeout": True, "last": last}
+        time.sleep(interval)
+
+
+def _submit_xreal_intent(
+    *,
+    client: NovaAdaptAPIClient,
+    intent: dict[str, object],
+    submission_mode: str,
+    wait: bool,
+    wait_timeout_seconds: float,
+    poll_interval_seconds: float,
+    idempotency_prefix: str,
+) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "objective": str(intent.get("objective") or "").strip(),
+        "metadata": {
+            "source": str(intent.get("source") or "xreal"),
+            "confidence": float(intent.get("confidence", 0.92)),
+            "intent_type": "wearable_voice",
+            "wearable_family": "xreal",
+            "device_model": str(intent.get("device_model") or "xreal-x1"),
+            "display_mode": str(intent.get("display_mode") or "ar_overlay"),
+            "hand_tracking": bool(intent.get("hand_tracking")),
+            "captured_at": _utc_iso_now(),
+        },
+    }
+    firmware_version = str(intent.get("firmware_version") or "").strip()
+    if firmware_version:
+        metadata = payload.get("metadata")
+        if isinstance(metadata, dict):
+            metadata["firmware_version"] = firmware_version
+    idem_key = f"{idempotency_prefix}-{int(time.time() * 1000)}"
+    mode = str(submission_mode or "run_async").strip().lower()
+    if mode == "plan":
+        submitted = client.create_plan(idempotency_key=idem_key, **payload)
+        out: dict[str, object] = {"submission_mode": "plan", "submitted": submitted}
+        plan_id = str(submitted.get("id", "")).strip()
+        if wait and plan_id:
+            out["plan"] = _wait_xreal_plan(
+                client=client,
+                plan_id=plan_id,
+                timeout_seconds=wait_timeout_seconds,
+                interval_seconds=poll_interval_seconds,
+            )
+        return out
+    submitted = client.run_async(idempotency_key=idem_key, **payload)
+    out = {"submission_mode": "run_async", "submitted": submitted}
+    job_id = str(submitted.get("job_id", "")).strip()
+    if wait and job_id:
+        out["job"] = _wait_xreal_job(
+            client=client,
+            job_id=job_id,
+            timeout_seconds=wait_timeout_seconds,
+            interval_seconds=poll_interval_seconds,
+        )
+    return out
+
+
+def _utc_iso_now() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 
 if __name__ == "__main__":

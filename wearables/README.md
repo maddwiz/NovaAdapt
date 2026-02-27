@@ -39,3 +39,17 @@ PYTHONPATH=core:shared python3 wearables/xreal_bridge.py \
   --objective "Open Aetherion market status and summarize top listings" \
   --wait
 ```
+
+Main CLI alternative:
+
+```bash
+novaadapt xreal-intent \
+  --bridge-url http://127.0.0.1:9797 \
+  --admin-token YOUR_BRIDGE_ADMIN_TOKEN \
+  --ensure-device-allowlisted \
+  --session-device-id xreal-x1-1 \
+  --display-mode ar_overlay \
+  --hand-tracking \
+  --objective "Open Aetherion market status and summarize top listings" \
+  --wait
+```

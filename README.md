@@ -679,6 +679,20 @@ PYTHONPATH=core:shared python3 wearables/xreal_bridge.py \
   --wait
 ```
 
+XREAL X1 via main CLI command:
+
+```bash
+novaadapt xreal-intent \
+  --bridge-url http://127.0.0.1:9797 \
+  --admin-token YOUR_BRIDGE_ADMIN_TOKEN \
+  --ensure-device-allowlisted \
+  --session-device-id xreal-x1-1 \
+  --display-mode ar_overlay \
+  --hand-tracking \
+  --objective "Open Aetherion market status and summarize top listings" \
+  --wait
+```
+
 Desktop Tauri shell:
 
 ```bash
