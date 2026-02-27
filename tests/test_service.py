@@ -922,94 +922,99 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(status["backend"], "novaprime-http")
 
     def test_novaprime_identity_presence_and_resonance_passthrough(self):
-        backend = _StubNovaPrimeBackend()
-        service = NovaAdaptService(
-            default_config=Path("unused.json"),
-            router_loader=lambda _path: _StubRouter(),
-            directshell_factory=_StubDirectShell,
-            novaprime_client=backend,
-        )
+        with tempfile.TemporaryDirectory() as tmp:
+            backend = _StubNovaPrimeBackend()
+            bond_cache = AdaptBondCache(state_path=Path(tmp) / "bonds.json")
+            service = NovaAdaptService(
+                default_config=Path("unused.json"),
+                router_loader=lambda _path: _StubRouter(),
+                directshell_factory=_StubDirectShell,
+                novaprime_client=backend,
+                adapt_bond_cache=bond_cache,
+            )
 
-        bond = service.novaprime_identity_bond("adapt-1", "player-1", element="fire", subclass="dark")
-        self.assertTrue(bond["ok"])
-        self.assertEqual(bond["bond"]["adapt_id"], "adapt-1")
-        self.assertTrue(isinstance(bond.get("cached_bond"), dict))
-        self.assertTrue(service.adapt_bond_get("adapt-1"))
+            bond = service.novaprime_identity_bond("adapt-1", "player-1", element="fire", subclass="dark")
+            self.assertTrue(bond["ok"])
+            self.assertEqual(bond["bond"]["adapt_id"], "adapt-1")
+            self.assertTrue(isinstance(bond.get("cached_bond"), dict))
+            self.assertTrue(service.adapt_bond_get("adapt-1"))
 
-        verify = service.novaprime_identity_verify("adapt-1", "player-1")
-        self.assertTrue(verify["verified"])
+            verify = service.novaprime_identity_verify("adapt-1", "player-1")
+            self.assertTrue(verify["verified"])
+            self.assertEqual(verify["verified_source"], "novaprime")
+            self.assertTrue(isinstance(verify.get("cached_bond"), dict))
 
-        profile = service.novaprime_identity_profile("adapt-1")
-        self.assertTrue(profile["found"])
-        self.assertEqual(profile["profile"]["adapt_id"], "adapt-1")
+            profile = service.novaprime_identity_profile("adapt-1")
+            self.assertTrue(profile["found"])
+            self.assertEqual(profile["profile"]["adapt_id"], "adapt-1")
 
-        evolve = service.novaprime_identity_evolve("adapt-1", xp_gain=120, new_skill="storm_slash")
-        self.assertTrue(evolve["ok"])
+            evolve = service.novaprime_identity_evolve("adapt-1", xp_gain=120, new_skill="storm_slash")
+            self.assertTrue(evolve["ok"])
 
-        presence = service.novaprime_presence_get("adapt-1")
-        self.assertEqual(presence["presence"]["adapt_id"], "adapt-1")
+            presence = service.novaprime_presence_get("adapt-1")
+            self.assertEqual(presence["presence"]["adapt_id"], "adapt-1")
 
-        presence_update = service.novaprime_presence_update("adapt-1", realm="game_world", activity="patrol")
-        self.assertTrue(presence_update["ok"])
+            presence_update = service.novaprime_presence_update("adapt-1", realm="game_world", activity="patrol")
+            self.assertTrue(presence_update["ok"])
 
-        resonance_score = service.novaprime_resonance_score({"class": "sentinel"})
-        self.assertTrue(resonance_score["ok"])
+            resonance_score = service.novaprime_resonance_score({"class": "sentinel"})
+            self.assertTrue(resonance_score["ok"])
 
-        resonance_bond = service.novaprime_resonance_bond("player-1", {"class": "sentinel"}, adapt_id="adapt-1")
-        self.assertTrue(resonance_bond["ok"])
-        self.assertTrue(isinstance(resonance_bond.get("cached_bond"), dict))
+            resonance_bond = service.novaprime_resonance_bond("player-1", {"class": "sentinel"}, adapt_id="adapt-1")
+            self.assertTrue(resonance_bond["ok"])
+            self.assertTrue(isinstance(resonance_bond.get("cached_bond"), dict))
 
-        reason = service.novaprime_reason_dual("Map eastern patrol routes")
-        self.assertTrue(reason["ok"])
+            reason = service.novaprime_reason_dual("Map eastern patrol routes")
+            self.assertTrue(reason["ok"])
 
-        emotion_get = service.novaprime_emotion_get()
-        self.assertTrue(emotion_get["ok"])
+            emotion_get = service.novaprime_emotion_get()
+            self.assertTrue(emotion_get["ok"])
 
-        emotion_set = service.novaprime_emotion_set({"focus": 0.9, "calm": 0.6, "invalid": "x"})
-        self.assertTrue(emotion_set["ok"])
-        self.assertEqual(emotion_set["emotions"]["focus"], 0.9)
+            emotion_set = service.novaprime_emotion_set({"focus": 0.9, "calm": 0.6, "invalid": "x"})
+            self.assertTrue(emotion_set["ok"])
+            self.assertEqual(emotion_set["emotions"]["focus"], 0.9)
 
-        mesh_balance = service.novaprime_mesh_balance("node-1")
-        self.assertEqual(mesh_balance["balance"], 42.0)
+            mesh_balance = service.novaprime_mesh_balance("node-1")
+            self.assertEqual(mesh_balance["balance"], 42.0)
 
-        mesh_reputation = service.novaprime_mesh_reputation("node-1")
-        self.assertEqual(mesh_reputation["reputation"], 0.87)
+            mesh_reputation = service.novaprime_mesh_reputation("node-1")
+            self.assertEqual(mesh_reputation["reputation"], 0.87)
 
-        mesh_credit = service.novaprime_mesh_credit("node-1", 10.0)
-        self.assertTrue(mesh_credit["ok"])
+            mesh_credit = service.novaprime_mesh_credit("node-1", 10.0)
+            self.assertTrue(mesh_credit["ok"])
 
-        mesh_transfer = service.novaprime_mesh_transfer("node-1", "node-2", 5.0)
-        self.assertTrue(mesh_transfer["ok"])
+            mesh_transfer = service.novaprime_mesh_transfer("node-1", "node-2", 5.0)
+            self.assertTrue(mesh_transfer["ok"])
 
-        listings = service.novaprime_marketplace_listings()
-        self.assertTrue(listings["ok"])
-        self.assertEqual(len(listings["listings"]), 1)
+            listings = service.novaprime_marketplace_listings()
+            self.assertTrue(listings["ok"])
+            self.assertEqual(len(listings["listings"]), 1)
 
-        listed = service.novaprime_marketplace_list("capsule-1", "node-1", 25.0, "Storm Slash")
-        self.assertTrue(listed["ok"])
+            listed = service.novaprime_marketplace_list("capsule-1", "node-1", 25.0, "Storm Slash")
+            self.assertTrue(listed["ok"])
 
-        bought = service.novaprime_marketplace_buy("listing-1", "node-2")
-        self.assertTrue(bought["ok"])
+            bought = service.novaprime_marketplace_buy("listing-1", "node-2")
+            self.assertTrue(bought["ok"])
 
-        method_names = [str(item.get("method")) for item in backend.calls]
-        self.assertIn("reason_dual", method_names)
-        self.assertIn("emotion_get", method_names)
-        self.assertIn("emotion_set", method_names)
-        self.assertIn("mesh_balance", method_names)
-        self.assertIn("mesh_reputation", method_names)
-        self.assertIn("mesh_credit", method_names)
-        self.assertIn("mesh_transfer", method_names)
-        self.assertIn("marketplace_listings", method_names)
-        self.assertIn("marketplace_list", method_names)
-        self.assertIn("marketplace_buy", method_names)
-        self.assertIn("identity_bond", method_names)
-        self.assertIn("identity_verify", method_names)
-        self.assertIn("identity_profile", method_names)
-        self.assertIn("identity_evolve", method_names)
-        self.assertIn("presence_get", method_names)
-        self.assertIn("presence_update", method_names)
-        self.assertIn("resonance_score", method_names)
-        self.assertIn("resonance_bond", method_names)
+            method_names = [str(item.get("method")) for item in backend.calls]
+            self.assertIn("reason_dual", method_names)
+            self.assertIn("emotion_get", method_names)
+            self.assertIn("emotion_set", method_names)
+            self.assertIn("mesh_balance", method_names)
+            self.assertIn("mesh_reputation", method_names)
+            self.assertIn("mesh_credit", method_names)
+            self.assertIn("mesh_transfer", method_names)
+            self.assertIn("marketplace_listings", method_names)
+            self.assertIn("marketplace_list", method_names)
+            self.assertIn("marketplace_buy", method_names)
+            self.assertIn("identity_bond", method_names)
+            self.assertIn("identity_verify", method_names)
+            self.assertIn("identity_profile", method_names)
+            self.assertIn("identity_evolve", method_names)
+            self.assertIn("presence_get", method_names)
+            self.assertIn("presence_update", method_names)
+            self.assertIn("resonance_score", method_names)
+            self.assertIn("resonance_bond", method_names)
 
     def test_adapt_toggle_set_and_get(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1071,6 +1076,22 @@ class ServiceTests(unittest.TestCase):
             self.assertEqual(verify["source"], "cache_fallback")
             self.assertEqual(verify["adapt_id"], "adapt-1")
             self.assertEqual(verify["player_id"], "player-1")
+
+    def test_novaprime_identity_verify_uses_cache_fallback_when_unavailable(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = AdaptBondCache(state_path=Path(tmp) / "bonds.json")
+            _ = cache.remember("adapt-1", "player-1", verified=True, profile={"element": "light"})
+            service = NovaAdaptService(
+                default_config=Path("unused.json"),
+                router_loader=lambda _path: _StubRouter(),
+                directshell_factory=_StubDirectShell,
+                novaprime_client=_FailingNovaPrimeBackend(),
+                adapt_bond_cache=cache,
+            )
+            verify = service.novaprime_identity_verify("adapt-1", "player-1")
+            self.assertTrue(verify["verified"])
+            self.assertEqual(verify["verified_source"], "cache_fallback")
+            self.assertTrue(verify["cache_verified"])
 
     def test_run_uses_cached_bond_when_novaprime_unavailable(self):
         with tempfile.TemporaryDirectory() as tmp:

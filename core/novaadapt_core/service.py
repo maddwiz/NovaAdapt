@@ -343,8 +343,59 @@ class NovaAdaptService:
             raise ValueError("'adapt_id' is required")
         if not normalized_player:
             raise ValueError("'player_id' is required")
-        verified = bool(self.novaprime_client.identity_verify(normalized_adapt, normalized_player))
-        return {"ok": True, "adapt_id": normalized_adapt, "player_id": normalized_player, "verified": verified}
+        out: dict[str, Any] = {
+            "ok": True,
+            "adapt_id": normalized_adapt,
+            "player_id": normalized_player,
+            "verified": False,
+        }
+        verified = False
+        verify_error = ""
+        try:
+            verified = bool(self.novaprime_client.identity_verify(normalized_adapt, normalized_player))
+            if verified:
+                out["verified_source"] = "novaprime"
+        except Exception as exc:
+            verify_error = str(exc)
+            out["novaprime_error"] = verify_error
+
+        if verified:
+            profile: dict[str, Any] | None = None
+            try:
+                loaded_profile = self.novaprime_client.identity_profile(normalized_adapt)
+                if isinstance(loaded_profile, dict):
+                    profile = loaded_profile
+                    out["profile"] = profile
+            except Exception as exc:
+                out["profile_error"] = str(exc)
+            try:
+                cached = self.adapt_bond_cache.remember(
+                    normalized_adapt,
+                    normalized_player,
+                    verified=True,
+                    profile=profile if isinstance(profile, dict) else {},
+                    source="novaprime_identity_verify",
+                )
+                out["cached_bond"] = cached
+            except Exception as exc:
+                out["ok"] = False
+                out["error"] = str(exc)
+                out["verified"] = False
+                return out
+        else:
+            cache_verified = self.adapt_bond_cache.verify_cached(normalized_adapt, normalized_player)
+            out["cache_verified"] = cache_verified
+            if cache_verified:
+                verified = True
+                out["verified_source"] = "cache_fallback"
+                cached = self.adapt_bond_cache.get(normalized_adapt)
+                if isinstance(cached, dict):
+                    out["cached_bond"] = cached
+            elif verify_error:
+                out["ok"] = False
+
+        out["verified"] = verified
+        return out
 
     def novaprime_identity_profile(self, adapt_id: str) -> dict[str, Any]:
         normalized_adapt = str(adapt_id or "").strip()
