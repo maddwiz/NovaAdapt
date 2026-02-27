@@ -258,6 +258,71 @@ class NovaAdaptMCPServer:
                 input_schema={"type": "object", "properties": {}},
             ),
             MCPTool(
+                name="novaadapt_novaprime_mesh_balance",
+                description="Get NovaPrime mesh credit balance for a node",
+                input_schema={
+                    "type": "object",
+                    "properties": {"node_id": {"type": "string"}},
+                    "required": ["node_id"],
+                },
+            ),
+            MCPTool(
+                name="novaadapt_novaprime_mesh_credit",
+                description="Credit NovaPrime mesh balance for a node",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "node_id": {"type": "string"},
+                        "amount": {"type": "number"},
+                    },
+                    "required": ["node_id", "amount"],
+                },
+            ),
+            MCPTool(
+                name="novaadapt_novaprime_mesh_transfer",
+                description="Transfer NovaPrime mesh balance between nodes",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "from_node": {"type": "string"},
+                        "to_node": {"type": "string"},
+                        "amount": {"type": "number"},
+                    },
+                    "required": ["from_node", "to_node", "amount"],
+                },
+            ),
+            MCPTool(
+                name="novaadapt_novaprime_marketplace_listings",
+                description="Get NovaPrime marketplace listings",
+                input_schema={"type": "object", "properties": {}},
+            ),
+            MCPTool(
+                name="novaadapt_novaprime_marketplace_list",
+                description="List an item on NovaPrime marketplace",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "capsule_id": {"type": "string"},
+                        "seller": {"type": "string"},
+                        "price": {"type": "number"},
+                        "title": {"type": "string"},
+                    },
+                    "required": ["capsule_id", "seller", "price", "title"],
+                },
+            ),
+            MCPTool(
+                name="novaadapt_novaprime_marketplace_buy",
+                description="Buy an item from NovaPrime marketplace",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "listing_id": {"type": "string"},
+                        "buyer": {"type": "string"},
+                    },
+                    "required": ["listing_id", "buyer"],
+                },
+            ),
+            MCPTool(
                 name="novaadapt_novaprime_identity_profile",
                 description="Get Adapt identity profile from NovaPrime",
                 input_schema={
@@ -804,6 +869,57 @@ class NovaAdaptMCPServer:
             return self.service.memory_status()
         if tool_name == "novaadapt_novaprime_status":
             return self.service.novaprime_status()
+        if tool_name == "novaadapt_novaprime_mesh_balance":
+            node_id = str(arguments.get("node_id", "")).strip()
+            if not node_id:
+                raise ValueError("'node_id' is required")
+            return self.service.novaprime_mesh_balance(node_id)
+        if tool_name == "novaadapt_novaprime_mesh_credit":
+            node_id = str(arguments.get("node_id", "")).strip()
+            if not node_id:
+                raise ValueError("'node_id' is required")
+            return self.service.novaprime_mesh_credit(
+                node_id,
+                float(arguments.get("amount", 0.0)),
+            )
+        if tool_name == "novaadapt_novaprime_mesh_transfer":
+            from_node = str(arguments.get("from_node", "")).strip()
+            to_node = str(arguments.get("to_node", "")).strip()
+            if not from_node:
+                raise ValueError("'from_node' is required")
+            if not to_node:
+                raise ValueError("'to_node' is required")
+            return self.service.novaprime_mesh_transfer(
+                from_node,
+                to_node,
+                float(arguments.get("amount", 0.0)),
+            )
+        if tool_name == "novaadapt_novaprime_marketplace_listings":
+            return self.service.novaprime_marketplace_listings()
+        if tool_name == "novaadapt_novaprime_marketplace_list":
+            capsule_id = str(arguments.get("capsule_id", "")).strip()
+            seller = str(arguments.get("seller", "")).strip()
+            title = str(arguments.get("title", "")).strip()
+            if not capsule_id:
+                raise ValueError("'capsule_id' is required")
+            if not seller:
+                raise ValueError("'seller' is required")
+            if not title:
+                raise ValueError("'title' is required")
+            return self.service.novaprime_marketplace_list(
+                capsule_id,
+                seller,
+                float(arguments.get("price", 0.0)),
+                title,
+            )
+        if tool_name == "novaadapt_novaprime_marketplace_buy":
+            listing_id = str(arguments.get("listing_id", "")).strip()
+            buyer = str(arguments.get("buyer", "")).strip()
+            if not listing_id:
+                raise ValueError("'listing_id' is required")
+            if not buyer:
+                raise ValueError("'buyer' is required")
+            return self.service.novaprime_marketplace_buy(listing_id, buyer)
         if tool_name == "novaadapt_novaprime_identity_profile":
             adapt_id = str(arguments.get("adapt_id", "")).strip()
             if not adapt_id:

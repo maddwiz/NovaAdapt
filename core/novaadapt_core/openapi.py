@@ -334,6 +334,26 @@ def build_openapi_spec() -> dict:
                     "responses": {"200": {"description": "NovaPrime backend status"}},
                 }
             },
+            "/novaprime/mesh/balance": {
+                "get": {
+                    "summary": "Get NovaPrime mesh credit balance by node_id",
+                    "parameters": [
+                        {
+                            "name": "node_id",
+                            "in": "query",
+                            "required": True,
+                            "schema": {"type": "string"},
+                        }
+                    ],
+                    "responses": {"200": {"description": "Mesh balance response"}},
+                }
+            },
+            "/novaprime/marketplace/listings": {
+                "get": {
+                    "summary": "Get NovaPrime marketplace listings",
+                    "responses": {"200": {"description": "Marketplace listings response"}},
+                }
+            },
             "/novaprime/identity/profile": {
                 "get": {
                     "summary": "Get Adapt identity profile from NovaPrime",
@@ -366,6 +386,30 @@ def build_openapi_spec() -> dict:
                 "post": {
                     "summary": "Create a soulbound Adapt-player bond via NovaPrime",
                     "responses": {"200": {"description": "Bond result"}},
+                }
+            },
+            "/novaprime/mesh/credit": {
+                "post": {
+                    "summary": "Credit mesh balance for a node via NovaPrime",
+                    "responses": {"200": {"description": "Mesh credit response"}},
+                }
+            },
+            "/novaprime/mesh/transfer": {
+                "post": {
+                    "summary": "Transfer mesh balance between nodes via NovaPrime",
+                    "responses": {"200": {"description": "Mesh transfer response"}},
+                }
+            },
+            "/novaprime/marketplace/list": {
+                "post": {
+                    "summary": "List an item on NovaPrime marketplace",
+                    "responses": {"200": {"description": "Marketplace list response"}},
+                }
+            },
+            "/novaprime/marketplace/buy": {
+                "post": {
+                    "summary": "Buy an item from NovaPrime marketplace",
+                    "responses": {"200": {"description": "Marketplace buy response"}},
                 }
             },
             "/novaprime/identity/verify": {

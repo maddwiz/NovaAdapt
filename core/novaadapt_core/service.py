@@ -176,6 +176,91 @@ class NovaAdaptService:
             "error": "NovaPrime client returned invalid status payload",
         }
 
+    def novaprime_mesh_balance(self, node_id: str) -> dict[str, Any]:
+        normalized_node = str(node_id or "").strip()
+        if not normalized_node:
+            raise ValueError("'node_id' is required")
+        balance = float(self.novaprime_client.mesh_balance(normalized_node))
+        return {
+            "ok": True,
+            "node_id": normalized_node,
+            "balance": balance,
+        }
+
+    def novaprime_mesh_credit(self, node_id: str, amount: float) -> dict[str, Any]:
+        normalized_node = str(node_id or "").strip()
+        normalized_amount = float(amount)
+        if not normalized_node:
+            raise ValueError("'node_id' is required")
+        if normalized_amount <= 0:
+            raise ValueError("'amount' must be > 0")
+        result = self.novaprime_client.mesh_credit(normalized_node, normalized_amount)
+        if isinstance(result, dict):
+            return result
+        return {"ok": False, "error": "invalid novaprime mesh credit response"}
+
+    def novaprime_mesh_transfer(self, from_node: str, to_node: str, amount: float) -> dict[str, Any]:
+        normalized_from = str(from_node or "").strip()
+        normalized_to = str(to_node or "").strip()
+        normalized_amount = float(amount)
+        if not normalized_from:
+            raise ValueError("'from_node' is required")
+        if not normalized_to:
+            raise ValueError("'to_node' is required")
+        if normalized_amount <= 0:
+            raise ValueError("'amount' must be > 0")
+        result = self.novaprime_client.mesh_transfer(normalized_from, normalized_to, normalized_amount)
+        if isinstance(result, dict):
+            return result
+        return {"ok": False, "error": "invalid novaprime mesh transfer response"}
+
+    def novaprime_marketplace_listings(self) -> dict[str, Any]:
+        listings = self.novaprime_client.marketplace_listings()
+        if isinstance(listings, list):
+            return {"ok": True, "listings": listings}
+        return {"ok": False, "listings": [], "error": "invalid novaprime marketplace listings response"}
+
+    def novaprime_marketplace_list(
+        self,
+        capsule_id: str,
+        seller: str,
+        price: float,
+        title: str,
+    ) -> dict[str, Any]:
+        normalized_capsule = str(capsule_id or "").strip()
+        normalized_seller = str(seller or "").strip()
+        normalized_title = str(title or "").strip()
+        normalized_price = float(price)
+        if not normalized_capsule:
+            raise ValueError("'capsule_id' is required")
+        if not normalized_seller:
+            raise ValueError("'seller' is required")
+        if not normalized_title:
+            raise ValueError("'title' is required")
+        if normalized_price < 0:
+            raise ValueError("'price' must be >= 0")
+        result = self.novaprime_client.marketplace_list(
+            normalized_capsule,
+            normalized_seller,
+            normalized_price,
+            normalized_title,
+        )
+        if isinstance(result, dict):
+            return result
+        return {"ok": False, "error": "invalid novaprime marketplace list response"}
+
+    def novaprime_marketplace_buy(self, listing_id: str, buyer: str) -> dict[str, Any]:
+        normalized_listing = str(listing_id or "").strip()
+        normalized_buyer = str(buyer or "").strip()
+        if not normalized_listing:
+            raise ValueError("'listing_id' is required")
+        if not normalized_buyer:
+            raise ValueError("'buyer' is required")
+        result = self.novaprime_client.marketplace_buy(normalized_listing, normalized_buyer)
+        if isinstance(result, dict):
+            return result
+        return {"ok": False, "error": "invalid novaprime marketplace buy response"}
+
     def novaprime_identity_bond(
         self,
         adapt_id: str,

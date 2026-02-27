@@ -220,6 +220,8 @@ API endpoints:
 - `GET /plugins/{name}/health`
 - `GET /memory/status`
 - `GET /novaprime/status`
+- `GET /novaprime/mesh/balance?node_id=...`
+- `GET /novaprime/marketplace/listings`
 - `GET /novaprime/identity/profile?adapt_id=...`
 - `GET /novaprime/presence?adapt_id=...`
 - `GET /sib/status`
@@ -240,6 +242,10 @@ API endpoints:
 - `POST /swarm/run` with JSON payload (fan out multiple objectives into parallel jobs)
 - `POST /plugins/{name}/call` with JSON payload
 - `POST /feedback` with JSON payload (`rating` 1-10 required)
+- `POST /novaprime/mesh/credit` with JSON payload (`node_id`, `amount`)
+- `POST /novaprime/mesh/transfer` with JSON payload (`from_node`, `to_node`, `amount`)
+- `POST /novaprime/marketplace/list` with JSON payload (`capsule_id`, `seller`, `price`, `title`)
+- `POST /novaprime/marketplace/buy` with JSON payload (`listing_id`, `buyer`)
 - `POST /novaprime/identity/bond` with JSON payload (`adapt_id`, `player_id`, optional `element`, `subclass`)
 - `POST /novaprime/identity/verify` with JSON payload (`adapt_id`, `player_id`)
 - `POST /novaprime/identity/evolve` with JSON payload (`adapt_id`, optional `xp_gain`, `new_skill`)

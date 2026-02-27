@@ -68,6 +68,18 @@ class _Handler(BaseHTTPRequestHandler):
         if self.path == "/novaprime/status":
             self._send(200, {"ok": True, "enabled": True, "backend": "novaprime-http"})
             return
+        if self.path.startswith("/novaprime/mesh/balance?"):
+            self._send(200, {"ok": True, "node_id": "node-1", "balance": 42.0})
+            return
+        if self.path == "/novaprime/marketplace/listings":
+            self._send(
+                200,
+                {
+                    "ok": True,
+                    "listings": [{"listing_id": "listing-1", "title": "Storm Slash", "price": 25.0}],
+                },
+            )
+            return
         if self.path.startswith("/novaprime/identity/profile?"):
             self._send(
                 200,
@@ -250,6 +262,10 @@ class _Handler(BaseHTTPRequestHandler):
             "/plans/plan-1/undo",
             "/plugins/novabridge/call",
             "/feedback",
+            "/novaprime/mesh/credit",
+            "/novaprime/mesh/transfer",
+            "/novaprime/marketplace/list",
+            "/novaprime/marketplace/buy",
             "/novaprime/identity/bond",
             "/novaprime/identity/verify",
             "/novaprime/identity/evolve",
@@ -330,6 +346,44 @@ class _Handler(BaseHTTPRequestHandler):
                 )
             elif self.path == "/feedback":
                 self._send(200, {"ok": True, "id": "feedback-1", "rating": payload.get("rating")})
+            elif self.path == "/novaprime/mesh/credit":
+                self._send(
+                    200,
+                    {
+                        "ok": True,
+                        "node_id": payload.get("node_id"),
+                        "balance": 42.0 + float(payload.get("amount", 0.0)),
+                    },
+                )
+            elif self.path == "/novaprime/mesh/transfer":
+                self._send(
+                    200,
+                    {
+                        "ok": True,
+                        "balances": {
+                            str(payload.get("from_node")): 20.0,
+                            str(payload.get("to_node")): 80.0,
+                        },
+                    },
+                )
+            elif self.path == "/novaprime/marketplace/list":
+                self._send(
+                    200,
+                    {
+                        "ok": True,
+                        "listing_id": "listing-1",
+                        "capsule_id": payload.get("capsule_id"),
+                    },
+                )
+            elif self.path == "/novaprime/marketplace/buy":
+                self._send(
+                    200,
+                    {
+                        "ok": True,
+                        "listing_id": payload.get("listing_id"),
+                        "buyer": payload.get("buyer"),
+                    },
+                )
             elif self.path == "/novaprime/identity/bond":
                 self._send(
                     200,
@@ -654,9 +708,15 @@ class APIClientTests(unittest.TestCase):
         self.assertEqual(feedback_payload["rating"], 8)
         self.assertTrue(client.memory_status()["ok"])
         self.assertTrue(client.novaprime_status()["ok"])
+        self.assertTrue(client.novaprime_mesh_balance("node-1")["ok"])
+        self.assertTrue(client.novaprime_marketplace_listings()["ok"])
         self.assertTrue(client.novaprime_identity_profile("adapt-1")["ok"])
         self.assertTrue(client.novaprime_identity_profile("adapt-1")["found"])
         self.assertTrue(client.novaprime_presence("adapt-1")["ok"])
+        self.assertTrue(client.novaprime_mesh_credit("node-1", 10.0)["ok"])
+        self.assertTrue(client.novaprime_mesh_transfer("node-1", "node-2", 5.0)["ok"])
+        self.assertTrue(client.novaprime_marketplace_list("capsule-1", "node-1", 25.0, "Storm Slash")["ok"])
+        self.assertTrue(client.novaprime_marketplace_buy("listing-1", "node-2")["ok"])
         self.assertTrue(client.novaprime_identity_bond("adapt-1", "player-1", element="light", subclass="light")["ok"])
         self.assertTrue(client.novaprime_identity_verify("adapt-1", "player-1")["verified"])
         self.assertTrue(client.novaprime_identity_evolve("adapt-1", xp_gain=120, new_skill="storm_slash")["ok"])

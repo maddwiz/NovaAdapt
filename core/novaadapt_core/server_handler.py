@@ -253,6 +253,12 @@ def _build_handler(
         def _get_novaprime_status(self, _query: dict[str, list[str]]) -> int:
             return novaprime_routes.get_novaprime_status(self, service)
 
+        def _get_novaprime_mesh_balance(self, query: dict[str, list[str]]) -> int:
+            return novaprime_routes.get_novaprime_mesh_balance(self, service, _single, query)
+
+        def _get_novaprime_marketplace_listings(self, _query: dict[str, list[str]]) -> int:
+            return novaprime_routes.get_novaprime_marketplace_listings(self, service)
+
         def _get_novaprime_identity_profile(self, query: dict[str, list[str]]) -> int:
             return novaprime_routes.get_novaprime_identity_profile(self, service, _single, query)
 
@@ -362,6 +368,18 @@ def _build_handler(
 
         def _post_sib_resonance_result(self, _path: str, payload: dict[str, object]) -> int:
             return sib_routes.post_sib_resonance_result(self, service, payload)
+
+        def _post_novaprime_mesh_credit(self, _path: str, payload: dict[str, object]) -> int:
+            return novaprime_routes.post_novaprime_mesh_credit(self, service, payload)
+
+        def _post_novaprime_mesh_transfer(self, _path: str, payload: dict[str, object]) -> int:
+            return novaprime_routes.post_novaprime_mesh_transfer(self, service, payload)
+
+        def _post_novaprime_marketplace_list(self, _path: str, payload: dict[str, object]) -> int:
+            return novaprime_routes.post_novaprime_marketplace_list(self, service, payload)
+
+        def _post_novaprime_marketplace_buy(self, _path: str, payload: dict[str, object]) -> int:
+            return novaprime_routes.post_novaprime_marketplace_buy(self, service, payload)
 
         def _post_novaprime_identity_bond(self, _path: str, payload: dict[str, object]) -> int:
             return novaprime_routes.post_novaprime_identity_bond(self, service, payload)

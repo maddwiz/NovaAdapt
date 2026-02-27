@@ -89,6 +89,31 @@ class _StubService:
     def novaprime_status(self):
         return {"ok": True, "enabled": True, "backend": "novaprime-http"}
 
+    def novaprime_mesh_balance(self, node_id: str):
+        return {"ok": True, "node_id": node_id, "balance": 42.0}
+
+    def novaprime_mesh_credit(self, node_id: str, amount: float):
+        return {"ok": True, "node_id": node_id, "balance": 42.0 + float(amount)}
+
+    def novaprime_mesh_transfer(self, from_node: str, to_node: str, amount: float):
+        return {"ok": True, "balances": {from_node: 20.0, to_node: 80.0}, "amount": amount}
+
+    def novaprime_marketplace_listings(self):
+        return {"ok": True, "listings": [{"listing_id": "listing-1", "title": "Storm Slash", "price": 25.0}]}
+
+    def novaprime_marketplace_list(self, capsule_id: str, seller: str, price: float, title: str):
+        return {
+            "ok": True,
+            "listing_id": "listing-1",
+            "capsule_id": capsule_id,
+            "seller": seller,
+            "price": price,
+            "title": title,
+        }
+
+    def novaprime_marketplace_buy(self, listing_id: str, buyer: str):
+        return {"ok": True, "listing_id": listing_id, "buyer": buyer}
+
     def novaprime_identity_profile(self, adapt_id: str):
         return {
             "ok": True,
@@ -231,6 +256,12 @@ class MCPServerTests(unittest.TestCase):
         self.assertIn("novaadapt_feedback", names)
         self.assertIn("novaadapt_memory_status", names)
         self.assertIn("novaadapt_novaprime_status", names)
+        self.assertIn("novaadapt_novaprime_mesh_balance", names)
+        self.assertIn("novaadapt_novaprime_mesh_credit", names)
+        self.assertIn("novaadapt_novaprime_mesh_transfer", names)
+        self.assertIn("novaadapt_novaprime_marketplace_listings", names)
+        self.assertIn("novaadapt_novaprime_marketplace_list", names)
+        self.assertIn("novaadapt_novaprime_marketplace_buy", names)
         self.assertIn("novaadapt_novaprime_identity_profile", names)
         self.assertIn("novaadapt_novaprime_presence_get", names)
         self.assertIn("novaadapt_novaprime_identity_bond", names)
@@ -477,6 +508,95 @@ class MCPServerTests(unittest.TestCase):
         )
         novaprime_status_payload = novaprime_status_resp["result"]["content"][0]["json"]
         self.assertTrue(novaprime_status_payload["ok"])
+
+        novaprime_mesh_balance_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 91100,
+                "method": "tools/call",
+                "params": {
+                    "name": "novaadapt_novaprime_mesh_balance",
+                    "arguments": {"node_id": "node-1"},
+                },
+            }
+        )
+        novaprime_mesh_balance_payload = novaprime_mesh_balance_resp["result"]["content"][0]["json"]
+        self.assertEqual(novaprime_mesh_balance_payload["balance"], 42.0)
+
+        novaprime_mesh_credit_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 911001,
+                "method": "tools/call",
+                "params": {
+                    "name": "novaadapt_novaprime_mesh_credit",
+                    "arguments": {"node_id": "node-1", "amount": 10.0},
+                },
+            }
+        )
+        novaprime_mesh_credit_payload = novaprime_mesh_credit_resp["result"]["content"][0]["json"]
+        self.assertTrue(novaprime_mesh_credit_payload["ok"])
+
+        novaprime_mesh_transfer_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 911002,
+                "method": "tools/call",
+                "params": {
+                    "name": "novaadapt_novaprime_mesh_transfer",
+                    "arguments": {"from_node": "node-1", "to_node": "node-2", "amount": 5.0},
+                },
+            }
+        )
+        novaprime_mesh_transfer_payload = novaprime_mesh_transfer_resp["result"]["content"][0]["json"]
+        self.assertTrue(novaprime_mesh_transfer_payload["ok"])
+
+        novaprime_marketplace_listings_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 911003,
+                "method": "tools/call",
+                "params": {
+                    "name": "novaadapt_novaprime_marketplace_listings",
+                    "arguments": {},
+                },
+            }
+        )
+        novaprime_marketplace_listings_payload = novaprime_marketplace_listings_resp["result"]["content"][0]["json"]
+        self.assertTrue(novaprime_marketplace_listings_payload["ok"])
+
+        novaprime_marketplace_list_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 911004,
+                "method": "tools/call",
+                "params": {
+                    "name": "novaadapt_novaprime_marketplace_list",
+                    "arguments": {
+                        "capsule_id": "capsule-1",
+                        "seller": "node-1",
+                        "price": 25.0,
+                        "title": "Storm Slash",
+                    },
+                },
+            }
+        )
+        novaprime_marketplace_list_payload = novaprime_marketplace_list_resp["result"]["content"][0]["json"]
+        self.assertEqual(novaprime_marketplace_list_payload["capsule_id"], "capsule-1")
+
+        novaprime_marketplace_buy_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 911005,
+                "method": "tools/call",
+                "params": {
+                    "name": "novaadapt_novaprime_marketplace_buy",
+                    "arguments": {"listing_id": "listing-1", "buyer": "node-2"},
+                },
+            }
+        )
+        novaprime_marketplace_buy_payload = novaprime_marketplace_buy_resp["result"]["content"][0]["json"]
+        self.assertEqual(novaprime_marketplace_buy_payload["buyer"], "node-2")
 
         novaprime_profile_resp = server.handle_request(
             {

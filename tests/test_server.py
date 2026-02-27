@@ -215,8 +215,14 @@ class ServerTests(unittest.TestCase):
                 self.assertIn("/feedback", openapi["paths"])
                 self.assertIn("/memory/status", openapi["paths"])
                 self.assertIn("/novaprime/status", openapi["paths"])
+                self.assertIn("/novaprime/mesh/balance", openapi["paths"])
+                self.assertIn("/novaprime/marketplace/listings", openapi["paths"])
                 self.assertIn("/novaprime/identity/profile", openapi["paths"])
                 self.assertIn("/novaprime/presence", openapi["paths"])
+                self.assertIn("/novaprime/mesh/credit", openapi["paths"])
+                self.assertIn("/novaprime/mesh/transfer", openapi["paths"])
+                self.assertIn("/novaprime/marketplace/list", openapi["paths"])
+                self.assertIn("/novaprime/marketplace/buy", openapi["paths"])
                 self.assertIn("/novaprime/identity/bond", openapi["paths"])
                 self.assertIn("/novaprime/identity/verify", openapi["paths"])
                 self.assertIn("/novaprime/identity/evolve", openapi["paths"])
@@ -297,6 +303,18 @@ class ServerTests(unittest.TestCase):
                 self.assertIn("ok", novaprime_status)
                 self.assertIn("backend", novaprime_status)
 
+                novaprime_mesh_balance, _ = _get_json_with_headers(
+                    f"http://{host}:{port}/novaprime/mesh/balance?node_id=node-1"
+                )
+                self.assertTrue(novaprime_mesh_balance["ok"])
+                self.assertEqual(novaprime_mesh_balance["node_id"], "node-1")
+
+                novaprime_marketplace_listings, _ = _get_json_with_headers(
+                    f"http://{host}:{port}/novaprime/marketplace/listings"
+                )
+                self.assertTrue(novaprime_marketplace_listings["ok"])
+                self.assertIn("listings", novaprime_marketplace_listings)
+
                 novaprime_profile, _ = _get_json_with_headers(
                     f"http://{host}:{port}/novaprime/identity/profile?adapt_id=adapt-1"
                 )
@@ -314,6 +332,30 @@ class ServerTests(unittest.TestCase):
                     {"adapt_id": "adapt-1", "player_id": "player-1", "element": "light", "subclass": "light"},
                 )
                 self.assertIn("ok", novaprime_bond)
+
+                novaprime_mesh_credit, _ = _post_json_with_headers(
+                    f"http://{host}:{port}/novaprime/mesh/credit",
+                    {"node_id": "node-1", "amount": 10},
+                )
+                self.assertIn("ok", novaprime_mesh_credit)
+
+                novaprime_mesh_transfer, _ = _post_json_with_headers(
+                    f"http://{host}:{port}/novaprime/mesh/transfer",
+                    {"from_node": "node-1", "to_node": "node-2", "amount": 5},
+                )
+                self.assertIn("ok", novaprime_mesh_transfer)
+
+                novaprime_marketplace_list, _ = _post_json_with_headers(
+                    f"http://{host}:{port}/novaprime/marketplace/list",
+                    {"capsule_id": "capsule-1", "seller": "node-1", "price": 25, "title": "Storm Slash"},
+                )
+                self.assertIn("ok", novaprime_marketplace_list)
+
+                novaprime_marketplace_buy, _ = _post_json_with_headers(
+                    f"http://{host}:{port}/novaprime/marketplace/buy",
+                    {"listing_id": "listing-1", "buyer": "node-2"},
+                )
+                self.assertIn("ok", novaprime_marketplace_buy)
 
                 novaprime_verify, _ = _post_json_with_headers(
                     f"http://{host}:{port}/novaprime/identity/verify",

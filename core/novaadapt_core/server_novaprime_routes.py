@@ -8,6 +8,22 @@ def get_novaprime_status(handler, service: NovaAdaptService) -> int:
     return 200
 
 
+def get_novaprime_mesh_balance(
+    handler,
+    service: NovaAdaptService,
+    single,
+    query: dict[str, list[str]],
+) -> int:
+    node_id = str(single(query, "node_id") or "").strip()
+    handler._send_json(200, service.novaprime_mesh_balance(node_id))
+    return 200
+
+
+def get_novaprime_marketplace_listings(handler, service: NovaAdaptService) -> int:
+    handler._send_json(200, service.novaprime_marketplace_listings())
+    return 200
+
+
 def get_novaprime_identity_profile(
     handler,
     service: NovaAdaptService,
@@ -27,6 +43,37 @@ def get_novaprime_presence(
 ) -> int:
     adapt_id = str(single(query, "adapt_id") or "").strip()
     handler._send_json(200, service.novaprime_presence_get(adapt_id))
+    return 200
+
+
+def post_novaprime_mesh_credit(handler, service: NovaAdaptService, payload: dict[str, object]) -> int:
+    node_id = str(payload.get("node_id") or "").strip()
+    amount = float(payload.get("amount", 0.0))
+    handler._send_json(200, service.novaprime_mesh_credit(node_id, amount))
+    return 200
+
+
+def post_novaprime_mesh_transfer(handler, service: NovaAdaptService, payload: dict[str, object]) -> int:
+    from_node = str(payload.get("from_node") or "").strip()
+    to_node = str(payload.get("to_node") or "").strip()
+    amount = float(payload.get("amount", 0.0))
+    handler._send_json(200, service.novaprime_mesh_transfer(from_node, to_node, amount))
+    return 200
+
+
+def post_novaprime_marketplace_list(handler, service: NovaAdaptService, payload: dict[str, object]) -> int:
+    capsule_id = str(payload.get("capsule_id") or "").strip()
+    seller = str(payload.get("seller") or "").strip()
+    price = float(payload.get("price", 0.0))
+    title = str(payload.get("title") or "").strip()
+    handler._send_json(200, service.novaprime_marketplace_list(capsule_id, seller, price, title))
+    return 200
+
+
+def post_novaprime_marketplace_buy(handler, service: NovaAdaptService, payload: dict[str, object]) -> int:
+    listing_id = str(payload.get("listing_id") or "").strip()
+    buyer = str(payload.get("buyer") or "").strip()
+    handler._send_json(200, service.novaprime_marketplace_buy(listing_id, buyer))
     return 200
 
 

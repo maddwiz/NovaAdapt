@@ -195,6 +195,45 @@ class _StubNovaPrimeBackend:
             },
         }
 
+    def mesh_balance(self, node_id: str):
+        self.calls.append({"method": "mesh_balance", "node_id": node_id})
+        return 42.0
+
+    def mesh_credit(self, node_id: str, amount: float):
+        self.calls.append({"method": "mesh_credit", "node_id": node_id, "amount": amount})
+        return {"ok": True, "node_id": node_id, "balance": 42.0 + float(amount)}
+
+    def mesh_transfer(self, from_node: str, to_node: str, amount: float):
+        self.calls.append(
+            {
+                "method": "mesh_transfer",
+                "from_node": from_node,
+                "to_node": to_node,
+                "amount": amount,
+            }
+        )
+        return {"ok": True, "balances": {from_node: 20.0, to_node: 80.0}}
+
+    def marketplace_listings(self):
+        self.calls.append({"method": "marketplace_listings"})
+        return [{"listing_id": "listing-1", "title": "Storm Slash", "price": 25.0}]
+
+    def marketplace_list(self, capsule_id: str, seller: str, price: float, title: str):
+        self.calls.append(
+            {
+                "method": "marketplace_list",
+                "capsule_id": capsule_id,
+                "seller": seller,
+                "price": price,
+                "title": title,
+            }
+        )
+        return {"ok": True, "listing_id": "listing-1", "capsule_id": capsule_id}
+
+    def marketplace_buy(self, listing_id: str, buyer: str):
+        self.calls.append({"method": "marketplace_buy", "listing_id": listing_id, "buyer": buyer})
+        return {"ok": True, "listing_id": listing_id, "buyer": buyer}
+
     def identity_bond(self, adapt_id: str, player_id: str, element: str = "", subclass: str = ""):
         self.calls.append(
             {
@@ -817,7 +856,32 @@ class ServiceTests(unittest.TestCase):
         resonance_bond = service.novaprime_resonance_bond("player-1", {"class": "sentinel"}, adapt_id="adapt-1")
         self.assertTrue(resonance_bond["ok"])
 
+        mesh_balance = service.novaprime_mesh_balance("node-1")
+        self.assertEqual(mesh_balance["balance"], 42.0)
+
+        mesh_credit = service.novaprime_mesh_credit("node-1", 10.0)
+        self.assertTrue(mesh_credit["ok"])
+
+        mesh_transfer = service.novaprime_mesh_transfer("node-1", "node-2", 5.0)
+        self.assertTrue(mesh_transfer["ok"])
+
+        listings = service.novaprime_marketplace_listings()
+        self.assertTrue(listings["ok"])
+        self.assertEqual(len(listings["listings"]), 1)
+
+        listed = service.novaprime_marketplace_list("capsule-1", "node-1", 25.0, "Storm Slash")
+        self.assertTrue(listed["ok"])
+
+        bought = service.novaprime_marketplace_buy("listing-1", "node-2")
+        self.assertTrue(bought["ok"])
+
         method_names = [str(item.get("method")) for item in backend.calls]
+        self.assertIn("mesh_balance", method_names)
+        self.assertIn("mesh_credit", method_names)
+        self.assertIn("mesh_transfer", method_names)
+        self.assertIn("marketplace_listings", method_names)
+        self.assertIn("marketplace_list", method_names)
+        self.assertIn("marketplace_buy", method_names)
         self.assertIn("identity_bond", method_names)
         self.assertIn("identity_verify", method_names)
         self.assertIn("identity_profile", method_names)

@@ -24,6 +24,8 @@ def build_get_private_routes(handler: Any) -> dict[str, Any]:
         "/plugins": handler._get_plugins,
         "/memory/status": handler._get_memory_status,
         "/novaprime/status": handler._get_novaprime_status,
+        "/novaprime/mesh/balance": handler._get_novaprime_mesh_balance,
+        "/novaprime/marketplace/listings": handler._get_novaprime_marketplace_listings,
         "/novaprime/identity/profile": handler._get_novaprime_identity_profile,
         "/novaprime/presence": handler._get_novaprime_presence,
         "/sib/status": handler._get_sib_status,
@@ -62,6 +64,16 @@ def build_post_exact_routes(handler: Any) -> dict[str, Any]:
         "/sib/phase-event": lambda body: handler._post_sib_phase_event("/sib/phase-event", body),
         "/sib/resonance/start": lambda body: handler._post_sib_resonance_start("/sib/resonance/start", body),
         "/sib/resonance/result": lambda body: handler._post_sib_resonance_result("/sib/resonance/result", body),
+        "/novaprime/mesh/credit": lambda body: handler._post_novaprime_mesh_credit("/novaprime/mesh/credit", body),
+        "/novaprime/mesh/transfer": lambda body: handler._post_novaprime_mesh_transfer(
+            "/novaprime/mesh/transfer", body
+        ),
+        "/novaprime/marketplace/list": lambda body: handler._post_novaprime_marketplace_list(
+            "/novaprime/marketplace/list", body
+        ),
+        "/novaprime/marketplace/buy": lambda body: handler._post_novaprime_marketplace_buy(
+            "/novaprime/marketplace/buy", body
+        ),
         "/novaprime/identity/bond": lambda body: handler._post_novaprime_identity_bond(
             "/novaprime/identity/bond", body
         ),
@@ -131,6 +143,10 @@ def is_idempotent_route(path: str) -> bool:
         "/novaprime/presence/update",
         "/novaprime/resonance/score",
         "/novaprime/resonance/bond",
+        "/novaprime/mesh/credit",
+        "/novaprime/mesh/transfer",
+        "/novaprime/marketplace/list",
+        "/novaprime/marketplace/buy",
     }:
         return True
     if path in {"/adapt/toggle"}:
