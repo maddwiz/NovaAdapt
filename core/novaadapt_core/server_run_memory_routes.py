@@ -78,6 +78,12 @@ def post_swarm_run(
         "post_realm": payload.get("post_realm"),
         "post_activity": payload.get("post_activity"),
         "toggle_mode": payload.get("toggle_mode"),
+        "mesh_node_id": payload.get("mesh_node_id"),
+        "mesh_credit_amount": payload.get("mesh_credit_amount"),
+        "mesh_transfer_to": payload.get("mesh_transfer_to"),
+        "mesh_transfer_amount": payload.get("mesh_transfer_amount"),
+        "mesh_marketplace_list": payload.get("mesh_marketplace_list"),
+        "mesh_marketplace_buy": payload.get("mesh_marketplace_buy"),
     }
 
     def _run_swarm() -> tuple[int, dict[str, object]]:

@@ -41,6 +41,12 @@ class NovaAdaptMCPServer:
                         "activity": {"type": "string"},
                         "post_realm": {"type": "string"},
                         "post_activity": {"type": "string"},
+                        "mesh_node_id": {"type": "string"},
+                        "mesh_credit_amount": {"type": "number"},
+                        "mesh_transfer_to": {"type": "string"},
+                        "mesh_transfer_amount": {"type": "number"},
+                        "mesh_marketplace_list": {"type": "object"},
+                        "mesh_marketplace_buy": {"type": "object"},
                         "toggle_mode": {
                             "type": "string",
                             "enum": ["free_speak", "in_game_only", "ask_only", "silent"],
@@ -70,6 +76,12 @@ class NovaAdaptMCPServer:
                         "activity": {"type": "string"},
                         "post_realm": {"type": "string"},
                         "post_activity": {"type": "string"},
+                        "mesh_node_id": {"type": "string"},
+                        "mesh_credit_amount": {"type": "number"},
+                        "mesh_transfer_to": {"type": "string"},
+                        "mesh_transfer_amount": {"type": "number"},
+                        "mesh_marketplace_list": {"type": "object"},
+                        "mesh_marketplace_buy": {"type": "object"},
                         "toggle_mode": {
                             "type": "string",
                             "enum": ["free_speak", "in_game_only", "ask_only", "silent"],
@@ -767,6 +779,12 @@ class NovaAdaptMCPServer:
                     "activity": arguments.get("activity"),
                     "post_realm": arguments.get("post_realm"),
                     "post_activity": arguments.get("post_activity"),
+                    "mesh_node_id": arguments.get("mesh_node_id"),
+                    "mesh_credit_amount": arguments.get("mesh_credit_amount"),
+                    "mesh_transfer_to": arguments.get("mesh_transfer_to"),
+                    "mesh_transfer_amount": arguments.get("mesh_transfer_amount"),
+                    "mesh_marketplace_list": arguments.get("mesh_marketplace_list"),
+                    "mesh_marketplace_buy": arguments.get("mesh_marketplace_buy"),
                     "toggle_mode": arguments.get("toggle_mode"),
                 }
                 jobs.append({"index": idx, "objective": objective, "result": self.service.run(run_payload)})

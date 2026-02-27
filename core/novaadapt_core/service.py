@@ -593,6 +593,121 @@ class NovaAdaptService:
             "notes": notes,
         }
 
+    def _execute_runtime_mesh_ops(
+        self,
+        *,
+        adapt_id: str,
+        mesh_node_id: str,
+        mesh_credit_amount: object,
+        mesh_transfer_to: str,
+        mesh_transfer_amount: object,
+        mesh_marketplace_list: object,
+        mesh_marketplace_buy: object,
+    ) -> dict[str, Any]:
+        context: dict[str, Any] = {}
+        node_id = str(mesh_node_id or "").strip() or str(adapt_id or "").strip()
+        if node_id:
+            context["node_id"] = node_id
+            try:
+                context["balance_before"] = float(self.novaprime_client.mesh_balance(node_id))
+            except Exception as exc:
+                context["balance_before_error"] = str(exc)
+
+        if mesh_credit_amount is not None:
+            if not node_id:
+                context["credit_error"] = "'mesh_node_id' or 'adapt_id' is required for mesh credit"
+            else:
+                try:
+                    amount = float(mesh_credit_amount)
+                    if amount <= 0:
+                        context["credit_error"] = "'mesh_credit_amount' must be > 0"
+                    else:
+                        credit_result = self.novaprime_client.mesh_credit(node_id, amount)
+                        context["credit"] = (
+                            credit_result
+                            if isinstance(credit_result, dict)
+                            else {"ok": False, "error": "invalid novaprime mesh credit response"}
+                        )
+                except Exception as exc:
+                    context["credit_error"] = str(exc)
+
+        if mesh_transfer_amount is not None or mesh_transfer_to:
+            from_node = node_id
+            to_node = str(mesh_transfer_to or "").strip()
+            if not from_node or not to_node:
+                context["transfer_error"] = "'mesh_node_id'/'adapt_id' and 'mesh_transfer_to' are required"
+            else:
+                try:
+                    amount = float(mesh_transfer_amount if mesh_transfer_amount is not None else 0.0)
+                    if amount <= 0:
+                        context["transfer_error"] = "'mesh_transfer_amount' must be > 0"
+                    else:
+                        transfer_result = self.novaprime_client.mesh_transfer(from_node, to_node, amount)
+                        context["transfer"] = (
+                            transfer_result
+                            if isinstance(transfer_result, dict)
+                            else {"ok": False, "error": "invalid novaprime mesh transfer response"}
+                        )
+                except Exception as exc:
+                    context["transfer_error"] = str(exc)
+
+        if mesh_marketplace_list is not None:
+            if not isinstance(mesh_marketplace_list, dict):
+                context["marketplace_list_error"] = "'mesh_marketplace_list' must be an object"
+            else:
+                capsule_id = str(mesh_marketplace_list.get("capsule_id") or "").strip()
+                seller = str(mesh_marketplace_list.get("seller") or node_id).strip()
+                title = str(mesh_marketplace_list.get("title") or "").strip()
+                try:
+                    price = float(mesh_marketplace_list.get("price", 0.0))
+                except Exception:
+                    price = -1.0
+                if not capsule_id or not seller or not title:
+                    context["marketplace_list_error"] = "'capsule_id', 'seller', and 'title' are required"
+                elif price < 0:
+                    context["marketplace_list_error"] = "'price' must be >= 0"
+                else:
+                    try:
+                        list_result = self.novaprime_client.marketplace_list(capsule_id, seller, price, title)
+                        context["marketplace_list"] = (
+                            list_result
+                            if isinstance(list_result, dict)
+                            else {"ok": False, "error": "invalid novaprime marketplace list response"}
+                        )
+                    except Exception as exc:
+                        context["marketplace_list_error"] = str(exc)
+
+        if mesh_marketplace_buy is not None:
+            if not isinstance(mesh_marketplace_buy, dict):
+                context["marketplace_buy_error"] = "'mesh_marketplace_buy' must be an object"
+            else:
+                listing_id = str(mesh_marketplace_buy.get("listing_id") or "").strip()
+                buyer = str(mesh_marketplace_buy.get("buyer") or node_id).strip()
+                if not listing_id or not buyer:
+                    context["marketplace_buy_error"] = "'listing_id' and 'buyer' are required"
+                else:
+                    try:
+                        buy_result = self.novaprime_client.marketplace_buy(listing_id, buyer)
+                        context["marketplace_buy"] = (
+                            buy_result
+                            if isinstance(buy_result, dict)
+                            else {"ok": False, "error": "invalid novaprime marketplace buy response"}
+                        )
+                    except Exception as exc:
+                        context["marketplace_buy_error"] = str(exc)
+
+        if node_id:
+            try:
+                context["balance_after"] = float(self.novaprime_client.mesh_balance(node_id))
+            except Exception as exc:
+                context["balance_after_error"] = str(exc)
+
+        errors = [key for key in context if key.endswith("_error")]
+        context["ok"] = len(errors) == 0
+        if errors:
+            context["errors"] = sorted(errors)
+        return context
+
     def run(self, payload: dict[str, Any]) -> dict[str, Any]:
         config_path = Path(payload.get("config") or self.default_config)
         objective = str(payload.get("objective", "")).strip()
@@ -613,6 +728,20 @@ class NovaAdaptService:
         activity = str(payload.get("activity") or "").strip()
         post_realm = str(payload.get("post_realm") or "").strip()
         post_activity = str(payload.get("post_activity") or "").strip()
+        mesh_node_id = str(payload.get("mesh_node_id") or "").strip()
+        mesh_credit_amount = payload.get("mesh_credit_amount")
+        mesh_transfer_to = str(payload.get("mesh_transfer_to") or "").strip()
+        mesh_transfer_amount = payload.get("mesh_transfer_amount")
+        mesh_marketplace_list = payload.get("mesh_marketplace_list")
+        mesh_marketplace_buy = payload.get("mesh_marketplace_buy")
+        has_mesh_ops = bool(
+            mesh_node_id
+            or mesh_credit_amount is not None
+            or mesh_transfer_to
+            or mesh_transfer_amount is not None
+            or mesh_marketplace_list is not None
+            or mesh_marketplace_buy is not None
+        )
         toggle_mode_input = payload.get("toggle_mode")
         toggle_mode = ""
         if adapt_id:
@@ -620,7 +749,7 @@ class NovaAdaptService:
                 _ = self.adapt_toggle_store.set(adapt_id, str(toggle_mode_input), source="run_payload")
             toggle_mode = self.adapt_toggle_store.get_mode(adapt_id)
 
-        novaprime_context: dict[str, Any] = {"enabled": bool(adapt_id)}
+        novaprime_context: dict[str, Any] = {"enabled": bool(adapt_id or has_mesh_ops)}
         adapt_context: dict[str, Any] = {}
         identity_profile: dict[str, Any] | None = None
         bond_verified: bool | None = None
@@ -715,6 +844,21 @@ class NovaAdaptService:
                 if isinstance(presence_after, dict):
                     novaprime_context["presence_after"] = presence_after
             except Exception as exc:
+                if "error" not in novaprime_context:
+                    novaprime_context["error"] = str(exc)
+        if has_mesh_ops:
+            try:
+                novaprime_context["mesh"] = self._execute_runtime_mesh_ops(
+                    adapt_id=adapt_id,
+                    mesh_node_id=mesh_node_id,
+                    mesh_credit_amount=mesh_credit_amount,
+                    mesh_transfer_to=mesh_transfer_to,
+                    mesh_transfer_amount=mesh_transfer_amount,
+                    mesh_marketplace_list=mesh_marketplace_list,
+                    mesh_marketplace_buy=mesh_marketplace_buy,
+                )
+            except Exception as exc:
+                novaprime_context["mesh"] = {"ok": False, "error": str(exc)}
                 if "error" not in novaprime_context:
                     novaprime_context["error"] = str(exc)
         if novaprime_context.get("enabled"):

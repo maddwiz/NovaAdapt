@@ -238,7 +238,7 @@ API endpoints:
 - `GET /terminal/sessions/{id}`
 - `GET /terminal/sessions/{id}/output?since_seq=0&limit=200`
 - `POST /run` with JSON payload
-- Optional NovaPrime runtime context on `/run` and `/swarm/run`: `adapt_id`, `player_id`, `realm`, `activity`, `post_realm`, `post_activity` (adds `novaprime` metadata in response when `adapt_id` is provided)
+- Optional NovaPrime runtime context on `/run` and `/swarm/run`: `adapt_id`, `player_id`, `realm`, `activity`, `post_realm`, `post_activity`, `mesh_node_id`, `mesh_credit_amount`, `mesh_transfer_to`, `mesh_transfer_amount`, `mesh_marketplace_list`, `mesh_marketplace_buy` (adds `novaprime` metadata in response when Adapt or mesh fields are provided)
 - `POST /run_async` with JSON payload (returns `job_id`)
 - `POST /swarm/run` with JSON payload (fan out multiple objectives into parallel jobs)
 - `POST /plugins/{name}/call` with JSON payload

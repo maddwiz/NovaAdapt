@@ -490,6 +490,20 @@ class ServiceTests(unittest.TestCase):
                     "realm": "game_world",
                     "activity": "patrol",
                     "post_activity": "patrol_complete",
+                    "mesh_node_id": "node-1",
+                    "mesh_credit_amount": 5.0,
+                    "mesh_transfer_to": "node-2",
+                    "mesh_transfer_amount": 2.0,
+                    "mesh_marketplace_list": {
+                        "capsule_id": "capsule-1",
+                        "seller": "node-1",
+                        "price": 25.0,
+                        "title": "Storm Slash",
+                    },
+                    "mesh_marketplace_buy": {
+                        "listing_id": "listing-1",
+                        "buyer": "node-2",
+                    },
                 }
             )
 
@@ -500,6 +514,13 @@ class ServiceTests(unittest.TestCase):
             self.assertIn("profile", out["novaprime"])
             self.assertIn("presence_before", out["novaprime"])
             self.assertIn("presence_after", out["novaprime"])
+            self.assertIn("mesh", out["novaprime"])
+            self.assertTrue(out["novaprime"]["mesh"]["ok"])
+            self.assertEqual(out["novaprime"]["mesh"]["node_id"], "node-1")
+            self.assertIn("credit", out["novaprime"]["mesh"])
+            self.assertIn("transfer", out["novaprime"]["mesh"])
+            self.assertIn("marketplace_list", out["novaprime"]["mesh"])
+            self.assertIn("marketplace_buy", out["novaprime"]["mesh"])
 
             self.assertIsNotNone(router.last_messages)
             identity_msgs = [
@@ -513,6 +534,38 @@ class ServiceTests(unittest.TestCase):
             self.assertIn("identity_verify", method_names)
             self.assertIn("identity_profile", method_names)
             self.assertGreaterEqual(method_names.count("presence_update"), 2)
+            self.assertGreaterEqual(method_names.count("mesh_balance"), 2)
+            self.assertIn("mesh_credit", method_names)
+            self.assertIn("mesh_transfer", method_names)
+            self.assertIn("marketplace_list", method_names)
+            self.assertIn("marketplace_buy", method_names)
+
+    def test_run_with_mesh_ops_without_adapt_id_adds_novaprime_context(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            novaprime = _StubNovaPrimeBackend()
+            service = NovaAdaptService(
+                default_config=Path("unused.json"),
+                db_path=Path(tmp) / "actions.db",
+                router_loader=lambda _path: _StubRouter(),
+                directshell_factory=_StubDirectShell,
+                novaprime_client=novaprime,
+            )
+
+            out = service.run(
+                {
+                    "objective": "Distribute rewards",
+                    "mesh_node_id": "node-1",
+                    "mesh_credit_amount": 3.5,
+                }
+            )
+
+            self.assertEqual(out["results"][0]["status"], "preview")
+            self.assertIn("novaprime", out)
+            self.assertTrue(out["novaprime"]["enabled"])
+            self.assertIn("mesh", out["novaprime"])
+            self.assertTrue(out["novaprime"]["mesh"]["ok"])
+            self.assertEqual(out["novaprime"]["mesh"]["node_id"], "node-1")
+            self.assertEqual(out["novaprime"]["mesh"]["credit"]["node_id"], "node-1")
 
     def test_approve_plan_marks_failed_on_blocked_action(self):
         with tempfile.TemporaryDirectory() as tmp:
