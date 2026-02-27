@@ -32,6 +32,13 @@ class AdaptLayerTests(unittest.TestCase):
             self.assertTrue(cache.verify_cached("adapt-a", "player-a"))
             self.assertFalse(cache.verify_cached("adapt-a", "player-b"))
 
+    def test_bond_cache_blocks_rebinding_verified_adapt(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = AdaptBondCache(state_path=Path(tmp) / "bonds.json")
+            _ = cache.remember("adapt-a", "player-a", verified=True, profile={"element": "light"})
+            with self.assertRaises(ValueError):
+                _ = cache.remember("adapt-a", "player-b", verified=True, profile={"element": "shadow"})
+
     def test_persona_engine_builds_expected_context(self):
         engine = AdaptPersonaEngine()
         persona = engine.build_context(

@@ -66,6 +66,15 @@ class AdaptBondCache:
 
         with self._lock:
             state = self._load()
+            existing = state.get(normalized_adapt)
+            if isinstance(existing, dict):
+                existing_player = str(existing.get("player_id", "")).strip()
+                existing_verified = bool(existing.get("verified", False))
+                # Soulbound safety: prevent rebinding a verified Adapt to a different player.
+                if existing_player and existing_player != normalized_player and existing_verified:
+                    raise ValueError(
+                        f"soulbound violation: adapt '{normalized_adapt}' is already bound to another player"
+                    )
             state[normalized_adapt] = payload
             self._save(state)
 

@@ -1054,6 +1054,24 @@ class ServiceTests(unittest.TestCase):
             self.assertEqual(persona["persona"]["adapt_id"], "adapt-1")
             self.assertEqual(persona["persona"]["element"], "light")
 
+    def test_adapt_bond_verify_uses_cache_fallback_when_novaprime_unavailable(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = AdaptBondCache(state_path=Path(tmp) / "bonds.json")
+            _ = cache.remember("adapt-1", "player-1", verified=True, profile={"element": "light"})
+            service = NovaAdaptService(
+                default_config=Path("unused.json"),
+                router_loader=lambda _path: _StubRouter(),
+                directshell_factory=_StubDirectShell,
+                novaprime_client=_FailingNovaPrimeBackend(),
+                adapt_bond_cache=cache,
+            )
+            verify = service.adapt_bond_verify("adapt-1", "player-1")
+            self.assertTrue(verify["ok"])
+            self.assertTrue(verify["verified"])
+            self.assertEqual(verify["source"], "cache_fallback")
+            self.assertEqual(verify["adapt_id"], "adapt-1")
+            self.assertEqual(verify["player_id"], "player-1")
+
     def test_run_uses_cached_bond_when_novaprime_unavailable(self):
         with tempfile.TemporaryDirectory() as tmp:
             router = _CapturingRouter()
