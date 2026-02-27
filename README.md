@@ -165,7 +165,17 @@ novaadapt browser-pages
 novaadapt browser-action --action-json '{"type":"navigate","target":"https://example.com"}'
 ```
 
-9. Snapshot local state databases (recommended before upgrades):
+9. Inspect Adapt state (toggle, bond, persona):
+
+```bash
+novaadapt adapt-toggle --adapt-id adapt-1
+novaadapt adapt-toggle --adapt-id adapt-1 --mode in_game_only
+novaadapt adapt-bond --adapt-id adapt-1
+novaadapt adapt-bond-verify --adapt-id adapt-1 --player-id player-1
+novaadapt adapt-persona --adapt-id adapt-1 --player-id player-1
+```
+
+10. Snapshot local state databases (recommended before upgrades):
 
 ```bash
 novaadapt backup --out-dir ~/.novaadapt/backups
@@ -173,7 +183,7 @@ novaadapt backup --out-dir ~/.novaadapt/backups
 
 The command snapshots local SQLite stores (`actions`, `plans`, `jobs`, `idempotency`, `audit`) using timestamped files and reports which ones were missing.
 
-10. Restore local state from a snapshot (archives current DBs before overwrite):
+11. Restore local state from a snapshot (archives current DBs before overwrite):
 
 ```bash
 novaadapt restore --from-dir ~/.novaadapt/backups --timestamp 20260225T120000Z
@@ -181,7 +191,7 @@ novaadapt restore --from-dir ~/.novaadapt/backups --timestamp 20260225T120000Z
 
 If `--timestamp` is omitted, NovaAdapt restores the latest discovered snapshot in the backup directory.
 
-11. Prune stale local state rows (recommended for long-running installs):
+12. Prune stale local state rows (recommended for long-running installs):
 
 ```bash
 novaadapt prune \

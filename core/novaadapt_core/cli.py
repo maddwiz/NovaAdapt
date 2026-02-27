@@ -288,6 +288,39 @@ def _build_parser() -> argparse.ArgumentParser:
     feedback_cmd.add_argument("--metadata", default="", help="Optional JSON object string")
     feedback_cmd.add_argument("--context", default="", help="Optional JSON object string")
 
+    adapt_toggle_cmd = sub.add_parser("adapt-toggle", help="Get or set Adapt communication toggle mode")
+    adapt_toggle_cmd.add_argument("--config", type=Path, default=_default_config_path())
+    adapt_toggle_cmd.add_argument("--adapt-id", required=True)
+    adapt_toggle_cmd.add_argument(
+        "--mode",
+        default="",
+        choices=["", "free_speak", "in_game_only", "ask_only", "silent"],
+        help="When set, updates the mode; when omitted, returns current mode",
+    )
+    adapt_toggle_cmd.add_argument("--source", default="cli")
+
+    adapt_bond_cmd = sub.add_parser("adapt-bond", help="Get cached local Adapt bond state")
+    adapt_bond_cmd.add_argument("--config", type=Path, default=_default_config_path())
+    adapt_bond_cmd.add_argument("--adapt-id", required=True)
+
+    adapt_bond_verify_cmd = sub.add_parser(
+        "adapt-bond-verify",
+        help="Verify Adapt bond against NovaPrime with cache fallback",
+    )
+    adapt_bond_verify_cmd.add_argument("--config", type=Path, default=_default_config_path())
+    adapt_bond_verify_cmd.add_argument("--adapt-id", required=True)
+    adapt_bond_verify_cmd.add_argument("--player-id", required=True)
+    adapt_bond_verify_cmd.add_argument(
+        "--no-refresh-profile",
+        action="store_true",
+        help="Skip profile refresh from NovaPrime while verifying bond",
+    )
+
+    adapt_persona_cmd = sub.add_parser("adapt-persona", help="Get Adapt persona context")
+    adapt_persona_cmd.add_argument("--config", type=Path, default=_default_config_path())
+    adapt_persona_cmd.add_argument("--adapt-id", required=True)
+    adapt_persona_cmd.add_argument("--player-id", default="")
+
     directshell_check_cmd = sub.add_parser(
         "directshell-check",
         help="Probe DirectShell execution transport readiness",
@@ -994,6 +1027,66 @@ def main() -> None:
                     raise ValueError("--context must be a JSON object")
                 out_payload["context"] = parsed_context
             print(json.dumps(service.record_feedback(out_payload), indent=2))
+            return
+
+        if args.command == "adapt-toggle":
+            service = NovaAdaptService(default_config=args.config)
+            if str(args.mode or "").strip():
+                print(
+                    json.dumps(
+                        service.adapt_toggle_set(
+                            str(args.adapt_id),
+                            str(args.mode),
+                            source=str(args.source or "cli"),
+                        ),
+                        indent=2,
+                    )
+                )
+            else:
+                print(json.dumps(service.adapt_toggle_get(str(args.adapt_id)), indent=2))
+            return
+
+        if args.command == "adapt-bond":
+            service = NovaAdaptService(default_config=args.config)
+            adapt_id = str(args.adapt_id)
+            cached = service.adapt_bond_get(adapt_id)
+            print(
+                json.dumps(
+                    {
+                        "adapt_id": adapt_id,
+                        "cached": cached if isinstance(cached, dict) else None,
+                        "found": isinstance(cached, dict),
+                    },
+                    indent=2,
+                )
+            )
+            return
+
+        if args.command == "adapt-bond-verify":
+            service = NovaAdaptService(default_config=args.config)
+            print(
+                json.dumps(
+                    service.adapt_bond_verify(
+                        str(args.adapt_id),
+                        str(args.player_id),
+                        refresh_profile=not bool(args.no_refresh_profile),
+                    ),
+                    indent=2,
+                )
+            )
+            return
+
+        if args.command == "adapt-persona":
+            service = NovaAdaptService(default_config=args.config)
+            print(
+                json.dumps(
+                    service.adapt_persona_get(
+                        str(args.adapt_id),
+                        player_id=str(args.player_id or ""),
+                    ),
+                    indent=2,
+                )
+            )
             return
 
         if args.command == "directshell-check":
