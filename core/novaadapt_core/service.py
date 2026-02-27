@@ -470,6 +470,143 @@ class NovaAdaptService:
     def adapt_bond_get(self, adapt_id: str) -> dict[str, Any] | None:
         return self.adapt_bond_cache.get(adapt_id)
 
+    def adapt_bond_verify(
+        self,
+        adapt_id: str,
+        player_id: str,
+        *,
+        refresh_profile: bool = True,
+    ) -> dict[str, Any]:
+        normalized_adapt = str(adapt_id or "").strip()
+        normalized_player = str(player_id or "").strip()
+        if not normalized_adapt:
+            raise ValueError("'adapt_id' is required")
+        if not normalized_player:
+            raise ValueError("'player_id' is required")
+
+        cached = self.adapt_bond_cache.get(normalized_adapt)
+        cache_verified = self.adapt_bond_cache.verify_cached(normalized_adapt, normalized_player)
+        out: dict[str, Any] = {
+            "adapt_id": normalized_adapt,
+            "player_id": normalized_player,
+            "verified": False,
+            "cache_verified": cache_verified,
+            "cached": cached if isinstance(cached, dict) else None,
+            "source": "none",
+        }
+
+        remote_error = ""
+        remote_verified = False
+        try:
+            remote_verified = bool(self.novaprime_client.identity_verify(normalized_adapt, normalized_player))
+        except Exception as exc:
+            remote_error = str(exc)
+            out["novaprime_error"] = remote_error
+
+        if remote_verified:
+            profile: dict[str, Any] | None = None
+            if bool(refresh_profile):
+                try:
+                    loaded = self.novaprime_client.identity_profile(normalized_adapt)
+                    if isinstance(loaded, dict):
+                        profile = loaded
+                        out["profile"] = profile
+                except Exception as exc:
+                    out["profile_error"] = str(exc)
+            remembered_profile: dict[str, Any]
+            if isinstance(profile, dict):
+                remembered_profile = profile
+            elif isinstance(cached, dict) and isinstance(cached.get("profile"), dict):
+                remembered_profile = dict(cached.get("profile"))
+            else:
+                remembered_profile = {}
+            remembered = self.adapt_bond_cache.remember(
+                normalized_adapt,
+                normalized_player,
+                verified=True,
+                profile=remembered_profile,
+                source="novaprime_verify",
+            )
+            out["verified"] = True
+            out["source"] = "novaprime"
+            out["cached"] = remembered
+            out["ok"] = True
+            return out
+
+        if cache_verified:
+            out["verified"] = True
+            out["source"] = "cache_fallback"
+            out["ok"] = True
+            return out
+
+        out["ok"] = not bool(remote_error)
+        return out
+
+    def adapt_persona_get(
+        self,
+        adapt_id: str,
+        *,
+        player_id: str = "",
+    ) -> dict[str, Any]:
+        normalized_adapt = str(adapt_id or "").strip()
+        normalized_player = str(player_id or "").strip()
+        if not normalized_adapt:
+            raise ValueError("'adapt_id' is required")
+
+        toggle_state = self.adapt_toggle_store.get(normalized_adapt)
+        cached_bond = self.adapt_bond_cache.get(normalized_adapt)
+        identity_profile: dict[str, Any] | None = None
+        bond_verified: bool | None = None
+
+        verify_result: dict[str, Any] | None = None
+        if normalized_player:
+            verify_result = self.adapt_bond_verify(
+                normalized_adapt,
+                normalized_player,
+                refresh_profile=False,
+            )
+            bond_verified = bool(verify_result.get("verified", False))
+            cached_value = verify_result.get("cached")
+            if isinstance(cached_value, dict):
+                cached_bond = cached_value
+
+        try:
+            loaded_profile = self.novaprime_client.identity_profile(normalized_adapt)
+            if isinstance(loaded_profile, dict):
+                identity_profile = loaded_profile
+        except Exception as exc:
+            identity_profile = None
+            profile_error = str(exc)
+        else:
+            profile_error = ""
+
+        if bond_verified is None:
+            bond_verified = bool(cached_bond.get("verified", False)) if isinstance(cached_bond, dict) else False
+
+        persona = self.adapt_persona.build_context(
+            adapt_id=normalized_adapt,
+            toggle_mode=str(toggle_state.get("mode", "")) if isinstance(toggle_state, dict) else "",
+            bond_verified=bond_verified,
+            identity_profile=identity_profile,
+            cached_bond=cached_bond,
+        )
+
+        out: dict[str, Any] = {
+            "ok": True,
+            "adapt_id": normalized_adapt,
+            "player_id": normalized_player or None,
+            "toggle": toggle_state,
+            "cached_bond": cached_bond if isinstance(cached_bond, dict) else None,
+            "bond_verified": bool(bond_verified),
+            "profile": identity_profile if isinstance(identity_profile, dict) else None,
+            "persona": persona,
+        }
+        if verify_result is not None:
+            out["verify"] = verify_result
+        if profile_error:
+            out["profile_error"] = profile_error
+        return out
+
     def memory_recall(self, query: str, *, top_k: int = 10) -> dict[str, Any]:
         normalized_query = str(query or "").strip()
         if not normalized_query:

@@ -238,6 +238,24 @@ class _StubService:
     def adapt_bond_get(self, adapt_id: str):
         return {"adapt_id": adapt_id, "player_id": "player-1", "verified": True}
 
+    def adapt_bond_verify(self, adapt_id: str, player_id: str, *, refresh_profile: bool = True):
+        return {
+            "ok": True,
+            "adapt_id": adapt_id,
+            "player_id": player_id,
+            "verified": True,
+            "source": "novaprime",
+            "refresh_profile": refresh_profile,
+        }
+
+    def adapt_persona_get(self, adapt_id: str, *, player_id: str = ""):
+        return {
+            "ok": True,
+            "adapt_id": adapt_id,
+            "player_id": player_id or None,
+            "persona": {"adapt_id": adapt_id, "communication_style": "in_world", "trust_band": "bonded"},
+        }
+
     def memory_recall(self, query, top_k=10):
         return {"query": query, "top_k": top_k, "count": 1, "memories": [{"content": "remembered"}]}
 
@@ -315,6 +333,8 @@ class MCPServerTests(unittest.TestCase):
         self.assertIn("novaadapt_adapt_toggle_get", names)
         self.assertIn("novaadapt_adapt_toggle_set", names)
         self.assertIn("novaadapt_adapt_bond_get", names)
+        self.assertIn("novaadapt_adapt_bond_verify", names)
+        self.assertIn("novaadapt_adapt_persona_get", names)
         self.assertIn("novaadapt_memory_recall", names)
         self.assertIn("novaadapt_memory_ingest", names)
         self.assertIn("novaadapt_browser_status", names)
@@ -955,6 +975,36 @@ class MCPServerTests(unittest.TestCase):
         adapt_bond_payload = adapt_bond_resp["result"]["content"][0]["json"]
         self.assertEqual(adapt_bond_payload["adapt_id"], "adapt-1")
         self.assertTrue(adapt_bond_payload["cached"]["verified"])
+
+        adapt_bond_verify_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 915,
+                "method": "tools/call",
+                "params": {
+                    "name": "novaadapt_adapt_bond_verify",
+                    "arguments": {"adapt_id": "adapt-1", "player_id": "player-1"},
+                },
+            }
+        )
+        adapt_bond_verify_payload = adapt_bond_verify_resp["result"]["content"][0]["json"]
+        self.assertTrue(adapt_bond_verify_payload["verified"])
+        self.assertEqual(adapt_bond_verify_payload["source"], "novaprime")
+
+        adapt_persona_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 916,
+                "method": "tools/call",
+                "params": {
+                    "name": "novaadapt_adapt_persona_get",
+                    "arguments": {"adapt_id": "adapt-1", "player_id": "player-1"},
+                },
+            }
+        )
+        adapt_persona_payload = adapt_persona_resp["result"]["content"][0]["json"]
+        self.assertTrue(adapt_persona_payload["ok"])
+        self.assertEqual(adapt_persona_payload["persona"]["adapt_id"], "adapt-1")
 
         memory_recall_resp = server.handle_request(
             {

@@ -119,6 +119,18 @@ class _Handler(BaseHTTPRequestHandler):
                 {"adapt_id": "adapt-1", "found": True, "cached": {"player_id": "player-1", "verified": True}},
             )
             return
+        if self.path.startswith("/adapt/persona?"):
+            self._send(
+                200,
+                {
+                    "ok": True,
+                    "adapt_id": "adapt-1",
+                    "player_id": "player-1",
+                    "bond_verified": True,
+                    "persona": {"adapt_id": "adapt-1", "communication_style": "in_world"},
+                },
+            )
+            return
         if self.path == "/browser/status":
             self._send(200, {"ok": True, "transport": "browser", "capabilities": ["navigate", "click_selector"]})
             return
@@ -287,6 +299,7 @@ class _Handler(BaseHTTPRequestHandler):
             "/sib/resonance/start",
             "/sib/resonance/result",
             "/adapt/toggle",
+            "/adapt/bond/verify",
             "/memory/recall",
             "/memory/ingest",
             "/browser/action",
@@ -493,6 +506,17 @@ class _Handler(BaseHTTPRequestHandler):
                         "adapt_id": payload.get("adapt_id"),
                         "mode": payload.get("mode"),
                         "source": payload.get("source", "api_client"),
+                    },
+                )
+            elif self.path == "/adapt/bond/verify":
+                self._send(
+                    200,
+                    {
+                        "ok": True,
+                        "adapt_id": payload.get("adapt_id"),
+                        "player_id": payload.get("player_id"),
+                        "verified": True,
+                        "source": "novaprime",
                     },
                 )
             elif self.path == "/memory/recall":
@@ -786,6 +810,8 @@ class APIClientTests(unittest.TestCase):
         self.assertEqual(client.set_adapt_toggle("adapt-1", "in_game_only")["mode"], "in_game_only")
         self.assertEqual(client.adapt_toggle("adapt-1")["mode"], "ask_only")
         self.assertTrue(client.adapt_bond("adapt-1")["found"])
+        self.assertTrue(client.adapt_bond_verify("adapt-1", "player-1")["verified"])
+        self.assertTrue(client.adapt_persona("adapt-1", player_id="player-1")["bond_verified"])
         recall_payload = client.memory_recall("excel formatting", top_k=3)
         self.assertEqual(recall_payload["query"], "excel formatting")
         self.assertEqual(recall_payload["count"], 1)

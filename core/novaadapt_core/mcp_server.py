@@ -579,6 +579,31 @@ class NovaAdaptMCPServer:
                 },
             ),
             MCPTool(
+                name="novaadapt_adapt_bond_verify",
+                description="Verify Adapt bond against NovaPrime with cache fallback",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "adapt_id": {"type": "string"},
+                        "player_id": {"type": "string"},
+                        "refresh_profile": {"type": "boolean"},
+                    },
+                    "required": ["adapt_id", "player_id"],
+                },
+            ),
+            MCPTool(
+                name="novaadapt_adapt_persona_get",
+                description="Get Adapt persona context (toggle, profile, trust band)",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "adapt_id": {"type": "string"},
+                        "player_id": {"type": "string"},
+                    },
+                    "required": ["adapt_id"],
+                },
+            ),
+            MCPTool(
                 name="novaadapt_memory_recall",
                 description="Recall relevant long-term memory entries",
                 input_schema={
@@ -1140,6 +1165,25 @@ class NovaAdaptMCPServer:
                 "adapt_id": adapt_id,
                 "cached": self.service.adapt_bond_get(adapt_id),
             }
+        if tool_name == "novaadapt_adapt_bond_verify":
+            adapt_id = str(arguments.get("adapt_id", "")).strip()
+            player_id = str(arguments.get("player_id", "")).strip()
+            refresh_profile = bool(arguments.get("refresh_profile", True))
+            if not adapt_id:
+                raise ValueError("'adapt_id' is required")
+            if not player_id:
+                raise ValueError("'player_id' is required")
+            return self.service.adapt_bond_verify(
+                adapt_id,
+                player_id,
+                refresh_profile=refresh_profile,
+            )
+        if tool_name == "novaadapt_adapt_persona_get":
+            adapt_id = str(arguments.get("adapt_id", "")).strip()
+            player_id = str(arguments.get("player_id", "")).strip()
+            if not adapt_id:
+                raise ValueError("'adapt_id' is required")
+            return self.service.adapt_persona_get(adapt_id, player_id=player_id)
         if tool_name == "novaadapt_memory_recall":
             query = str(arguments.get("query", "")).strip()
             if not query:

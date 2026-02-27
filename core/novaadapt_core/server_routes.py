@@ -33,6 +33,7 @@ def build_get_private_routes(handler: Any) -> dict[str, Any]:
         "/sib/status": handler._get_sib_status,
         "/adapt/toggle": handler._get_adapt_toggle,
         "/adapt/bond": handler._get_adapt_bond,
+        "/adapt/persona": handler._get_adapt_persona,
         "/terminal/sessions": handler._get_terminal_sessions,
         "/browser/status": handler._get_browser_status,
         "/browser/pages": handler._get_browser_pages,
@@ -97,6 +98,7 @@ def build_post_exact_routes(handler: Any) -> dict[str, Any]:
             "/novaprime/resonance/bond", body
         ),
         "/adapt/toggle": lambda body: handler._post_adapt_toggle("/adapt/toggle", body),
+        "/adapt/bond/verify": lambda body: handler._post_adapt_bond_verify("/adapt/bond/verify", body),
         "/memory/recall": lambda body: handler._post_memory_recall("/memory/recall", body),
         "/memory/ingest": lambda body: handler._post_memory_ingest("/memory/ingest", body),
         "/terminal/sessions": lambda body: handler._post_terminal_start("/terminal/sessions", body),
@@ -156,6 +158,8 @@ def is_idempotent_route(path: str) -> bool:
     }:
         return True
     if path in {"/adapt/toggle"}:
+        return True
+    if path in {"/adapt/bond/verify"}:
         return True
     if path in {"/memory/ingest"}:
         return True

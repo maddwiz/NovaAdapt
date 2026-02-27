@@ -546,6 +546,32 @@ def build_openapi_spec() -> dict:
                     "responses": {"200": {"description": "Adapt bond cache record"}},
                 }
             },
+            "/adapt/bond/verify": {
+                "post": {
+                    "summary": "Verify Adapt soulbond against NovaPrime with cache fallback",
+                    "responses": {"200": {"description": "Bond verification result"}},
+                }
+            },
+            "/adapt/persona": {
+                "get": {
+                    "summary": "Get Adapt persona context by adapt_id",
+                    "parameters": [
+                        {
+                            "name": "adapt_id",
+                            "in": "query",
+                            "required": True,
+                            "schema": {"type": "string"},
+                        },
+                        {
+                            "name": "player_id",
+                            "in": "query",
+                            "required": False,
+                            "schema": {"type": "string"},
+                        },
+                    ],
+                    "responses": {"200": {"description": "Adapt persona context"}},
+                }
+            },
             "/memory/recall": {
                 "post": {
                     "summary": "Recall memory entries relevant to a query",

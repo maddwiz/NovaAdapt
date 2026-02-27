@@ -1032,6 +1032,28 @@ class ServiceTests(unittest.TestCase):
                 [str(item.get("method")) for item in backend.calls],
             )
 
+    def test_adapt_bond_verify_and_persona(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            service = NovaAdaptService(
+                default_config=Path("unused.json"),
+                router_loader=lambda _path: _StubRouter(),
+                directshell_factory=_StubDirectShell,
+                novaprime_client=_StubNovaPrimeBackend(),
+                adapt_toggle_store=AdaptToggleStore(state_path=Path(tmp) / "toggles.json"),
+                adapt_bond_cache=AdaptBondCache(state_path=Path(tmp) / "bonds.json"),
+            )
+            verified = service.adapt_bond_verify("adapt-1", "player-1")
+            self.assertTrue(verified["ok"])
+            self.assertTrue(verified["verified"])
+            self.assertEqual(verified["source"], "novaprime")
+            self.assertTrue(service.adapt_bond_get("adapt-1"))
+
+            persona = service.adapt_persona_get("adapt-1", player_id="player-1")
+            self.assertTrue(persona["ok"])
+            self.assertTrue(persona["bond_verified"])
+            self.assertEqual(persona["persona"]["adapt_id"], "adapt-1")
+            self.assertEqual(persona["persona"]["element"], "light")
+
     def test_run_uses_cached_bond_when_novaprime_unavailable(self):
         with tempfile.TemporaryDirectory() as tmp:
             router = _CapturingRouter()

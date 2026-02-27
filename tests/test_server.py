@@ -241,6 +241,8 @@ class ServerTests(unittest.TestCase):
                 self.assertIn("/sib/resonance/result", openapi["paths"])
                 self.assertIn("/adapt/toggle", openapi["paths"])
                 self.assertIn("/adapt/bond", openapi["paths"])
+                self.assertIn("/adapt/bond/verify", openapi["paths"])
+                self.assertIn("/adapt/persona", openapi["paths"])
                 self.assertIn("/memory/recall", openapi["paths"])
                 self.assertIn("/memory/ingest", openapi["paths"])
                 self.assertIn("/browser/status", openapi["paths"])
@@ -490,6 +492,19 @@ class ServerTests(unittest.TestCase):
                 self.assertEqual(adapt_toggle_get["mode"], "ask_only")
                 adapt_bond, _ = _get_json_with_headers(f"http://{host}:{port}/adapt/bond?adapt_id=adapt-1")
                 self.assertIn("found", adapt_bond)
+                adapt_bond_verify, _ = _post_json_with_headers(
+                    f"http://{host}:{port}/adapt/bond/verify",
+                    {"adapt_id": "adapt-1", "player_id": "player-1"},
+                )
+                self.assertEqual(adapt_bond_verify["adapt_id"], "adapt-1")
+                self.assertEqual(adapt_bond_verify["player_id"], "player-1")
+                self.assertIn("verified", adapt_bond_verify)
+                adapt_persona, _ = _get_json_with_headers(
+                    f"http://{host}:{port}/adapt/persona?adapt_id=adapt-1&player_id=player-1"
+                )
+                self.assertTrue(adapt_persona["ok"])
+                self.assertEqual(adapt_persona["adapt_id"], "adapt-1")
+                self.assertIn("persona", adapt_persona)
 
                 memory_recall, _ = _post_json_with_headers(
                     f"http://{host}:{port}/memory/recall",

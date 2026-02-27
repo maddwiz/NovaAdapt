@@ -51,3 +51,46 @@ def get_adapt_bond(
         },
     )
     return 200
+
+
+def post_adapt_bond_verify(
+    handler,
+    service: NovaAdaptService,
+    payload: dict[str, object],
+) -> int:
+    adapt_id = str(payload.get("adapt_id") or "").strip()
+    player_id = str(payload.get("player_id") or "").strip()
+    refresh_profile = bool(payload.get("refresh_profile", True))
+    if not adapt_id:
+        raise ValueError("'adapt_id' is required")
+    if not player_id:
+        raise ValueError("'player_id' is required")
+    handler._send_json(
+        200,
+        service.adapt_bond_verify(
+            adapt_id,
+            player_id,
+            refresh_profile=refresh_profile,
+        ),
+    )
+    return 200
+
+
+def get_adapt_persona(
+    handler,
+    service: NovaAdaptService,
+    single,
+    query: dict[str, list[str]],
+) -> int:
+    adapt_id = str(single(query, "adapt_id") or "").strip()
+    player_id = str(single(query, "player_id") or "").strip()
+    if not adapt_id:
+        raise ValueError("'adapt_id' is required")
+    handler._send_json(
+        200,
+        service.adapt_persona_get(
+            adapt_id,
+            player_id=player_id,
+        ),
+    )
+    return 200

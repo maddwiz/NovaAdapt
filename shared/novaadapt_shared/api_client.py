@@ -526,6 +526,37 @@ class NovaAdaptAPIClient:
             return payload
         raise APIClientError("Expected object payload from /adapt/bond")
 
+    def adapt_bond_verify(
+        self,
+        adapt_id: str,
+        player_id: str,
+        *,
+        refresh_profile: bool = True,
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        payload = self._post_json(
+            "/adapt/bond/verify",
+            {
+                "adapt_id": str(adapt_id or ""),
+                "player_id": str(player_id or ""),
+                "refresh_profile": bool(refresh_profile),
+            },
+            idempotency_key=idempotency_key,
+        )
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /adapt/bond/verify")
+
+    def adapt_persona(self, adapt_id: str, *, player_id: str = "") -> dict[str, Any]:
+        qs = f"/adapt/persona?adapt_id={quote(str(adapt_id), safe='')}"
+        normalized_player = str(player_id or "").strip()
+        if normalized_player:
+            qs = f"{qs}&player_id={quote(normalized_player, safe='')}"
+        payload = self._get_json(qs)
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /adapt/persona")
+
     def memory_recall(self, query: str, top_k: int = 10) -> dict[str, Any]:
         payload = self._post_json(
             "/memory/recall",

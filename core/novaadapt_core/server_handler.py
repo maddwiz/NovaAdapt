@@ -280,6 +280,9 @@ def _build_handler(
         def _get_adapt_bond(self, query: dict[str, list[str]]) -> int:
             return adapt_routes.get_adapt_bond(self, service, _single, query)
 
+        def _get_adapt_persona(self, query: dict[str, list[str]]) -> int:
+            return adapt_routes.get_adapt_persona(self, service, _single, query)
+
         def _get_browser_status(self, _query: dict[str, list[str]]) -> int:
             return terminal_browser_routes.get_browser_status(self, service)
 
@@ -416,6 +419,9 @@ def _build_handler(
 
         def _post_adapt_toggle(self, _path: str, payload: dict[str, object]) -> int:
             return adapt_routes.post_adapt_toggle(self, service, payload)
+
+        def _post_adapt_bond_verify(self, _path: str, payload: dict[str, object]) -> int:
+            return adapt_routes.post_adapt_bond_verify(self, service, payload)
 
         def _post_memory_ingest(self, path: str, payload: dict[str, object]) -> int:
             return memory_routes.post_memory_ingest(self, service, path, payload)
