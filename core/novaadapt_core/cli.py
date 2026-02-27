@@ -96,6 +96,34 @@ def _build_parser() -> argparse.ArgumentParser:
         default=25,
         help="Cap the number of actions executed from the generated plan",
     )
+    run_cmd.add_argument("--adapt-id", default="")
+    run_cmd.add_argument("--player-id", default="")
+    run_cmd.add_argument("--realm", default="")
+    run_cmd.add_argument("--activity", default="")
+    run_cmd.add_argument("--post-realm", default="")
+    run_cmd.add_argument("--post-activity", default="")
+    run_cmd.add_argument(
+        "--toggle-mode",
+        default="",
+        choices=["", "free_speak", "in_game_only", "ask_only", "silent"],
+        help="Optional Adapt communication mode context",
+    )
+    run_cmd.add_argument("--mesh-node-id", default="")
+    run_cmd.add_argument("--mesh-probe", action="store_true")
+    run_cmd.add_argument("--mesh-probe-marketplace", action="store_true")
+    run_cmd.add_argument("--mesh-credit-amount", type=float, default=None)
+    run_cmd.add_argument("--mesh-transfer-to", default="")
+    run_cmd.add_argument("--mesh-transfer-amount", type=float, default=None)
+    run_cmd.add_argument(
+        "--mesh-marketplace-list",
+        default="",
+        help="Optional JSON object for marketplace list op (capsule_id/seller/price/title)",
+    )
+    run_cmd.add_argument(
+        "--mesh-marketplace-buy",
+        default="",
+        help="Optional JSON object for marketplace buy op (listing_id/buyer)",
+    )
 
     history_cmd = sub.add_parser("history", help="Show recent action history")
     history_cmd.add_argument("--limit", type=int, default=20)
@@ -168,6 +196,34 @@ def _build_parser() -> argparse.ArgumentParser:
         type=int,
         default=25,
         help="Cap the number of generated plan actions",
+    )
+    plan_create_cmd.add_argument("--adapt-id", default="")
+    plan_create_cmd.add_argument("--player-id", default="")
+    plan_create_cmd.add_argument("--realm", default="")
+    plan_create_cmd.add_argument("--activity", default="")
+    plan_create_cmd.add_argument("--post-realm", default="")
+    plan_create_cmd.add_argument("--post-activity", default="")
+    plan_create_cmd.add_argument(
+        "--toggle-mode",
+        default="",
+        choices=["", "free_speak", "in_game_only", "ask_only", "silent"],
+        help="Optional Adapt communication mode context",
+    )
+    plan_create_cmd.add_argument("--mesh-node-id", default="")
+    plan_create_cmd.add_argument("--mesh-probe", action="store_true")
+    plan_create_cmd.add_argument("--mesh-probe-marketplace", action="store_true")
+    plan_create_cmd.add_argument("--mesh-credit-amount", type=float, default=None)
+    plan_create_cmd.add_argument("--mesh-transfer-to", default="")
+    plan_create_cmd.add_argument("--mesh-transfer-amount", type=float, default=None)
+    plan_create_cmd.add_argument(
+        "--mesh-marketplace-list",
+        default="",
+        help="Optional JSON object for marketplace list op (capsule_id/seller/price/title)",
+    )
+    plan_create_cmd.add_argument(
+        "--mesh-marketplace-buy",
+        default="",
+        help="Optional JSON object for marketplace buy op (listing_id/buyer)",
     )
 
     plan_approve_cmd = sub.add_parser("plan-approve", help="Approve plan and optionally execute actions")
@@ -839,6 +895,21 @@ def main() -> None:
                 "execute": bool(args.execute),
                 "allow_dangerous": bool(args.allow_dangerous),
                 "max_actions": max(1, args.max_actions),
+                "adapt_id": str(args.adapt_id or "").strip(),
+                "player_id": str(args.player_id or "").strip(),
+                "realm": str(args.realm or "").strip(),
+                "activity": str(args.activity or "").strip(),
+                "post_realm": str(args.post_realm or "").strip(),
+                "post_activity": str(args.post_activity or "").strip(),
+                "toggle_mode": str(args.toggle_mode or "").strip(),
+                "mesh_node_id": str(args.mesh_node_id or "").strip(),
+                "mesh_probe": bool(args.mesh_probe),
+                "mesh_probe_marketplace": bool(args.mesh_probe_marketplace),
+                "mesh_credit_amount": args.mesh_credit_amount,
+                "mesh_transfer_to": str(args.mesh_transfer_to or "").strip(),
+                "mesh_transfer_amount": args.mesh_transfer_amount,
+                "mesh_marketplace_list": _parse_optional_json_object(args.mesh_marketplace_list, "--mesh-marketplace-list"),
+                "mesh_marketplace_buy": _parse_optional_json_object(args.mesh_marketplace_buy, "--mesh-marketplace-buy"),
             }
             print(json.dumps(service.run(payload), indent=2))
             return
@@ -856,6 +927,21 @@ def main() -> None:
                 "candidates": args.candidates,
                 "fallbacks": args.fallbacks,
                 "max_actions": max(1, args.max_actions),
+                "adapt_id": str(args.adapt_id or "").strip(),
+                "player_id": str(args.player_id or "").strip(),
+                "realm": str(args.realm or "").strip(),
+                "activity": str(args.activity or "").strip(),
+                "post_realm": str(args.post_realm or "").strip(),
+                "post_activity": str(args.post_activity or "").strip(),
+                "toggle_mode": str(args.toggle_mode or "").strip(),
+                "mesh_node_id": str(args.mesh_node_id or "").strip(),
+                "mesh_probe": bool(args.mesh_probe),
+                "mesh_probe_marketplace": bool(args.mesh_probe_marketplace),
+                "mesh_credit_amount": args.mesh_credit_amount,
+                "mesh_transfer_to": str(args.mesh_transfer_to or "").strip(),
+                "mesh_transfer_amount": args.mesh_transfer_amount,
+                "mesh_marketplace_list": _parse_optional_json_object(args.mesh_marketplace_list, "--mesh-marketplace-list"),
+                "mesh_marketplace_buy": _parse_optional_json_object(args.mesh_marketplace_buy, "--mesh-marketplace-buy"),
             }
             print(json.dumps(service.create_plan(payload), indent=2))
             return
@@ -1308,6 +1394,16 @@ def _parse_csv(raw: str | None) -> list[str]:
     if not raw:
         return []
     return [item.strip() for item in str(raw).split(",") if item.strip()]
+
+
+def _parse_optional_json_object(raw: object, arg_name: str) -> dict[str, object] | None:
+    text = str(raw or "").strip()
+    if not text:
+        return None
+    parsed = json.loads(text)
+    if not isinstance(parsed, dict):
+        raise ValueError(f"{arg_name} must be a JSON object")
+    return parsed
 
 
 if __name__ == "__main__":

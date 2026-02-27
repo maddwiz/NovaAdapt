@@ -80,7 +80,102 @@ class AdaptCLITests(unittest.TestCase):
         self.assertTrue(payload["ok"])
         self.assertEqual(payload["persona"]["adapt_id"], "adapt-1")
 
+    def test_run_command_passes_adapt_and_mesh_context(self):
+        service = mock.Mock()
+        service.run.return_value = {"ok": True}
+        with mock.patch("novaadapt_core.cli.NovaAdaptService", return_value=service):
+            payload = self._run_cli(
+                "run",
+                "--objective",
+                "Map border patrol",
+                "--adapt-id",
+                "adapt-1",
+                "--player-id",
+                "player-1",
+                "--realm",
+                "game_world",
+                "--activity",
+                "patrol",
+                "--post-realm",
+                "aetherion",
+                "--post-activity",
+                "idle",
+                "--toggle-mode",
+                "in_game_only",
+                "--mesh-node-id",
+                "node-1",
+                "--mesh-probe",
+                "--mesh-probe-marketplace",
+                "--mesh-credit-amount",
+                "10.5",
+                "--mesh-transfer-to",
+                "node-2",
+                "--mesh-transfer-amount",
+                "3.25",
+                "--mesh-marketplace-list",
+                '{"capsule_id":"capsule-1","seller":"node-1","price":25,"title":"Storm Slash"}',
+                "--mesh-marketplace-buy",
+                '{"listing_id":"listing-1","buyer":"node-2"}',
+            )
+        self.assertTrue(payload["ok"])
+        service.run.assert_called_once()
+        run_payload = service.run.call_args.args[0]
+        self.assertEqual(run_payload["adapt_id"], "adapt-1")
+        self.assertEqual(run_payload["player_id"], "player-1")
+        self.assertTrue(run_payload["mesh_probe"])
+        self.assertTrue(run_payload["mesh_probe_marketplace"])
+        self.assertEqual(run_payload["mesh_marketplace_list"]["capsule_id"], "capsule-1")
+        self.assertEqual(run_payload["mesh_marketplace_buy"]["listing_id"], "listing-1")
+
+    def test_plan_create_command_passes_adapt_and_mesh_context(self):
+        service = mock.Mock()
+        service.create_plan.return_value = {"id": "plan-1", "status": "pending"}
+        with mock.patch("novaadapt_core.cli.NovaAdaptService", return_value=service):
+            payload = self._run_cli(
+                "plan-create",
+                "--objective",
+                "Plan mesh strategy",
+                "--adapt-id",
+                "adapt-2",
+                "--player-id",
+                "player-2",
+                "--toggle-mode",
+                "ask_only",
+                "--mesh-node-id",
+                "node-2",
+                "--mesh-credit-amount",
+                "4",
+                "--mesh-marketplace-buy",
+                '{"listing_id":"listing-2","buyer":"node-2"}',
+            )
+        self.assertEqual(payload["id"], "plan-1")
+        service.create_plan.assert_called_once()
+        plan_payload = service.create_plan.call_args.args[0]
+        self.assertEqual(plan_payload["adapt_id"], "adapt-2")
+        self.assertEqual(plan_payload["player_id"], "player-2")
+        self.assertEqual(plan_payload["toggle_mode"], "ask_only")
+        self.assertEqual(plan_payload["mesh_marketplace_buy"]["listing_id"], "listing-2")
+
+    def test_run_rejects_invalid_mesh_json(self):
+        service = mock.Mock()
+        with mock.patch("novaadapt_core.cli.NovaAdaptService", return_value=service):
+            with mock.patch.object(
+                sys,
+                "argv",
+                [
+                    "novaadapt",
+                    "run",
+                    "--objective",
+                    "x",
+                    "--mesh-marketplace-list",
+                    "[1,2,3]",
+                ],
+            ):
+                with self.assertRaises(SystemExit) as exc:
+                    cli.main()
+        self.assertIn("--mesh-marketplace-list must be a JSON object", str(exc.exception))
+        service.run.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()
-

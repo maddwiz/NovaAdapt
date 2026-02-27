@@ -113,6 +113,19 @@ novaadapt run \
   --objective "Open a browser and navigate to example.com" \
   --strategy vote \
   --candidates local-qwen,openai-gpt
+
+# SIB/NovaPrime-aware run context (identity/presence/mesh probes)
+novaadapt run \
+  --config config/models.local.json \
+  --objective "Plan eastern patrol route" \
+  --adapt-id adapt-1 \
+  --player-id player-1 \
+  --realm game_world \
+  --activity patrol \
+  --toggle-mode in_game_only \
+  --mesh-node-id node-1 \
+  --mesh-probe \
+  --mesh-probe-marketplace
 ```
 
 `--candidates` is optional in vote mode; if omitted, NovaAdapt uses configured defaults (`routing.default_vote_candidates`).
