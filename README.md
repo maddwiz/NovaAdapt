@@ -39,7 +39,7 @@ Implemented now:
 - `view` realtime console now includes xterm.js terminal session streaming, typed websocket browser controls (`browser_*`), bridge session token tooling, runtime device-allowlist controls, and PWA install support for Android.
 - `desktop` Tauri operator shell (`desktop/tauri-shell`) for objective queueing, plan approval/rejection/failed-step retry/undo, job cancellation, and event visibility (production-ready).
 - `mobile` iOS SwiftUI companion source (`mobile/ios/NovaAdaptCompanion`) with objective/plan/job controls, websocket feed, remote terminal controls, bridge session issue/revoke flows, and bridge allowlist/device-id controls (production-ready).
-- `wearables` Halo/Omi adapter (`wearables/halo_bridge.py`) with bridge session leasing + optional async wait flow.
+- `wearables` Halo/Omi + XREAL X1 adapters (`wearables/halo_bridge.py`, `wearables/xreal_bridge.py`) with bridge session leasing + optional async wait flow.
 
 Release posture:
 - Core API/CLI, bridge relay, runtime executors, browser executor, view console, desktop shell, and iOS companion are production-ready for operator deployment.
@@ -638,6 +638,7 @@ Optional env vars:
 - `NOVAADAPT_BRIDGE_SESSION_SCOPES` (CSV scopes for leased vibe sessions)
 - `NOVAADAPT_BRIDGE_SESSION_TTL` (seconds for leased vibe sessions)
 - `NOVAADAPT_BRIDGE_ENSURE_DEVICE_ALLOWLISTED=1` (auto add `--session-device-id` on admin-leased wearable sessions)
+- `NOVAADAPT_XREAL_DEVICE_MODEL` / `NOVAADAPT_XREAL_DISPLAY_MODE` / `NOVAADAPT_XREAL_HAND_TRACKING`
 - `NOVAADAPT_WITH_VIEW=0` (skip static view server)
 
 Wearable intent bridge:
@@ -664,6 +665,20 @@ PYTHONPATH=core:shared python3 wearables/halo_bridge.py \
   --wait
 ```
 
+XREAL X1 adapter:
+
+```bash
+PYTHONPATH=core:shared python3 wearables/xreal_bridge.py \
+  --bridge-url http://127.0.0.1:9797 \
+  --admin-token YOUR_BRIDGE_ADMIN_TOKEN \
+  --ensure-device-allowlisted \
+  --session-device-id xreal-x1-1 \
+  --display-mode ar_overlay \
+  --hand-tracking \
+  --objective "Open Aetherion market status and summarize top listings" \
+  --wait
+```
+
 Desktop Tauri shell:
 
 ```bash
@@ -676,6 +691,7 @@ Native iOS companion source and wearable adapters:
 
 - `mobile/ios/NovaAdaptCompanion` (SwiftUI companion source)
 - `wearables/halo_bridge.py` (wearable intent submission + bridge session leasing helper)
+- `wearables/xreal_bridge.py` (XREAL X1 intent submission + bridge session leasing helper)
 - `docs/realtime_protocol.md` + `config/protocols/realtime.v1.json` (shared realtime contract)
 
 ## Model-Agnostic Design
