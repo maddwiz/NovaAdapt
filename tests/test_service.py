@@ -165,6 +165,18 @@ class _StubNovaPrimeBackend:
     def status(self):
         return {"ok": True, "enabled": True, "backend": "novaprime-http"}
 
+    def reason_dual(self, task: str):
+        self.calls.append({"method": "reason_dual", "task": task})
+        return {"ok": True, "final_text": f"plan:{task}"}
+
+    def emotion_get(self):
+        self.calls.append({"method": "emotion_get"})
+        return {"ok": True, "emotions": {"focus": 0.5, "curiosity": 0.7}}
+
+    def emotion_set(self, chemicals: dict[str, float]):
+        self.calls.append({"method": "emotion_set", "chemicals": dict(chemicals)})
+        return {"ok": True, "emotions": dict(chemicals)}
+
     def identity_verify(self, adapt_id: str, player_id: str):
         self.calls.append({"method": "identity_verify", "adapt_id": adapt_id, "player_id": player_id})
         return True
@@ -856,6 +868,16 @@ class ServiceTests(unittest.TestCase):
         resonance_bond = service.novaprime_resonance_bond("player-1", {"class": "sentinel"}, adapt_id="adapt-1")
         self.assertTrue(resonance_bond["ok"])
 
+        reason = service.novaprime_reason_dual("Map eastern patrol routes")
+        self.assertTrue(reason["ok"])
+
+        emotion_get = service.novaprime_emotion_get()
+        self.assertTrue(emotion_get["ok"])
+
+        emotion_set = service.novaprime_emotion_set({"focus": 0.9, "calm": 0.6, "invalid": "x"})
+        self.assertTrue(emotion_set["ok"])
+        self.assertEqual(emotion_set["emotions"]["focus"], 0.9)
+
         mesh_balance = service.novaprime_mesh_balance("node-1")
         self.assertEqual(mesh_balance["balance"], 42.0)
 
@@ -876,6 +898,9 @@ class ServiceTests(unittest.TestCase):
         self.assertTrue(bought["ok"])
 
         method_names = [str(item.get("method")) for item in backend.calls]
+        self.assertIn("reason_dual", method_names)
+        self.assertIn("emotion_get", method_names)
+        self.assertIn("emotion_set", method_names)
         self.assertIn("mesh_balance", method_names)
         self.assertIn("mesh_credit", method_names)
         self.assertIn("mesh_transfer", method_names)

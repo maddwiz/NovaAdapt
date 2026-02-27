@@ -253,6 +253,9 @@ def _build_handler(
         def _get_novaprime_status(self, _query: dict[str, list[str]]) -> int:
             return novaprime_routes.get_novaprime_status(self, service)
 
+        def _get_novaprime_emotion(self, _query: dict[str, list[str]]) -> int:
+            return novaprime_routes.get_novaprime_emotion(self, service)
+
         def _get_novaprime_mesh_balance(self, query: dict[str, list[str]]) -> int:
             return novaprime_routes.get_novaprime_mesh_balance(self, service, _single, query)
 
@@ -368,6 +371,12 @@ def _build_handler(
 
         def _post_sib_resonance_result(self, _path: str, payload: dict[str, object]) -> int:
             return sib_routes.post_sib_resonance_result(self, service, payload)
+
+        def _post_novaprime_reason_dual(self, _path: str, payload: dict[str, object]) -> int:
+            return novaprime_routes.post_novaprime_reason_dual(self, service, payload)
+
+        def _post_novaprime_emotion(self, _path: str, payload: dict[str, object]) -> int:
+            return novaprime_routes.post_novaprime_emotion(self, service, payload)
 
         def _post_novaprime_mesh_credit(self, _path: str, payload: dict[str, object]) -> int:
             return novaprime_routes.post_novaprime_mesh_credit(self, service, payload)

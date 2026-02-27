@@ -258,6 +258,28 @@ class NovaAdaptMCPServer:
                 input_schema={"type": "object", "properties": {}},
             ),
             MCPTool(
+                name="novaadapt_novaprime_reason_dual",
+                description="Run task through NovaPrime dual-brain reasoning",
+                input_schema={
+                    "type": "object",
+                    "properties": {"task": {"type": "string"}},
+                    "required": ["task"],
+                },
+            ),
+            MCPTool(
+                name="novaadapt_novaprime_emotion_get",
+                description="Get NovaPrime emotion state",
+                input_schema={"type": "object", "properties": {}},
+            ),
+            MCPTool(
+                name="novaadapt_novaprime_emotion_set",
+                description="Set NovaPrime emotion state chemicals",
+                input_schema={
+                    "type": "object",
+                    "properties": {"chemicals": {"type": "object"}},
+                },
+            ),
+            MCPTool(
                 name="novaadapt_novaprime_mesh_balance",
                 description="Get NovaPrime mesh credit balance for a node",
                 input_schema={
@@ -869,6 +891,16 @@ class NovaAdaptMCPServer:
             return self.service.memory_status()
         if tool_name == "novaadapt_novaprime_status":
             return self.service.novaprime_status()
+        if tool_name == "novaadapt_novaprime_reason_dual":
+            task = str(arguments.get("task", "")).strip()
+            if not task:
+                raise ValueError("'task' is required")
+            return self.service.novaprime_reason_dual(task)
+        if tool_name == "novaadapt_novaprime_emotion_get":
+            return self.service.novaprime_emotion_get()
+        if tool_name == "novaadapt_novaprime_emotion_set":
+            chemicals = arguments.get("chemicals")
+            return self.service.novaprime_emotion_set(chemicals if isinstance(chemicals, dict) else {})
         if tool_name == "novaadapt_novaprime_mesh_balance":
             node_id = str(arguments.get("node_id", "")).strip()
             if not node_id:

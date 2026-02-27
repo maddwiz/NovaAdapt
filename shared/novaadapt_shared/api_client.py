@@ -129,6 +129,37 @@ class NovaAdaptAPIClient:
             return payload
         raise APIClientError("Expected object payload from /novaprime/status")
 
+    def novaprime_reason_dual(self, task: str, *, idempotency_key: str | None = None) -> dict[str, Any]:
+        payload = self._post_json(
+            "/novaprime/reason/dual",
+            {"task": str(task or "")},
+            idempotency_key=idempotency_key,
+        )
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /novaprime/reason/dual")
+
+    def novaprime_emotion_get(self) -> dict[str, Any]:
+        payload = self._get_json("/novaprime/reason/emotion")
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /novaprime/reason/emotion")
+
+    def novaprime_emotion_set(
+        self,
+        chemicals: dict[str, Any] | None = None,
+        *,
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        payload = self._post_json(
+            "/novaprime/reason/emotion",
+            {"chemicals": chemicals if isinstance(chemicals, dict) else {}},
+            idempotency_key=idempotency_key,
+        )
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /novaprime/reason/emotion")
+
     def novaprime_mesh_balance(self, node_id: str) -> dict[str, Any]:
         payload = self._get_json(f"/novaprime/mesh/balance?node_id={quote(str(node_id), safe='')}")
         if isinstance(payload, dict):

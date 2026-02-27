@@ -334,6 +334,22 @@ def build_openapi_spec() -> dict:
                     "responses": {"200": {"description": "NovaPrime backend status"}},
                 }
             },
+            "/novaprime/reason/emotion": {
+                "get": {
+                    "summary": "Get NovaPrime emotion state",
+                    "responses": {"200": {"description": "Emotion state response"}},
+                },
+                "post": {
+                    "summary": "Set NovaPrime emotion state chemicals",
+                    "responses": {"200": {"description": "Emotion update response"}},
+                },
+            },
+            "/novaprime/reason/dual": {
+                "post": {
+                    "summary": "Run a task through NovaPrime dual-brain reasoning",
+                    "responses": {"200": {"description": "Dual-brain reasoning response"}},
+                }
+            },
             "/novaprime/mesh/balance": {
                 "get": {
                     "summary": "Get NovaPrime mesh credit balance by node_id",

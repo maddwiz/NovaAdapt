@@ -68,6 +68,9 @@ class _Handler(BaseHTTPRequestHandler):
         if self.path == "/novaprime/status":
             self._send(200, {"ok": True, "enabled": True, "backend": "novaprime-http"})
             return
+        if self.path == "/novaprime/reason/emotion":
+            self._send(200, {"ok": True, "emotions": {"focus": 0.5, "curiosity": 0.7}})
+            return
         if self.path.startswith("/novaprime/mesh/balance?"):
             self._send(200, {"ok": True, "node_id": "node-1", "balance": 42.0})
             return
@@ -262,6 +265,8 @@ class _Handler(BaseHTTPRequestHandler):
             "/plans/plan-1/undo",
             "/plugins/novabridge/call",
             "/feedback",
+            "/novaprime/reason/dual",
+            "/novaprime/reason/emotion",
             "/novaprime/mesh/credit",
             "/novaprime/mesh/transfer",
             "/novaprime/marketplace/list",
@@ -346,6 +351,23 @@ class _Handler(BaseHTTPRequestHandler):
                 )
             elif self.path == "/feedback":
                 self._send(200, {"ok": True, "id": "feedback-1", "rating": payload.get("rating")})
+            elif self.path == "/novaprime/reason/dual":
+                self._send(
+                    200,
+                    {
+                        "ok": True,
+                        "choice": "architect",
+                        "final_text": f"plan:{payload.get('task')}",
+                    },
+                )
+            elif self.path == "/novaprime/reason/emotion":
+                self._send(
+                    200,
+                    {
+                        "ok": True,
+                        "emotions": payload.get("chemicals", {}),
+                    },
+                )
             elif self.path == "/novaprime/mesh/credit":
                 self._send(
                     200,
@@ -708,6 +730,9 @@ class APIClientTests(unittest.TestCase):
         self.assertEqual(feedback_payload["rating"], 8)
         self.assertTrue(client.memory_status()["ok"])
         self.assertTrue(client.novaprime_status()["ok"])
+        self.assertTrue(client.novaprime_reason_dual("Map eastern patrol routes")["ok"])
+        self.assertTrue(client.novaprime_emotion_get()["ok"])
+        self.assertTrue(client.novaprime_emotion_set({"focus": 0.8, "calm": 0.7})["ok"])
         self.assertTrue(client.novaprime_mesh_balance("node-1")["ok"])
         self.assertTrue(client.novaprime_marketplace_listings()["ok"])
         self.assertTrue(client.novaprime_identity_profile("adapt-1")["ok"])

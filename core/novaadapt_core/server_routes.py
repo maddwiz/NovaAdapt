@@ -24,6 +24,7 @@ def build_get_private_routes(handler: Any) -> dict[str, Any]:
         "/plugins": handler._get_plugins,
         "/memory/status": handler._get_memory_status,
         "/novaprime/status": handler._get_novaprime_status,
+        "/novaprime/reason/emotion": handler._get_novaprime_emotion,
         "/novaprime/mesh/balance": handler._get_novaprime_mesh_balance,
         "/novaprime/marketplace/listings": handler._get_novaprime_marketplace_listings,
         "/novaprime/identity/profile": handler._get_novaprime_identity_profile,
@@ -64,6 +65,8 @@ def build_post_exact_routes(handler: Any) -> dict[str, Any]:
         "/sib/phase-event": lambda body: handler._post_sib_phase_event("/sib/phase-event", body),
         "/sib/resonance/start": lambda body: handler._post_sib_resonance_start("/sib/resonance/start", body),
         "/sib/resonance/result": lambda body: handler._post_sib_resonance_result("/sib/resonance/result", body),
+        "/novaprime/reason/dual": lambda body: handler._post_novaprime_reason_dual("/novaprime/reason/dual", body),
+        "/novaprime/reason/emotion": lambda body: handler._post_novaprime_emotion("/novaprime/reason/emotion", body),
         "/novaprime/mesh/credit": lambda body: handler._post_novaprime_mesh_credit("/novaprime/mesh/credit", body),
         "/novaprime/mesh/transfer": lambda body: handler._post_novaprime_mesh_transfer(
             "/novaprime/mesh/transfer", body
@@ -143,6 +146,8 @@ def is_idempotent_route(path: str) -> bool:
         "/novaprime/presence/update",
         "/novaprime/resonance/score",
         "/novaprime/resonance/bond",
+        "/novaprime/reason/dual",
+        "/novaprime/reason/emotion",
         "/novaprime/mesh/credit",
         "/novaprime/mesh/transfer",
         "/novaprime/marketplace/list",

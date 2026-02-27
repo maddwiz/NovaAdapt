@@ -215,6 +215,8 @@ class ServerTests(unittest.TestCase):
                 self.assertIn("/feedback", openapi["paths"])
                 self.assertIn("/memory/status", openapi["paths"])
                 self.assertIn("/novaprime/status", openapi["paths"])
+                self.assertIn("/novaprime/reason/dual", openapi["paths"])
+                self.assertIn("/novaprime/reason/emotion", openapi["paths"])
                 self.assertIn("/novaprime/mesh/balance", openapi["paths"])
                 self.assertIn("/novaprime/marketplace/listings", openapi["paths"])
                 self.assertIn("/novaprime/identity/profile", openapi["paths"])
@@ -302,6 +304,23 @@ class ServerTests(unittest.TestCase):
                 novaprime_status, _ = _get_json_with_headers(f"http://{host}:{port}/novaprime/status")
                 self.assertIn("ok", novaprime_status)
                 self.assertIn("backend", novaprime_status)
+
+                novaprime_emotion_get, _ = _get_json_with_headers(
+                    f"http://{host}:{port}/novaprime/reason/emotion"
+                )
+                self.assertIn("ok", novaprime_emotion_get)
+
+                novaprime_reason, _ = _post_json_with_headers(
+                    f"http://{host}:{port}/novaprime/reason/dual",
+                    {"task": "Map eastern patrol routes"},
+                )
+                self.assertIn("ok", novaprime_reason)
+
+                novaprime_emotion_set, _ = _post_json_with_headers(
+                    f"http://{host}:{port}/novaprime/reason/emotion",
+                    {"chemicals": {"focus": 0.8, "calm": 0.7}},
+                )
+                self.assertIn("ok", novaprime_emotion_set)
 
                 novaprime_mesh_balance, _ = _get_json_with_headers(
                     f"http://{host}:{port}/novaprime/mesh/balance?node_id=node-1"

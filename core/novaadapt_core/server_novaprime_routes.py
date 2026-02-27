@@ -8,6 +8,11 @@ def get_novaprime_status(handler, service: NovaAdaptService) -> int:
     return 200
 
 
+def get_novaprime_emotion(handler, service: NovaAdaptService) -> int:
+    handler._send_json(200, service.novaprime_emotion_get())
+    return 200
+
+
 def get_novaprime_mesh_balance(
     handler,
     service: NovaAdaptService,
@@ -50,6 +55,18 @@ def post_novaprime_mesh_credit(handler, service: NovaAdaptService, payload: dict
     node_id = str(payload.get("node_id") or "").strip()
     amount = float(payload.get("amount", 0.0))
     handler._send_json(200, service.novaprime_mesh_credit(node_id, amount))
+    return 200
+
+
+def post_novaprime_reason_dual(handler, service: NovaAdaptService, payload: dict[str, object]) -> int:
+    task = str(payload.get("task") or "").strip()
+    handler._send_json(200, service.novaprime_reason_dual(task))
+    return 200
+
+
+def post_novaprime_emotion(handler, service: NovaAdaptService, payload: dict[str, object]) -> int:
+    chemicals = payload.get("chemicals")
+    handler._send_json(200, service.novaprime_emotion_set(chemicals if isinstance(chemicals, dict) else {}))
     return 200
 
 

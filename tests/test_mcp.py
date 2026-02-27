@@ -89,6 +89,15 @@ class _StubService:
     def novaprime_status(self):
         return {"ok": True, "enabled": True, "backend": "novaprime-http"}
 
+    def novaprime_reason_dual(self, task: str):
+        return {"ok": True, "task": task, "final_text": f"plan:{task}"}
+
+    def novaprime_emotion_get(self):
+        return {"ok": True, "emotions": {"focus": 0.5, "curiosity": 0.7}}
+
+    def novaprime_emotion_set(self, chemicals: dict | None = None):
+        return {"ok": True, "emotions": chemicals or {}}
+
     def novaprime_mesh_balance(self, node_id: str):
         return {"ok": True, "node_id": node_id, "balance": 42.0}
 
@@ -256,6 +265,9 @@ class MCPServerTests(unittest.TestCase):
         self.assertIn("novaadapt_feedback", names)
         self.assertIn("novaadapt_memory_status", names)
         self.assertIn("novaadapt_novaprime_status", names)
+        self.assertIn("novaadapt_novaprime_reason_dual", names)
+        self.assertIn("novaadapt_novaprime_emotion_get", names)
+        self.assertIn("novaadapt_novaprime_emotion_set", names)
         self.assertIn("novaadapt_novaprime_mesh_balance", names)
         self.assertIn("novaadapt_novaprime_mesh_credit", names)
         self.assertIn("novaadapt_novaprime_mesh_transfer", names)
@@ -508,6 +520,48 @@ class MCPServerTests(unittest.TestCase):
         )
         novaprime_status_payload = novaprime_status_resp["result"]["content"][0]["json"]
         self.assertTrue(novaprime_status_payload["ok"])
+
+        novaprime_reason_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 91099,
+                "method": "tools/call",
+                "params": {
+                    "name": "novaadapt_novaprime_reason_dual",
+                    "arguments": {"task": "Map eastern patrol routes"},
+                },
+            }
+        )
+        novaprime_reason_payload = novaprime_reason_resp["result"]["content"][0]["json"]
+        self.assertTrue(novaprime_reason_payload["ok"])
+
+        novaprime_emotion_get_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 910991,
+                "method": "tools/call",
+                "params": {
+                    "name": "novaadapt_novaprime_emotion_get",
+                    "arguments": {},
+                },
+            }
+        )
+        novaprime_emotion_get_payload = novaprime_emotion_get_resp["result"]["content"][0]["json"]
+        self.assertTrue(novaprime_emotion_get_payload["ok"])
+
+        novaprime_emotion_set_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 910992,
+                "method": "tools/call",
+                "params": {
+                    "name": "novaadapt_novaprime_emotion_set",
+                    "arguments": {"chemicals": {"focus": 0.8, "calm": 0.7}},
+                },
+            }
+        )
+        novaprime_emotion_set_payload = novaprime_emotion_set_resp["result"]["content"][0]["json"]
+        self.assertTrue(novaprime_emotion_set_payload["ok"])
 
         novaprime_mesh_balance_resp = server.handle_request(
             {

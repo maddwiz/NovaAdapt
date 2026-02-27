@@ -176,6 +176,37 @@ class NovaAdaptService:
             "error": "NovaPrime client returned invalid status payload",
         }
 
+    def novaprime_reason_dual(self, task: str) -> dict[str, Any]:
+        normalized_task = str(task or "").strip()
+        if not normalized_task:
+            raise ValueError("'task' is required")
+        result = self.novaprime_client.reason_dual(normalized_task)
+        if isinstance(result, dict):
+            return result
+        return {"ok": False, "error": "invalid novaprime reason response"}
+
+    def novaprime_emotion_get(self) -> dict[str, Any]:
+        result = self.novaprime_client.emotion_get()
+        if isinstance(result, dict):
+            return result
+        return {"ok": False, "error": "invalid novaprime emotion response"}
+
+    def novaprime_emotion_set(self, chemicals: dict[str, Any] | None = None) -> dict[str, Any]:
+        payload = chemicals if isinstance(chemicals, dict) else {}
+        normalized: dict[str, float] = {}
+        for key, value in payload.items():
+            name = str(key or "").strip()
+            if not name:
+                continue
+            try:
+                normalized[name] = float(value)
+            except Exception:
+                continue
+        result = self.novaprime_client.emotion_set(normalized)
+        if isinstance(result, dict):
+            return result
+        return {"ok": False, "error": "invalid novaprime emotion update response"}
+
     def novaprime_mesh_balance(self, node_id: str) -> dict[str, Any]:
         normalized_node = str(node_id or "").strip()
         if not normalized_node:
