@@ -454,7 +454,18 @@ class NovaAdaptService:
         return self.adapt_toggle_store.get(adapt_id)
 
     def adapt_toggle_set(self, adapt_id: str, mode: str, *, source: str = "api") -> dict[str, Any]:
-        return self.adapt_toggle_store.set(adapt_id, mode, source=source)
+        updated = self.adapt_toggle_store.set(adapt_id, mode, source=source)
+        out = dict(updated)
+        try:
+            presence = self.novaprime_client.presence_update(
+                str(adapt_id or "").strip(),
+                activity=f"toggle_mode:{out.get('mode', '')}",
+            )
+            if isinstance(presence, dict):
+                out["novaprime_presence"] = presence
+        except Exception as exc:
+            out["novaprime_presence_error"] = str(exc)
+        return out
 
     def adapt_bond_get(self, adapt_id: str) -> dict[str, Any] | None:
         return self.adapt_bond_cache.get(adapt_id)

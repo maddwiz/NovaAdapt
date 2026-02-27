@@ -1014,16 +1014,23 @@ class ServiceTests(unittest.TestCase):
     def test_adapt_toggle_set_and_get(self):
         with tempfile.TemporaryDirectory() as tmp:
             store = AdaptToggleStore(state_path=Path(tmp) / "toggles.json")
+            backend = _StubNovaPrimeBackend()
             service = NovaAdaptService(
                 default_config=Path("unused.json"),
                 router_loader=lambda _path: _StubRouter(),
                 directshell_factory=_StubDirectShell,
+                novaprime_client=backend,
                 adapt_toggle_store=store,
             )
             updated = service.adapt_toggle_set("adapt-1", "in_game_only", source="test")
             self.assertEqual(updated["mode"], "in_game_only")
+            self.assertTrue(isinstance(updated.get("novaprime_presence"), dict))
             current = service.adapt_toggle_get("adapt-1")
             self.assertEqual(current["mode"], "in_game_only")
+            self.assertIn(
+                "presence_update",
+                [str(item.get("method")) for item in backend.calls],
+            )
 
     def test_run_uses_cached_bond_when_novaprime_unavailable(self):
         with tempfile.TemporaryDirectory() as tmp:
