@@ -176,6 +176,7 @@ novaadapt feedback --rating 9 --objective "build dashboard" --notes "retry logic
 novaadapt browser-status
 novaadapt browser-pages
 novaadapt browser-action --action-json '{"type":"navigate","target":"https://example.com"}'
+novaadapt doctor --execution
 ```
 
 9. Inspect Adapt state (toggle, bond, persona):

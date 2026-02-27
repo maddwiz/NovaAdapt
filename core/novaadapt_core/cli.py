@@ -14,6 +14,7 @@ from .benchmark import (
 )
 from .cleanup import prune_local_state
 from .directshell import DirectShellClient
+from .doctor import run_doctor
 from .mcp_server import NovaAdaptMCPServer
 from .native_daemon import NativeExecutionDaemon
 from .native_http import NativeExecutionHTTPServer
@@ -343,6 +344,24 @@ def _build_parser() -> argparse.ArgumentParser:
     feedback_cmd.add_argument("--notes", default=None, help="Optional free-form notes")
     feedback_cmd.add_argument("--metadata", default="", help="Optional JSON object string")
     feedback_cmd.add_argument("--context", default="", help="Optional JSON object string")
+
+    doctor_cmd = sub.add_parser("doctor", help="Run deployment + security diagnostics")
+    doctor_cmd.add_argument("--config", type=Path, default=_default_config_path())
+    doctor_cmd.add_argument(
+        "--execution",
+        action="store_true",
+        help="Include DirectShell/browser runtime readiness checks",
+    )
+    doctor_cmd.add_argument(
+        "--skip-plugins",
+        action="store_true",
+        help="Skip plugin health checks",
+    )
+    doctor_cmd.add_argument(
+        "--skip-model-health",
+        action="store_true",
+        help="Skip active model health probes",
+    )
 
     novaprime_status_cmd = sub.add_parser("novaprime-status", help="Show NovaPrime backend status")
     novaprime_status_cmd.add_argument("--config", type=Path, default=_default_config_path())
@@ -1177,6 +1196,18 @@ def main() -> None:
                     raise ValueError("--context must be a JSON object")
                 out_payload["context"] = parsed_context
             print(json.dumps(service.record_feedback(out_payload), indent=2))
+            return
+
+        if args.command == "doctor":
+            service = NovaAdaptService(default_config=args.config)
+            report = run_doctor(
+                service,
+                config_path=args.config,
+                include_execution=bool(args.execution),
+                include_plugins=not bool(args.skip_plugins),
+                include_model_health=not bool(args.skip_model_health),
+            )
+            print(json.dumps(report, indent=2))
             return
 
         if args.command == "novaprime-status":
