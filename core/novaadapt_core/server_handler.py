@@ -27,6 +27,7 @@ from . import server_plan_job_routes as plan_job_routes
 from . import server_run_memory_routes as run_memory_routes
 from . import server_admin_routes as admin_routes
 from . import server_adapt_routes as adapt_routes
+from . import server_channel_routes as channel_routes
 from . import server_memory_routes as memory_routes
 from . import server_novaprime_routes as novaprime_routes
 from . import server_sib_routes as sib_routes
@@ -244,6 +245,9 @@ def _build_handler(
         def _get_plans(self, query: dict[str, list[str]]) -> int:
             return plan_job_routes.get_plans(self, service, _single, query)
 
+        def _get_channels(self, _query: dict[str, list[str]]) -> int:
+            return channel_routes.get_channels(self, service)
+
         def _get_plugins(self, _query: dict[str, list[str]]) -> int:
             return plugin_routes.get_plugins(self, service)
 
@@ -291,6 +295,9 @@ def _build_handler(
 
         def _get_plugin_health(self, path: str, _query: dict[str, list[str]]) -> int:
             return plugin_routes.get_plugin_health(self, service, path)
+
+        def _get_channel_health(self, path: str, _query: dict[str, list[str]]) -> int:
+            return channel_routes.get_channel_health(self, service, path)
 
         def _get_terminal_sessions(self, _query: dict[str, list[str]]) -> int:
             return terminal_browser_routes.get_terminal_sessions(self, terminal_manager)
@@ -356,6 +363,12 @@ def _build_handler(
 
         def _post_plugin_call(self, path: str, payload: dict[str, object]) -> int:
             return plugin_routes.post_plugin_call(self, service, path, payload)
+
+        def _post_channel_send(self, path: str, payload: dict[str, object]) -> int:
+            return channel_routes.post_channel_send(self, service, path, payload)
+
+        def _post_channel_inbound(self, path: str, payload: dict[str, object]) -> int:
+            return channel_routes.post_channel_inbound(self, service, path, payload)
 
         def _post_feedback(self, path: str, payload: dict[str, object]) -> int:
             return run_memory_routes.post_feedback(self, service, path, payload)

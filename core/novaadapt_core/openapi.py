@@ -92,6 +92,57 @@ def build_openapi_spec() -> dict:
                     "responses": {"200": {"description": "Plugin response"}, "404": {"description": "Not found"}},
                 }
             },
+            "/channels": {
+                "get": {
+                    "summary": "List configured messaging channel adapters",
+                    "responses": {"200": {"description": "Channel adapter list"}},
+                }
+            },
+            "/channels/{name}/health": {
+                "get": {
+                    "summary": "Get channel adapter health/configuration",
+                    "parameters": [
+                        {
+                            "name": "name",
+                            "in": "path",
+                            "required": True,
+                            "schema": {"type": "string"},
+                        }
+                    ],
+                    "responses": {"200": {"description": "Channel health"}, "404": {"description": "Not found"}},
+                }
+            },
+            "/channels/{name}/send": {
+                "post": {
+                    "summary": "Send outbound message through a channel adapter",
+                    "parameters": [
+                        {
+                            "name": "name",
+                            "in": "path",
+                            "required": True,
+                            "schema": {"type": "string"},
+                        }
+                    ],
+                    "responses": {"200": {"description": "Channel send response"}, "404": {"description": "Not found"}},
+                }
+            },
+            "/channels/{name}/inbound": {
+                "post": {
+                    "summary": "Normalize and ingest inbound channel payload",
+                    "parameters": [
+                        {
+                            "name": "name",
+                            "in": "path",
+                            "required": True,
+                            "schema": {"type": "string"},
+                        }
+                    ],
+                    "responses": {
+                        "200": {"description": "Inbound message normalized"},
+                        "404": {"description": "Not found"},
+                    },
+                }
+            },
             "/run": {
                 "post": {
                     "summary": "Execute objective synchronously",

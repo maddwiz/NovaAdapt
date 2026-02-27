@@ -13,6 +13,7 @@ from .adapt import AdaptBondCache, AdaptPersonaEngine, AdaptToggleStore
 from .audit_store import AuditStore
 from .agent import NovaAdaptAgent
 from .browser_executor import BrowserExecutor
+from .channels import ChannelRegistry, build_channel_registry
 from .directshell import DirectShellClient
 from .memory import MemoryBackend, build_memory_backend
 from .novaprime import NovaPrimeBackend, build_novaprime_client
@@ -38,6 +39,7 @@ class NovaAdaptService:
         adapt_toggle_store: AdaptToggleStore | None = None,
         adapt_bond_cache: AdaptBondCache | None = None,
         adapt_persona: AdaptPersonaEngine | None = None,
+        channel_registry: ChannelRegistry | None = None,
         plugin_registry: PluginRegistry | None = None,
     ) -> None:
         self.default_config = default_config
@@ -52,6 +54,7 @@ class NovaAdaptService:
         self.adapt_toggle_store = adapt_toggle_store or AdaptToggleStore()
         self.adapt_bond_cache = adapt_bond_cache or AdaptBondCache()
         self.adapt_persona = adapt_persona or AdaptPersonaEngine()
+        self.channel_registry = channel_registry or build_channel_registry()
         self.plugin_registry = plugin_registry or build_plugin_registry()
         self._plan_store: PlanStore | None = None
         self._audit_store: AuditStore | None = None
@@ -656,6 +659,161 @@ class NovaAdaptService:
             out["verify"] = verify_result
         if profile_error:
             out["profile_error"] = profile_error
+        return out
+
+    def channels(self) -> list[dict[str, Any]]:
+        return self.channel_registry.list_channels()
+
+    def channel_health(self, channel: str) -> dict[str, Any]:
+        normalized_channel = str(channel or "").strip().lower()
+        if not normalized_channel:
+            raise ValueError("'channel' is required")
+        return self.channel_registry.health(normalized_channel)
+
+    def channel_send(
+        self,
+        channel: str,
+        to: str,
+        text: str,
+        *,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        normalized_channel = str(channel or "").strip().lower()
+        normalized_to = str(to or "").strip()
+        normalized_text = str(text or "").strip()
+        if not normalized_channel:
+            raise ValueError("'channel' is required")
+        if not normalized_to:
+            raise ValueError("'to' is required")
+        if not normalized_text:
+            raise ValueError("'text' is required")
+
+        adapter = self.channel_registry.get(normalized_channel)
+        if adapter is None:
+            raise ValueError(
+                f"unknown channel: {normalized_channel}. Available: {', '.join(self.channel_registry.names())}"
+            )
+
+        normalized_metadata = metadata if isinstance(metadata, dict) else {}
+        result = adapter.send_text(normalized_to, normalized_text, metadata=normalized_metadata)
+        out = result if isinstance(result, dict) else {}
+        payload = dict(out)
+        payload.setdefault("channel", normalized_channel)
+        payload.setdefault("to", normalized_to)
+        payload.setdefault("text", normalized_text)
+
+        try:
+            message_id = str(payload.get("message_id") or "").strip()
+            source_id = f"channel:{normalized_channel}:outbound:{message_id or uuid.uuid4().hex}"
+            self.memory_backend.ingest(
+                text=json.dumps(
+                    {
+                        "type": "channel_outbound",
+                        "channel": normalized_channel,
+                        "to": normalized_to,
+                        "text": normalized_text,
+                        "message_id": message_id,
+                        "metadata": normalized_metadata,
+                        "created_at": datetime.now(timezone.utc).isoformat(),
+                    },
+                    ensure_ascii=True,
+                ),
+                source_id=source_id,
+                metadata={
+                    "type": "channel_outbound",
+                    "channel": normalized_channel,
+                    "to": normalized_to,
+                },
+            )
+            payload["memory_ingested"] = True
+            payload["memory_source_id"] = source_id
+        except Exception as exc:
+            payload["memory_ingested"] = False
+            payload["memory_error"] = str(exc)
+
+        return payload
+
+    def channel_inbound(
+        self,
+        channel: str,
+        payload: dict[str, Any],
+        *,
+        adapt_id: str = "",
+        auto_run: bool = False,
+        execute: bool = False,
+    ) -> dict[str, Any]:
+        normalized_channel = str(channel or "").strip().lower()
+        if not normalized_channel:
+            raise ValueError("'channel' is required")
+        if not isinstance(payload, dict):
+            raise ValueError("'payload' must be an object")
+
+        adapter = self.channel_registry.get(normalized_channel)
+        if adapter is None:
+            raise ValueError(
+                f"unknown channel: {normalized_channel}. Available: {', '.join(self.channel_registry.names())}"
+            )
+
+        normalized_adapt = str(adapt_id or "").strip()
+        message = adapter.normalize_inbound(payload)
+        message_payload = message.to_dict()
+        if normalized_adapt:
+            message_payload.setdefault("metadata", {})
+            if isinstance(message_payload["metadata"], dict):
+                message_payload["metadata"]["adapt_id"] = normalized_adapt
+
+        source_id = f"channel:{normalized_channel}:inbound:{message_payload.get('message_id') or uuid.uuid4().hex}"
+        memory_result: dict[str, Any]
+        try:
+            stored = self.memory_backend.ingest(
+                text=json.dumps(
+                    {
+                        "type": "channel_inbound",
+                        "message": message_payload,
+                        "created_at": datetime.now(timezone.utc).isoformat(),
+                    },
+                    ensure_ascii=True,
+                ),
+                source_id=source_id,
+                metadata={
+                    "type": "channel_inbound",
+                    "channel": normalized_channel,
+                    "sender": str(message_payload.get("sender") or ""),
+                },
+            )
+            memory_result = {
+                "ok": True,
+                "source_id": source_id,
+                "result": stored if isinstance(stored, dict) else {},
+            }
+        except Exception as exc:
+            memory_result = {"ok": False, "source_id": source_id, "error": str(exc)}
+
+        out: dict[str, Any] = {
+            "ok": True,
+            "channel": normalized_channel,
+            "message": message_payload,
+            "memory": memory_result,
+            "auto_run": bool(auto_run),
+        }
+
+        if auto_run:
+            body_text = str(message_payload.get("text") or "").strip()
+            if not body_text:
+                out["run"] = {"ok": False, "error": "inbound message text is empty"}
+                return out
+            objective = (
+                f"Respond to inbound {normalized_channel} message from "
+                f"{str(message_payload.get('sender') or 'user')}: {body_text}"
+            )
+            run_payload: dict[str, Any] = {
+                "objective": objective,
+                "execute": bool(execute),
+            }
+            if normalized_adapt:
+                run_payload["adapt_id"] = normalized_adapt
+            out["run"] = self.run(run_payload)
+
         return out
 
     def memory_recall(self, query: str, *, top_k: int = 10) -> dict[str, Any]:

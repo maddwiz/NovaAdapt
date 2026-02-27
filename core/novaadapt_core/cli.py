@@ -339,6 +339,39 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Optional JSON object payload string",
     )
 
+    channels_cmd = sub.add_parser("channels", help="List configured messaging channel adapters")
+    channels_cmd.add_argument("--config", type=Path, default=_default_config_path())
+
+    channel_health_cmd = sub.add_parser("channel-health", help="Show channel adapter health")
+    channel_health_cmd.add_argument("--config", type=Path, default=_default_config_path())
+    channel_health_cmd.add_argument("--channel", required=True)
+
+    channel_send_cmd = sub.add_parser("channel-send", help="Send message through a channel adapter")
+    channel_send_cmd.add_argument("--config", type=Path, default=_default_config_path())
+    channel_send_cmd.add_argument("--channel", required=True)
+    channel_send_cmd.add_argument("--to", required=True)
+    channel_send_cmd.add_argument("--text", required=True)
+    channel_send_cmd.add_argument(
+        "--metadata",
+        default="",
+        help="Optional JSON object metadata",
+    )
+
+    channel_inbound_cmd = sub.add_parser(
+        "channel-inbound",
+        help="Normalize + ingest inbound channel payload and optionally auto-run",
+    )
+    channel_inbound_cmd.add_argument("--config", type=Path, default=_default_config_path())
+    channel_inbound_cmd.add_argument("--channel", required=True)
+    channel_inbound_cmd.add_argument(
+        "--payload",
+        required=True,
+        help="Inbound channel JSON object payload",
+    )
+    channel_inbound_cmd.add_argument("--adapt-id", default="")
+    channel_inbound_cmd.add_argument("--auto-run", action="store_true")
+    channel_inbound_cmd.add_argument("--execute", action="store_true")
+
     feedback_cmd = sub.add_parser("feedback", help="Record operator feedback for self-improvement memory")
     feedback_cmd.add_argument("--config", type=Path, default=_default_config_path())
     feedback_cmd.add_argument("--rating", type=int, required=True, help="Operator rating 1-10")
@@ -1273,6 +1306,49 @@ def main() -> None:
                     raise ValueError("--payload must be a JSON object")
                 payload["payload"] = parsed_payload
             print(json.dumps(service.plugin_call(args.plugin, payload), indent=2))
+            return
+
+        if args.command == "channels":
+            service = NovaAdaptService(default_config=args.config)
+            print(json.dumps(service.channels(), indent=2))
+            return
+
+        if args.command == "channel-health":
+            service = NovaAdaptService(default_config=args.config)
+            print(json.dumps(service.channel_health(str(args.channel)), indent=2))
+            return
+
+        if args.command == "channel-send":
+            service = NovaAdaptService(default_config=args.config)
+            metadata = _parse_optional_json_object(args.metadata, "--metadata")
+            print(
+                json.dumps(
+                    service.channel_send(
+                        str(args.channel),
+                        str(args.to),
+                        str(args.text),
+                        metadata=metadata if isinstance(metadata, dict) else None,
+                    ),
+                    indent=2,
+                )
+            )
+            return
+
+        if args.command == "channel-inbound":
+            service = NovaAdaptService(default_config=args.config)
+            inbound_payload = _parse_optional_json_object(args.payload, "--payload")
+            print(
+                json.dumps(
+                    service.channel_inbound(
+                        str(args.channel),
+                        inbound_payload if isinstance(inbound_payload, dict) else {},
+                        adapt_id=str(args.adapt_id or ""),
+                        auto_run=bool(args.auto_run),
+                        execute=bool(args.execute),
+                    ),
+                    indent=2,
+                )
+            )
             return
 
         if args.command == "feedback":

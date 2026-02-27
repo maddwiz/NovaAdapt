@@ -93,6 +93,74 @@ class NovaAdaptAPIClient:
             return result
         raise APIClientError("Expected object payload from /plugins/{name}/call")
 
+    def channels(self) -> list[dict[str, Any]]:
+        payload = self._get_json("/channels")
+        if isinstance(payload, list):
+            return payload
+        raise APIClientError("Expected list payload from /channels")
+
+    def channel_health(self, channel_name: str) -> dict[str, Any]:
+        channel = quote(str(channel_name), safe="")
+        payload = self._get_json(f"/channels/{channel}/health")
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /channels/{name}/health")
+
+    def channel_send(
+        self,
+        channel_name: str,
+        *,
+        to: str,
+        text: str,
+        metadata: dict[str, Any] | None = None,
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        channel = quote(str(channel_name), safe="")
+        body: dict[str, Any] = {
+            "to": str(to or ""),
+            "text": str(text or ""),
+        }
+        if metadata is not None:
+            body["metadata"] = metadata
+        payload = self._post_json(
+            f"/channels/{channel}/send",
+            body,
+            idempotency_key=idempotency_key,
+        )
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /channels/{name}/send")
+
+    def channel_inbound(
+        self,
+        channel_name: str,
+        payload: dict[str, Any],
+        *,
+        adapt_id: str = "",
+        auto_run: bool = False,
+        execute: bool = False,
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        channel = quote(str(channel_name), safe="")
+        if not isinstance(payload, dict):
+            raise APIClientError("channel inbound payload must be an object")
+        body: dict[str, Any] = {
+            "payload": payload,
+            "auto_run": bool(auto_run),
+            "execute": bool(execute),
+        }
+        normalized_adapt = str(adapt_id or "").strip()
+        if normalized_adapt:
+            body["adapt_id"] = normalized_adapt
+        result = self._post_json(
+            f"/channels/{channel}/inbound",
+            body,
+            idempotency_key=idempotency_key,
+        )
+        if isinstance(result, dict):
+            return result
+        raise APIClientError("Expected object payload from /channels/{name}/inbound")
+
     def submit_feedback(
         self,
         *,

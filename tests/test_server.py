@@ -212,6 +212,10 @@ class ServerTests(unittest.TestCase):
                 self.assertIn("/plugins", openapi["paths"])
                 self.assertIn("/plugins/{name}/health", openapi["paths"])
                 self.assertIn("/plugins/{name}/call", openapi["paths"])
+                self.assertIn("/channels", openapi["paths"])
+                self.assertIn("/channels/{name}/health", openapi["paths"])
+                self.assertIn("/channels/{name}/send", openapi["paths"])
+                self.assertIn("/channels/{name}/inbound", openapi["paths"])
                 self.assertIn("/feedback", openapi["paths"])
                 self.assertIn("/memory/status", openapi["paths"])
                 self.assertIn("/novaprime/status", openapi["paths"])
@@ -270,6 +274,32 @@ class ServerTests(unittest.TestCase):
 
                 plugin_health, _ = _get_json_with_headers(f"http://{host}:{port}/plugins/novabridge/health")
                 self.assertEqual(plugin_health["plugin"], "novabridge")
+
+                channels, _ = _get_json_with_headers(f"http://{host}:{port}/channels")
+                self.assertGreaterEqual(len(channels), 1)
+                self.assertTrue(any(item.get("channel") == "webchat" for item in channels))
+
+                webchat_health, _ = _get_json_with_headers(f"http://{host}:{port}/channels/webchat/health")
+                self.assertTrue(webchat_health["ok"])
+                self.assertEqual(webchat_health["channel"], "webchat")
+
+                channel_send, _ = _post_json_with_headers(
+                    f"http://{host}:{port}/channels/webchat/send",
+                    {"to": "room-1", "text": "hello from api"},
+                )
+                self.assertTrue(channel_send["ok"])
+                self.assertEqual(channel_send["channel"], "webchat")
+
+                channel_inbound, _ = _post_json_with_headers(
+                    f"http://{host}:{port}/channels/webchat/inbound",
+                    {
+                        "payload": {"sender": "player-1", "text": "status report", "room_id": "room-1"},
+                        "adapt_id": "adapt-1",
+                    },
+                )
+                self.assertTrue(channel_inbound["ok"])
+                self.assertEqual(channel_inbound["channel"], "webchat")
+                self.assertTrue(channel_inbound["memory"]["ok"])
 
                 run, _ = _post_json_with_headers(
                     f"http://{host}:{port}/run",

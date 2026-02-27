@@ -21,6 +21,7 @@ def build_get_private_routes(handler: Any) -> dict[str, Any]:
         "/history": handler._get_history,
         "/jobs": handler._get_jobs,
         "/plans": handler._get_plans,
+        "/channels": handler._get_channels,
         "/plugins": handler._get_plugins,
         "/memory/status": handler._get_memory_status,
         "/novaprime/status": handler._get_novaprime_status,
@@ -46,6 +47,7 @@ def build_get_dynamic_routes(handler: Any) -> tuple[tuple[str, str, Any], ...]:
         ("/jobs/", "", handler._get_job_item),
         ("/plans/", "/stream", handler._get_plan_stream),
         ("/plans/", "", handler._get_plan_item),
+        ("/channels/", "/health", handler._get_channel_health),
         ("/plugins/", "/health", handler._get_plugin_health),
         ("/terminal/sessions/", "/output", handler._get_terminal_output),
         ("/terminal/sessions/", "", handler._get_terminal_session_item),
@@ -119,6 +121,8 @@ def build_post_exact_routes(handler: Any) -> dict[str, Any]:
 def build_post_dynamic_routes(handler: Any) -> tuple[tuple[str, str, Any], ...]:
     return (
         ("/jobs/", "/cancel", handler._post_cancel_job),
+        ("/channels/", "/send", handler._post_channel_send),
+        ("/channels/", "/inbound", handler._post_channel_inbound),
         ("/plugins/", "/call", handler._post_plugin_call),
         ("/terminal/sessions/", "/input", handler._post_terminal_input),
         ("/terminal/sessions/", "/close", handler._post_terminal_close),
@@ -162,6 +166,8 @@ def is_idempotent_route(path: str) -> bool:
     if path in {"/adapt/bond/verify"}:
         return True
     if path in {"/memory/ingest"}:
+        return True
+    if path.startswith("/channels/") and (path.endswith("/send") or path.endswith("/inbound")):
         return True
     if path in {"/terminal/sessions"}:
         return True

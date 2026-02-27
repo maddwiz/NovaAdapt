@@ -1,10 +1,12 @@
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from novaadapt_core.adapt import AdaptBondCache, AdaptToggleStore
 from novaadapt_core.audit_store import AuditStore
 from novaadapt_core.browser_executor import BrowserExecutionResult
+from novaadapt_core.channels import ChannelRegistry, WebChatChannelAdapter
 from novaadapt_core.directshell import ExecutionResult
 from novaadapt_core.service import NovaAdaptService
 from novaadapt_shared.model_router import RouterResult
@@ -445,6 +447,55 @@ class ServiceTests(unittest.TestCase):
         service.close()
         service.close()
         self.assertEqual(browser.close_calls, 1)
+
+    def test_channel_send_and_inbound_ingest_memory(self):
+        memory = _RecordingMemoryBackend()
+        service = NovaAdaptService(
+            default_config=Path("unused.json"),
+            router_loader=lambda _path: _StubRouter(),
+            directshell_factory=_StubDirectShell,
+            memory_backend=memory,
+            channel_registry=ChannelRegistry([WebChatChannelAdapter()]),
+        )
+
+        sent = service.channel_send("webchat", "room-1", "hello there", metadata={"adapt_id": "adapt-1"})
+        self.assertTrue(sent["ok"])
+        self.assertEqual(sent["channel"], "webchat")
+        self.assertEqual(sent["to"], "room-1")
+        self.assertTrue(sent["memory_ingested"])
+
+        inbound = service.channel_inbound(
+            "webchat",
+            {"sender": "player-1", "text": "status?", "room_id": "room-1"},
+        )
+        self.assertTrue(inbound["ok"])
+        self.assertEqual(inbound["channel"], "webchat")
+        self.assertEqual(inbound["message"]["sender"], "player-1")
+        self.assertTrue(inbound["memory"]["ok"])
+        self.assertGreaterEqual(len(memory.ingest_calls), 2)
+
+    def test_channel_inbound_auto_run_executes_objective(self):
+        service = NovaAdaptService(
+            default_config=Path("unused.json"),
+            router_loader=lambda _path: _StubRouter(),
+            directshell_factory=_StubDirectShell,
+            channel_registry=ChannelRegistry([WebChatChannelAdapter()]),
+        )
+        with mock.patch.object(service, "run", return_value={"status": "ok"}) as run_mock:
+            payload = service.channel_inbound(
+                "webchat",
+                {"sender": "player-2", "text": "plot route"},
+                adapt_id="adapt-2",
+                auto_run=True,
+                execute=False,
+            )
+        self.assertTrue(payload["ok"])
+        self.assertIn("run", payload)
+        run_mock.assert_called_once()
+        run_payload = run_mock.call_args.args[0]
+        self.assertEqual(run_payload["adapt_id"], "adapt-2")
+        self.assertFalse(run_payload["execute"])
+        self.assertIn("plot route", run_payload["objective"])
 
     def test_run_records_history_and_undo_mark_only(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -62,6 +62,18 @@ class _Handler(BaseHTTPRequestHandler):
         if self.path == "/plugins/novabridge/health":
             self._send(200, {"plugin": "novabridge", "ok": True})
             return
+        if self.path == "/channels":
+            self._send(
+                200,
+                [
+                    {"channel": "webchat", "ok": True, "enabled": True},
+                    {"channel": "imessage", "ok": False, "enabled": False},
+                ],
+            )
+            return
+        if self.path == "/channels/webchat/health":
+            self._send(200, {"channel": "webchat", "ok": True, "enabled": True})
+            return
         if self.path == "/memory/status":
             self._send(200, {"ok": True, "enabled": True, "backend": "novaspine-http"})
             return
@@ -279,6 +291,8 @@ class _Handler(BaseHTTPRequestHandler):
             "/plans/plan-1/reject",
             "/plans/plan-1/undo",
             "/plugins/novabridge/call",
+            "/channels/webchat/send",
+            "/channels/webchat/inbound",
             "/feedback",
             "/novaprime/reason/dual",
             "/novaprime/reason/emotion",
@@ -363,6 +377,34 @@ class _Handler(BaseHTTPRequestHandler):
                         "route": payload.get("route"),
                         "method": payload.get("method"),
                         "ok": True,
+                    },
+                )
+            elif self.path == "/channels/webchat/send":
+                self._send(
+                    200,
+                    {
+                        "ok": True,
+                        "channel": "webchat",
+                        "to": payload.get("to"),
+                        "text": payload.get("text"),
+                        "message_id": "webchat-123",
+                    },
+                )
+            elif self.path == "/channels/webchat/inbound":
+                self._send(
+                    200,
+                    {
+                        "ok": True,
+                        "channel": "webchat",
+                        "auto_run": bool(payload.get("auto_run", False)),
+                        "message": {
+                            "channel": "webchat",
+                            "sender": payload.get("payload", {}).get("sender", "webchat-user"),
+                            "text": payload.get("payload", {}).get("text", ""),
+                            "message_id": "inbound-123",
+                            "received_at_ms": 123,
+                            "metadata": payload.get("payload", {}),
+                        },
                     },
                 )
             elif self.path == "/feedback":
@@ -707,6 +749,17 @@ class APIClientTests(unittest.TestCase):
         self.assertEqual(
             client.plugin_call("novabridge", route="/scene/list", method="GET")["plugin"],
             "novabridge",
+        )
+        self.assertEqual(client.channels()[0]["channel"], "webchat")
+        self.assertTrue(client.channel_health("webchat")["ok"])
+        self.assertTrue(client.channel_send("webchat", to="room-1", text="hello world")["ok"])
+        self.assertTrue(
+            client.channel_inbound(
+                "webchat",
+                {"sender": "player-1", "text": "status"},
+                adapt_id="adapt-1",
+                auto_run=False,
+            )["ok"]
         )
         self.assertEqual(client.run("demo", idempotency_key="idem-1")["idempotency"], "idem-1")
         self.assertEqual(client.run_async("demo")["status"], "queued")
