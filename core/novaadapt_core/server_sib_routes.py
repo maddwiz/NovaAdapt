@@ -51,5 +51,14 @@ def post_sib_resonance_result(handler, service: NovaAdaptService, payload: dict[
     player_id = str(payload.get("player_id") or "").strip()
     adapt_id = str(payload.get("adapt_id") or "").strip()
     accepted = bool(payload.get("accepted", False))
-    handler._send_json(200, service.sib_resonance_result(player_id, adapt_id, accepted))
+    player_profile = payload.get("player_profile")
+    handler._send_json(
+        200,
+        service.sib_resonance_result(
+            player_id,
+            adapt_id,
+            accepted,
+            player_profile if isinstance(player_profile, dict) else None,
+        ),
+    )
     return 200

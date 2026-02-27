@@ -775,7 +775,7 @@ class APIClientTests(unittest.TestCase):
             "sib_bridge",
         )
         self.assertEqual(
-            client.sib_resonance_result("player-1", "adapt-1", True)["plugin"],
+            client.sib_resonance_result("player-1", "adapt-1", True, {"class": "sentinel"})["plugin"],
             "sib_bridge",
         )
         self.assertEqual(client.set_adapt_toggle("adapt-1", "in_game_only")["mode"], "in_game_only")

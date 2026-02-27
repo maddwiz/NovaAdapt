@@ -474,17 +474,17 @@ class NovaAdaptAPIClient:
         player_id: str,
         adapt_id: str,
         accepted: bool,
+        player_profile: dict[str, Any] | None = None,
         idempotency_key: str | None = None,
     ) -> dict[str, Any]:
-        resp = self._post_json(
-            "/sib/resonance/result",
-            {
-                "player_id": str(player_id or ""),
-                "adapt_id": str(adapt_id or ""),
-                "accepted": bool(accepted),
-            },
-            idempotency_key=idempotency_key,
-        )
+        body: dict[str, Any] = {
+            "player_id": str(player_id or ""),
+            "adapt_id": str(adapt_id or ""),
+            "accepted": bool(accepted),
+        }
+        if isinstance(player_profile, dict):
+            body["player_profile"] = player_profile
+        resp = self._post_json("/sib/resonance/result", body, idempotency_key=idempotency_key)
         if isinstance(resp, dict):
             return resp
         raise APIClientError("Expected object payload from /sib/resonance/result")

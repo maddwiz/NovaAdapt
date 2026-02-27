@@ -535,6 +535,7 @@ class NovaAdaptMCPServer:
                         "player_id": {"type": "string"},
                         "adapt_id": {"type": "string"},
                         "accepted": {"type": "boolean"},
+                        "player_profile": {"type": "object"},
                     },
                     "required": ["player_id", "adapt_id", "accepted"],
                 },
@@ -1100,11 +1101,17 @@ class NovaAdaptMCPServer:
             player_id = str(arguments.get("player_id", "")).strip()
             adapt_id = str(arguments.get("adapt_id", "")).strip()
             accepted = bool(arguments.get("accepted", False))
+            player_profile = arguments.get("player_profile")
             if not player_id:
                 raise ValueError("'player_id' is required")
             if not adapt_id:
                 raise ValueError("'adapt_id' is required")
-            return self.service.sib_resonance_result(player_id, adapt_id, accepted)
+            return self.service.sib_resonance_result(
+                player_id,
+                adapt_id,
+                accepted,
+                player_profile if isinstance(player_profile, dict) else None,
+            )
         if tool_name == "novaadapt_adapt_toggle_get":
             adapt_id = str(arguments.get("adapt_id", "")).strip()
             if not adapt_id:

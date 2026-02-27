@@ -543,19 +543,47 @@ class NovaAdaptService:
         normalized_player = str(player_id or "").strip()
         if not normalized_player:
             raise ValueError("'player_id' is required")
-        return self._sib().resonance_start(
+        result = self._sib().resonance_start(
             normalized_player,
             profile=player_profile if isinstance(player_profile, dict) else None,
         )
+        if isinstance(result, dict):
+            try:
+                resonance = self.novaprime_client.resonance_score(
+                    player_profile if isinstance(player_profile, dict) else {}
+                )
+                if isinstance(resonance, dict):
+                    result["novaprime_resonance"] = resonance
+            except Exception as exc:
+                result["novaprime_resonance_error"] = str(exc)
+        return result
 
-    def sib_resonance_result(self, player_id: str, adapt_id: str, accepted: bool) -> dict[str, Any]:
+    def sib_resonance_result(
+        self,
+        player_id: str,
+        adapt_id: str,
+        accepted: bool,
+        player_profile: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         normalized_player = str(player_id or "").strip()
         normalized_adapt = str(adapt_id or "").strip()
         if not normalized_player:
             raise ValueError("'player_id' is required")
         if not normalized_adapt:
             raise ValueError("'adapt_id' is required")
-        return self._sib().resonance_result(normalized_player, normalized_adapt, bool(accepted))
+        result = self._sib().resonance_result(normalized_player, normalized_adapt, bool(accepted))
+        if bool(accepted) and isinstance(result, dict):
+            try:
+                bond = self.novaprime_client.resonance_bond(
+                    normalized_player,
+                    player_profile if isinstance(player_profile, dict) else {},
+                    adapt_id=normalized_adapt,
+                )
+                if isinstance(bond, dict):
+                    result["novaprime_bond"] = bond
+            except Exception as exc:
+                result["novaprime_bond_error"] = str(exc)
+        return result
 
     def record_feedback(self, payload: dict[str, Any]) -> dict[str, Any]:
         objective = str(payload.get("objective") or "").strip()

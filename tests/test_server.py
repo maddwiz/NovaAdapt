@@ -461,12 +461,19 @@ class ServerTests(unittest.TestCase):
                     {"player_id": "player-1", "player_profile": {"class": "sentinel"}},
                 )
                 self.assertEqual(sib_start["plugin"], "sib_bridge")
+                self.assertIn("novaprime_resonance", sib_start)
 
                 sib_result, _ = _post_json_with_headers(
                     f"http://{host}:{port}/sib/resonance/result",
-                    {"player_id": "player-1", "adapt_id": "adapt-1", "accepted": True},
+                    {
+                        "player_id": "player-1",
+                        "adapt_id": "adapt-1",
+                        "accepted": True,
+                        "player_profile": {"class": "sentinel"},
+                    },
                 )
                 self.assertEqual(sib_result["plugin"], "sib_bridge")
+                self.assertIn("novaprime_bond", sib_result)
 
                 adapt_toggle_set, _ = _post_json_with_headers(
                     f"http://{host}:{port}/adapt/toggle",

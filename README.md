@@ -261,7 +261,7 @@ API endpoints:
 - `POST /sib/companion/speak` with JSON payload (`adapt_id`, `text`, `channel`)
 - `POST /sib/phase-event` with JSON payload (`event_type`, optional `payload`)
 - `POST /sib/resonance/start` with JSON payload (`player_id`, optional `player_profile`)
-- `POST /sib/resonance/result` with JSON payload (`player_id`, `adapt_id`, `accepted`)
+- `POST /sib/resonance/result` with JSON payload (`player_id`, `adapt_id`, `accepted`, optional `player_profile`)
 - `POST /adapt/toggle` with JSON payload (`adapt_id`, `mode`)
 - `POST /memory/recall` with JSON payload (`query` required)
 - `POST /memory/ingest` with JSON payload (`text` required)

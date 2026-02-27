@@ -1072,11 +1072,13 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(called["method"], "GET")
 
     def test_sib_bridge_methods(self):
+        novaprime = _StubNovaPrimeBackend()
         service = NovaAdaptService(
             default_config=Path("unused.json"),
             router_loader=lambda _path: _StubRouter(),
             directshell_factory=_StubDirectShell,
             plugin_registry=_StubPluginRegistry(),
+            novaprime_client=novaprime,
         )
         status = service.sib_status()
         self.assertEqual(status["plugin"], "sib_bridge")
@@ -1096,9 +1098,17 @@ class ServiceTests(unittest.TestCase):
 
         start = service.sib_resonance_start("player-1", {"class": "sentinel"})
         self.assertEqual(start["route"], "/game/resonance/start")
+        self.assertIn("novaprime_resonance", start)
+        self.assertTrue(start["novaprime_resonance"]["ok"])
 
-        result = service.sib_resonance_result("player-1", "adapt-1", True)
+        result = service.sib_resonance_result("player-1", "adapt-1", True, {"class": "sentinel"})
         self.assertEqual(result["route"], "/game/resonance/result")
+        self.assertIn("novaprime_bond", result)
+        self.assertTrue(result["novaprime_bond"]["ok"])
+
+        method_names = [str(item.get("method")) for item in novaprime.calls]
+        self.assertIn("resonance_score", method_names)
+        self.assertIn("resonance_bond", method_names)
 
     def test_record_feedback_writes_memory(self):
         memory = _RecordingMemoryBackend()
