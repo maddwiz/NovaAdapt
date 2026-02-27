@@ -211,6 +211,10 @@ class _StubNovaPrimeBackend:
         self.calls.append({"method": "mesh_balance", "node_id": node_id})
         return 42.0
 
+    def mesh_reputation(self, node_id: str):
+        self.calls.append({"method": "mesh_reputation", "node_id": node_id})
+        return 0.87
+
     def mesh_credit(self, node_id: str, amount: float):
         self.calls.append({"method": "mesh_credit", "node_id": node_id, "amount": amount})
         return {"ok": True, "node_id": node_id, "balance": 42.0 + float(amount)}
@@ -934,6 +938,9 @@ class ServiceTests(unittest.TestCase):
         mesh_balance = service.novaprime_mesh_balance("node-1")
         self.assertEqual(mesh_balance["balance"], 42.0)
 
+        mesh_reputation = service.novaprime_mesh_reputation("node-1")
+        self.assertEqual(mesh_reputation["reputation"], 0.87)
+
         mesh_credit = service.novaprime_mesh_credit("node-1", 10.0)
         self.assertTrue(mesh_credit["ok"])
 
@@ -955,6 +962,7 @@ class ServiceTests(unittest.TestCase):
         self.assertIn("emotion_get", method_names)
         self.assertIn("emotion_set", method_names)
         self.assertIn("mesh_balance", method_names)
+        self.assertIn("mesh_reputation", method_names)
         self.assertIn("mesh_credit", method_names)
         self.assertIn("mesh_transfer", method_names)
         self.assertIn("marketplace_listings", method_names)

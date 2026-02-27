@@ -222,6 +222,7 @@ API endpoints:
 - `GET /novaprime/status`
 - `GET /novaprime/reason/emotion`
 - `GET /novaprime/mesh/balance?node_id=...`
+- `GET /novaprime/mesh/reputation?node_id=...`
 - `GET /novaprime/marketplace/listings`
 - `GET /novaprime/identity/profile?adapt_id=...`
 - `GET /novaprime/presence?adapt_id=...`

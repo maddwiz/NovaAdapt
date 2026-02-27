@@ -259,6 +259,9 @@ def _build_handler(
         def _get_novaprime_mesh_balance(self, query: dict[str, list[str]]) -> int:
             return novaprime_routes.get_novaprime_mesh_balance(self, service, _single, query)
 
+        def _get_novaprime_mesh_reputation(self, query: dict[str, list[str]]) -> int:
+            return novaprime_routes.get_novaprime_mesh_reputation(self, service, _single, query)
+
         def _get_novaprime_marketplace_listings(self, _query: dict[str, list[str]]) -> int:
             return novaprime_routes.get_novaprime_marketplace_listings(self, service)
 

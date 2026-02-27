@@ -42,6 +42,10 @@ class NoopNovaPrimeClient:
         _ = node_id
         return 0.0
 
+    def mesh_reputation(self, node_id: str) -> float:
+        _ = node_id
+        return 0.0
+
     def mesh_credit(self, node_id: str, amount: float) -> dict[str, Any]:
         _ = (node_id, amount)
         return self._disabled()
@@ -173,6 +177,13 @@ class NovaPrimeClient:
         payload = self._get("/api/v1/mesh/credits/balance", {"node_id": str(node_id or "")})
         try:
             return float(payload.get("balance", 0.0))
+        except Exception:
+            return 0.0
+
+    def mesh_reputation(self, node_id: str) -> float:
+        payload = self._get("/api/v1/mesh/reputation", {"node_id": str(node_id or "")})
+        try:
+            return float(payload.get("reputation", 0.0))
         except Exception:
             return 0.0
 

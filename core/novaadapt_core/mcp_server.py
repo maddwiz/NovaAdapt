@@ -301,6 +301,15 @@ class NovaAdaptMCPServer:
                 },
             ),
             MCPTool(
+                name="novaadapt_novaprime_mesh_reputation",
+                description="Get NovaPrime mesh reputation for a node",
+                input_schema={
+                    "type": "object",
+                    "properties": {"node_id": {"type": "string"}},
+                    "required": ["node_id"],
+                },
+            ),
+            MCPTool(
                 name="novaadapt_novaprime_mesh_credit",
                 description="Credit NovaPrime mesh balance for a node",
                 input_schema={
@@ -924,6 +933,11 @@ class NovaAdaptMCPServer:
             if not node_id:
                 raise ValueError("'node_id' is required")
             return self.service.novaprime_mesh_balance(node_id)
+        if tool_name == "novaadapt_novaprime_mesh_reputation":
+            node_id = str(arguments.get("node_id", "")).strip()
+            if not node_id:
+                raise ValueError("'node_id' is required")
+            return self.service.novaprime_mesh_reputation(node_id)
         if tool_name == "novaadapt_novaprime_mesh_credit":
             node_id = str(arguments.get("node_id", "")).strip()
             if not node_id:

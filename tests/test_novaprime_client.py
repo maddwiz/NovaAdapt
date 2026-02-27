@@ -22,6 +22,10 @@ class _NovaPrimeHandler(BaseHTTPRequestHandler):
             node_id = (parse_qs(parsed.query).get("node_id") or [""])[0]
             self._send(200, {"ok": True, "node_id": node_id, "balance": 42.5})
             return
+        if path == "/api/v1/mesh/reputation":
+            node_id = (parse_qs(parsed.query).get("node_id") or [""])[0]
+            self._send(200, {"ok": True, "node_id": node_id, "reputation": 0.87})
+            return
         if path == "/api/v1/mesh/marketplace/listings":
             self._send(200, {"ok": True, "listings": [{"listing_id": "l1", "title": "Capsule"}]})
             return
@@ -72,7 +76,16 @@ class _NovaPrimeHandler(BaseHTTPRequestHandler):
             self._send(200, {"ok": True, "receipt": "r1"})
             return
         if path == "/api/v1/identity/bond":
-            self._send(200, {"ok": True, "bond": {"adapt_id": body.get("adapt_id"), "player_id": body.get("player_id")}})
+            self._send(
+                200,
+                {
+                    "ok": True,
+                    "bond": {
+                        "adapt_id": body.get("adapt_id"),
+                        "player_id": body.get("player_id"),
+                    },
+                },
+            )
             return
         if path == "/api/v1/identity/verify":
             self._send(200, {"ok": True, "verified": True})
@@ -134,6 +147,7 @@ class NovaPrimeClientTests(unittest.TestCase):
         self.assertFalse(status["enabled"])
         self.assertEqual(client.marketplace_listings(), [])
         self.assertEqual(client.mesh_balance("node-1"), 0.0)
+        self.assertEqual(client.mesh_reputation("node-1"), 0.0)
         self.assertFalse(client.identity_verify("adapt-1", "player-1"))
 
     def test_build_backend_disabled(self):
@@ -178,6 +192,7 @@ class NovaPrimeClientTests(unittest.TestCase):
             self.assertIn("processed", reason["final_text"])
 
             self.assertGreater(client.mesh_balance("node-1"), 0)
+            self.assertGreater(client.mesh_reputation("node-1"), 0)
             listings = client.marketplace_listings()
             self.assertEqual(listings[0]["listing_id"], "l1")
             self.assertTrue(client.identity_verify("adapt-1", "player-1"))

@@ -364,6 +364,20 @@ def build_openapi_spec() -> dict:
                     "responses": {"200": {"description": "Mesh balance response"}},
                 }
             },
+            "/novaprime/mesh/reputation": {
+                "get": {
+                    "summary": "Get NovaPrime mesh reputation by node_id",
+                    "parameters": [
+                        {
+                            "name": "node_id",
+                            "in": "query",
+                            "required": True,
+                            "schema": {"type": "string"},
+                        }
+                    ],
+                    "responses": {"200": {"description": "Mesh reputation response"}},
+                }
+            },
             "/novaprime/marketplace/listings": {
                 "get": {
                     "summary": "Get NovaPrime marketplace listings",

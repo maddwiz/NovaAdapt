@@ -218,6 +218,17 @@ class NovaAdaptService:
             "balance": balance,
         }
 
+    def novaprime_mesh_reputation(self, node_id: str) -> dict[str, Any]:
+        normalized_node = str(node_id or "").strip()
+        if not normalized_node:
+            raise ValueError("'node_id' is required")
+        reputation = float(self.novaprime_client.mesh_reputation(normalized_node))
+        return {
+            "ok": True,
+            "node_id": normalized_node,
+            "reputation": reputation,
+        }
+
     def novaprime_mesh_credit(self, node_id: str, amount: float) -> dict[str, Any]:
         normalized_node = str(node_id or "").strip()
         normalized_amount = float(amount)

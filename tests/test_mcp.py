@@ -101,6 +101,9 @@ class _StubService:
     def novaprime_mesh_balance(self, node_id: str):
         return {"ok": True, "node_id": node_id, "balance": 42.0}
 
+    def novaprime_mesh_reputation(self, node_id: str):
+        return {"ok": True, "node_id": node_id, "reputation": 0.87}
+
     def novaprime_mesh_credit(self, node_id: str, amount: float):
         return {"ok": True, "node_id": node_id, "balance": 42.0 + float(amount)}
 
@@ -269,6 +272,7 @@ class MCPServerTests(unittest.TestCase):
         self.assertIn("novaadapt_novaprime_emotion_get", names)
         self.assertIn("novaadapt_novaprime_emotion_set", names)
         self.assertIn("novaadapt_novaprime_mesh_balance", names)
+        self.assertIn("novaadapt_novaprime_mesh_reputation", names)
         self.assertIn("novaadapt_novaprime_mesh_credit", names)
         self.assertIn("novaadapt_novaprime_mesh_transfer", names)
         self.assertIn("novaadapt_novaprime_marketplace_listings", names)
@@ -576,6 +580,20 @@ class MCPServerTests(unittest.TestCase):
         )
         novaprime_mesh_balance_payload = novaprime_mesh_balance_resp["result"]["content"][0]["json"]
         self.assertEqual(novaprime_mesh_balance_payload["balance"], 42.0)
+
+        novaprime_mesh_reputation_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 911000,
+                "method": "tools/call",
+                "params": {
+                    "name": "novaadapt_novaprime_mesh_reputation",
+                    "arguments": {"node_id": "node-1"},
+                },
+            }
+        )
+        novaprime_mesh_reputation_payload = novaprime_mesh_reputation_resp["result"]["content"][0]["json"]
+        self.assertEqual(novaprime_mesh_reputation_payload["reputation"], 0.87)
 
         novaprime_mesh_credit_resp = server.handle_request(
             {

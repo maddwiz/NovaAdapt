@@ -74,6 +74,9 @@ class _Handler(BaseHTTPRequestHandler):
         if self.path.startswith("/novaprime/mesh/balance?"):
             self._send(200, {"ok": True, "node_id": "node-1", "balance": 42.0})
             return
+        if self.path.startswith("/novaprime/mesh/reputation?"):
+            self._send(200, {"ok": True, "node_id": "node-1", "reputation": 0.87})
+            return
         if self.path == "/novaprime/marketplace/listings":
             self._send(
                 200,
@@ -734,6 +737,7 @@ class APIClientTests(unittest.TestCase):
         self.assertTrue(client.novaprime_emotion_get()["ok"])
         self.assertTrue(client.novaprime_emotion_set({"focus": 0.8, "calm": 0.7})["ok"])
         self.assertTrue(client.novaprime_mesh_balance("node-1")["ok"])
+        self.assertTrue(client.novaprime_mesh_reputation("node-1")["ok"])
         self.assertTrue(client.novaprime_marketplace_listings()["ok"])
         self.assertTrue(client.novaprime_identity_profile("adapt-1")["ok"])
         self.assertTrue(client.novaprime_identity_profile("adapt-1")["found"])

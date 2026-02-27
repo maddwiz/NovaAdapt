@@ -26,6 +26,7 @@ def build_get_private_routes(handler: Any) -> dict[str, Any]:
         "/novaprime/status": handler._get_novaprime_status,
         "/novaprime/reason/emotion": handler._get_novaprime_emotion,
         "/novaprime/mesh/balance": handler._get_novaprime_mesh_balance,
+        "/novaprime/mesh/reputation": handler._get_novaprime_mesh_reputation,
         "/novaprime/marketplace/listings": handler._get_novaprime_marketplace_listings,
         "/novaprime/identity/profile": handler._get_novaprime_identity_profile,
         "/novaprime/presence": handler._get_novaprime_presence,

@@ -218,6 +218,7 @@ class ServerTests(unittest.TestCase):
                 self.assertIn("/novaprime/reason/dual", openapi["paths"])
                 self.assertIn("/novaprime/reason/emotion", openapi["paths"])
                 self.assertIn("/novaprime/mesh/balance", openapi["paths"])
+                self.assertIn("/novaprime/mesh/reputation", openapi["paths"])
                 self.assertIn("/novaprime/marketplace/listings", openapi["paths"])
                 self.assertIn("/novaprime/identity/profile", openapi["paths"])
                 self.assertIn("/novaprime/presence", openapi["paths"])
@@ -327,6 +328,12 @@ class ServerTests(unittest.TestCase):
                 )
                 self.assertTrue(novaprime_mesh_balance["ok"])
                 self.assertEqual(novaprime_mesh_balance["node_id"], "node-1")
+
+                novaprime_mesh_reputation, _ = _get_json_with_headers(
+                    f"http://{host}:{port}/novaprime/mesh/reputation?node_id=node-1"
+                )
+                self.assertTrue(novaprime_mesh_reputation["ok"])
+                self.assertEqual(novaprime_mesh_reputation["node_id"], "node-1")
 
                 novaprime_marketplace_listings, _ = _get_json_with_headers(
                     f"http://{host}:{port}/novaprime/marketplace/listings"

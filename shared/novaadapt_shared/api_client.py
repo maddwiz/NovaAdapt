@@ -166,6 +166,12 @@ class NovaAdaptAPIClient:
             return payload
         raise APIClientError("Expected object payload from /novaprime/mesh/balance")
 
+    def novaprime_mesh_reputation(self, node_id: str) -> dict[str, Any]:
+        payload = self._get_json(f"/novaprime/mesh/reputation?node_id={quote(str(node_id), safe='')}")
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /novaprime/mesh/reputation")
+
     def novaprime_marketplace_listings(self) -> dict[str, Any]:
         payload = self._get_json("/novaprime/marketplace/listings")
         if isinstance(payload, dict):

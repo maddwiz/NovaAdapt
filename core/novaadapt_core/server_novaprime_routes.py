@@ -24,6 +24,17 @@ def get_novaprime_mesh_balance(
     return 200
 
 
+def get_novaprime_mesh_reputation(
+    handler,
+    service: NovaAdaptService,
+    single,
+    query: dict[str, list[str]],
+) -> int:
+    node_id = str(single(query, "node_id") or "").strip()
+    handler._send_json(200, service.novaprime_mesh_reputation(node_id))
+    return 200
+
+
 def get_novaprime_marketplace_listings(handler, service: NovaAdaptService) -> int:
     handler._send_json(200, service.novaprime_marketplace_listings())
     return 200
