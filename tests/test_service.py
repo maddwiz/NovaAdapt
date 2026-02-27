@@ -933,6 +933,8 @@ class ServiceTests(unittest.TestCase):
         bond = service.novaprime_identity_bond("adapt-1", "player-1", element="fire", subclass="dark")
         self.assertTrue(bond["ok"])
         self.assertEqual(bond["bond"]["adapt_id"], "adapt-1")
+        self.assertTrue(isinstance(bond.get("cached_bond"), dict))
+        self.assertTrue(service.adapt_bond_get("adapt-1"))
 
         verify = service.novaprime_identity_verify("adapt-1", "player-1")
         self.assertTrue(verify["verified"])
@@ -955,6 +957,7 @@ class ServiceTests(unittest.TestCase):
 
         resonance_bond = service.novaprime_resonance_bond("player-1", {"class": "sentinel"}, adapt_id="adapt-1")
         self.assertTrue(resonance_bond["ok"])
+        self.assertTrue(isinstance(resonance_bond.get("cached_bond"), dict))
 
         reason = service.novaprime_reason_dual("Map eastern patrol routes")
         self.assertTrue(reason["ok"])
@@ -1072,43 +1075,55 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(called["method"], "GET")
 
     def test_sib_bridge_methods(self):
-        novaprime = _StubNovaPrimeBackend()
-        service = NovaAdaptService(
-            default_config=Path("unused.json"),
-            router_loader=lambda _path: _StubRouter(),
-            directshell_factory=_StubDirectShell,
-            plugin_registry=_StubPluginRegistry(),
-            novaprime_client=novaprime,
-        )
-        status = service.sib_status()
-        self.assertEqual(status["plugin"], "sib_bridge")
+        with tempfile.TemporaryDirectory() as tmp:
+            novaprime = _StubNovaPrimeBackend()
+            service = NovaAdaptService(
+                default_config=Path("unused.json"),
+                router_loader=lambda _path: _StubRouter(),
+                directshell_factory=_StubDirectShell,
+                plugin_registry=_StubPluginRegistry(),
+                novaprime_client=novaprime,
+                adapt_toggle_store=AdaptToggleStore(state_path=Path(tmp) / "toggles.json"),
+                adapt_bond_cache=AdaptBondCache(state_path=Path(tmp) / "bonds.json"),
+            )
+            status = service.sib_status()
+            self.assertEqual(status["plugin"], "sib_bridge")
 
-        realm = service.sib_realm("player-1", "game_world")
-        self.assertEqual(realm["route"], "/game/realm")
-        self.assertEqual(realm["plugin"], "sib_bridge")
+            realm = service.sib_realm("player-1", "game_world")
+            self.assertEqual(realm["route"], "/game/realm")
+            self.assertEqual(realm["plugin"], "sib_bridge")
 
-        state = service.sib_companion_state("adapt-1", {"mode": "combat"})
-        self.assertEqual(state["route"], "/game/companion/state")
+            state = service.sib_companion_state("adapt-1", {"mode": "combat"})
+            self.assertEqual(state["route"], "/game/companion/state")
 
-        speak = service.sib_companion_speak("adapt-1", "On your left", channel="in_game")
-        self.assertEqual(speak["route"], "/game/companion/speak")
+            speak = service.sib_companion_speak("adapt-1", "On your left", channel="in_game")
+            self.assertEqual(speak["route"], "/game/companion/speak")
 
-        phase = service.sib_phase_event("entropy_spike", {"severity": "high"})
-        self.assertEqual(phase["route"], "/game/phase_event")
+            phase = service.sib_phase_event("entropy_spike", {"severity": "high"})
+            self.assertEqual(phase["route"], "/game/phase_event")
 
-        start = service.sib_resonance_start("player-1", {"class": "sentinel"})
-        self.assertEqual(start["route"], "/game/resonance/start")
-        self.assertIn("novaprime_resonance", start)
-        self.assertTrue(start["novaprime_resonance"]["ok"])
+            start = service.sib_resonance_start("player-1", {"class": "sentinel"})
+            self.assertEqual(start["route"], "/game/resonance/start")
+            self.assertIn("novaprime_resonance", start)
+            self.assertTrue(start["novaprime_resonance"]["ok"])
 
-        result = service.sib_resonance_result("player-1", "adapt-1", True, {"class": "sentinel"})
-        self.assertEqual(result["route"], "/game/resonance/result")
-        self.assertIn("novaprime_bond", result)
-        self.assertTrue(result["novaprime_bond"]["ok"])
+            result = service.sib_resonance_result("player-1", "adapt-1", True, {"class": "sentinel"})
+            self.assertEqual(result["route"], "/game/resonance/result")
+            self.assertIn("novaprime_bond", result)
+            self.assertTrue(result["novaprime_bond"]["ok"])
+            self.assertIn("adapt_bond_cache", result)
+            self.assertIn("adapt_toggle", result)
+            self.assertEqual(result["adapt_toggle"]["mode"], "ask_only")
+            self.assertIn("novaprime_presence", result)
+            self.assertIn("adapt_persona", result)
+            self.assertEqual(result["adapt_persona"]["adapt_id"], "adapt-1")
+            self.assertTrue(service.adapt_bond_get("adapt-1"))
 
-        method_names = [str(item.get("method")) for item in novaprime.calls]
-        self.assertIn("resonance_score", method_names)
-        self.assertIn("resonance_bond", method_names)
+            method_names = [str(item.get("method")) for item in novaprime.calls]
+            self.assertIn("resonance_score", method_names)
+            self.assertIn("resonance_bond", method_names)
+            self.assertIn("identity_profile", method_names)
+            self.assertIn("presence_update", method_names)
 
     def test_record_feedback_writes_memory(self):
         memory = _RecordingMemoryBackend()

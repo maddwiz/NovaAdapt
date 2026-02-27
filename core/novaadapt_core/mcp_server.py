@@ -536,6 +536,10 @@ class NovaAdaptMCPServer:
                         "adapt_id": {"type": "string"},
                         "accepted": {"type": "boolean"},
                         "player_profile": {"type": "object"},
+                        "toggle_mode": {
+                            "type": "string",
+                            "enum": ["free_speak", "in_game_only", "ask_only", "silent"],
+                        },
                     },
                     "required": ["player_id", "adapt_id", "accepted"],
                 },
@@ -1102,6 +1106,7 @@ class NovaAdaptMCPServer:
             adapt_id = str(arguments.get("adapt_id", "")).strip()
             accepted = bool(arguments.get("accepted", False))
             player_profile = arguments.get("player_profile")
+            toggle_mode = arguments.get("toggle_mode")
             if not player_id:
                 raise ValueError("'player_id' is required")
             if not adapt_id:
@@ -1111,6 +1116,7 @@ class NovaAdaptMCPServer:
                 adapt_id,
                 accepted,
                 player_profile if isinstance(player_profile, dict) else None,
+                str(toggle_mode or "").strip() or None,
             )
         if tool_name == "novaadapt_adapt_toggle_get":
             adapt_id = str(arguments.get("adapt_id", "")).strip()

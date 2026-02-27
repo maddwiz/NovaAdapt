@@ -212,13 +212,21 @@ class _StubService:
     def sib_resonance_start(self, player_id: str, player_profile=None):
         return {"ok": True, "player_id": player_id, "player_profile": player_profile or {}}
 
-    def sib_resonance_result(self, player_id: str, adapt_id: str, accepted: bool, player_profile=None):
+    def sib_resonance_result(
+        self,
+        player_id: str,
+        adapt_id: str,
+        accepted: bool,
+        player_profile=None,
+        toggle_mode: str | None = None,
+    ):
         return {
             "ok": True,
             "player_id": player_id,
             "adapt_id": adapt_id,
             "accepted": bool(accepted),
             "player_profile": player_profile or {},
+            "toggle_mode": toggle_mode,
         }
 
     def adapt_toggle_get(self, adapt_id: str):
@@ -895,6 +903,7 @@ class MCPServerTests(unittest.TestCase):
                         "adapt_id": "adapt-1",
                         "accepted": True,
                         "player_profile": {"class": "sentinel"},
+                        "toggle_mode": "in_game_only",
                     },
                 },
             }
@@ -902,6 +911,7 @@ class MCPServerTests(unittest.TestCase):
         sib_result_payload = sib_result_resp["result"]["content"][0]["json"]
         self.assertTrue(sib_result_payload["accepted"])
         self.assertEqual(sib_result_payload["player_profile"]["class"], "sentinel")
+        self.assertEqual(sib_result_payload["toggle_mode"], "in_game_only")
 
         adapt_toggle_get_resp = server.handle_request(
             {

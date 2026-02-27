@@ -470,10 +470,16 @@ class ServerTests(unittest.TestCase):
                         "adapt_id": "adapt-1",
                         "accepted": True,
                         "player_profile": {"class": "sentinel"},
+                        "toggle_mode": "in_game_only",
                     },
                 )
                 self.assertEqual(sib_result["plugin"], "sib_bridge")
                 self.assertIn("novaprime_bond", sib_result)
+                self.assertEqual(sib_result["adapt_toggle"]["mode"], "in_game_only")
+                self.assertIn("novaprime_presence", sib_result)
+                self.assertIn("adapt_persona", sib_result)
+                if bool(sib_result["novaprime_bond"].get("ok", False)):
+                    self.assertIn("adapt_bond_cache", sib_result)
 
                 adapt_toggle_set, _ = _post_json_with_headers(
                     f"http://{host}:{port}/adapt/toggle",

@@ -324,7 +324,16 @@ class NovaAdaptService:
             subclass=str(subclass or ""),
         )
         if isinstance(result, dict):
-            return result
+            out = dict(result)
+            cached = self._cache_bond_from_novaprime_result(
+                result=out,
+                adapt_id_hint=normalized_adapt,
+                player_id_hint=normalized_player,
+                source="novaprime_identity_bond",
+            )
+            if isinstance(cached, dict):
+                out["cached_bond"] = cached
+            return out
         return {"ok": False, "error": "invalid novaprime identity bond response"}
 
     def novaprime_identity_verify(self, adapt_id: str, player_id: str) -> dict[str, Any]:
@@ -429,7 +438,16 @@ class NovaAdaptService:
             adapt_id=str(adapt_id or ""),
         )
         if isinstance(result, dict):
-            return result
+            out = dict(result)
+            cached = self._cache_bond_from_novaprime_result(
+                result=out,
+                adapt_id_hint=str(adapt_id or ""),
+                player_id_hint=normalized_player,
+                source="novaprime_resonance_bond",
+            )
+            if isinstance(cached, dict):
+                out["cached_bond"] = cached
+            return out
         return {"ok": False, "error": "invalid novaprime resonance bond response"}
 
     def adapt_toggle_get(self, adapt_id: str) -> dict[str, Any]:
@@ -564,6 +582,7 @@ class NovaAdaptService:
         adapt_id: str,
         accepted: bool,
         player_profile: dict[str, Any] | None = None,
+        toggle_mode: str | None = None,
     ) -> dict[str, Any]:
         normalized_player = str(player_id or "").strip()
         normalized_adapt = str(adapt_id or "").strip()
@@ -573,6 +592,9 @@ class NovaAdaptService:
             raise ValueError("'adapt_id' is required")
         result = self._sib().resonance_result(normalized_player, normalized_adapt, bool(accepted))
         if bool(accepted) and isinstance(result, dict):
+            resolved_adapt = normalized_adapt
+            cached_bond: dict[str, Any] | None = None
+            identity_profile: dict[str, Any] | None = None
             try:
                 bond = self.novaprime_client.resonance_bond(
                     normalized_player,
@@ -581,9 +603,115 @@ class NovaAdaptService:
                 )
                 if isinstance(bond, dict):
                     result["novaprime_bond"] = bond
+                    cached_bond = self._cache_bond_from_novaprime_result(
+                        result=bond,
+                        adapt_id_hint=normalized_adapt,
+                        player_id_hint=normalized_player,
+                        source="sib_resonance_result",
+                    )
+                    if isinstance(cached_bond, dict):
+                        result["adapt_bond_cache"] = cached_bond
+                        resolved_adapt = str(cached_bond.get("adapt_id") or resolved_adapt).strip() or resolved_adapt
             except Exception as exc:
                 result["novaprime_bond_error"] = str(exc)
+            try:
+                if toggle_mode is not None and str(toggle_mode).strip():
+                    result["adapt_toggle"] = self.adapt_toggle_store.set(
+                        resolved_adapt,
+                        str(toggle_mode),
+                        source="sib_resonance_result",
+                    )
+                else:
+                    result["adapt_toggle"] = self.adapt_toggle_store.get(resolved_adapt)
+            except Exception as exc:
+                result["adapt_toggle_error"] = str(exc)
+            try:
+                profile = self.novaprime_client.identity_profile(resolved_adapt)
+                if isinstance(profile, dict):
+                    identity_profile = profile
+                    result["novaprime_profile"] = profile
+            except Exception as exc:
+                result["novaprime_profile_error"] = str(exc)
+            try:
+                presence = self.novaprime_client.presence_update(
+                    resolved_adapt,
+                    realm="game_world",
+                    activity="bonded",
+                )
+                if isinstance(presence, dict):
+                    result["novaprime_presence"] = presence
+            except Exception as exc:
+                result["novaprime_presence_error"] = str(exc)
+            persona_profile = identity_profile
+            if persona_profile is None and isinstance(cached_bond, dict):
+                cached_profile = cached_bond.get("profile")
+                if isinstance(cached_profile, dict):
+                    persona_profile = cached_profile
+            try:
+                toggle_state = result.get("adapt_toggle")
+                result["adapt_persona"] = self.adapt_persona.build_context(
+                    adapt_id=resolved_adapt,
+                    toggle_mode=toggle_state.get("mode") if isinstance(toggle_state, dict) else None,
+                    bond_verified=True,
+                    identity_profile=persona_profile,
+                    cached_bond=cached_bond,
+                )
+            except Exception as exc:
+                result["adapt_persona_error"] = str(exc)
         return result
+
+    def _cache_bond_from_novaprime_result(
+        self,
+        *,
+        result: dict[str, Any],
+        adapt_id_hint: str = "",
+        player_id_hint: str = "",
+        source: str = "novaprime",
+    ) -> dict[str, Any] | None:
+        if not bool(result.get("ok", False)):
+            return None
+        bond = result.get("bond")
+        profile = result.get("profile")
+        resonance = result.get("resonance")
+        bond_payload = bond if isinstance(bond, dict) else {}
+        profile_payload = profile if isinstance(profile, dict) else {}
+
+        resolved_adapt = str(
+            bond_payload.get("adapt_id")
+            or result.get("adapt_id")
+            or adapt_id_hint
+            or ""
+        ).strip()
+        resolved_player = str(
+            bond_payload.get("player_id")
+            or result.get("player_id")
+            or player_id_hint
+            or ""
+        ).strip()
+        if not resolved_adapt or not resolved_player:
+            return None
+
+        merged_profile: dict[str, Any] = {}
+        if bond_payload:
+            merged_profile.update(bond_payload)
+        if profile_payload:
+            merged_profile.update(profile_payload)
+        if isinstance(resonance, dict):
+            element = str(resonance.get("element") or "").strip()
+            subclass = str(resonance.get("subclass") or "").strip()
+            if element and "element" not in merged_profile:
+                merged_profile["element"] = element
+            if subclass and "subclass" not in merged_profile:
+                merged_profile["subclass"] = subclass
+            merged_profile["resonance"] = dict(resonance)
+
+        return self.adapt_bond_cache.remember(
+            resolved_adapt,
+            resolved_player,
+            verified=True,
+            profile=merged_profile,
+            source=source,
+        )
 
     def record_feedback(self, payload: dict[str, Any]) -> dict[str, Any]:
         objective = str(payload.get("objective") or "").strip()

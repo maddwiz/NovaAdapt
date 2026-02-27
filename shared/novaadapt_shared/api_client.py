@@ -475,6 +475,8 @@ class NovaAdaptAPIClient:
         adapt_id: str,
         accepted: bool,
         player_profile: dict[str, Any] | None = None,
+        *,
+        toggle_mode: str | None = None,
         idempotency_key: str | None = None,
     ) -> dict[str, Any]:
         body: dict[str, Any] = {
@@ -484,6 +486,8 @@ class NovaAdaptAPIClient:
         }
         if isinstance(player_profile, dict):
             body["player_profile"] = player_profile
+        if toggle_mode is not None:
+            body["toggle_mode"] = str(toggle_mode or "")
         resp = self._post_json("/sib/resonance/result", body, idempotency_key=idempotency_key)
         if isinstance(resp, dict):
             return resp
