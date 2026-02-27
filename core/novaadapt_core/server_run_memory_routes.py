@@ -79,6 +79,8 @@ def post_swarm_run(
         "post_activity": payload.get("post_activity"),
         "toggle_mode": payload.get("toggle_mode"),
         "mesh_node_id": payload.get("mesh_node_id"),
+        "mesh_probe": payload.get("mesh_probe"),
+        "mesh_probe_marketplace": payload.get("mesh_probe_marketplace"),
         "mesh_credit_amount": payload.get("mesh_credit_amount"),
         "mesh_transfer_to": payload.get("mesh_transfer_to"),
         "mesh_transfer_amount": payload.get("mesh_transfer_amount"),

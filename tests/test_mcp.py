@@ -5,7 +5,12 @@ from novaadapt_core.mcp_server import NovaAdaptMCPServer
 
 class _StubService:
     def run(self, payload):
-        return {"status": "ok", "objective": payload.get("objective")}
+        return {
+            "status": "ok",
+            "objective": payload.get("objective"),
+            "mesh_probe": bool(payload.get("mesh_probe", False)),
+            "mesh_probe_marketplace": bool(payload.get("mesh_probe_marketplace", False)),
+        }
 
     def models(self):
         return [{"name": "local"}]
@@ -334,12 +339,18 @@ class MCPServerTests(unittest.TestCase):
                 "method": "tools/call",
                 "params": {
                     "name": "novaadapt_swarm_run",
-                    "arguments": {"objectives": ["demo-a", "demo-b"]},
+                    "arguments": {
+                        "objectives": ["demo-a", "demo-b"],
+                        "mesh_probe": True,
+                        "mesh_probe_marketplace": True,
+                    },
                 },
             }
         )
         swarm_payload = swarm_resp["result"]["content"][0]["json"]
         self.assertEqual(swarm_payload["submitted_jobs"], 2)
+        self.assertTrue(swarm_payload["jobs"][0]["result"]["mesh_probe"])
+        self.assertTrue(swarm_payload["jobs"][0]["result"]["mesh_probe_marketplace"])
 
         history_resp = server.handle_request(
             {

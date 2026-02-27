@@ -276,6 +276,21 @@ class ServerTests(unittest.TestCase):
                 self.assertEqual(run["results"][0]["status"], "preview")
                 self.assertIn("request_id", run)
 
+                run_mesh_probe, _ = _post_json_with_headers(
+                    f"http://{host}:{port}/run",
+                    {
+                        "objective": "probe mesh",
+                        "mesh_node_id": "node-1",
+                        "mesh_probe": True,
+                        "mesh_probe_marketplace": True,
+                    },
+                )
+                self.assertEqual(run_mesh_probe["results"][0]["status"], "preview")
+                self.assertIn("novaprime", run_mesh_probe)
+                self.assertIn("mesh", run_mesh_probe["novaprime"])
+                self.assertEqual(run_mesh_probe["novaprime"]["mesh"]["node_id"], "node-1")
+                self.assertIn("reputation", run_mesh_probe["novaprime"]["mesh"])
+
                 swarm, _ = _post_json_with_headers(
                     f"http://{host}:{port}/swarm/run",
                     {"objectives": ["click ok", "click ok again"], "execute": False, "max_agents": 2},

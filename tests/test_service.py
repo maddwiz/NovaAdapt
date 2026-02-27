@@ -495,6 +495,8 @@ class ServiceTests(unittest.TestCase):
                     "activity": "patrol",
                     "post_activity": "patrol_complete",
                     "mesh_node_id": "node-1",
+                    "mesh_probe": True,
+                    "mesh_probe_marketplace": True,
                     "mesh_credit_amount": 5.0,
                     "mesh_transfer_to": "node-2",
                     "mesh_transfer_amount": 2.0,
@@ -521,6 +523,9 @@ class ServiceTests(unittest.TestCase):
             self.assertIn("mesh", out["novaprime"])
             self.assertTrue(out["novaprime"]["mesh"]["ok"])
             self.assertEqual(out["novaprime"]["mesh"]["node_id"], "node-1")
+            self.assertGreaterEqual(out["novaprime"]["mesh"]["reputation"], 0.0)
+            self.assertGreaterEqual(out["novaprime"]["mesh"]["listings_count"], 0)
+            self.assertIn("listings_preview", out["novaprime"]["mesh"])
             self.assertIn("credit", out["novaprime"]["mesh"])
             self.assertIn("transfer", out["novaprime"]["mesh"])
             self.assertIn("marketplace_list", out["novaprime"]["mesh"])
@@ -570,6 +575,32 @@ class ServiceTests(unittest.TestCase):
             self.assertTrue(out["novaprime"]["mesh"]["ok"])
             self.assertEqual(out["novaprime"]["mesh"]["node_id"], "node-1")
             self.assertEqual(out["novaprime"]["mesh"]["credit"]["node_id"], "node-1")
+
+    def test_run_with_mesh_probe_marketplace_without_node_id_reports_error(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            novaprime = _StubNovaPrimeBackend()
+            service = NovaAdaptService(
+                default_config=Path("unused.json"),
+                db_path=Path(tmp) / "actions.db",
+                router_loader=lambda _path: _StubRouter(),
+                directshell_factory=_StubDirectShell,
+                novaprime_client=novaprime,
+            )
+
+            out = service.run(
+                {
+                    "objective": "Probe mesh state",
+                    "mesh_probe": True,
+                    "mesh_probe_marketplace": True,
+                }
+            )
+
+            self.assertEqual(out["results"][0]["status"], "preview")
+            self.assertIn("novaprime", out)
+            self.assertIn("mesh", out["novaprime"])
+            self.assertFalse(out["novaprime"]["mesh"]["ok"])
+            self.assertIn("probe_error", out["novaprime"]["mesh"])
+            self.assertIn("listings_count", out["novaprime"]["mesh"])
 
     def test_approve_plan_marks_failed_on_blocked_action(self):
         with tempfile.TemporaryDirectory() as tmp:

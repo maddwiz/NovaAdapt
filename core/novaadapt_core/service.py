@@ -609,6 +609,8 @@ class NovaAdaptService:
         *,
         adapt_id: str,
         mesh_node_id: str,
+        mesh_probe: bool,
+        mesh_probe_marketplace: bool,
         mesh_credit_amount: object,
         mesh_transfer_to: str,
         mesh_transfer_amount: object,
@@ -623,6 +625,23 @@ class NovaAdaptService:
                 context["balance_before"] = float(self.novaprime_client.mesh_balance(node_id))
             except Exception as exc:
                 context["balance_before_error"] = str(exc)
+            try:
+                context["reputation"] = float(self.novaprime_client.mesh_reputation(node_id))
+            except Exception as exc:
+                context["reputation_error"] = str(exc)
+        elif mesh_probe:
+            context["probe_error"] = "'mesh_node_id' or 'adapt_id' is required for mesh probe"
+
+        if mesh_probe_marketplace:
+            try:
+                listings = self.novaprime_client.marketplace_listings()
+                if isinstance(listings, list):
+                    context["listings_count"] = len(listings)
+                    context["listings_preview"] = listings[:5]
+                else:
+                    context["listings_error"] = "invalid novaprime marketplace listings response"
+            except Exception as exc:
+                context["listings_error"] = str(exc)
 
         if mesh_credit_amount is not None:
             if not node_id:
@@ -634,11 +653,14 @@ class NovaAdaptService:
                         context["credit_error"] = "'mesh_credit_amount' must be > 0"
                     else:
                         credit_result = self.novaprime_client.mesh_credit(node_id, amount)
-                        context["credit"] = (
-                            credit_result
-                            if isinstance(credit_result, dict)
-                            else {"ok": False, "error": "invalid novaprime mesh credit response"}
-                        )
+                        if isinstance(credit_result, dict):
+                            context["credit"] = credit_result
+                            if not bool(credit_result.get("ok", False)):
+                                context["credit_error"] = str(
+                                    credit_result.get("error") or "novaprime mesh credit failed"
+                                )
+                        else:
+                            context["credit_error"] = "invalid novaprime mesh credit response"
                 except Exception as exc:
                     context["credit_error"] = str(exc)
 
@@ -654,11 +676,14 @@ class NovaAdaptService:
                         context["transfer_error"] = "'mesh_transfer_amount' must be > 0"
                     else:
                         transfer_result = self.novaprime_client.mesh_transfer(from_node, to_node, amount)
-                        context["transfer"] = (
-                            transfer_result
-                            if isinstance(transfer_result, dict)
-                            else {"ok": False, "error": "invalid novaprime mesh transfer response"}
-                        )
+                        if isinstance(transfer_result, dict):
+                            context["transfer"] = transfer_result
+                            if not bool(transfer_result.get("ok", False)):
+                                context["transfer_error"] = str(
+                                    transfer_result.get("error") or "novaprime mesh transfer failed"
+                                )
+                        else:
+                            context["transfer_error"] = "invalid novaprime mesh transfer response"
                 except Exception as exc:
                     context["transfer_error"] = str(exc)
 
@@ -680,11 +705,14 @@ class NovaAdaptService:
                 else:
                     try:
                         list_result = self.novaprime_client.marketplace_list(capsule_id, seller, price, title)
-                        context["marketplace_list"] = (
-                            list_result
-                            if isinstance(list_result, dict)
-                            else {"ok": False, "error": "invalid novaprime marketplace list response"}
-                        )
+                        if isinstance(list_result, dict):
+                            context["marketplace_list"] = list_result
+                            if not bool(list_result.get("ok", False)):
+                                context["marketplace_list_error"] = str(
+                                    list_result.get("error") or "novaprime marketplace list failed"
+                                )
+                        else:
+                            context["marketplace_list_error"] = "invalid novaprime marketplace list response"
                     except Exception as exc:
                         context["marketplace_list_error"] = str(exc)
 
@@ -699,11 +727,14 @@ class NovaAdaptService:
                 else:
                     try:
                         buy_result = self.novaprime_client.marketplace_buy(listing_id, buyer)
-                        context["marketplace_buy"] = (
-                            buy_result
-                            if isinstance(buy_result, dict)
-                            else {"ok": False, "error": "invalid novaprime marketplace buy response"}
-                        )
+                        if isinstance(buy_result, dict):
+                            context["marketplace_buy"] = buy_result
+                            if not bool(buy_result.get("ok", False)):
+                                context["marketplace_buy_error"] = str(
+                                    buy_result.get("error") or "novaprime marketplace buy failed"
+                                )
+                        else:
+                            context["marketplace_buy_error"] = "invalid novaprime marketplace buy response"
                     except Exception as exc:
                         context["marketplace_buy_error"] = str(exc)
 
@@ -743,10 +774,14 @@ class NovaAdaptService:
         mesh_credit_amount = payload.get("mesh_credit_amount")
         mesh_transfer_to = str(payload.get("mesh_transfer_to") or "").strip()
         mesh_transfer_amount = payload.get("mesh_transfer_amount")
+        mesh_probe = bool(payload.get("mesh_probe", False))
+        mesh_probe_marketplace = bool(payload.get("mesh_probe_marketplace", False))
         mesh_marketplace_list = payload.get("mesh_marketplace_list")
         mesh_marketplace_buy = payload.get("mesh_marketplace_buy")
-        has_mesh_ops = bool(
-            mesh_node_id
+        has_mesh_context = bool(
+            mesh_probe
+            or mesh_probe_marketplace
+            or mesh_node_id
             or mesh_credit_amount is not None
             or mesh_transfer_to
             or mesh_transfer_amount is not None
@@ -760,7 +795,7 @@ class NovaAdaptService:
                 _ = self.adapt_toggle_store.set(adapt_id, str(toggle_mode_input), source="run_payload")
             toggle_mode = self.adapt_toggle_store.get_mode(adapt_id)
 
-        novaprime_context: dict[str, Any] = {"enabled": bool(adapt_id or has_mesh_ops)}
+        novaprime_context: dict[str, Any] = {"enabled": bool(adapt_id or has_mesh_context)}
         adapt_context: dict[str, Any] = {}
         identity_profile: dict[str, Any] | None = None
         bond_verified: bool | None = None
@@ -857,11 +892,13 @@ class NovaAdaptService:
             except Exception as exc:
                 if "error" not in novaprime_context:
                     novaprime_context["error"] = str(exc)
-        if has_mesh_ops:
+        if has_mesh_context:
             try:
                 novaprime_context["mesh"] = self._execute_runtime_mesh_ops(
                     adapt_id=adapt_id,
                     mesh_node_id=mesh_node_id,
+                    mesh_probe=mesh_probe,
+                    mesh_probe_marketplace=mesh_probe_marketplace,
                     mesh_credit_amount=mesh_credit_amount,
                     mesh_transfer_to=mesh_transfer_to,
                     mesh_transfer_amount=mesh_transfer_amount,
