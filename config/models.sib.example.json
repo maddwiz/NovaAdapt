@@ -1,0 +1,31 @@
+{
+  "default_model": "novaprime-dual",
+  "routing": {
+    "temperature": 0.2,
+    "max_tokens": 800,
+    "timeout_seconds": 90,
+    "default_vote_candidates": 3,
+    "min_vote_agreement": 1
+  },
+  "models": [
+    {
+      "name": "novaprime-dual",
+      "provider": "openai-compatible",
+      "model": "novaprime-dual",
+      "base_url": "http://127.0.0.1:8400/v1"
+    },
+    {
+      "name": "local-qwen",
+      "provider": "openai-compatible",
+      "model": "qwen2.5-vl:latest",
+      "base_url": "http://localhost:11434/v1"
+    },
+    {
+      "name": "openai-gpt",
+      "provider": "openai-compatible",
+      "model": "gpt-4.5",
+      "base_url": "https://api.openai.com/v1",
+      "api_key_env": "OPENAI_API_KEY"
+    }
+  ]
+}

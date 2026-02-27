@@ -93,6 +93,12 @@ python -m playwright install chromium
 cp config/models.example.json config/models.local.json
 ```
 
+For SIB/NovaPrime-first routing, use the dedicated template:
+
+```bash
+cp config/models.sib.example.json config/models.local.json
+```
+
 3. List available configured models:
 
 ```bash
