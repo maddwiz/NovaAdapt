@@ -344,6 +344,70 @@ def _build_parser() -> argparse.ArgumentParser:
     feedback_cmd.add_argument("--metadata", default="", help="Optional JSON object string")
     feedback_cmd.add_argument("--context", default="", help="Optional JSON object string")
 
+    novaprime_status_cmd = sub.add_parser("novaprime-status", help="Show NovaPrime backend status")
+    novaprime_status_cmd.add_argument("--config", type=Path, default=_default_config_path())
+
+    novaprime_reason_cmd = sub.add_parser("novaprime-reason", help="Run a task through NovaPrime dual-brain")
+    novaprime_reason_cmd.add_argument("--config", type=Path, default=_default_config_path())
+    novaprime_reason_cmd.add_argument("--task", required=True)
+
+    novaprime_emotion_get_cmd = sub.add_parser("novaprime-emotion-get", help="Get NovaPrime emotional state")
+    novaprime_emotion_get_cmd.add_argument("--config", type=Path, default=_default_config_path())
+
+    novaprime_emotion_set_cmd = sub.add_parser("novaprime-emotion-set", help="Set NovaPrime emotional chemicals")
+    novaprime_emotion_set_cmd.add_argument("--config", type=Path, default=_default_config_path())
+    novaprime_emotion_set_cmd.add_argument("--chemicals", required=True, help='JSON object, e.g. {"focus":0.8}')
+
+    novaprime_mesh_balance_cmd = sub.add_parser("novaprime-mesh-balance", help="Get NovaPrime mesh balance")
+    novaprime_mesh_balance_cmd.add_argument("--config", type=Path, default=_default_config_path())
+    novaprime_mesh_balance_cmd.add_argument("--node-id", required=True)
+
+    novaprime_mesh_reputation_cmd = sub.add_parser(
+        "novaprime-mesh-reputation",
+        help="Get NovaPrime mesh reputation",
+    )
+    novaprime_mesh_reputation_cmd.add_argument("--config", type=Path, default=_default_config_path())
+    novaprime_mesh_reputation_cmd.add_argument("--node-id", required=True)
+
+    novaprime_identity_profile_cmd = sub.add_parser(
+        "novaprime-identity-profile",
+        help="Get NovaPrime Adapt identity profile",
+    )
+    novaprime_identity_profile_cmd.add_argument("--config", type=Path, default=_default_config_path())
+    novaprime_identity_profile_cmd.add_argument("--adapt-id", required=True)
+
+    novaprime_identity_verify_cmd = sub.add_parser(
+        "novaprime-identity-verify",
+        help="Verify Adapt bond via NovaPrime with cache fallback",
+    )
+    novaprime_identity_verify_cmd.add_argument("--config", type=Path, default=_default_config_path())
+    novaprime_identity_verify_cmd.add_argument("--adapt-id", required=True)
+    novaprime_identity_verify_cmd.add_argument("--player-id", required=True)
+
+    novaprime_resonance_score_cmd = sub.add_parser(
+        "novaprime-resonance-score",
+        help="Score SIB resonance profile through NovaPrime",
+    )
+    novaprime_resonance_score_cmd.add_argument("--config", type=Path, default=_default_config_path())
+    novaprime_resonance_score_cmd.add_argument(
+        "--player-profile",
+        required=True,
+        help='JSON object profile, e.g. {"class":"sentinel","moral_alignment":"protective"}',
+    )
+
+    novaprime_resonance_bond_cmd = sub.add_parser(
+        "novaprime-resonance-bond",
+        help="Run SIB resonance bond through NovaPrime",
+    )
+    novaprime_resonance_bond_cmd.add_argument("--config", type=Path, default=_default_config_path())
+    novaprime_resonance_bond_cmd.add_argument("--player-id", required=True)
+    novaprime_resonance_bond_cmd.add_argument("--adapt-id", default="")
+    novaprime_resonance_bond_cmd.add_argument(
+        "--player-profile",
+        default="",
+        help='Optional JSON object profile, e.g. {"class":"sentinel"}',
+    )
+
     adapt_toggle_cmd = sub.add_parser("adapt-toggle", help="Get or set Adapt communication toggle mode")
     adapt_toggle_cmd.add_argument("--config", type=Path, default=_default_config_path())
     adapt_toggle_cmd.add_argument("--adapt-id", required=True)
@@ -1113,6 +1177,76 @@ def main() -> None:
                     raise ValueError("--context must be a JSON object")
                 out_payload["context"] = parsed_context
             print(json.dumps(service.record_feedback(out_payload), indent=2))
+            return
+
+        if args.command == "novaprime-status":
+            service = NovaAdaptService(default_config=args.config)
+            print(json.dumps(service.novaprime_status(), indent=2))
+            return
+
+        if args.command == "novaprime-reason":
+            service = NovaAdaptService(default_config=args.config)
+            print(json.dumps(service.novaprime_reason_dual(str(args.task)), indent=2))
+            return
+
+        if args.command == "novaprime-emotion-get":
+            service = NovaAdaptService(default_config=args.config)
+            print(json.dumps(service.novaprime_emotion_get(), indent=2))
+            return
+
+        if args.command == "novaprime-emotion-set":
+            service = NovaAdaptService(default_config=args.config)
+            chemicals = _parse_optional_json_object(args.chemicals, "--chemicals")
+            print(json.dumps(service.novaprime_emotion_set(chemicals if isinstance(chemicals, dict) else {}), indent=2))
+            return
+
+        if args.command == "novaprime-mesh-balance":
+            service = NovaAdaptService(default_config=args.config)
+            print(json.dumps(service.novaprime_mesh_balance(str(args.node_id)), indent=2))
+            return
+
+        if args.command == "novaprime-mesh-reputation":
+            service = NovaAdaptService(default_config=args.config)
+            print(json.dumps(service.novaprime_mesh_reputation(str(args.node_id)), indent=2))
+            return
+
+        if args.command == "novaprime-identity-profile":
+            service = NovaAdaptService(default_config=args.config)
+            print(json.dumps(service.novaprime_identity_profile(str(args.adapt_id)), indent=2))
+            return
+
+        if args.command == "novaprime-identity-verify":
+            service = NovaAdaptService(default_config=args.config)
+            print(
+                json.dumps(
+                    service.novaprime_identity_verify(
+                        str(args.adapt_id),
+                        str(args.player_id),
+                    ),
+                    indent=2,
+                )
+            )
+            return
+
+        if args.command == "novaprime-resonance-score":
+            service = NovaAdaptService(default_config=args.config)
+            profile = _parse_optional_json_object(args.player_profile, "--player-profile")
+            print(json.dumps(service.novaprime_resonance_score(profile if isinstance(profile, dict) else {}), indent=2))
+            return
+
+        if args.command == "novaprime-resonance-bond":
+            service = NovaAdaptService(default_config=args.config)
+            profile = _parse_optional_json_object(args.player_profile, "--player-profile")
+            print(
+                json.dumps(
+                    service.novaprime_resonance_bond(
+                        str(args.player_id),
+                        profile if isinstance(profile, dict) else None,
+                        adapt_id=str(args.adapt_id or ""),
+                    ),
+                    indent=2,
+                )
+            )
             return
 
         if args.command == "adapt-toggle":

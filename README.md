@@ -188,7 +188,17 @@ novaadapt adapt-bond-verify --adapt-id adapt-1 --player-id player-1
 novaadapt adapt-persona --adapt-id adapt-1 --player-id player-1
 ```
 
-10. Snapshot local state databases (recommended before upgrades):
+10. Probe NovaPrime channels from CLI:
+
+```bash
+novaadapt novaprime-status
+novaadapt novaprime-reason --task "Plan eastern patrol routes"
+novaadapt novaprime-identity-verify --adapt-id adapt-1 --player-id player-1
+novaadapt novaprime-resonance-score --player-profile '{"class":"sentinel"}'
+novaadapt novaprime-resonance-bond --player-id player-1 --adapt-id adapt-1 --player-profile '{"class":"sentinel"}'
+```
+
+11. Snapshot local state databases (recommended before upgrades):
 
 ```bash
 novaadapt backup --out-dir ~/.novaadapt/backups
@@ -196,7 +206,7 @@ novaadapt backup --out-dir ~/.novaadapt/backups
 
 The command snapshots local SQLite stores (`actions`, `plans`, `jobs`, `idempotency`, `audit`) using timestamped files and reports which ones were missing.
 
-11. Restore local state from a snapshot (archives current DBs before overwrite):
+12. Restore local state from a snapshot (archives current DBs before overwrite):
 
 ```bash
 novaadapt restore --from-dir ~/.novaadapt/backups --timestamp 20260225T120000Z
@@ -204,7 +214,7 @@ novaadapt restore --from-dir ~/.novaadapt/backups --timestamp 20260225T120000Z
 
 If `--timestamp` is omitted, NovaAdapt restores the latest discovered snapshot in the backup directory.
 
-12. Prune stale local state rows (recommended for long-running installs):
+13. Prune stale local state rows (recommended for long-running installs):
 
 ```bash
 novaadapt prune \
