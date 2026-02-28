@@ -29,6 +29,7 @@ Implemented now:
   - Sends actions to DirectShell (or dry-run preview).
   - Records each action in a local undo queue database.
   - Integrates NovaSpine-compatible long-term memory for recall/augmentation + run/plan persistence.
+  - Exposes multi-channel messaging adapters (`webchat`, `iMessage`, `WhatsApp`, `Telegram`, `Discord`, `Slack`, `Signal`, `Teams`, `Google Chat`, `Matrix`) with normalized inbound + outbound send flows.
   - Exposes first-party plugin adapters (`novabridge`, `nova4d`, `novablox`) for external tool execution.
   - Exposes first-class Playwright browser automation routes/runtime (`/browser/*`) with domain allow/block policy hooks.
   - Records operator feedback (`/feedback`) into memory for self-improvement loops.
@@ -179,7 +180,16 @@ novaadapt browser-action --action-json '{"type":"navigate","target":"https://exa
 novaadapt doctor --execution
 ```
 
-9. Inspect Adapt state (toggle, bond, persona):
+9. Inspect and use messaging channels:
+
+```bash
+novaadapt channels
+novaadapt channel-health --channel webchat
+novaadapt channel-send --channel webchat --to room-1 --text "hello world"
+novaadapt channel-inbound --channel webchat --payload '{"sender":"player-1","text":"status report"}'
+```
+
+10. Inspect Adapt state (toggle, bond, persona):
 
 ```bash
 novaadapt adapt-toggle --adapt-id adapt-1
@@ -189,7 +199,7 @@ novaadapt adapt-bond-verify --adapt-id adapt-1 --player-id player-1
 novaadapt adapt-persona --adapt-id adapt-1 --player-id player-1
 ```
 
-10. Probe NovaPrime channels from CLI:
+11. Probe NovaPrime channels from CLI:
 
 ```bash
 novaadapt novaprime-status
@@ -199,7 +209,7 @@ novaadapt novaprime-resonance-score --player-profile '{"class":"sentinel"}'
 novaadapt novaprime-resonance-bond --player-id player-1 --adapt-id adapt-1 --player-profile '{"class":"sentinel"}'
 ```
 
-11. Snapshot local state databases (recommended before upgrades):
+12. Snapshot local state databases (recommended before upgrades):
 
 ```bash
 novaadapt backup --out-dir ~/.novaadapt/backups
@@ -207,7 +217,7 @@ novaadapt backup --out-dir ~/.novaadapt/backups
 
 The command snapshots local SQLite stores (`actions`, `plans`, `jobs`, `idempotency`, `audit`) using timestamped files and reports which ones were missing.
 
-12. Restore local state from a snapshot (archives current DBs before overwrite):
+13. Restore local state from a snapshot (archives current DBs before overwrite):
 
 ```bash
 novaadapt restore --from-dir ~/.novaadapt/backups --timestamp 20260225T120000Z
@@ -215,7 +225,7 @@ novaadapt restore --from-dir ~/.novaadapt/backups --timestamp 20260225T120000Z
 
 If `--timestamp` is omitted, NovaAdapt restores the latest discovered snapshot in the backup directory.
 
-13. Prune stale local state rows (recommended for long-running installs):
+14. Prune stale local state rows (recommended for long-running installs):
 
 ```bash
 novaadapt prune \
@@ -228,7 +238,7 @@ novaadapt prune \
 
 `novaadapt prune` only removes terminal plan/job rows and rows older than the configured retention windows.
 
-12. Start local HTTP API (for phone/glasses/bridge clients):
+15. Start local HTTP API (for phone/glasses/bridge clients):
 
 ```bash
 novaadapt serve \
@@ -258,6 +268,8 @@ API endpoints:
 - `GET /models`
 - `GET /plugins`
 - `GET /plugins/{name}/health`
+- `GET /channels`
+- `GET /channels/{name}/health`
 - `GET /memory/status`
 - `GET /novaprime/status`
 - `GET /novaprime/reason/emotion`
@@ -283,6 +295,8 @@ API endpoints:
 - `POST /run_async` with JSON payload (returns `job_id`)
 - `POST /swarm/run` with JSON payload (fan out multiple objectives into parallel jobs)
 - `POST /plugins/{name}/call` with JSON payload
+- `POST /channels/{name}/send` with JSON payload (`to`, `text`, optional `metadata`)
+- `POST /channels/{name}/inbound` with JSON payload (`payload` object, optional `adapt_id`, `auto_run`, `execute`)
 - `POST /feedback` with JSON payload (`rating` 1-10 required)
 - `POST /novaprime/reason/dual` with JSON payload (`task`)
 - `POST /novaprime/reason/emotion` with JSON payload (`chemicals` object)
@@ -332,6 +346,54 @@ API endpoints:
 - `POST /plans/{id}/undo` (reverse undo of recorded plan actions)
 - `POST /undo` with JSON payload
 - `POST /check` with JSON payload
+
+Messaging channel environment variables (examples):
+
+```bash
+# iMessage (macOS only)
+export NOVAADAPT_CHANNEL_IMESSAGE_ENABLED=1
+export NOVAADAPT_CHANNEL_IMESSAGE_DEFAULT_HANDLE="+15551234567"
+
+# WhatsApp Business Cloud
+export NOVAADAPT_CHANNEL_WHATSAPP_ENABLED=1
+export NOVAADAPT_CHANNEL_WHATSAPP_TOKEN="..."
+export NOVAADAPT_CHANNEL_WHATSAPP_PHONE_NUMBER_ID="..."
+
+# Telegram Bot API
+export NOVAADAPT_CHANNEL_TELEGRAM_ENABLED=1
+export NOVAADAPT_CHANNEL_TELEGRAM_BOT_TOKEN="..."
+export NOVAADAPT_CHANNEL_TELEGRAM_DEFAULT_CHAT_ID="..."
+
+# Discord
+export NOVAADAPT_CHANNEL_DISCORD_ENABLED=1
+export NOVAADAPT_CHANNEL_DISCORD_BOT_TOKEN="..."
+export NOVAADAPT_CHANNEL_DISCORD_DEFAULT_CHANNEL_ID="..."
+
+# Slack
+export NOVAADAPT_CHANNEL_SLACK_ENABLED=1
+export NOVAADAPT_CHANNEL_SLACK_BOT_TOKEN="..."
+export NOVAADAPT_CHANNEL_SLACK_DEFAULT_CHANNEL_ID="..."
+
+# Signal (signal-cli-rest-api)
+export NOVAADAPT_CHANNEL_SIGNAL_ENABLED=1
+export NOVAADAPT_CHANNEL_SIGNAL_BASE_URL="http://127.0.0.1:8080"
+export NOVAADAPT_CHANNEL_SIGNAL_SENDER="+15550001111"
+export NOVAADAPT_CHANNEL_SIGNAL_TOKEN="..."
+
+# Microsoft Teams Incoming Webhook
+export NOVAADAPT_CHANNEL_TEAMS_ENABLED=1
+export NOVAADAPT_CHANNEL_TEAMS_WEBHOOK_URL="https://..."
+
+# Google Chat Incoming Webhook
+export NOVAADAPT_CHANNEL_GOOGLECHAT_ENABLED=1
+export NOVAADAPT_CHANNEL_GOOGLECHAT_WEBHOOK_URL="https://..."
+
+# Matrix
+export NOVAADAPT_CHANNEL_MATRIX_ENABLED=1
+export NOVAADAPT_CHANNEL_MATRIX_HOMESERVER="https://matrix.org"
+export NOVAADAPT_CHANNEL_MATRIX_ACCESS_TOKEN="..."
+export NOVAADAPT_CHANNEL_MATRIX_DEFAULT_ROOM_ID="!roomid:matrix.org"
+```
 
 Core API responses include `X-Request-ID` for tracing (and object responses also include `request_id` in JSON).
 Mutating POST routes support idempotency via `Idempotency-Key`; replayed responses return `X-Idempotency-Replayed: true`.

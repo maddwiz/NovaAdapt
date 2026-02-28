@@ -497,6 +497,28 @@ class ServiceTests(unittest.TestCase):
         self.assertFalse(run_payload["execute"])
         self.assertIn("plot route", run_payload["objective"])
 
+    def test_default_channel_registry_includes_common_channels(self):
+        service = NovaAdaptService(
+            default_config=Path("unused.json"),
+            router_loader=lambda _path: _StubRouter(),
+            directshell_factory=_StubDirectShell,
+        )
+        names = {item.get("channel") for item in service.channels()}
+        self.assertTrue(
+            {
+                "webchat",
+                "imessage",
+                "whatsapp",
+                "telegram",
+                "discord",
+                "slack",
+                "signal",
+                "teams",
+                "googlechat",
+                "matrix",
+            }.issubset(names)
+        )
+
     def test_run_records_history_and_undo_mark_only(self):
         with tempfile.TemporaryDirectory() as tmp:
             service = NovaAdaptService(

@@ -4,10 +4,13 @@ from typing import Any
 
 from .base import ChannelAdapter
 from .discord import DiscordChannelAdapter
+from .googlechat import GoogleChatChannelAdapter
 from .imessage import IMessageChannelAdapter
+from .matrix import MatrixChannelAdapter
 from .signal import SignalChannelAdapter
 from .slack import SlackChannelAdapter
 from .telegram import TelegramChannelAdapter
+from .teams import TeamsChannelAdapter
 from .webchat import WebChatChannelAdapter
 from .whatsapp import WhatsAppChannelAdapter
 
@@ -70,5 +73,8 @@ def build_channel_registry() -> ChannelRegistry:
             DiscordChannelAdapter(),
             SlackChannelAdapter(),
             SignalChannelAdapter(),
+            TeamsChannelAdapter(),
+            GoogleChatChannelAdapter(),
+            MatrixChannelAdapter(),
         ]
     )
