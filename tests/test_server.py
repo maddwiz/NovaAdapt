@@ -746,6 +746,141 @@ class ServerTests(unittest.TestCase):
                     server.server_close()
                     thread.join(timeout=2)
 
+    def test_slack_inbound_accepts_direct_signed_webhook_payload(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch.dict(
+                os.environ,
+                {
+                    "NOVAADAPT_CHANNEL_SLACK_SIGNING_SECRET": "server-slack-secret",
+                },
+                clear=False,
+            ):
+                service = NovaAdaptService(
+                    default_config=Path("unused.json"),
+                    db_path=Path(tmp) / "actions.db",
+                    plans_db_path=Path(tmp) / "plans.db",
+                    router_loader=lambda _path: _StubRouter(),
+                    directshell_factory=_StubDirectShell,
+                )
+                server = create_server(
+                    "127.0.0.1",
+                    0,
+                    service,
+                    audit_db_path=str(Path(tmp) / "events.db"),
+                )
+                host, port = server.server_address
+                thread = threading.Thread(target=server.serve_forever, daemon=True)
+                thread.start()
+                try:
+                    payload = {
+                        "event": {
+                            "type": "message",
+                            "user": "U123",
+                            "text": "status report",
+                            "channel": "C123",
+                            "ts": "1710000000.000001",
+                        }
+                    }
+                    with self.assertRaises(error.HTTPError) as err:
+                        _post_json(f"http://{host}:{port}/channels/slack/inbound", payload)
+                    self.assertEqual(err.exception.code, 401)
+                    err.exception.close()
+
+                    raw = json.dumps(payload)
+                    timestamp = str(int(time.time()))
+                    signature = "v0=" + hmac.new(
+                        b"server-slack-secret",
+                        f"v0:{timestamp}:{raw}".encode("utf-8"),
+                        hashlib.sha256,
+                    ).hexdigest()
+                    signed, _ = _post_json_with_headers(
+                        f"http://{host}:{port}/channels/slack/inbound",
+                        payload,
+                        extra_headers={
+                            "X-Slack-Request-Timestamp": timestamp,
+                            "X-Slack-Signature": signature,
+                        },
+                    )
+                    self.assertTrue(signed["ok"])
+                    self.assertEqual(signed["channel"], "slack")
+                    self.assertEqual(signed["message"]["sender"], "U123")
+                finally:
+                    server.shutdown()
+                    server.server_close()
+                    thread.join(timeout=2)
+
+    def test_whatsapp_inbound_accepts_direct_signed_webhook_payload(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch.dict(
+                os.environ,
+                {
+                    "NOVAADAPT_CHANNEL_WHATSAPP_APP_SECRET": "server-whatsapp-secret",
+                },
+                clear=False,
+            ):
+                service = NovaAdaptService(
+                    default_config=Path("unused.json"),
+                    db_path=Path(tmp) / "actions.db",
+                    plans_db_path=Path(tmp) / "plans.db",
+                    router_loader=lambda _path: _StubRouter(),
+                    directshell_factory=_StubDirectShell,
+                )
+                server = create_server(
+                    "127.0.0.1",
+                    0,
+                    service,
+                    audit_db_path=str(Path(tmp) / "events.db"),
+                )
+                host, port = server.server_address
+                thread = threading.Thread(target=server.serve_forever, daemon=True)
+                thread.start()
+                try:
+                    payload = {
+                        "entry": [
+                            {
+                                "changes": [
+                                    {
+                                        "value": {
+                                            "messages": [
+                                                {
+                                                    "id": "wamid.123",
+                                                    "from": "15551230001",
+                                                    "type": "text",
+                                                    "text": {"body": "status report"},
+                                                }
+                                            ]
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                    with self.assertRaises(error.HTTPError) as err:
+                        _post_json(f"http://{host}:{port}/channels/whatsapp/inbound", payload)
+                    self.assertEqual(err.exception.code, 401)
+                    err.exception.close()
+
+                    raw = json.dumps(payload)
+                    signature = hmac.new(
+                        b"server-whatsapp-secret",
+                        raw.encode("utf-8"),
+                        hashlib.sha256,
+                    ).hexdigest()
+                    signed, _ = _post_json_with_headers(
+                        f"http://{host}:{port}/channels/whatsapp/inbound",
+                        payload,
+                        extra_headers={
+                            "X-Hub-Signature-256": f"sha256={signature}",
+                        },
+                    )
+                    self.assertTrue(signed["ok"])
+                    self.assertEqual(signed["channel"], "whatsapp")
+                    self.assertEqual(signed["message"]["sender"], "15551230001")
+                finally:
+                    server.shutdown()
+                    server.server_close()
+                    thread.join(timeout=2)
+
     def test_server_close_closes_browser_runtime(self):
         with tempfile.TemporaryDirectory() as tmp:
             browser = _StubBrowserExecutor()

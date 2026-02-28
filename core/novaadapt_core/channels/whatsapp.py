@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import hashlib
+import hmac
+import json
 import os
 from typing import Any
 
@@ -15,6 +18,8 @@ class WhatsAppChannelAdapter(ChannelAdapter):
         self.graph_base_url = str(os.getenv("NOVAADAPT_CHANNEL_WHATSAPP_GRAPH_BASE_URL", "https://graph.facebook.com")).strip(
             "/"
         )
+        self.app_secret = str(os.getenv("NOVAADAPT_CHANNEL_WHATSAPP_APP_SECRET", "")).strip()
+        self.require_signature = env_bool("NOVAADAPT_CHANNEL_WHATSAPP_REQUIRE_SIGNATURE", False)
         default_enabled = bool(self.token and self.phone_number_id)
         self._enabled = env_bool("NOVAADAPT_CHANNEL_WHATSAPP_ENABLED", default_enabled)
 
@@ -29,6 +34,9 @@ class WhatsAppChannelAdapter(ChannelAdapter):
             "enabled": bool(self.enabled()),
             "configured": configured,
             "phone_number_id_configured": bool(self.phone_number_id),
+            "inbound_token_configured": bool(self._inbound_token()),
+            "app_secret_configured": bool(self.app_secret),
+            "require_signature": bool(self.require_signature),
         }
 
     def normalize_inbound(self, payload: dict[str, Any]) -> ChannelMessage:
@@ -85,6 +93,78 @@ class WhatsAppChannelAdapter(ChannelAdapter):
             metadata=metadata,
         )
 
+    def _normalized_headers(self, headers: dict[str, str] | None) -> dict[str, str]:
+        out: dict[str, str] = {}
+        if not isinstance(headers, dict):
+            return out
+        for key, value in headers.items():
+            name = str(key or "").strip().lower()
+            if not name:
+                continue
+            out[name] = str(value or "").strip()
+        return out
+
+    def _signature_message_body(self, payload: dict[str, Any], raw_body: str | None) -> str:
+        raw = str(raw_body or "")
+        if raw:
+            return raw
+        return json.dumps(payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+
+    def verify_inbound(
+        self,
+        payload: dict[str, Any],
+        *,
+        headers: dict[str, str] | None = None,
+        raw_body: str | None = None,
+    ) -> dict[str, Any]:
+        token_auth = super().verify_inbound(payload, headers=headers)
+        if not bool(token_auth.get("ok", False)):
+            return token_auth
+
+        if self.require_signature and not self.app_secret:
+            return {
+                "ok": False,
+                "status_code": 500,
+                "error": "WhatsApp signature required but NOVAADAPT_CHANNEL_WHATSAPP_APP_SECRET is not configured",
+            }
+        if not self.app_secret:
+            return {
+                "ok": True,
+                "required": bool(token_auth.get("required", False)),
+                "methods": ["inbound_token"] if bool(token_auth.get("required", False)) else [],
+            }
+
+        normalized_headers = self._normalized_headers(headers)
+        signature = normalized_headers.get("x-hub-signature-256", "").strip().lower()
+        if signature.startswith("sha256="):
+            signature = signature.split("=", 1)[1].strip().lower()
+        if not signature:
+            return {
+                "ok": False,
+                "status_code": 401,
+                "error": "missing WhatsApp signature header",
+            }
+        body = self._signature_message_body(payload, raw_body)
+        expected = hmac.new(
+            self.app_secret.encode("utf-8"),
+            body.encode("utf-8"),
+            hashlib.sha256,
+        ).hexdigest()
+        if not hmac.compare_digest(signature, expected):
+            return {
+                "ok": False,
+                "status_code": 401,
+                "error": "invalid WhatsApp signature",
+            }
+        methods: list[str] = ["whatsapp_signature"]
+        if bool(token_auth.get("required", False)):
+            methods.append("inbound_token")
+        return {
+            "ok": True,
+            "required": True,
+            "methods": methods,
+        }
+
     def send_text(self, to: str, text: str, *, metadata: dict[str, Any] | None = None) -> dict[str, Any]:
         if not self.enabled():
             return {"ok": False, "channel": self.name, "error": "whatsapp channel disabled"}
@@ -131,4 +211,3 @@ class WhatsAppChannelAdapter(ChannelAdapter):
         if not ok:
             out["error"] = str(response.get("error") or provider.get("error", {}).get("message") or "whatsapp send failed")
         return out
-

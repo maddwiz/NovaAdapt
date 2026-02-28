@@ -297,7 +297,7 @@ API endpoints:
 - `POST /plugins/{name}/call` with JSON payload
 - `POST /channels/{name}/send` with JSON payload (`to`, `text`, optional `metadata`)
 - `POST /channels/{name}/inbound` with JSON payload (`payload` object, optional `adapt_id`, `auto_run`, `execute`)
-  - Discord also supports direct webhook payloads at `/channels/discord/inbound` (without wrapping in `payload`) when signed headers are used.
+  - Discord/Slack/WhatsApp also support direct webhook payloads at `/channels/{name}/inbound` (without wrapping in `payload`) when signed headers are used.
 - `POST /feedback` with JSON payload (`rating` 1-10 required)
 - `POST /novaprime/reason/dual` with JSON payload (`task`)
 - `POST /novaprime/reason/emotion` with JSON payload (`chemicals` object)
@@ -361,6 +361,10 @@ export NOVAADAPT_CHANNEL_IMESSAGE_DEFAULT_HANDLE="+15551234567"
 export NOVAADAPT_CHANNEL_WHATSAPP_ENABLED=1
 export NOVAADAPT_CHANNEL_WHATSAPP_TOKEN="..."
 export NOVAADAPT_CHANNEL_WHATSAPP_PHONE_NUMBER_ID="..."
+# Optional inbound signature validation using Meta app secret (X-Hub-Signature-256)
+# export NOVAADAPT_CHANNEL_WHATSAPP_APP_SECRET="..."
+# Optional strict mode: require signature even when inbound token is unset
+# export NOVAADAPT_CHANNEL_WHATSAPP_REQUIRE_SIGNATURE=1
 
 # Telegram Bot API
 export NOVAADAPT_CHANNEL_TELEGRAM_ENABLED=1
@@ -386,6 +390,13 @@ export NOVAADAPT_CHANNEL_DISCORD_DEFAULT_CHANNEL_ID="..."
 export NOVAADAPT_CHANNEL_SLACK_ENABLED=1
 export NOVAADAPT_CHANNEL_SLACK_BOT_TOKEN="..."
 export NOVAADAPT_CHANNEL_SLACK_DEFAULT_CHANNEL_ID="..."
+# Optional inbound signature validation (Slack Events API)
+# export NOVAADAPT_CHANNEL_SLACK_SIGNING_SECRET="..."
+# Optional strict mode: require signature even when inbound token is unset
+# export NOVAADAPT_CHANNEL_SLACK_REQUIRE_SIGNATURE=1
+# Optional max replay window for signatures (seconds, default 300)
+# export NOVAADAPT_CHANNEL_SLACK_SIGNATURE_MAX_AGE_SECONDS=300
+# Slack URL verification (`type=url_verification`) is handled automatically and returns the `challenge` field.
 
 # Signal (signal-cli-rest-api)
 export NOVAADAPT_CHANNEL_SIGNAL_ENABLED=1

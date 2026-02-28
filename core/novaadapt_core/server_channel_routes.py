@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from .service import NovaAdaptService
 
+_DIRECT_WEBHOOK_CHANNELS = {"discord", "slack", "whatsapp"}
+
 
 def _channel_from_path(path: str, suffix: str) -> str:
     return path.removeprefix("/channels/").removesuffix(f"/{suffix}").strip("/")
@@ -74,8 +76,8 @@ def post_channel_inbound(
     inbound_payload = payload.get("payload")
     if isinstance(inbound_payload, dict):
         normalized_payload = inbound_payload
-    elif channel_name == "discord":
-        # Discord webhook mode accepts direct payload body at /channels/discord/inbound.
+    elif channel_name in _DIRECT_WEBHOOK_CHANNELS:
+        # Provider webhook mode accepts direct payload body at /channels/{channel}/inbound.
         normalized_payload = payload
     else:
         raise ValueError("'payload' must be an object")

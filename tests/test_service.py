@@ -11,7 +11,13 @@ from unittest import mock
 from novaadapt_core.adapt import AdaptBondCache, AdaptToggleStore
 from novaadapt_core.audit_store import AuditStore
 from novaadapt_core.browser_executor import BrowserExecutionResult
-from novaadapt_core.channels import ChannelRegistry, DiscordChannelAdapter, WebChatChannelAdapter
+from novaadapt_core.channels import (
+    ChannelRegistry,
+    DiscordChannelAdapter,
+    SlackChannelAdapter,
+    WebChatChannelAdapter,
+    WhatsAppChannelAdapter,
+)
 from novaadapt_core.directshell import ExecutionResult
 from novaadapt_core.service import NovaAdaptService
 from novaadapt_shared.model_router import RouterResult
@@ -606,6 +612,145 @@ class ServiceTests(unittest.TestCase):
             blocked = adapter.send_text("chan-99", "hello")
             self.assertFalse(blocked["ok"])
             self.assertIn("allowed channel list", str(blocked.get("error") or ""))
+
+    def test_slack_channel_inbound_enforces_signature_when_configured(self):
+        with mock.patch.dict(
+            os.environ,
+            {
+                "NOVAADAPT_CHANNEL_SLACK_SIGNING_SECRET": "slack-signing-secret",
+            },
+            clear=False,
+        ):
+            service = NovaAdaptService(
+                default_config=Path("unused.json"),
+                router_loader=lambda _path: _StubRouter(),
+                directshell_factory=_StubDirectShell,
+                channel_registry=ChannelRegistry([SlackChannelAdapter()]),
+            )
+            payload = {
+                "event": {
+                    "type": "message",
+                    "user": "U123",
+                    "text": "status",
+                    "channel": "C123",
+                    "ts": "1710000000.000001",
+                }
+            }
+            unauthorized = service.channel_inbound("slack", payload)
+            self.assertFalse(unauthorized["ok"])
+            self.assertEqual(unauthorized["status_code"], 401)
+
+            timestamp = str(int(time.time()))
+            raw = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+            signature = "v0=" + hmac.new(
+                b"slack-signing-secret",
+                f"v0:{timestamp}:{raw}".encode("utf-8"),
+                hashlib.sha256,
+            ).hexdigest()
+            authorized = service.channel_inbound(
+                "slack",
+                payload,
+                request_headers={
+                    "X-Slack-Request-Timestamp": timestamp,
+                    "X-Slack-Signature": signature,
+                },
+                request_body_text=raw,
+            )
+            self.assertTrue(authorized["ok"])
+            self.assertEqual(authorized["channel"], "slack")
+            self.assertEqual(authorized["message"]["sender"], "U123")
+
+    def test_whatsapp_channel_inbound_enforces_signature_when_configured(self):
+        with mock.patch.dict(
+            os.environ,
+            {
+                "NOVAADAPT_CHANNEL_WHATSAPP_APP_SECRET": "whatsapp-app-secret",
+            },
+            clear=False,
+        ):
+            service = NovaAdaptService(
+                default_config=Path("unused.json"),
+                router_loader=lambda _path: _StubRouter(),
+                directshell_factory=_StubDirectShell,
+                channel_registry=ChannelRegistry([WhatsAppChannelAdapter()]),
+            )
+            payload = {
+                "entry": [
+                    {
+                        "changes": [
+                            {
+                                "value": {
+                                    "messages": [
+                                        {
+                                            "id": "wamid.123",
+                                            "from": "15551230001",
+                                            "type": "text",
+                                            "text": {"body": "status"},
+                                        }
+                                    ]
+                                }
+                            }
+                        ]
+                    }
+                ]
+            }
+            unauthorized = service.channel_inbound("whatsapp", payload)
+            self.assertFalse(unauthorized["ok"])
+            self.assertEqual(unauthorized["status_code"], 401)
+
+            raw = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+            signature = hmac.new(
+                b"whatsapp-app-secret",
+                raw.encode("utf-8"),
+                hashlib.sha256,
+            ).hexdigest()
+            authorized = service.channel_inbound(
+                "whatsapp",
+                payload,
+                request_headers={"X-Hub-Signature-256": f"sha256={signature}"},
+                request_body_text=raw,
+            )
+            self.assertTrue(authorized["ok"])
+            self.assertEqual(authorized["channel"], "whatsapp")
+            self.assertEqual(authorized["message"]["sender"], "15551230001")
+
+    def test_slack_channel_inbound_url_verification_returns_challenge(self):
+        with mock.patch.dict(
+            os.environ,
+            {
+                "NOVAADAPT_CHANNEL_SLACK_SIGNING_SECRET": "slack-signing-secret",
+            },
+            clear=False,
+        ):
+            service = NovaAdaptService(
+                default_config=Path("unused.json"),
+                router_loader=lambda _path: _StubRouter(),
+                directshell_factory=_StubDirectShell,
+                channel_registry=ChannelRegistry([SlackChannelAdapter()]),
+            )
+            payload = {
+                "type": "url_verification",
+                "challenge": "challenge-token",
+            }
+            timestamp = str(int(time.time()))
+            raw = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+            signature = "v0=" + hmac.new(
+                b"slack-signing-secret",
+                f"v0:{timestamp}:{raw}".encode("utf-8"),
+                hashlib.sha256,
+            ).hexdigest()
+            result = service.channel_inbound(
+                "slack",
+                payload,
+                request_headers={
+                    "X-Slack-Request-Timestamp": timestamp,
+                    "X-Slack-Signature": signature,
+                },
+                request_body_text=raw,
+            )
+            self.assertTrue(result["ok"])
+            self.assertTrue(result["verification"])
+            self.assertEqual(result["challenge"], "challenge-token")
 
     def test_run_records_history_and_undo_mark_only(self):
         with tempfile.TemporaryDirectory() as tmp:

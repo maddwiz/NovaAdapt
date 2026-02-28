@@ -781,6 +781,20 @@ class NovaAdaptService:
                 "auth": auth,
             }
 
+        # Slack Events API URL verification challenge.
+        if normalized_channel == "slack":
+            event_type = str(payload.get("type") or "").strip().lower()
+            challenge = str(payload.get("challenge") or "").strip()
+            if event_type == "url_verification" and challenge:
+                return {
+                    "ok": True,
+                    "channel": normalized_channel,
+                    "verification": True,
+                    "challenge": challenge,
+                    "status_code": 200,
+                    "auth": auth,
+                }
+
         normalized_adapt = str(adapt_id or "").strip()
         message = adapter.normalize_inbound(payload)
         message_payload = message.to_dict()
