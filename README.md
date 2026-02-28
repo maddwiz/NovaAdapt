@@ -297,7 +297,7 @@ API endpoints:
 - `POST /plugins/{name}/call` with JSON payload
 - `POST /channels/{name}/send` with JSON payload (`to`, `text`, optional `metadata`)
 - `POST /channels/{name}/inbound` with JSON payload (`payload` object, optional `adapt_id`, `auto_run`, `execute`)
-  - Discord/Slack/WhatsApp also support direct webhook payloads at `/channels/{name}/inbound` (without wrapping in `payload`) when signed headers are used.
+  - Discord/Slack/WhatsApp/Telegram/Signal also support direct webhook payloads at `/channels/{name}/inbound` (without wrapping in `payload`) when signed headers are used.
 - `POST /feedback` with JSON payload (`rating` 1-10 required)
 - `POST /novaprime/reason/dual` with JSON payload (`task`)
 - `POST /novaprime/reason/emotion` with JSON payload (`chemicals` object)
@@ -370,6 +370,14 @@ export NOVAADAPT_CHANNEL_WHATSAPP_PHONE_NUMBER_ID="..."
 export NOVAADAPT_CHANNEL_TELEGRAM_ENABLED=1
 export NOVAADAPT_CHANNEL_TELEGRAM_BOT_TOKEN="..."
 export NOVAADAPT_CHANNEL_TELEGRAM_DEFAULT_CHAT_ID="..."
+# Optional Telegram native webhook secret token check (X-Telegram-Bot-Api-Secret-Token)
+# export NOVAADAPT_CHANNEL_TELEGRAM_WEBHOOK_SECRET_TOKEN="..."
+# Optional generic HMAC signature for relays/webhooks (X-NovaAdapt-Timestamp + X-NovaAdapt-Signature)
+# export NOVAADAPT_CHANNEL_TELEGRAM_WEBHOOK_SIGNING_SECRET="..."
+# Optional strict mode: require signature/secret token even when inbound token is unset
+# export NOVAADAPT_CHANNEL_TELEGRAM_REQUIRE_SIGNATURE=1
+# Optional max replay window for signatures (seconds, default 300)
+# export NOVAADAPT_CHANNEL_TELEGRAM_SIGNATURE_MAX_AGE_SECONDS=300
 
 # Discord
 export NOVAADAPT_CHANNEL_DISCORD_ENABLED=1
@@ -403,6 +411,12 @@ export NOVAADAPT_CHANNEL_SIGNAL_ENABLED=1
 export NOVAADAPT_CHANNEL_SIGNAL_BASE_URL="http://127.0.0.1:8080"
 export NOVAADAPT_CHANNEL_SIGNAL_SENDER="+15550001111"
 export NOVAADAPT_CHANNEL_SIGNAL_TOKEN="..."
+# Optional inbound HMAC signature (X-Signal-Timestamp + X-Signal-Signature)
+# export NOVAADAPT_CHANNEL_SIGNAL_WEBHOOK_SIGNING_SECRET="..."
+# Optional strict mode: require signature even when inbound token is unset
+# export NOVAADAPT_CHANNEL_SIGNAL_REQUIRE_SIGNATURE=1
+# Optional max replay window for signatures (seconds, default 300)
+# export NOVAADAPT_CHANNEL_SIGNAL_SIGNATURE_MAX_AGE_SECONDS=300
 
 # Microsoft Teams Incoming Webhook
 export NOVAADAPT_CHANNEL_TEAMS_ENABLED=1

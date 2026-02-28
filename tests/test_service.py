@@ -14,7 +14,9 @@ from novaadapt_core.browser_executor import BrowserExecutionResult
 from novaadapt_core.channels import (
     ChannelRegistry,
     DiscordChannelAdapter,
+    SignalChannelAdapter,
     SlackChannelAdapter,
+    TelegramChannelAdapter,
     WebChatChannelAdapter,
     WhatsAppChannelAdapter,
 )
@@ -751,6 +753,87 @@ class ServiceTests(unittest.TestCase):
             self.assertTrue(result["ok"])
             self.assertTrue(result["verification"])
             self.assertEqual(result["challenge"], "challenge-token")
+
+    def test_telegram_channel_inbound_enforces_webhook_secret_token_when_configured(self):
+        with mock.patch.dict(
+            os.environ,
+            {
+                "NOVAADAPT_CHANNEL_TELEGRAM_WEBHOOK_SECRET_TOKEN": "telegram-secret-token",
+            },
+            clear=False,
+        ):
+            service = NovaAdaptService(
+                default_config=Path("unused.json"),
+                router_loader=lambda _path: _StubRouter(),
+                directshell_factory=_StubDirectShell,
+                channel_registry=ChannelRegistry([TelegramChannelAdapter()]),
+            )
+            payload = {
+                "update_id": 123,
+                "message": {
+                    "message_id": 55,
+                    "text": "status",
+                    "from": {"id": 101, "username": "tg-user"},
+                    "chat": {"id": 202, "type": "private"},
+                },
+            }
+            unauthorized = service.channel_inbound("telegram", payload)
+            self.assertFalse(unauthorized["ok"])
+            self.assertEqual(unauthorized["status_code"], 401)
+
+            authorized = service.channel_inbound(
+                "telegram",
+                payload,
+                request_headers={"X-Telegram-Bot-Api-Secret-Token": "telegram-secret-token"},
+            )
+            self.assertTrue(authorized["ok"])
+            self.assertEqual(authorized["channel"], "telegram")
+            self.assertEqual(authorized["message"]["sender"], "tg-user")
+
+    def test_signal_channel_inbound_enforces_signature_when_configured(self):
+        with mock.patch.dict(
+            os.environ,
+            {
+                "NOVAADAPT_CHANNEL_SIGNAL_WEBHOOK_SIGNING_SECRET": "signal-signing-secret",
+            },
+            clear=False,
+        ):
+            service = NovaAdaptService(
+                default_config=Path("unused.json"),
+                router_loader=lambda _path: _StubRouter(),
+                directshell_factory=_StubDirectShell,
+                channel_registry=ChannelRegistry([SignalChannelAdapter()]),
+            )
+            payload = {
+                "envelope": {
+                    "sourceNumber": "+15551230001",
+                    "timestamp": "1710000000000",
+                    "dataMessage": {"message": "status"},
+                }
+            }
+            unauthorized = service.channel_inbound("signal", payload)
+            self.assertFalse(unauthorized["ok"])
+            self.assertEqual(unauthorized["status_code"], 401)
+
+            timestamp = str(int(time.time()))
+            raw = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+            signature = hmac.new(
+                b"signal-signing-secret",
+                f"{timestamp}.{raw}".encode("utf-8"),
+                hashlib.sha256,
+            ).hexdigest()
+            authorized = service.channel_inbound(
+                "signal",
+                payload,
+                request_headers={
+                    "X-Signal-Timestamp": timestamp,
+                    "X-Signal-Signature": signature,
+                },
+                request_body_text=raw,
+            )
+            self.assertTrue(authorized["ok"])
+            self.assertEqual(authorized["channel"], "signal")
+            self.assertEqual(authorized["message"]["sender"], "+15551230001")
 
     def test_run_records_history_and_undo_mark_only(self):
         with tempfile.TemporaryDirectory() as tmp:

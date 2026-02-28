@@ -881,6 +881,122 @@ class ServerTests(unittest.TestCase):
                     server.server_close()
                     thread.join(timeout=2)
 
+    def test_telegram_inbound_accepts_direct_webhook_payload_with_secret_header(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch.dict(
+                os.environ,
+                {
+                    "NOVAADAPT_CHANNEL_TELEGRAM_WEBHOOK_SECRET_TOKEN": "server-telegram-secret",
+                },
+                clear=False,
+            ):
+                service = NovaAdaptService(
+                    default_config=Path("unused.json"),
+                    db_path=Path(tmp) / "actions.db",
+                    plans_db_path=Path(tmp) / "plans.db",
+                    router_loader=lambda _path: _StubRouter(),
+                    directshell_factory=_StubDirectShell,
+                )
+                server = create_server(
+                    "127.0.0.1",
+                    0,
+                    service,
+                    audit_db_path=str(Path(tmp) / "events.db"),
+                )
+                host, port = server.server_address
+                thread = threading.Thread(target=server.serve_forever, daemon=True)
+                thread.start()
+                try:
+                    payload = {
+                        "update_id": 123,
+                        "message": {
+                            "message_id": 55,
+                            "text": "status report",
+                            "from": {"id": 101, "username": "tg-user"},
+                            "chat": {"id": 202, "type": "private"},
+                        },
+                    }
+                    with self.assertRaises(error.HTTPError) as err:
+                        _post_json(f"http://{host}:{port}/channels/telegram/inbound", payload)
+                    self.assertEqual(err.exception.code, 401)
+                    err.exception.close()
+
+                    signed, _ = _post_json_with_headers(
+                        f"http://{host}:{port}/channels/telegram/inbound",
+                        payload,
+                        extra_headers={
+                            "X-Telegram-Bot-Api-Secret-Token": "server-telegram-secret",
+                        },
+                    )
+                    self.assertTrue(signed["ok"])
+                    self.assertEqual(signed["channel"], "telegram")
+                    self.assertEqual(signed["message"]["sender"], "tg-user")
+                finally:
+                    server.shutdown()
+                    server.server_close()
+                    thread.join(timeout=2)
+
+    def test_signal_inbound_accepts_direct_signed_webhook_payload(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch.dict(
+                os.environ,
+                {
+                    "NOVAADAPT_CHANNEL_SIGNAL_WEBHOOK_SIGNING_SECRET": "server-signal-secret",
+                },
+                clear=False,
+            ):
+                service = NovaAdaptService(
+                    default_config=Path("unused.json"),
+                    db_path=Path(tmp) / "actions.db",
+                    plans_db_path=Path(tmp) / "plans.db",
+                    router_loader=lambda _path: _StubRouter(),
+                    directshell_factory=_StubDirectShell,
+                )
+                server = create_server(
+                    "127.0.0.1",
+                    0,
+                    service,
+                    audit_db_path=str(Path(tmp) / "events.db"),
+                )
+                host, port = server.server_address
+                thread = threading.Thread(target=server.serve_forever, daemon=True)
+                thread.start()
+                try:
+                    payload = {
+                        "envelope": {
+                            "sourceNumber": "+15551230001",
+                            "timestamp": "1710000000000",
+                            "dataMessage": {"message": "status report"},
+                        }
+                    }
+                    with self.assertRaises(error.HTTPError) as err:
+                        _post_json(f"http://{host}:{port}/channels/signal/inbound", payload)
+                    self.assertEqual(err.exception.code, 401)
+                    err.exception.close()
+
+                    raw = json.dumps(payload)
+                    timestamp = str(int(time.time()))
+                    signature = hmac.new(
+                        b"server-signal-secret",
+                        f"{timestamp}.{raw}".encode("utf-8"),
+                        hashlib.sha256,
+                    ).hexdigest()
+                    signed, _ = _post_json_with_headers(
+                        f"http://{host}:{port}/channels/signal/inbound",
+                        payload,
+                        extra_headers={
+                            "X-Signal-Timestamp": timestamp,
+                            "X-Signal-Signature": signature,
+                        },
+                    )
+                    self.assertTrue(signed["ok"])
+                    self.assertEqual(signed["channel"], "signal")
+                    self.assertEqual(signed["message"]["sender"], "+15551230001")
+                finally:
+                    server.shutdown()
+                    server.server_close()
+                    thread.join(timeout=2)
+
     def test_server_close_closes_browser_runtime(self):
         with tempfile.TemporaryDirectory() as tmp:
             browser = _StubBrowserExecutor()
