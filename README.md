@@ -352,6 +352,10 @@ Messaging channel environment variables (examples):
 
 Use `NOVAADAPT_CHANNEL_<CHANNEL>_INBOUND_TOKEN` (for example `NOVAADAPT_CHANNEL_WEBCHAT_INBOUND_TOKEN`) to require a token on `/channels/{name}/inbound`. Provide it as top-level `auth_token` in the request body or via `Authorization: Bearer ...`.
 
+Canonical channel auth/security matrix:
+
+- `/Users/desmondpottle/Documents/New project/NovaAdapt/docs/channel_security_matrix.md`
+
 ```bash
 # iMessage (macOS only)
 export NOVAADAPT_CHANNEL_IMESSAGE_ENABLED=1

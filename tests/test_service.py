@@ -532,6 +532,27 @@ class ServiceTests(unittest.TestCase):
             }.issubset(names)
         )
 
+    def test_channel_health_includes_security_posture(self):
+        service = NovaAdaptService(
+            default_config=Path("unused.json"),
+            router_loader=lambda _path: _StubRouter(),
+            directshell_factory=_StubDirectShell,
+            channel_registry=ChannelRegistry([WebChatChannelAdapter(), SlackChannelAdapter()]),
+        )
+        channels = service.channels()
+        self.assertGreaterEqual(len(channels), 2)
+        for row in channels:
+            security = row.get("security")
+            self.assertIsInstance(security, dict)
+            self.assertIn("inbound_token_configured", security)
+            self.assertIn("signature_configured", security)
+            self.assertIn("supported_verification_methods", security)
+
+        slack_health = service.channel_health("slack")
+        self.assertIn("security", slack_health)
+        self.assertIsInstance(slack_health["security"], dict)
+        self.assertIn("recommended_verification_method", slack_health["security"])
+
     def test_channel_inbound_enforces_optional_auth_token(self):
         with mock.patch.dict(os.environ, {"NOVAADAPT_CHANNEL_WEBCHAT_INBOUND_TOKEN": "secret-token"}, clear=False):
             service = NovaAdaptService(
