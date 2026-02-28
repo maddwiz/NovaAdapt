@@ -884,6 +884,17 @@ class ServiceTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             service.run({})
 
+    def test_run_standalone_without_adapt_or_mesh_skips_novaprime_context(self):
+        service = NovaAdaptService(
+            default_config=Path("unused.json"),
+            router_loader=lambda _path: _StubRouter(),
+            directshell_factory=_StubDirectShell,
+            novaprime_client=_FailingNovaPrimeBackend(),
+        )
+        out = service.run({"objective": "Standalone local objective"})
+        self.assertEqual(out["results"][0]["status"], "preview")
+        self.assertNotIn("novaprime", out)
+
     def test_run_with_adapt_context_syncs_novaprime_and_injects_identity(self):
         with tempfile.TemporaryDirectory() as tmp:
             router = _CapturingRouter()

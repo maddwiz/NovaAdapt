@@ -132,6 +132,17 @@ novaadapt run \
 `--candidates` is optional in vote mode; if omitted, NovaAdapt uses configured defaults (`routing.default_vote_candidates`).
 No GUI actions are executed unless `--execute` is provided.
 
+Standalone mode is the default. NovaAdapt works without NovaPrime, mesh, or SIB/game wiring.
+
+```bash
+# Hard-disable NovaPrime integration (open-source standalone deployments)
+export NOVAADAPT_NOVAPRIME_BACKEND=off
+
+# Gateway daemon is standalone by default; opt into kernel routing only if wanted
+novaadapt gateway-daemon --gateway-kernel-mode off
+novaadapt gateway-daemon --gateway-kernel-mode on   # optional NovaPrime kernel path
+```
+
 5. Review action history and preview/execute undo:
 
 ```bash

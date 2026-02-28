@@ -79,7 +79,7 @@ class GatewayCLITests(unittest.TestCase):
         self.assertTrue(out["ok"])
         run_payload = service.run.call_args.args[0]
         self.assertEqual(run_payload["objective"], "ping")
-        self.assertTrue(run_payload["use_kernel"])
+        self.assertFalse(run_payload["use_kernel"])
         self.assertFalse(run_payload["kernel_required"])
 
     def test_gateway_daemon_rejects_non_object_maps(self):
@@ -96,6 +96,45 @@ class GatewayCLITests(unittest.TestCase):
             with self.assertRaises(SystemExit) as exc:
                 cli.main()
         self.assertIn("--channel-workspace-map must be a JSON object", str(exc.exception))
+
+    def test_gateway_daemon_kernel_mode_on_passes_kernel_flags(self):
+        service = mock.Mock()
+        service.run.return_value = {"ok": True, "results": []}
+        queue = mock.Mock()
+        worker = mock.Mock()
+        delivery = mock.Mock()
+        router = mock.Mock()
+        daemon = mock.Mock()
+        connectors = {"webchat": mock.Mock()}
+
+        with (
+            mock.patch("novaadapt_core.cli.NovaAdaptService", return_value=service),
+            mock.patch("novaadapt_core.cli.GatewayJobQueue", return_value=queue),
+            mock.patch("novaadapt_core.cli.build_gateway_connectors", return_value=connectors),
+            mock.patch("novaadapt_core.cli.DeliveryManager", return_value=delivery),
+            mock.patch("novaadapt_core.cli.GatewayRouter", return_value=router),
+            mock.patch("novaadapt_core.cli.GatewayWorker", return_value=worker) as worker_ctor,
+            mock.patch("novaadapt_core.cli.NovaAgentDaemon", return_value=daemon),
+            mock.patch.object(
+                sys,
+                "argv",
+                [
+                    "novaadapt",
+                    "gateway-daemon",
+                    "--gateway-kernel-mode",
+                    "on",
+                    "--gateway-kernel-required",
+                ],
+            ),
+        ):
+            cli.main()
+
+        runner = worker_ctor.call_args.kwargs["runner"]
+        out = runner(_StubJob({"objective": "ping"}))
+        self.assertTrue(out["ok"])
+        run_payload = service.run.call_args.args[0]
+        self.assertTrue(run_payload["use_kernel"])
+        self.assertTrue(run_payload["kernel_required"])
 
 
 if __name__ == "__main__":

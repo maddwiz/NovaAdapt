@@ -34,6 +34,16 @@ def _default_config_path() -> Path:
     return Path(__file__).resolve().parents[3] / "config" / "models.example.json"
 
 
+def _env_flag(name: str, default: bool = False) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return bool(default)
+    text = str(raw).strip().lower()
+    if not text:
+        return bool(default)
+    return text in {"1", "true", "yes", "on"}
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="novaadapt", description="NovaAdapt desktop orchestrator")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -48,6 +58,9 @@ def _build_parser() -> argparse.ArgumentParser:
     default_backup_dir = Path(os.getenv("NOVAADAPT_BACKUP_DIR", str(Path.home() / ".novaadapt" / "backups")))
     default_bridge_url = os.getenv("NOVAADAPT_BRIDGE_URL", "http://127.0.0.1:9797")
     default_bridge_token = os.getenv("NOVAADAPT_BRIDGE_TOKEN", "")
+    default_gateway_kernel_mode = str(os.getenv("NOVAADAPT_GATEWAY_KERNEL_MODE", "off")).strip().lower()
+    if default_gateway_kernel_mode not in {"off", "on"}:
+        default_gateway_kernel_mode = "off"
 
     def _add_bridge_client_args(command: argparse.ArgumentParser) -> None:
         command.add_argument(
@@ -643,6 +656,22 @@ def _build_parser() -> argparse.ArgumentParser:
         "--channel-profile-map",
         default="",
         help="Optional JSON object mapping channel->profile_name",
+    )
+    gateway_daemon_cmd.add_argument(
+        "--gateway-kernel-mode",
+        choices=["off", "on"],
+        default=default_gateway_kernel_mode,
+        help=(
+            "Kernel routing mode for gateway jobs. "
+            "'off' keeps NovaAdapt standalone routing (default), "
+            "'on' opts into NovaPrime kernel with legacy fallback unless required."
+        ),
+    )
+    gateway_daemon_cmd.add_argument(
+        "--gateway-kernel-required",
+        action="store_true",
+        default=_env_flag("NOVAADAPT_GATEWAY_KERNEL_REQUIRED", False),
+        help="Fail jobs when gateway kernel routing errors instead of falling back to legacy agent routing.",
     )
 
     native_http_cmd = sub.add_parser(
@@ -1624,6 +1653,8 @@ def main() -> None:
         if args.command == "gateway-daemon":
             channel_workspace_map = _parse_optional_json_object(args.channel_workspace_map, "--channel-workspace-map")
             channel_profile_map = _parse_optional_json_object(args.channel_profile_map, "--channel-profile-map")
+            gateway_kernel_mode = str(args.gateway_kernel_mode or "off").strip().lower()
+            use_gateway_kernel = gateway_kernel_mode == "on"
             queue = GatewayJobQueue(args.gateway_db_path)
             service = NovaAdaptService(
                 default_config=args.config,
@@ -1653,8 +1684,8 @@ def main() -> None:
                         "strategy": "single",
                         "execute": False,
                         "record_history": True,
-                        "use_kernel": True,
-                        "kernel_required": False,
+                        "use_kernel": use_gateway_kernel,
+                        "kernel_required": bool(args.gateway_kernel_required) if use_gateway_kernel else False,
                     }
                 )
                 if isinstance(out, dict):
