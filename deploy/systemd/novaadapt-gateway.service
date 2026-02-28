@@ -1,0 +1,23 @@
+[Unit]
+Description=NovaAdapt Gateway Daemon
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=novaadapt
+Group=novaadapt
+WorkingDirectory=/opt/novaadapt
+EnvironmentFile=-/etc/novaadapt/gateway.env
+ExecStart=/opt/novaadapt/deploy/systemd/start-gateway.sh
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full
+ReadWritePaths=/var/lib/novaadapt
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target

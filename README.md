@@ -569,10 +569,32 @@ Systemd units and env templates are included under:
 Quick install reference:
 
 ```bash
-sudo ./installer/install_systemd_services.sh
-# edit /etc/novaadapt/core.env and /etc/novaadapt/bridge.env
+sudo ./installer/install_systemd_services.sh --with-gateway --start
+# edit /etc/novaadapt/core.env, /etc/novaadapt/bridge.env, /etc/novaadapt/gateway.env
 sudo systemctl enable --now novaadapt-core.service
 sudo systemctl enable --now novaadapt-bridge.service
+sudo systemctl enable --now novaadapt-gateway.service
+```
+
+## launchd Deployment (macOS)
+
+Launchd wrappers and templates are included under:
+
+- `/Users/desmondpottle/Documents/New project/NovaAdapt/deploy/launchd`
+
+Quick install reference:
+
+```bash
+./installer/install_launchd_services.sh --with-gateway --start
+# edit ~/Library/Application\ Support/NovaAdapt/env/core.env
+# edit ~/Library/Application\ Support/NovaAdapt/env/bridge.env
+# edit ~/Library/Application\ Support/NovaAdapt/env/gateway.env
+```
+
+Cross-platform installer helper:
+
+```bash
+./installer/install_services.sh --with-gateway --start
 ```
 
 Rotate long-lived core/bridge tokens:
