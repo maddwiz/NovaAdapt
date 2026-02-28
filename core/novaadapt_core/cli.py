@@ -14,6 +14,8 @@ from .benchmark import (
     run_benchmark,
     write_benchmark_comparison_markdown,
 )
+from .agent_gateway import DeliveryManager, GatewayJobQueue, GatewayRouter, GatewayWorker, NovaAgentDaemon
+from .agent_gateway.connectors import build_gateway_connectors
 from .cleanup import prune_local_state
 from .directshell import DirectShellClient
 from .doctor import run_doctor
@@ -38,6 +40,7 @@ def _build_parser() -> argparse.ArgumentParser:
     default_actions_db = Path.home() / ".novaadapt" / "actions.db"
     default_plans_db = Path(os.getenv("NOVAADAPT_PLANS_DB", str(Path.home() / ".novaadapt" / "plans.db")))
     default_jobs_db = Path(os.getenv("NOVAADAPT_JOBS_DB", str(Path.home() / ".novaadapt" / "jobs.db")))
+    default_gateway_db = Path(os.getenv("NOVAADAPT_GATEWAY_DB", str(Path.home() / ".novaadapt" / "gateway_jobs.db")))
     default_idempotency_db = Path(
         os.getenv("NOVAADAPT_IDEMPOTENCY_DB", str(Path.home() / ".novaadapt" / "idempotency.db"))
     )
@@ -592,6 +595,54 @@ def _build_parser() -> argparse.ArgumentParser:
         type=int,
         default=30,
         help="Per-connection timeout in seconds",
+    )
+
+    gateway_daemon_cmd = sub.add_parser(
+        "gateway-daemon",
+        help="Run NovaAgent gateway daemon with persistent queue + connector routing",
+    )
+    gateway_daemon_cmd.add_argument("--config", type=Path, default=_default_config_path())
+    gateway_daemon_cmd.add_argument("--db-path", type=Path, default=None)
+    gateway_daemon_cmd.add_argument("--plans-db-path", type=Path, default=default_plans_db)
+    gateway_daemon_cmd.add_argument("--audit-db-path", type=Path, default=default_audit_db)
+    gateway_daemon_cmd.add_argument("--gateway-db-path", type=Path, default=default_gateway_db)
+    gateway_daemon_cmd.add_argument(
+        "--poll-interval-seconds",
+        type=float,
+        default=float(os.getenv("NOVAADAPT_GATEWAY_POLL_INTERVAL_SECONDS", "0.25")),
+        help="Gateway worker poll interval in seconds",
+    )
+    gateway_daemon_cmd.add_argument(
+        "--retry-delay-seconds",
+        type=float,
+        default=float(os.getenv("NOVAADAPT_GATEWAY_RETRY_DELAY_SECONDS", "10")),
+        help="Retry delay for failed jobs",
+    )
+    gateway_daemon_cmd.add_argument(
+        "--max-attempts",
+        type=int,
+        default=int(os.getenv("NOVAADAPT_GATEWAY_MAX_ATTEMPTS", "3")),
+        help="Maximum attempts before failed/dead-letter status",
+    )
+    gateway_daemon_cmd.add_argument(
+        "--default-workspace",
+        default=os.getenv("NOVAADAPT_GATEWAY_DEFAULT_WORKSPACE", "default"),
+        help="Default workspace route when connector metadata does not specify one",
+    )
+    gateway_daemon_cmd.add_argument(
+        "--default-profile",
+        default=os.getenv("NOVAADAPT_GATEWAY_DEFAULT_PROFILE", "unleashed_local"),
+        help="Default policy profile route when connector metadata does not specify one",
+    )
+    gateway_daemon_cmd.add_argument(
+        "--channel-workspace-map",
+        default="",
+        help="Optional JSON object mapping channel->workspace_id",
+    )
+    gateway_daemon_cmd.add_argument(
+        "--channel-profile-map",
+        default="",
+        help="Optional JSON object mapping channel->profile_name",
     )
 
     native_http_cmd = sub.add_parser(
@@ -1568,6 +1619,62 @@ def main() -> None:
                 timeout_seconds=max(1, int(args.timeout_seconds)),
             )
             daemon.serve_forever()
+            return
+
+        if args.command == "gateway-daemon":
+            channel_workspace_map = _parse_optional_json_object(args.channel_workspace_map, "--channel-workspace-map")
+            channel_profile_map = _parse_optional_json_object(args.channel_profile_map, "--channel-profile-map")
+            queue = GatewayJobQueue(args.gateway_db_path)
+            service = NovaAdaptService(
+                default_config=args.config,
+                db_path=args.db_path,
+                plans_db_path=args.plans_db_path,
+                audit_db_path=args.audit_db_path,
+            )
+            connectors = build_gateway_connectors()
+            delivery = DeliveryManager(
+                queue=queue,
+                connector_resolver=lambda name: connectors.get(str(name or "").strip().lower()),
+            )
+            router = GatewayRouter(
+                default_workspace=str(args.default_workspace or "").strip() or "default",
+                default_profile=str(args.default_profile or "").strip() or "unleashed_local",
+                channel_workspace_map=channel_workspace_map if isinstance(channel_workspace_map, dict) else None,
+                channel_profile_map=channel_profile_map if isinstance(channel_profile_map, dict) else None,
+            )
+
+            def _runner(job):
+                objective = str(job.payload.get("objective") or job.payload.get("input_text") or "").strip()
+                if not objective:
+                    raise ValueError("job payload requires 'objective' or 'input_text'")
+                out = service.run(
+                    {
+                        "objective": objective,
+                        "strategy": "single",
+                        "execute": False,
+                        "record_history": True,
+                        "use_kernel": True,
+                        "kernel_required": False,
+                    }
+                )
+                if isinstance(out, dict):
+                    return out
+                return {"ok": False, "error": "gateway runner returned invalid response"}
+
+            worker = GatewayWorker(
+                queue=queue,
+                runner=_runner,
+                retry_delay_seconds=max(1.0, float(args.retry_delay_seconds)),
+                max_attempts=max(1, int(args.max_attempts)),
+            )
+            daemon = NovaAgentDaemon(
+                worker=worker,
+                delivery=delivery,
+                router=router,
+                connectors=connectors,
+                poll_interval_seconds=max(0.05, float(args.poll_interval_seconds)),
+            )
+            daemon.run_forever()
             return
 
         if args.command == "native-http":
