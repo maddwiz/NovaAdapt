@@ -16,7 +16,13 @@ from .browser_executor import BrowserExecutor
 from .channels import ChannelRegistry, build_channel_registry
 from .directshell import DirectShellClient
 from .memory import MemoryBackend, build_memory_backend
-from .novaprime import NovaPrimeBackend, build_novaprime_client
+from .novaprime import (
+    NovaPrimeBackend,
+    build_novaprime_client,
+    kernel_required,
+    run_with_kernel,
+    should_use_kernel,
+)
 from .plan_store import PlanStore
 from .policy import ActionPolicy
 from .plugins import PluginRegistry, SIBBridge, build_plugin_registry
@@ -1391,19 +1397,68 @@ class NovaAdaptService:
             undo_queue=queue,
             memory_backend=self.memory_backend,
         )
-        result = agent.run_objective(
-            objective=objective,
-            strategy=strategy,
-            model_name=model_name,
-            candidate_models=candidate_models or None,
-            fallback_models=fallback_models or None,
-            dry_run=not execute,
-            record_history=record_history,
-            allow_dangerous=allow_dangerous,
-            max_actions=max(1, max_actions),
-            identity_profile=planning_identity_profile,
-            bond_verified=bond_verified,
-        )
+        kernel_context: dict[str, Any] | None = None
+        if should_use_kernel(payload):
+            novaprime_context["enabled"] = True
+            kernel_response = run_with_kernel(
+                payload=payload,
+                objective=objective,
+                strategy=strategy,
+                model_name=str(model_name or "").strip() or None,
+                router=router,
+                agent=agent,
+                execute=execute,
+                record_history=record_history,
+                allow_dangerous=allow_dangerous,
+                max_actions=max(1, max_actions),
+                adapt_id=adapt_id,
+                player_id=player_id,
+                identity_profile=planning_identity_profile,
+            )
+            raw_kernel_context = kernel_response.get("kernel")
+            if isinstance(raw_kernel_context, dict):
+                kernel_context = dict(raw_kernel_context)
+            if bool(kernel_response.get("ok", False)) and isinstance(kernel_response.get("result"), dict):
+                result = dict(kernel_response.get("result", {}))
+            else:
+                kernel_error = str(kernel_response.get("error") or "novaprime kernel execution failed")
+                if kernel_context is None:
+                    kernel_context = {"ok": False, "error": kernel_error}
+                else:
+                    kernel_context.setdefault("ok", False)
+                    kernel_context.setdefault("error", kernel_error)
+                if kernel_required(payload):
+                    raise RuntimeError(kernel_error)
+                kernel_context["fallback"] = "legacy_agent"
+                result = agent.run_objective(
+                    objective=objective,
+                    strategy=strategy,
+                    model_name=model_name,
+                    candidate_models=candidate_models or None,
+                    fallback_models=fallback_models or None,
+                    dry_run=not execute,
+                    record_history=record_history,
+                    allow_dangerous=allow_dangerous,
+                    max_actions=max(1, max_actions),
+                    identity_profile=planning_identity_profile,
+                    bond_verified=bond_verified,
+                )
+        else:
+            result = agent.run_objective(
+                objective=objective,
+                strategy=strategy,
+                model_name=model_name,
+                candidate_models=candidate_models or None,
+                fallback_models=fallback_models or None,
+                dry_run=not execute,
+                record_history=record_history,
+                allow_dangerous=allow_dangerous,
+                max_actions=max(1, max_actions),
+                identity_profile=planning_identity_profile,
+                bond_verified=bond_verified,
+            )
+        if isinstance(kernel_context, dict):
+            novaprime_context["kernel"] = kernel_context
         if adapt_id:
             try:
                 presence_after = self.novaprime_client.presence_update(

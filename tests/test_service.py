@@ -1217,6 +1217,99 @@ class ServiceTests(unittest.TestCase):
             self.assertIn("adapt", out)
             self.assertEqual(out["adapt"]["adapt_id"], "adapt-123")
 
+    def test_run_uses_kernel_adapter_when_enabled(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            service = NovaAdaptService(
+                default_config=Path("unused.json"),
+                db_path=Path(tmp) / "actions.db",
+                router_loader=lambda _path: _StubRouter(),
+                directshell_factory=_StubDirectShell,
+                novaprime_client=_StubNovaPrimeBackend(),
+            )
+
+            kernel_result = {
+                "ok": True,
+                "result": {
+                    "model": "novaprime-kernel",
+                    "model_id": "novaprime-kernel",
+                    "strategy": "kernel:single",
+                    "votes": {},
+                    "vote_summary": "",
+                    "model_errors": {},
+                    "attempted_models": ["novaprime-kernel"],
+                    "actions": [{"type": "note", "target": "kernel_output", "value": "ok"}],
+                    "results": [{"status": "preview", "output": "ok", "action": {"type": "note"}, "dangerous": False}],
+                    "action_log_ids": [],
+                },
+                "kernel": {"ok": True, "profile_name": "developer"},
+            }
+
+            with (
+                mock.patch("novaadapt_core.service.should_use_kernel", return_value=True),
+                mock.patch("novaadapt_core.service.run_with_kernel", return_value=kernel_result),
+                mock.patch(
+                    "novaadapt_core.service.NovaAdaptAgent.run_objective",
+                    side_effect=AssertionError("legacy agent path should not run"),
+                ),
+            ):
+                out = service.run({"objective": "Use kernel path", "use_kernel": True})
+
+            self.assertEqual(out["strategy"], "kernel:single")
+            self.assertIn("novaprime", out)
+            self.assertTrue(out["novaprime"]["enabled"])
+            self.assertIn("kernel", out["novaprime"])
+            self.assertTrue(out["novaprime"]["kernel"]["ok"])
+
+    def test_run_kernel_failure_falls_back_when_not_required(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            service = NovaAdaptService(
+                default_config=Path("unused.json"),
+                db_path=Path(tmp) / "actions.db",
+                router_loader=lambda _path: _StubRouter(),
+                directshell_factory=_StubDirectShell,
+                novaprime_client=_StubNovaPrimeBackend(),
+            )
+
+            kernel_result = {
+                "ok": False,
+                "error": "kernel unavailable",
+                "kernel": {"ok": False, "error": "kernel unavailable"},
+            }
+            with (
+                mock.patch("novaadapt_core.service.should_use_kernel", return_value=True),
+                mock.patch("novaadapt_core.service.kernel_required", return_value=False),
+                mock.patch("novaadapt_core.service.run_with_kernel", return_value=kernel_result),
+            ):
+                out = service.run({"objective": "Fallback to legacy", "use_kernel": True})
+
+            self.assertEqual(out["strategy"], "single")
+            self.assertIn("novaprime", out)
+            self.assertIn("kernel", out["novaprime"])
+            self.assertEqual(out["novaprime"]["kernel"]["fallback"], "legacy_agent")
+            self.assertFalse(out["novaprime"]["kernel"]["ok"])
+
+    def test_run_kernel_failure_raises_when_required(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            service = NovaAdaptService(
+                default_config=Path("unused.json"),
+                db_path=Path(tmp) / "actions.db",
+                router_loader=lambda _path: _StubRouter(),
+                directshell_factory=_StubDirectShell,
+                novaprime_client=_StubNovaPrimeBackend(),
+            )
+            kernel_result = {
+                "ok": False,
+                "error": "kernel required failure",
+                "kernel": {"ok": False, "error": "kernel required failure"},
+            }
+            with (
+                mock.patch("novaadapt_core.service.should_use_kernel", return_value=True),
+                mock.patch("novaadapt_core.service.kernel_required", return_value=True),
+                mock.patch("novaadapt_core.service.run_with_kernel", return_value=kernel_result),
+            ):
+                with self.assertRaisesRegex(RuntimeError, "kernel required failure"):
+                    service.run({"objective": "Kernel hard-fail", "use_kernel": True, "kernel_required": True})
+
     def test_plugin_registry_passthrough(self):
         service = NovaAdaptService(
             default_config=Path("unused.json"),
