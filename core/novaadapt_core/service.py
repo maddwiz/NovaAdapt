@@ -748,6 +748,7 @@ class NovaAdaptService:
         auto_run: bool = False,
         execute: bool = False,
         request_headers: dict[str, str] | None = None,
+        request_body_text: str | None = None,
     ) -> dict[str, Any]:
         normalized_channel = str(channel or "").strip().lower()
         if not normalized_channel:
@@ -761,7 +762,16 @@ class NovaAdaptService:
                 f"unknown channel: {normalized_channel}. Available: {', '.join(self.channel_registry.names())}"
             )
 
-        auth = adapter.verify_inbound(payload, headers=request_headers if isinstance(request_headers, dict) else None)
+        verify_headers = request_headers if isinstance(request_headers, dict) else None
+        try:
+            auth = adapter.verify_inbound(
+                payload,
+                headers=verify_headers,
+                raw_body=request_body_text,
+            )
+        except TypeError:
+            # Backward compatibility for adapters/tests that still implement the old signature.
+            auth = adapter.verify_inbound(payload, headers=verify_headers)
         if not bool(auth.get("ok", False)):
             return {
                 "ok": False,

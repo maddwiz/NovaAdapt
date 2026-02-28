@@ -72,24 +72,31 @@ def post_channel_inbound(
         handler._send_json(404, {"error": "Not found"})
         return 404
     inbound_payload = payload.get("payload")
-    if not isinstance(inbound_payload, dict):
+    if isinstance(inbound_payload, dict):
+        normalized_payload = inbound_payload
+    elif channel_name == "discord":
+        # Discord webhook mode accepts direct payload body at /channels/discord/inbound.
+        normalized_payload = payload
+    else:
         raise ValueError("'payload' must be an object")
-    if "auth_token" in payload and "auth_token" not in inbound_payload:
-        inbound_payload = dict(inbound_payload)
-        inbound_payload["auth_token"] = str(payload.get("auth_token") or "").strip()
+    if "auth_token" in payload and "auth_token" not in normalized_payload:
+        normalized_payload = dict(normalized_payload)
+        normalized_payload["auth_token"] = str(payload.get("auth_token") or "").strip()
     adapt_id = str(payload.get("adapt_id") or "").strip()
     auto_run = bool(payload.get("auto_run", False))
     execute = bool(payload.get("execute", False))
     request_headers = {str(k): str(v) for k, v in dict(handler.headers).items()}
+    request_body_text = getattr(handler, "_last_raw_body", "")
 
     def _operation() -> tuple[int, dict[str, object]]:
         result = service.channel_inbound(
             channel_name,
-            inbound_payload,
+            normalized_payload,
             adapt_id=adapt_id,
             auto_run=auto_run,
             execute=execute,
             request_headers=request_headers,
+            request_body_text=request_body_text if isinstance(request_body_text, str) else None,
         )
         if isinstance(result, dict):
             return int(result.get("status_code") or 200), result

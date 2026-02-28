@@ -297,6 +297,7 @@ API endpoints:
 - `POST /plugins/{name}/call` with JSON payload
 - `POST /channels/{name}/send` with JSON payload (`to`, `text`, optional `metadata`)
 - `POST /channels/{name}/inbound` with JSON payload (`payload` object, optional `adapt_id`, `auto_run`, `execute`)
+  - Discord also supports direct webhook payloads at `/channels/discord/inbound` (without wrapping in `payload`) when signed headers are used.
 - `POST /feedback` with JSON payload (`rating` 1-10 required)
 - `POST /novaprime/reason/dual` with JSON payload (`task`)
 - `POST /novaprime/reason/emotion` with JSON payload (`chemicals` object)
@@ -370,6 +371,16 @@ export NOVAADAPT_CHANNEL_TELEGRAM_DEFAULT_CHAT_ID="..."
 export NOVAADAPT_CHANNEL_DISCORD_ENABLED=1
 export NOVAADAPT_CHANNEL_DISCORD_BOT_TOKEN="..."
 export NOVAADAPT_CHANNEL_DISCORD_DEFAULT_CHANNEL_ID="..."
+# Optional outbound safety allowlist (comma-separated channel IDs)
+# export NOVAADAPT_CHANNEL_DISCORD_ALLOWED_CHANNEL_IDS="123,456"
+# Optional inbound webhook signature validation (HMAC SHA-256 over "<timestamp>.<raw_body>")
+# export NOVAADAPT_CHANNEL_DISCORD_WEBHOOK_SIGNING_SECRET="..."
+# Optional strict mode: require signature even when inbound token is unset
+# export NOVAADAPT_CHANNEL_DISCORD_REQUIRE_SIGNATURE=1
+# Optional max replay window for signatures (seconds, default 300)
+# export NOVAADAPT_CHANNEL_DISCORD_SIGNATURE_MAX_AGE_SECONDS=300
+# Optional Discord Interaction signature verification (requires cryptography package)
+# export NOVAADAPT_CHANNEL_DISCORD_INTERACTIONS_PUBLIC_KEY="discord-app-public-key-hex"
 
 # Slack
 export NOVAADAPT_CHANNEL_SLACK_ENABLED=1

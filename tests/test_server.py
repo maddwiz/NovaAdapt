@@ -1,3 +1,5 @@
+import hashlib
+import hmac
 import io
 import json
 import logging
@@ -10,6 +12,7 @@ import unittest
 from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
+from unittest import mock
 from urllib import error, request
 
 from novaadapt_core.browser_executor import BrowserExecutionResult
@@ -680,6 +683,68 @@ class ServerTests(unittest.TestCase):
                 server.shutdown()
                 server.server_close()
                 thread.join(timeout=2)
+
+    def test_discord_inbound_accepts_direct_signed_webhook_payload(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch.dict(
+                os.environ,
+                {
+                    "NOVAADAPT_CHANNEL_DISCORD_WEBHOOK_SIGNING_SECRET": "server-discord-secret",
+                },
+                clear=False,
+            ):
+                service = NovaAdaptService(
+                    default_config=Path("unused.json"),
+                    db_path=Path(tmp) / "actions.db",
+                    plans_db_path=Path(tmp) / "plans.db",
+                    router_loader=lambda _path: _StubRouter(),
+                    directshell_factory=_StubDirectShell,
+                )
+                server = create_server(
+                    "127.0.0.1",
+                    0,
+                    service,
+                    audit_db_path=str(Path(tmp) / "events.db"),
+                )
+                host, port = server.server_address
+                thread = threading.Thread(target=server.serve_forever, daemon=True)
+                thread.start()
+                try:
+                    payload = {
+                        "d": {
+                            "id": "m-1",
+                            "content": "status report",
+                            "channel_id": "chan-1",
+                            "author": {"id": "u-1", "username": "player-1"},
+                        }
+                    }
+                    with self.assertRaises(error.HTTPError) as err:
+                        _post_json(f"http://{host}:{port}/channels/discord/inbound", payload)
+                    self.assertEqual(err.exception.code, 401)
+                    err.exception.close()
+
+                    raw = json.dumps(payload)
+                    timestamp = str(int(time.time()))
+                    signature = hmac.new(
+                        b"server-discord-secret",
+                        f"{timestamp}.{raw}".encode("utf-8"),
+                        hashlib.sha256,
+                    ).hexdigest()
+                    signed, _ = _post_json_with_headers(
+                        f"http://{host}:{port}/channels/discord/inbound",
+                        payload,
+                        extra_headers={
+                            "X-NovaAdapt-Timestamp": timestamp,
+                            "X-NovaAdapt-Signature": signature,
+                        },
+                    )
+                    self.assertTrue(signed["ok"])
+                    self.assertEqual(signed["channel"], "discord")
+                    self.assertEqual(signed["message"]["sender"], "player-1")
+                finally:
+                    server.shutdown()
+                    server.server_close()
+                    thread.join(timeout=2)
 
     def test_server_close_closes_browser_runtime(self):
         with tempfile.TemporaryDirectory() as tmp:

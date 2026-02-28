@@ -71,6 +71,7 @@ def _build_handler(
 ):
     class Handler(BaseHTTPRequestHandler):
         _request_id: str
+        _last_raw_body: str
 
         def do_GET(self) -> None:
             started = time.perf_counter()
@@ -107,6 +108,7 @@ def _build_handler(
         def do_POST(self) -> None:
             started = time.perf_counter()
             self._request_id = _normalize_request_id(self.headers.get("X-Request-ID"))
+            self._last_raw_body = ""
             status_code = 500
             metrics.inc("requests_total")
             parsed = urlparse(self.path)
@@ -556,13 +558,16 @@ def _build_handler(
             if content_length > max_request_body_bytes:
                 raise PayloadTooLargeError("Request body too large")
             if content_length <= 0:
+                self._last_raw_body = ""
                 return {}
 
             raw = self.rfile.read(min(content_length, max_request_body_bytes + 1)).decode("utf-8")
             if len(raw.encode("utf-8")) > max_request_body_bytes:
                 raise PayloadTooLargeError("Request body too large")
             if not raw.strip():
+                self._last_raw_body = ""
                 return {}
+            self._last_raw_body = raw
             value = json.loads(raw)
             if isinstance(value, dict):
                 return value

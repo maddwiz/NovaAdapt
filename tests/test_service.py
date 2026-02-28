@@ -1,13 +1,17 @@
+import hashlib
+import hmac
+import json
 import tempfile
 import unittest
 import os
+import time
 from pathlib import Path
 from unittest import mock
 
 from novaadapt_core.adapt import AdaptBondCache, AdaptToggleStore
 from novaadapt_core.audit_store import AuditStore
 from novaadapt_core.browser_executor import BrowserExecutionResult
-from novaadapt_core.channels import ChannelRegistry, WebChatChannelAdapter
+from novaadapt_core.channels import ChannelRegistry, DiscordChannelAdapter, WebChatChannelAdapter
 from novaadapt_core.directshell import ExecutionResult
 from novaadapt_core.service import NovaAdaptService
 from novaadapt_shared.model_router import RouterResult
@@ -541,6 +545,67 @@ class ServiceTests(unittest.TestCase):
             )
             self.assertTrue(authorized["ok"])
             self.assertEqual(authorized["channel"], "webchat")
+
+    def test_discord_channel_inbound_enforces_webhook_signature_when_configured(self):
+        with mock.patch.dict(
+            os.environ,
+            {
+                "NOVAADAPT_CHANNEL_DISCORD_WEBHOOK_SIGNING_SECRET": "discord-webhook-secret",
+            },
+            clear=False,
+        ):
+            service = NovaAdaptService(
+                default_config=Path("unused.json"),
+                router_loader=lambda _path: _StubRouter(),
+                directshell_factory=_StubDirectShell,
+                channel_registry=ChannelRegistry([DiscordChannelAdapter()]),
+            )
+            discord_payload = {
+                "d": {
+                    "id": "msg-1",
+                    "content": "status",
+                    "channel_id": "chan-1",
+                    "author": {"id": "user-1", "username": "player-1"},
+                }
+            }
+            unauthorized = service.channel_inbound("discord", discord_payload)
+            self.assertFalse(unauthorized["ok"])
+            self.assertEqual(unauthorized["status_code"], 401)
+
+            timestamp = str(int(time.time()))
+            raw_body = json.dumps(discord_payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+            signature = hmac.new(
+                b"discord-webhook-secret",
+                f"{timestamp}.{raw_body}".encode("utf-8"),
+                hashlib.sha256,
+            ).hexdigest()
+            authorized = service.channel_inbound(
+                "discord",
+                discord_payload,
+                request_headers={
+                    "X-NovaAdapt-Timestamp": timestamp,
+                    "X-NovaAdapt-Signature": signature,
+                },
+                request_body_text=raw_body,
+            )
+            self.assertTrue(authorized["ok"])
+            self.assertEqual(authorized["channel"], "discord")
+            self.assertEqual(authorized["message"]["sender"], "player-1")
+
+    def test_discord_channel_send_enforces_allowed_channel_list(self):
+        with mock.patch.dict(
+            os.environ,
+            {
+                "NOVAADAPT_CHANNEL_DISCORD_ENABLED": "1",
+                "NOVAADAPT_CHANNEL_DISCORD_BOT_TOKEN": "bot-token",
+                "NOVAADAPT_CHANNEL_DISCORD_ALLOWED_CHANNEL_IDS": "chan-1,chan-2",
+            },
+            clear=False,
+        ):
+            adapter = DiscordChannelAdapter()
+            blocked = adapter.send_text("chan-99", "hello")
+            self.assertFalse(blocked["ok"])
+            self.assertIn("allowed channel list", str(blocked.get("error") or ""))
 
     def test_run_records_history_and_undo_mark_only(self):
         with tempfile.TemporaryDirectory() as tmp:
