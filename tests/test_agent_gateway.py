@@ -5,12 +5,18 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from novaadapt_core.agent_gateway.connectors import (
+    ChannelAdapterConnector,
+    XRealConnector,
+    build_gateway_connectors,
+)
 from novaadapt_core.agent_gateway.daemon import NovaAgentDaemon
 from novaadapt_core.agent_gateway.delivery import DeliveryManager
 from novaadapt_core.agent_gateway.guards import assert_no_llm_env
 from novaadapt_core.agent_gateway.job_queue import GatewayJobQueue
 from novaadapt_core.agent_gateway.router import GatewayRouter
 from novaadapt_core.agent_gateway.worker import GatewayWorker
+from novaadapt_core.channels.base import ChannelMessage
 
 
 class _StubConnector:
@@ -51,6 +57,35 @@ class _StubInbound:
             "metadata": self.row.get("metadata") if isinstance(self.row.get("metadata"), dict) else {},
             "message_id": str(self.row.get("message_id") or ""),
         }
+
+
+class _StubChannelAdapter:
+    name = "stubchannel"
+
+    def __init__(self):
+        self.sent: list[dict] = []
+
+    def verify_inbound(self, payload: dict, *, headers: dict | None = None):
+        _ = headers
+        if str(payload.get("auth_token") or "") == "deny":
+            return {"ok": False, "error": "unauthorized", "status_code": 401}
+        return {"ok": True}
+
+    def normalize_inbound(self, payload: dict):
+        return ChannelMessage(
+            channel=self.name,
+            sender=str(payload.get("sender") or "stub-user"),
+            text=str(payload.get("text") or ""),
+            message_id=str(payload.get("id") or ""),
+            metadata=payload.get("metadata") if isinstance(payload.get("metadata"), dict) else {},
+        )
+
+    def send_text(self, to: str, text: str, *, metadata=None):
+        self.sent.append({"to": to, "text": text, "metadata": dict(metadata or {})})
+        return {"ok": True}
+
+    def health(self):
+        return {"ok": True, "channel": self.name, "enabled": True}
 
 
 class AgentGatewayTests(unittest.TestCase):
@@ -160,6 +195,71 @@ class AgentGatewayTests(unittest.TestCase):
             source = inspect.getsource(mod)
             self.assertNotIn("ModelRouter", source)
             self.assertNotIn("model_router", source)
+
+    def test_build_gateway_connectors_includes_common_channels_and_wearables(self):
+        connectors = build_gateway_connectors()
+        expected = {
+            "http",
+            "mcp",
+            "cli",
+            "webchat",
+            "imessage",
+            "whatsapp",
+            "telegram",
+            "discord",
+            "slack",
+            "signal",
+            "teams",
+            "googlechat",
+            "matrix",
+            "xreal",
+            "halo",
+        }
+        self.assertTrue(expected.issubset(set(connectors.keys())))
+
+    def test_channel_adapter_connector_normalizes_and_routes_reply_target(self):
+        adapter = _StubChannelAdapter()
+        connector = ChannelAdapterConnector(adapter, target_metadata_keys=["chat_id"], fallback_to_sender=True)
+        auth = connector.push_inbound(
+            {
+                "sender": "user-a",
+                "text": "hello",
+                "id": "m1",
+                "metadata": {"chat_id": "chat-1"},
+            }
+        )
+        self.assertTrue(auth["ok"])
+        messages = list(connector.listen())
+        self.assertEqual(len(messages), 1)
+        self.assertEqual(messages[0].reply_to["to"], "chat-1")
+        connector.send({"to": "chat-1"}, "ack")
+        self.assertEqual(adapter.sent[0]["to"], "chat-1")
+        self.assertEqual(adapter.sent[0]["text"], "ack")
+
+    def test_channel_adapter_connector_rejects_unauthorized_payload(self):
+        connector = ChannelAdapterConnector(_StubChannelAdapter(), target_metadata_keys=[], fallback_to_sender=True)
+        auth = connector.push_inbound({"auth_token": "deny", "sender": "user-a", "text": "hello"})
+        self.assertFalse(auth["ok"])
+        self.assertEqual(list(connector.listen()), [])
+
+    def test_xreal_connector_pushes_intent_with_x1_metadata(self):
+        connector = XRealConnector()
+        connector.push_intent(
+            sender="xreal-user",
+            transcript="open Aetherion map",
+            source="xreal_x1",
+            device_model="xreal-x1",
+            display_mode="air_cast",
+            hand_tracking=True,
+        )
+        rows = list(connector.listen())
+        self.assertEqual(len(rows), 1)
+        msg = rows[0]
+        self.assertEqual(msg.connector, "xreal")
+        self.assertEqual(msg.sender, "xreal-user")
+        self.assertEqual(msg.metadata.get("device_model"), "xreal-x1")
+        self.assertEqual(msg.metadata.get("display_mode"), "air_cast")
+        self.assertTrue(msg.metadata.get("hand_tracking"))
 
 
 if __name__ == "__main__":

@@ -4,6 +4,7 @@ import json
 import time
 from typing import Any
 
+from .connectors import build_gateway_connectors
 from .delivery import DeliveryManager
 from .guards import assert_no_llm_env
 from .router import GatewayRouter
@@ -23,9 +24,10 @@ class NovaAgentDaemon:
         self.worker = worker
         self.delivery = delivery
         self.router = router or GatewayRouter()
+        raw_connectors = connectors if isinstance(connectors, dict) else build_gateway_connectors()
         self.connectors = {
             str(name).strip().lower(): connector
-            for name, connector in (connectors or {}).items()
+            for name, connector in raw_connectors.items()
             if str(name).strip()
         }
         self.poll_interval_seconds = max(0.05, float(poll_interval_seconds))
