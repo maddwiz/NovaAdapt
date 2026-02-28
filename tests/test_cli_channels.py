@@ -56,6 +56,8 @@ class ChannelCLITests(unittest.TestCase):
                 "--adapt-id",
                 "adapt-1",
                 "--auto-run",
+                "--auth-token",
+                "secret-token",
             )
 
         service.channel_send.assert_called_once_with(
@@ -66,7 +68,7 @@ class ChannelCLITests(unittest.TestCase):
         )
         service.channel_inbound.assert_called_once_with(
             "webchat",
-            {"sender": "player-1", "text": "status"},
+            {"sender": "player-1", "text": "status", "auth_token": "secret-token"},
             adapt_id="adapt-1",
             auto_run=True,
             execute=False,

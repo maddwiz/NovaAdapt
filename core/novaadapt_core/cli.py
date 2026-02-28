@@ -371,6 +371,11 @@ def _build_parser() -> argparse.ArgumentParser:
     channel_inbound_cmd.add_argument("--adapt-id", default="")
     channel_inbound_cmd.add_argument("--auto-run", action="store_true")
     channel_inbound_cmd.add_argument("--execute", action="store_true")
+    channel_inbound_cmd.add_argument(
+        "--auth-token",
+        default="",
+        help="Optional inbound auth token (matches NOVAADAPT_CHANNEL_<NAME>_INBOUND_TOKEN)",
+    )
 
     feedback_cmd = sub.add_parser("feedback", help="Record operator feedback for self-improvement memory")
     feedback_cmd.add_argument("--config", type=Path, default=_default_config_path())
@@ -1337,11 +1342,16 @@ def main() -> None:
         if args.command == "channel-inbound":
             service = NovaAdaptService(default_config=args.config)
             inbound_payload = _parse_optional_json_object(args.payload, "--payload")
+            normalized_payload = inbound_payload if isinstance(inbound_payload, dict) else {}
+            auth_token = str(args.auth_token or "").strip()
+            if auth_token:
+                normalized_payload = dict(normalized_payload)
+                normalized_payload["auth_token"] = auth_token
             print(
                 json.dumps(
                     service.channel_inbound(
                         str(args.channel),
-                        inbound_payload if isinstance(inbound_payload, dict) else {},
+                        normalized_payload,
                         adapt_id=str(args.adapt_id or ""),
                         auto_run=bool(args.auto_run),
                         execute=bool(args.execute),

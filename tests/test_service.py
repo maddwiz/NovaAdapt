@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+import os
 from pathlib import Path
 from unittest import mock
 
@@ -518,6 +519,28 @@ class ServiceTests(unittest.TestCase):
                 "matrix",
             }.issubset(names)
         )
+
+    def test_channel_inbound_enforces_optional_auth_token(self):
+        with mock.patch.dict(os.environ, {"NOVAADAPT_CHANNEL_WEBCHAT_INBOUND_TOKEN": "secret-token"}, clear=False):
+            service = NovaAdaptService(
+                default_config=Path("unused.json"),
+                router_loader=lambda _path: _StubRouter(),
+                directshell_factory=_StubDirectShell,
+                channel_registry=ChannelRegistry([WebChatChannelAdapter()]),
+            )
+            unauthorized = service.channel_inbound(
+                "webchat",
+                {"sender": "player-3", "text": "status"},
+            )
+            self.assertFalse(unauthorized["ok"])
+            self.assertEqual(unauthorized["status_code"], 401)
+
+            authorized = service.channel_inbound(
+                "webchat",
+                {"sender": "player-3", "text": "status", "auth_token": "secret-token"},
+            )
+            self.assertTrue(authorized["ok"])
+            self.assertEqual(authorized["channel"], "webchat")
 
     def test_run_records_history_and_undo_mark_only(self):
         with tempfile.TemporaryDirectory() as tmp:

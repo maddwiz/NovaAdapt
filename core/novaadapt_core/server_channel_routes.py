@@ -74,22 +74,31 @@ def post_channel_inbound(
     inbound_payload = payload.get("payload")
     if not isinstance(inbound_payload, dict):
         raise ValueError("'payload' must be an object")
+    if "auth_token" in payload and "auth_token" not in inbound_payload:
+        inbound_payload = dict(inbound_payload)
+        inbound_payload["auth_token"] = str(payload.get("auth_token") or "").strip()
     adapt_id = str(payload.get("adapt_id") or "").strip()
     auto_run = bool(payload.get("auto_run", False))
     execute = bool(payload.get("execute", False))
+    request_headers = {str(k): str(v) for k, v in dict(handler.headers).items()}
+
+    def _operation() -> tuple[int, dict[str, object]]:
+        result = service.channel_inbound(
+            channel_name,
+            inbound_payload,
+            adapt_id=adapt_id,
+            auto_run=auto_run,
+            execute=execute,
+            request_headers=request_headers,
+        )
+        if isinstance(result, dict):
+            return int(result.get("status_code") or 200), result
+        return 200, {}
+
     return handler._respond_idempotent(
         path=path,
         payload=payload,
-        operation=lambda: (
-            200,
-            service.channel_inbound(
-                channel_name,
-                inbound_payload,
-                adapt_id=adapt_id,
-                auto_run=auto_run,
-                execute=execute,
-            ),
-        ),
+        operation=_operation,
         category="channels",
         action="inbound",
         entity_type="channel",

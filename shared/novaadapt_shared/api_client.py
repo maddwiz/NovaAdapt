@@ -139,6 +139,7 @@ class NovaAdaptAPIClient:
         adapt_id: str = "",
         auto_run: bool = False,
         execute: bool = False,
+        auth_token: str = "",
         idempotency_key: str | None = None,
     ) -> dict[str, Any]:
         channel = quote(str(channel_name), safe="")
@@ -152,6 +153,9 @@ class NovaAdaptAPIClient:
         normalized_adapt = str(adapt_id or "").strip()
         if normalized_adapt:
             body["adapt_id"] = normalized_adapt
+        normalized_auth = str(auth_token or "").strip()
+        if normalized_auth:
+            body["auth_token"] = normalized_auth
         result = self._post_json(
             f"/channels/{channel}/inbound",
             body,

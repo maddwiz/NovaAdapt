@@ -741,6 +741,7 @@ class NovaAdaptService:
         adapt_id: str = "",
         auto_run: bool = False,
         execute: bool = False,
+        request_headers: dict[str, str] | None = None,
     ) -> dict[str, Any]:
         normalized_channel = str(channel or "").strip().lower()
         if not normalized_channel:
@@ -753,6 +754,16 @@ class NovaAdaptService:
             raise ValueError(
                 f"unknown channel: {normalized_channel}. Available: {', '.join(self.channel_registry.names())}"
             )
+
+        auth = adapter.verify_inbound(payload, headers=request_headers if isinstance(request_headers, dict) else None)
+        if not bool(auth.get("ok", False)):
+            return {
+                "ok": False,
+                "channel": normalized_channel,
+                "status_code": int(auth.get("status_code") or 401),
+                "error": str(auth.get("error") or "unauthorized inbound payload"),
+                "auth": auth,
+            }
 
         normalized_adapt = str(adapt_id or "").strip()
         message = adapter.normalize_inbound(payload)

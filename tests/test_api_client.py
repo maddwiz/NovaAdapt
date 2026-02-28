@@ -397,6 +397,7 @@ class _Handler(BaseHTTPRequestHandler):
                         "ok": True,
                         "channel": "webchat",
                         "auto_run": bool(payload.get("auto_run", False)),
+                        "auth_token_present": bool(payload.get("auth_token", "")),
                         "message": {
                             "channel": "webchat",
                             "sender": payload.get("payload", {}).get("sender", "webchat-user"),
@@ -753,14 +754,15 @@ class APIClientTests(unittest.TestCase):
         self.assertEqual(client.channels()[0]["channel"], "webchat")
         self.assertTrue(client.channel_health("webchat")["ok"])
         self.assertTrue(client.channel_send("webchat", to="room-1", text="hello world")["ok"])
-        self.assertTrue(
-            client.channel_inbound(
-                "webchat",
-                {"sender": "player-1", "text": "status"},
-                adapt_id="adapt-1",
-                auto_run=False,
-            )["ok"]
+        inbound_payload = client.channel_inbound(
+            "webchat",
+            {"sender": "player-1", "text": "status"},
+            adapt_id="adapt-1",
+            auto_run=False,
+            auth_token="token-1",
         )
+        self.assertTrue(inbound_payload["ok"])
+        self.assertTrue(inbound_payload["auth_token_present"])
         self.assertEqual(client.run("demo", idempotency_key="idem-1")["idempotency"], "idem-1")
         self.assertEqual(client.run_async("demo")["status"], "queued")
         self.assertEqual(client.run_swarm(["demo-a", "demo-b"])["submitted_jobs"], 2)

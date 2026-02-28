@@ -128,7 +128,7 @@ def build_openapi_spec() -> dict:
             },
             "/channels/{name}/inbound": {
                 "post": {
-                    "summary": "Normalize and ingest inbound channel payload",
+                    "summary": "Normalize and ingest inbound channel payload (optional auth_token)",
                     "parameters": [
                         {
                             "name": "name",
@@ -139,6 +139,7 @@ def build_openapi_spec() -> dict:
                     ],
                     "responses": {
                         "200": {"description": "Inbound message normalized"},
+                        "401": {"description": "Inbound payload authentication failed"},
                         "404": {"description": "Not found"},
                     },
                 }

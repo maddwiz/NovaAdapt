@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import time
+import hmac
 from dataclasses import dataclass
 from typing import Any
 from urllib import error, request
@@ -111,6 +112,7 @@ class ChannelAdapter:
             "channel": self.name,
             "ok": bool(self.enabled()),
             "enabled": bool(self.enabled()),
+            "inbound_auth_configured": bool(self._inbound_token()),
         }
 
     def normalize_inbound(self, payload: dict[str, Any]) -> ChannelMessage:
@@ -119,3 +121,55 @@ class ChannelAdapter:
     def send_text(self, to: str, text: str, *, metadata: dict[str, Any] | None = None) -> dict[str, Any]:
         raise NotImplementedError
 
+    def verify_inbound(
+        self,
+        payload: dict[str, Any],
+        *,
+        headers: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
+        expected = self._inbound_token()
+        if not expected:
+            return {"ok": True, "required": False}
+
+        provided = self._extract_inbound_token(payload, headers=headers)
+        if provided and hmac.compare_digest(provided, expected):
+            return {"ok": True, "required": True}
+
+        return {
+            "ok": False,
+            "required": True,
+            "error": "unauthorized inbound payload",
+            "status_code": 401,
+        }
+
+    def _inbound_token(self) -> str:
+        env_name = self.inbound_token_env_name()
+        return str(os.getenv(env_name, "")).strip()
+
+    def inbound_token_env_name(self) -> str:
+        safe_name = str(self.name or "unknown").upper().replace("-", "_")
+        return f"NOVAADAPT_CHANNEL_{safe_name}_INBOUND_TOKEN"
+
+    def _extract_inbound_token(
+        self,
+        payload: dict[str, Any],
+        *,
+        headers: dict[str, str] | None = None,
+    ) -> str:
+        direct = str(payload.get("auth_token") or "").strip()
+        if direct:
+            return direct
+        normalized_headers: dict[str, str] = {}
+        if isinstance(headers, dict):
+            for key, value in headers.items():
+                header_name = str(key or "").strip().lower()
+                if not header_name:
+                    continue
+                normalized_headers[header_name] = str(value or "").strip()
+        via_header = normalized_headers.get("x-novaadapt-channel-token", "").strip()
+        if via_header:
+            return via_header
+        auth = normalized_headers.get("authorization", "").strip()
+        if auth.lower().startswith("bearer "):
+            return auth[7:].strip()
+        return ""

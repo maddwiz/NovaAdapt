@@ -1,6 +1,7 @@
 import io
 import json
 import logging
+import os
 import sqlite3
 import tempfile
 import threading
@@ -300,6 +301,31 @@ class ServerTests(unittest.TestCase):
                 self.assertTrue(channel_inbound["ok"])
                 self.assertEqual(channel_inbound["channel"], "webchat")
                 self.assertTrue(channel_inbound["memory"]["ok"])
+
+                previous_channel_token = os.environ.get("NOVAADAPT_CHANNEL_WEBCHAT_INBOUND_TOKEN")
+                os.environ["NOVAADAPT_CHANNEL_WEBCHAT_INBOUND_TOKEN"] = "server-secret"
+                try:
+                    with self.assertRaises(error.HTTPError) as err:
+                        _post_json(
+                            f"http://{host}:{port}/channels/webchat/inbound",
+                            {"payload": {"sender": "player-1", "text": "blocked"}},
+                        )
+                    self.assertEqual(err.exception.code, 401)
+                    err.exception.close()
+
+                    authed_inbound, _ = _post_json_with_headers(
+                        f"http://{host}:{port}/channels/webchat/inbound",
+                        {
+                            "payload": {"sender": "player-1", "text": "allowed"},
+                            "auth_token": "server-secret",
+                        },
+                    )
+                    self.assertTrue(authed_inbound["ok"])
+                finally:
+                    if previous_channel_token is None:
+                        os.environ.pop("NOVAADAPT_CHANNEL_WEBCHAT_INBOUND_TOKEN", None)
+                    else:
+                        os.environ["NOVAADAPT_CHANNEL_WEBCHAT_INBOUND_TOKEN"] = previous_channel_token
 
                 run, _ = _post_json_with_headers(
                     f"http://{host}:{port}/run",
