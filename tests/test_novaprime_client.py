@@ -31,6 +31,9 @@ class _NovaPrimeHandler(BaseHTTPRequestHandler):
             return
         if path == "/api/v1/identity/profile":
             adapt_id = (parse_qs(parsed.query).get("adapt_id") or [""])[0]
+            if adapt_id == "missing":
+                self._send(404, {"ok": False, "error": "adapt not found"})
+                return
             self._send(200, {"ok": True, "profile": {"adapt_id": adapt_id, "level": 2}})
             return
         if path == "/api/v1/identity/presence":
@@ -197,6 +200,9 @@ class NovaPrimeClientTests(unittest.TestCase):
             self.assertEqual(listings[0]["listing_id"], "l1")
             self.assertTrue(client.identity_verify("adapt-1", "player-1"))
             self.assertEqual(client.identity_profile("adapt-1")["adapt_id"], "adapt-1")
+            self.assertIsNone(client.identity_profile("missing"))
+            # Application-level HTTP errors must not poison backend availability.
+            self.assertTrue(client.status()["enabled"])
 
             presence = client.presence_get("adapt-1")
             self.assertEqual(presence["realm"], "aetherion")

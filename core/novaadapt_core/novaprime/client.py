@@ -113,6 +113,17 @@ class NoopNovaPrimeClient:
         return self._disabled()
 
 
+class _NovaPrimeHTTPError(RuntimeError):
+    def __init__(self, status_code: int, detail: str = "") -> None:
+        self.status_code = int(status_code)
+        self.detail = str(detail or "")
+        super().__init__(f"NovaPrime HTTP {self.status_code}: {self.detail}")
+
+
+class _NovaPrimeTransportError(RuntimeError):
+    pass
+
+
 class NovaPrimeClient:
     def __init__(
         self,
@@ -339,6 +350,13 @@ class NovaPrimeClient:
             return {"ok": False, "error": "novaprime unavailable"}
         try:
             return self._request_json("GET", path, None, query=query)
+        except _NovaPrimeHTTPError as exc:
+            return {"ok": False, "status_code": int(exc.status_code), "error": str(exc.detail or exc)}
+        except _NovaPrimeTransportError as exc:
+            self._mark_unavailable(exc)
+            if self.required:
+                raise
+            return {"ok": False, "error": str(exc)}
         except Exception as exc:
             self._mark_unavailable(exc)
             if self.required:
@@ -350,6 +368,13 @@ class NovaPrimeClient:
             return {"ok": False, "error": "novaprime unavailable"}
         try:
             return self._request_json("POST", path, payload, query=None)
+        except _NovaPrimeHTTPError as exc:
+            return {"ok": False, "status_code": int(exc.status_code), "error": str(exc.detail or exc)}
+        except _NovaPrimeTransportError as exc:
+            self._mark_unavailable(exc)
+            if self.required:
+                raise
+            return {"ok": False, "error": str(exc)}
         except Exception as exc:
             self._mark_unavailable(exc)
             if self.required:
@@ -420,7 +445,7 @@ class NovaPrimeClient:
                     exc.file = None
                 except Exception:
                     pass
-            raise RuntimeError(f"NovaPrime HTTP {code}: {detail}") from None
+            raise _NovaPrimeHTTPError(code, detail) from None
         except error.URLError as exc:
             reason = exc.reason
             close_fn = getattr(reason, "close", None)
@@ -434,7 +459,7 @@ class NovaPrimeClient:
                 setattr(reason, "file", None)
             except Exception:
                 pass
-            raise RuntimeError(f"NovaPrime transport error: {reason}") from None
+            raise _NovaPrimeTransportError(f"NovaPrime transport error: {reason}") from None
 
         if not body.strip():
             return {}

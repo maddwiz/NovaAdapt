@@ -6,6 +6,41 @@ on:
   pull_request:
 
 jobs:
+  novaprime-modes:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [standalone, enhanced]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Run NovaPrime integration mode tests (${{ matrix.mode }})
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ matrix.mode }}" = "standalone" ]; then
+            export NOVAADAPT_NOVAPRIME_BACKEND=off
+            export NOVAADAPT_GATEWAY_KERNEL_MODE=off
+          else
+            export NOVAADAPT_NOVAPRIME_BACKEND=novaprime-http
+            export NOVAADAPT_GATEWAY_KERNEL_MODE=off
+          fi
+          for pattern in \
+            test_novaprime_client.py \
+            test_service.py \
+            test_cli_gateway.py \
+            test_cli_novaprime.py
+          do
+            PYTHONPATH=core:shared python -m unittest discover -s tests -p "${pattern}" -v
+          done
+
   backend:
     runs-on: ubuntu-latest
     steps:
