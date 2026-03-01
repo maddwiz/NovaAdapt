@@ -16,6 +16,21 @@ from .whatsapp import WhatsAppChannelAdapter
 
 DIRECT_WEBHOOK_CHANNELS = {"discord", "slack", "whatsapp", "telegram", "signal"}
 
+CHANNEL_ALIASES: dict[str, str] = {
+    "web_chat": "webchat",
+    "i-message": "imessage",
+    "i_message": "imessage",
+    "apple_messages": "imessage",
+    "whats_app": "whatsapp",
+    "google_chat": "googlechat",
+    "google-chat": "googlechat",
+    "gchat": "googlechat",
+    "ms_teams": "teams",
+    "msteams": "teams",
+    "microsoft_teams": "teams",
+    "microsoft-teams": "teams",
+}
+
 CHANNEL_VERIFICATION_METHODS: dict[str, list[str]] = {
     "webchat": ["inbound_token"],
     "imessage": ["inbound_token"],
@@ -30,21 +45,40 @@ CHANNEL_VERIFICATION_METHODS: dict[str, list[str]] = {
 }
 
 
+def _normalize_channel_name(value: str) -> str:
+    return str(value or "").strip().lower().replace(" ", "_")
+
+
 class ChannelRegistry:
     def __init__(self, adapters: list[ChannelAdapter] | None = None) -> None:
         resolved = adapters if isinstance(adapters, list) else []
         self._adapters: dict[str, ChannelAdapter] = {}
+        self._aliases: dict[str, str] = {}
         for adapter in resolved:
-            name = str(getattr(adapter, "name", "")).strip().lower()
+            name = _normalize_channel_name(str(getattr(adapter, "name", "")))
             if not name:
                 continue
             self._adapters[name] = adapter
+        for alias, canonical in CHANNEL_ALIASES.items():
+            alias_name = _normalize_channel_name(alias)
+            canonical_name = _normalize_channel_name(canonical)
+            if alias_name and canonical_name in self._adapters:
+                self._aliases[alias_name] = canonical_name
 
     def names(self) -> list[str]:
         return sorted(self._adapters.keys())
 
+    def aliases(self) -> dict[str, str]:
+        return dict(self._aliases)
+
+    def resolve_name(self, channel_name: str) -> str:
+        normalized = _normalize_channel_name(channel_name)
+        if normalized in self._adapters:
+            return normalized
+        return self._aliases.get(normalized, normalized)
+
     def get(self, channel_name: str) -> ChannelAdapter | None:
-        normalized = str(channel_name or "").strip().lower()
+        normalized = self.resolve_name(channel_name)
         if not normalized:
             return None
         return self._adapters.get(normalized)
@@ -58,24 +92,32 @@ class ChannelRegistry:
             row = dict(item)
             row.setdefault("channel", name)
             row["enabled"] = bool(row.get("enabled", adapter.enabled()))
+            alias_rows = sorted(alias for alias, canonical in self._aliases.items() if canonical == name)
+            if alias_rows:
+                row["aliases"] = alias_rows
             row["security"] = self._security_posture(name, adapter, row)
             out.append(row)
         return out
 
     def health(self, channel_name: str) -> dict[str, Any]:
-        normalized = str(channel_name or "").strip().lower()
+        requested = _normalize_channel_name(channel_name)
+        normalized = self.resolve_name(channel_name)
         adapter = self.get(normalized)
         if adapter is None:
             return {
                 "ok": False,
-                "channel": normalized,
-                "error": f"unknown channel: {normalized}",
+                "channel": normalized or requested,
+                "requested_channel": requested or normalized,
+                "error": f"unknown channel: {requested or normalized}",
                 "available_channels": self.names(),
+                "available_aliases": self.aliases(),
             }
         payload = adapter.health()
         out = payload if isinstance(payload, dict) else {}
         result = dict(out)
         result.setdefault("channel", normalized)
+        if requested and requested != normalized:
+            result["requested_channel"] = requested
         result["security"] = self._security_posture(normalized, adapter, result)
         return result
 

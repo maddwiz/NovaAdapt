@@ -684,10 +684,15 @@ class NovaAdaptService:
         *,
         metadata: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        normalized_channel = str(channel or "").strip().lower()
+        requested_channel = str(channel or "").strip().lower()
+        normalized_channel = (
+            self.channel_registry.resolve_name(requested_channel)
+            if hasattr(self.channel_registry, "resolve_name")
+            else requested_channel
+        )
         normalized_to = str(to or "").strip()
         normalized_text = str(text or "").strip()
-        if not normalized_channel:
+        if not requested_channel:
             raise ValueError("'channel' is required")
         if not normalized_to:
             raise ValueError("'to' is required")
@@ -705,6 +710,8 @@ class NovaAdaptService:
         out = result if isinstance(result, dict) else {}
         payload = dict(out)
         payload.setdefault("channel", normalized_channel)
+        if requested_channel != normalized_channel:
+            payload.setdefault("requested_channel", requested_channel)
         payload.setdefault("to", normalized_to)
         payload.setdefault("text", normalized_text)
 
@@ -750,8 +757,13 @@ class NovaAdaptService:
         request_headers: dict[str, str] | None = None,
         request_body_text: str | None = None,
     ) -> dict[str, Any]:
-        normalized_channel = str(channel or "").strip().lower()
-        if not normalized_channel:
+        requested_channel = str(channel or "").strip().lower()
+        normalized_channel = (
+            self.channel_registry.resolve_name(requested_channel)
+            if hasattr(self.channel_registry, "resolve_name")
+            else requested_channel
+        )
+        if not requested_channel:
             raise ValueError("'channel' is required")
         if not isinstance(payload, dict):
             raise ValueError("'payload' must be an object")
@@ -837,6 +849,8 @@ class NovaAdaptService:
             "memory": memory_result,
             "auto_run": bool(auto_run),
         }
+        if requested_channel != normalized_channel:
+            out["requested_channel"] = requested_channel
 
         if auto_run:
             body_text = str(message_payload.get("text") or "").strip()

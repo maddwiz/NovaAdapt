@@ -216,6 +216,11 @@ class AgentGatewayTests(unittest.TestCase):
             "halo",
         }
         self.assertTrue(expected.issubset(set(connectors.keys())))
+        self.assertIs(connectors["imessage"], connectors["i-message"])
+        self.assertIs(connectors["googlechat"], connectors["google_chat"])
+        self.assertIs(connectors["teams"], connectors["ms_teams"])
+        self.assertIs(connectors["xreal"], connectors["xreal-x1"])
+        self.assertIs(connectors["halo"], connectors["omi"])
 
     def test_channel_adapter_connector_normalizes_and_routes_reply_target(self):
         adapter = _StubChannelAdapter()

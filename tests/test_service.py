@@ -14,8 +14,11 @@ from novaadapt_core.browser_executor import BrowserExecutionResult
 from novaadapt_core.channels import (
     ChannelRegistry,
     DiscordChannelAdapter,
+    GoogleChatChannelAdapter,
+    TeamsChannelAdapter,
     SignalChannelAdapter,
     SlackChannelAdapter,
+    IMessageChannelAdapter,
     TelegramChannelAdapter,
     WebChatChannelAdapter,
     WhatsAppChannelAdapter,
@@ -531,6 +534,44 @@ class ServiceTests(unittest.TestCase):
                 "matrix",
             }.issubset(names)
         )
+
+    def test_channel_aliases_resolve_to_canonical_channels(self):
+        service = NovaAdaptService(
+            default_config=Path("unused.json"),
+            router_loader=lambda _path: _StubRouter(),
+            directshell_factory=_StubDirectShell,
+            channel_registry=ChannelRegistry(
+                [
+                    WebChatChannelAdapter(),
+                    IMessageChannelAdapter(),
+                    GoogleChatChannelAdapter(),
+                    TeamsChannelAdapter(),
+                ]
+            ),
+        )
+        imessage = service.channel_health("i-message")
+        self.assertEqual(imessage["channel"], "imessage")
+        self.assertEqual(imessage.get("requested_channel"), "i-message")
+
+        gchat = service.channel_health("google_chat")
+        self.assertEqual(gchat["channel"], "googlechat")
+        self.assertEqual(gchat.get("requested_channel"), "google_chat")
+
+        teams = service.channel_health("ms_teams")
+        self.assertEqual(teams["channel"], "teams")
+        self.assertEqual(teams.get("requested_channel"), "ms_teams")
+
+    def test_channel_send_alias_reports_requested_channel(self):
+        service = NovaAdaptService(
+            default_config=Path("unused.json"),
+            router_loader=lambda _path: _StubRouter(),
+            directshell_factory=_StubDirectShell,
+            channel_registry=ChannelRegistry([WebChatChannelAdapter()]),
+        )
+        sent = service.channel_send("web_chat", "room-1", "hello alias")
+        self.assertTrue(sent["ok"])
+        self.assertEqual(sent["channel"], "webchat")
+        self.assertEqual(sent.get("requested_channel"), "web_chat")
 
     def test_channel_health_includes_security_posture(self):
         service = NovaAdaptService(

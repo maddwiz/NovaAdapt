@@ -198,6 +198,10 @@ novaadapt channels
 novaadapt channel-health --channel webchat
 novaadapt channel-send --channel webchat --to room-1 --text "hello world"
 novaadapt channel-inbound --channel webchat --payload '{"sender":"player-1","text":"status report"}'
+# Common aliases resolve automatically (examples):
+novaadapt channel-health --channel i-message
+novaadapt channel-health --channel google_chat
+novaadapt channel-health --channel ms_teams
 ```
 
 10. Inspect Adapt state (toggle, bond, persona):
