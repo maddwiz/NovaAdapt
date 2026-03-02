@@ -173,6 +173,9 @@ class ServerTests(unittest.TestCase):
                 self.assertIn("ok", deep_health["checks"]["memory"])
                 self.assertIn("novaprime", deep_health["checks"])
                 self.assertIn("ok", deep_health["checks"]["novaprime"])
+                self.assertIn("capabilities", deep_health)
+                self.assertTrue(deep_health["capabilities"]["standalone_ready"])
+                self.assertFalse(deep_health["capabilities"]["open_source_mode"]["requires_novaprime"])
                 self.assertIn("metrics", deep_health)
 
                 with self.assertRaises(error.HTTPError) as err:

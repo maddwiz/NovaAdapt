@@ -936,6 +936,27 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(out["results"][0]["status"], "preview")
         self.assertNotIn("novaprime", out)
 
+    def test_capabilities_marks_novaprime_as_optional_in_standalone_mode(self):
+        class _DisabledNovaPrimeBackend:
+            def status(self):
+                return {"ok": True, "enabled": False, "backend": "noop"}
+
+        service = NovaAdaptService(
+            default_config=Path("unused.json"),
+            router_loader=lambda _path: _StubRouter(),
+            directshell_factory=_StubDirectShell,
+            novaprime_client=_DisabledNovaPrimeBackend(),
+        )
+        caps = service.capabilities()
+        self.assertTrue(caps["standalone_ready"])
+        self.assertFalse(caps["open_source_mode"]["requires_novaprime"])
+        self.assertFalse(caps["open_source_mode"]["requires_mesh"])
+        self.assertFalse(caps["open_source_mode"]["requires_game"])
+        self.assertTrue(caps["integrations"]["novaprime"]["optional"])
+        self.assertFalse(caps["integrations"]["novaprime"]["enabled"])
+        self.assertFalse(caps["integrations"]["mesh_perks"]["available"])
+        self.assertFalse(caps["integrations"]["sib_perks"]["available"])
+
     def test_run_with_adapt_context_syncs_novaprime_and_injects_identity(self):
         with tempfile.TemporaryDirectory() as tmp:
             router = _CapturingRouter()

@@ -141,6 +141,9 @@ export NOVAADAPT_NOVAPRIME_BACKEND=off
 # Gateway daemon is standalone by default; opt into kernel routing only if wanted
 novaadapt gateway-daemon --gateway-kernel-mode off
 novaadapt gateway-daemon --gateway-kernel-mode on   # optional NovaPrime kernel path
+
+# Verify runtime capability contract (standalone-ready + optional integrations)
+curl -s http://127.0.0.1:8787/health?deep=1 | jq '.capabilities'
 ```
 
 5. Review action history and preview/execute undo:
@@ -275,7 +278,7 @@ novaadapt serve \
 API endpoints:
 
 - `GET /health` (liveness)
-- `GET /health?deep=1` (readiness snapshot: models + SQLite-backed stores + metrics)
+- `GET /health?deep=1` (readiness snapshot: models + SQLite-backed stores + metrics + capability contract)
 - `GET /health?deep=1&execution=1` (includes DirectShell readiness check; fails if execution backend is not ready)
 - `GET /openapi.json`
 - `GET /dashboard` (auth-protected operational HTML dashboard)

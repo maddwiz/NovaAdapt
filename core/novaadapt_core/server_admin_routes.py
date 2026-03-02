@@ -21,7 +21,13 @@ def get_health(
         return 200
 
     include_execution_check = (single(query, "execution") or "0") == "1"
-    health_payload = {"ok": True, "service": "novaadapt", "checks": {}, "metrics": metrics.snapshot()}
+    health_payload = {
+        "ok": True,
+        "service": "novaadapt",
+        "checks": {},
+        "metrics": metrics.snapshot(),
+        "capabilities": service.capabilities(),
+    }
     checks = health_payload["checks"]
 
     config = to_path(single(query, "config"))

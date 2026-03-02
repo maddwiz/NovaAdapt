@@ -185,6 +185,39 @@ class NovaAdaptService:
             "error": "NovaPrime client returned invalid status payload",
         }
 
+    def capabilities(self) -> dict[str, Any]:
+        try:
+            novaprime = self.novaprime_status()
+        except Exception as exc:
+            novaprime = {
+                "ok": False,
+                "enabled": False,
+                "backend": "unknown",
+                "error": str(exc),
+            }
+        novaprime_enabled = bool(novaprime.get("enabled", False))
+        novaprime_required = bool(novaprime.get("required", False))
+        return {
+            "standalone_ready": True,
+            "open_source_mode": {
+                "requires_novaprime": False,
+                "requires_mesh": False,
+                "requires_game": False,
+            },
+            "integrations": {
+                "novaprime": {
+                    "optional": True,
+                    "enabled": novaprime_enabled,
+                    "required": novaprime_required,
+                    "backend": str(novaprime.get("backend") or ""),
+                    "ok": bool(novaprime.get("ok", False)),
+                },
+                "mesh_perks": {"available": novaprime_enabled},
+                "sib_perks": {"available": novaprime_enabled},
+                "aetherion_perks": {"available": novaprime_enabled},
+            },
+        }
+
     def novaprime_reason_dual(self, task: str) -> dict[str, Any]:
         normalized_task = str(task or "").strip()
         if not normalized_task:
