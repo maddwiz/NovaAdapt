@@ -29,7 +29,7 @@ Implemented now:
   - Sends actions to DirectShell (or dry-run preview).
   - Records each action in a local undo queue database.
   - Integrates NovaSpine-compatible long-term memory for recall/augmentation + run/plan persistence.
-  - Exposes multi-channel messaging adapters (`webchat`, `iMessage`, `WhatsApp`, `Messenger`, `Telegram`, `Discord`, `Slack`, `Signal`, `Teams`, `Google Chat`, `Matrix`) with normalized inbound + outbound send flows.
+  - Exposes multi-channel messaging adapters (`webchat`, `iMessage`, `WhatsApp`, `Messenger`, `Instagram`, `SMS`, `Telegram`, `Discord`, `Slack`, `Signal`, `Teams`, `Google Chat`, `Matrix`) with normalized inbound + outbound send flows.
   - Exposes first-party plugin adapters (`novabridge`, `nova4d`, `novablox`) for external tool execution.
   - Exposes first-class Playwright browser automation routes/runtime (`/browser/*`) with domain allow/block policy hooks.
   - Records operator feedback (`/feedback`) into memory for self-improvement loops.
@@ -397,6 +397,31 @@ export NOVAADAPT_CHANNEL_MESSENGER_PAGE_ACCESS_TOKEN="..."
 # export NOVAADAPT_CHANNEL_MESSENGER_APP_SECRET="..."
 # Optional strict mode: require signature even when inbound token is unset
 # export NOVAADAPT_CHANNEL_MESSENGER_REQUIRE_SIGNATURE=1
+
+# Instagram Direct (Business/Creator account messaging)
+export NOVAADAPT_CHANNEL_INSTAGRAM_ENABLED=1
+export NOVAADAPT_CHANNEL_INSTAGRAM_ACCESS_TOKEN="..."
+# Optional account id metadata
+# export NOVAADAPT_CHANNEL_INSTAGRAM_ACCOUNT_ID="..."
+# Optional inbound signature validation (X-Hub-Signature-256)
+# export NOVAADAPT_CHANNEL_INSTAGRAM_APP_SECRET="..."
+# Optional strict mode: require signature even when inbound token is unset
+# export NOVAADAPT_CHANNEL_INSTAGRAM_REQUIRE_SIGNATURE=1
+
+# SMS (Twilio provider)
+export NOVAADAPT_CHANNEL_SMS_ENABLED=1
+export NOVAADAPT_CHANNEL_SMS_PROVIDER="twilio"
+export NOVAADAPT_CHANNEL_SMS_ACCOUNT_SID="AC..."
+export NOVAADAPT_CHANNEL_SMS_AUTH_TOKEN="..."
+export NOVAADAPT_CHANNEL_SMS_FROM="+15550001111"
+# Optional API base override
+# export NOVAADAPT_CHANNEL_SMS_API_BASE_URL="https://api.twilio.com/2010-04-01"
+# Optional inbound HMAC signature (X-SMS-Timestamp + X-SMS-Signature)
+# export NOVAADAPT_CHANNEL_SMS_WEBHOOK_SIGNING_SECRET="..."
+# Optional strict mode: require signature even when inbound token is unset
+# export NOVAADAPT_CHANNEL_SMS_REQUIRE_SIGNATURE=1
+# Optional max replay window for signatures (seconds, default 300)
+# export NOVAADAPT_CHANNEL_SMS_SIGNATURE_MAX_AGE_SECONDS=300
 
 # Telegram Bot API
 export NOVAADAPT_CHANNEL_TELEGRAM_ENABLED=1

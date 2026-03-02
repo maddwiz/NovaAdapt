@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from .service import NovaAdaptService
 
-_DIRECT_WEBHOOK_CHANNELS = {"discord", "slack", "whatsapp", "telegram", "signal", "messenger"}
+_DIRECT_WEBHOOK_CHANNELS = {"discord", "slack", "whatsapp", "messenger", "instagram", "telegram", "signal", "sms"}
 
 
 def _channel_from_path(path: str, suffix: str) -> str:

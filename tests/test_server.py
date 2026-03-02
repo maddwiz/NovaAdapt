@@ -1006,6 +1006,133 @@ class ServerTests(unittest.TestCase):
                     server.server_close()
                     thread.join(timeout=2)
 
+    def test_instagram_inbound_accepts_direct_signed_webhook_payload(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch.dict(
+                os.environ,
+                {
+                    "NOVAADAPT_CHANNEL_INSTAGRAM_APP_SECRET": "server-instagram-secret",
+                },
+                clear=False,
+            ):
+                service = NovaAdaptService(
+                    default_config=Path("unused.json"),
+                    db_path=Path(tmp) / "actions.db",
+                    plans_db_path=Path(tmp) / "plans.db",
+                    router_loader=lambda _path: _StubRouter(),
+                    directshell_factory=_StubDirectShell,
+                )
+                server = create_server(
+                    "127.0.0.1",
+                    0,
+                    service,
+                    audit_db_path=str(Path(tmp) / "events.db"),
+                )
+                host, port = server.server_address
+                thread = threading.Thread(target=server.serve_forever, daemon=True)
+                thread.start()
+                try:
+                    payload = {
+                        "object": "instagram",
+                        "entry": [
+                            {
+                                "id": "ig-account-1",
+                                "messaging": [
+                                    {
+                                        "sender": {"id": "ig-user-1"},
+                                        "recipient": {"id": "ig-account-1"},
+                                        "message": {"mid": "ig_mid_1", "text": "status report"},
+                                    }
+                                ],
+                            }
+                        ],
+                    }
+                    with self.assertRaises(error.HTTPError) as err:
+                        _post_json(f"http://{host}:{port}/channels/instagram/inbound", payload)
+                    self.assertEqual(err.exception.code, 401)
+                    err.exception.close()
+
+                    raw = json.dumps(payload)
+                    signature = hmac.new(
+                        b"server-instagram-secret",
+                        raw.encode("utf-8"),
+                        hashlib.sha256,
+                    ).hexdigest()
+                    signed, _ = _post_json_with_headers(
+                        f"http://{host}:{port}/channels/instagram/inbound",
+                        payload,
+                        extra_headers={
+                            "X-Hub-Signature-256": f"sha256={signature}",
+                        },
+                    )
+                    self.assertTrue(signed["ok"])
+                    self.assertEqual(signed["channel"], "instagram")
+                    self.assertEqual(signed["message"]["sender"], "ig-user-1")
+                finally:
+                    server.shutdown()
+                    server.server_close()
+                    thread.join(timeout=2)
+
+    def test_sms_inbound_accepts_direct_signed_webhook_payload(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch.dict(
+                os.environ,
+                {
+                    "NOVAADAPT_CHANNEL_SMS_WEBHOOK_SIGNING_SECRET": "server-sms-secret",
+                },
+                clear=False,
+            ):
+                service = NovaAdaptService(
+                    default_config=Path("unused.json"),
+                    db_path=Path(tmp) / "actions.db",
+                    plans_db_path=Path(tmp) / "plans.db",
+                    router_loader=lambda _path: _StubRouter(),
+                    directshell_factory=_StubDirectShell,
+                )
+                server = create_server(
+                    "127.0.0.1",
+                    0,
+                    service,
+                    audit_db_path=str(Path(tmp) / "events.db"),
+                )
+                host, port = server.server_address
+                thread = threading.Thread(target=server.serve_forever, daemon=True)
+                thread.start()
+                try:
+                    payload = {
+                        "From": "+15551230001",
+                        "To": "+15551239999",
+                        "Body": "status report",
+                        "MessageSid": "SM123",
+                    }
+                    with self.assertRaises(error.HTTPError) as err:
+                        _post_json(f"http://{host}:{port}/channels/sms/inbound", payload)
+                    self.assertEqual(err.exception.code, 401)
+                    err.exception.close()
+
+                    raw = json.dumps(payload)
+                    timestamp = str(int(time.time()))
+                    signature = hmac.new(
+                        b"server-sms-secret",
+                        f"{timestamp}.{raw}".encode("utf-8"),
+                        hashlib.sha256,
+                    ).hexdigest()
+                    signed, _ = _post_json_with_headers(
+                        f"http://{host}:{port}/channels/sms/inbound",
+                        payload,
+                        extra_headers={
+                            "X-SMS-Timestamp": timestamp,
+                            "X-SMS-Signature": signature,
+                        },
+                    )
+                    self.assertTrue(signed["ok"])
+                    self.assertEqual(signed["channel"], "sms")
+                    self.assertEqual(signed["message"]["sender"], "+15551230001")
+                finally:
+                    server.shutdown()
+                    server.server_close()
+                    thread.join(timeout=2)
+
     def test_signal_inbound_accepts_direct_signed_webhook_payload(self):
         with tempfile.TemporaryDirectory() as tmp:
             with mock.patch.dict(

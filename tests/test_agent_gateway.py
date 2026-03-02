@@ -210,6 +210,8 @@ class AgentGatewayTests(unittest.TestCase):
             "slack",
             "signal",
             "messenger",
+            "instagram",
+            "sms",
             "teams",
             "googlechat",
             "matrix",
@@ -221,6 +223,8 @@ class AgentGatewayTests(unittest.TestCase):
         self.assertIs(connectors["googlechat"], connectors["google_chat"])
         self.assertIs(connectors["teams"], connectors["ms_teams"])
         self.assertIs(connectors["messenger"], connectors["facebook_messenger"])
+        self.assertIs(connectors["instagram"], connectors["ig"])
+        self.assertIs(connectors["sms"], connectors["twilio"])
         self.assertIs(connectors["xreal"], connectors["xreal-x1"])
         self.assertIs(connectors["halo"], connectors["omi"])
 

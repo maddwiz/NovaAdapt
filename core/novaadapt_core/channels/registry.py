@@ -6,16 +6,18 @@ from .base import ChannelAdapter
 from .discord import DiscordChannelAdapter
 from .googlechat import GoogleChatChannelAdapter
 from .imessage import IMessageChannelAdapter
+from .instagram import InstagramChannelAdapter
 from .matrix import MatrixChannelAdapter
 from .messenger import MessengerChannelAdapter
 from .signal import SignalChannelAdapter
 from .slack import SlackChannelAdapter
+from .sms import SmsChannelAdapter
 from .telegram import TelegramChannelAdapter
 from .teams import TeamsChannelAdapter
 from .webchat import WebChatChannelAdapter
 from .whatsapp import WhatsAppChannelAdapter
 
-DIRECT_WEBHOOK_CHANNELS = {"discord", "slack", "whatsapp", "telegram", "signal", "messenger"}
+DIRECT_WEBHOOK_CHANNELS = {"discord", "slack", "whatsapp", "messenger", "instagram", "telegram", "signal", "sms"}
 
 CHANNEL_ALIASES: dict[str, str] = {
     "web_chat": "webchat",
@@ -35,6 +37,15 @@ CHANNEL_ALIASES: dict[str, str] = {
     "fb_messenger": "messenger",
     "fb-messenger": "messenger",
     "meta_messenger": "messenger",
+    "ig": "instagram",
+    "insta": "instagram",
+    "instagram_dm": "instagram",
+    "instagram-dm": "instagram",
+    "text": "sms",
+    "text_message": "sms",
+    "twilio": "sms",
+    "twilio_sms": "sms",
+    "twilio-sms": "sms",
 }
 
 CHANNEL_VERIFICATION_METHODS: dict[str, list[str]] = {
@@ -46,6 +57,8 @@ CHANNEL_VERIFICATION_METHODS: dict[str, list[str]] = {
     "slack": ["inbound_token", "slack_signature"],
     "signal": ["inbound_token", "signal_hmac"],
     "messenger": ["inbound_token", "messenger_signature"],
+    "instagram": ["inbound_token", "instagram_signature"],
+    "sms": ["inbound_token", "sms_hmac"],
     "teams": ["inbound_token"],
     "googlechat": ["inbound_token"],
     "matrix": ["inbound_token"],
@@ -182,6 +195,8 @@ def build_channel_registry() -> ChannelRegistry:
             SlackChannelAdapter(),
             SignalChannelAdapter(),
             MessengerChannelAdapter(),
+            InstagramChannelAdapter(),
+            SmsChannelAdapter(),
             TeamsChannelAdapter(),
             GoogleChatChannelAdapter(),
             MatrixChannelAdapter(),

@@ -19,7 +19,9 @@ from novaadapt_core.channels import (
     SignalChannelAdapter,
     SlackChannelAdapter,
     IMessageChannelAdapter,
+    InstagramChannelAdapter,
     MessengerChannelAdapter,
+    SmsChannelAdapter,
     TelegramChannelAdapter,
     WebChatChannelAdapter,
     WhatsAppChannelAdapter,
@@ -531,6 +533,8 @@ class ServiceTests(unittest.TestCase):
                 "slack",
                 "signal",
                 "messenger",
+                "instagram",
+                "sms",
                 "teams",
                 "googlechat",
                 "matrix",
@@ -548,6 +552,8 @@ class ServiceTests(unittest.TestCase):
                     IMessageChannelAdapter(),
                     GoogleChatChannelAdapter(),
                     MessengerChannelAdapter(),
+                    InstagramChannelAdapter(),
+                    SmsChannelAdapter(),
                     TeamsChannelAdapter(),
                 ]
             ),
@@ -567,6 +573,14 @@ class ServiceTests(unittest.TestCase):
         messenger = service.channel_health("fb_messenger")
         self.assertEqual(messenger["channel"], "messenger")
         self.assertEqual(messenger.get("requested_channel"), "fb_messenger")
+
+        instagram = service.channel_health("instagram_dm")
+        self.assertEqual(instagram["channel"], "instagram")
+        self.assertEqual(instagram.get("requested_channel"), "instagram_dm")
+
+        sms = service.channel_health("twilio")
+        self.assertEqual(sms["channel"], "sms")
+        self.assertEqual(sms.get("requested_channel"), "twilio")
 
     def test_channel_send_alias_reports_requested_channel(self):
         service = NovaAdaptService(
@@ -871,6 +885,99 @@ class ServiceTests(unittest.TestCase):
             self.assertTrue(authorized["ok"])
             self.assertEqual(authorized["channel"], "messenger")
             self.assertEqual(authorized["message"]["sender"], "user-123")
+
+    def test_instagram_channel_inbound_enforces_signature_when_configured(self):
+        with mock.patch.dict(
+            os.environ,
+            {
+                "NOVAADAPT_CHANNEL_INSTAGRAM_APP_SECRET": "instagram-app-secret",
+            },
+            clear=False,
+        ):
+            service = NovaAdaptService(
+                default_config=Path("unused.json"),
+                router_loader=lambda _path: _StubRouter(),
+                directshell_factory=_StubDirectShell,
+                channel_registry=ChannelRegistry([InstagramChannelAdapter()]),
+            )
+            payload = {
+                "object": "instagram",
+                "entry": [
+                    {
+                        "id": "ig-account-1",
+                        "messaging": [
+                            {
+                                "sender": {"id": "ig-user-1"},
+                                "recipient": {"id": "ig-account-1"},
+                                "message": {"mid": "ig_mid_1", "text": "status"},
+                            }
+                        ],
+                    }
+                ],
+            }
+            unauthorized = service.channel_inbound("instagram", payload)
+            self.assertFalse(unauthorized["ok"])
+            self.assertEqual(unauthorized["status_code"], 401)
+
+            raw = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+            signature = hmac.new(
+                b"instagram-app-secret",
+                raw.encode("utf-8"),
+                hashlib.sha256,
+            ).hexdigest()
+            authorized = service.channel_inbound(
+                "instagram",
+                payload,
+                request_headers={"X-Hub-Signature-256": f"sha256={signature}"},
+                request_body_text=raw,
+            )
+            self.assertTrue(authorized["ok"])
+            self.assertEqual(authorized["channel"], "instagram")
+            self.assertEqual(authorized["message"]["sender"], "ig-user-1")
+
+    def test_sms_channel_inbound_enforces_signature_when_configured(self):
+        with mock.patch.dict(
+            os.environ,
+            {
+                "NOVAADAPT_CHANNEL_SMS_WEBHOOK_SIGNING_SECRET": "sms-signing-secret",
+            },
+            clear=False,
+        ):
+            service = NovaAdaptService(
+                default_config=Path("unused.json"),
+                router_loader=lambda _path: _StubRouter(),
+                directshell_factory=_StubDirectShell,
+                channel_registry=ChannelRegistry([SmsChannelAdapter()]),
+            )
+            payload = {
+                "From": "+15551230001",
+                "To": "+15551239999",
+                "Body": "status",
+                "MessageSid": "SM123",
+            }
+            unauthorized = service.channel_inbound("sms", payload)
+            self.assertFalse(unauthorized["ok"])
+            self.assertEqual(unauthorized["status_code"], 401)
+
+            timestamp = str(int(time.time()))
+            raw = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+            signature = hmac.new(
+                b"sms-signing-secret",
+                f"{timestamp}.{raw}".encode("utf-8"),
+                hashlib.sha256,
+            ).hexdigest()
+            authorized = service.channel_inbound(
+                "sms",
+                payload,
+                request_headers={
+                    "X-SMS-Timestamp": timestamp,
+                    "X-SMS-Signature": signature,
+                },
+                request_body_text=raw,
+            )
+            self.assertTrue(authorized["ok"])
+            self.assertEqual(authorized["channel"], "sms")
+            self.assertEqual(authorized["message"]["sender"], "+15551230001")
 
     def test_telegram_channel_inbound_enforces_webhook_secret_token_when_configured(self):
         with mock.patch.dict(

@@ -6,11 +6,13 @@ from .googlechat import GoogleChatConnector
 from .halo import HaloConnector
 from .http import HttpConnector
 from .imessage import IMessageConnector
+from .instagram import InstagramConnector
 from .matrix import MatrixConnector
 from .messenger import MessengerConnector
 from .mcp import McpConnector
 from .signal import SignalConnector
 from .slack import SlackConnector
+from .sms import SmsConnector
 from .telegram import TelegramConnector
 from .teams import TeamsConnector
 from .webchat import WebChatConnector
@@ -35,6 +37,15 @@ CONNECTOR_ALIASES: dict[str, str] = {
     "fb_messenger": "messenger",
     "fb-messenger": "messenger",
     "meta_messenger": "messenger",
+    "ig": "instagram",
+    "insta": "instagram",
+    "instagram_dm": "instagram",
+    "instagram-dm": "instagram",
+    "text": "sms",
+    "text_message": "sms",
+    "twilio": "sms",
+    "twilio_sms": "sms",
+    "twilio-sms": "sms",
     "xreal_x1": "xreal",
     "xreal-x1": "xreal",
     "x1": "xreal",
@@ -57,6 +68,8 @@ def build_gateway_connectors() -> dict[str, Connector]:
         SlackConnector(),
         SignalConnector(),
         MessengerConnector(),
+        InstagramConnector(),
+        SmsConnector(),
         TeamsConnector(),
         GoogleChatConnector(),
         MatrixConnector(),
@@ -89,6 +102,8 @@ __all__ = [
     "SlackConnector",
     "SignalConnector",
     "MessengerConnector",
+    "InstagramConnector",
+    "SmsConnector",
     "WhatsAppConnector",
     "IMessageConnector",
     "WebChatConnector",
