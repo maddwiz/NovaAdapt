@@ -11,6 +11,7 @@ from .native_executor import NativeDesktopExecutor
 
 
 _MAX_FRAME_BYTES = 2 * 1024 * 1024
+_HAS_UNIX_STREAM_SERVER = hasattr(socketserver, "ThreadingUnixStreamServer")
 
 
 @dataclass(frozen=True)
@@ -76,7 +77,7 @@ class NativeExecutionDaemon:
         handler = self._build_handler()
         socket_path = self.target.socket_path.strip()
         if socket_path:
-            if not hasattr(socket, "AF_UNIX"):
+            if not hasattr(socket, "AF_UNIX") or not _HAS_UNIX_STREAM_SERVER:
                 raise RuntimeError("Unix sockets are not supported on this platform")
             os.makedirs(os.path.dirname(socket_path) or ".", exist_ok=True)
             try:
@@ -138,5 +139,12 @@ class _ThreadingTCPServer(socketserver.ThreadingTCPServer):
     allow_reuse_address = True
 
 
-class _ThreadingUnixStreamServer(socketserver.ThreadingUnixStreamServer):
-    allow_reuse_address = True
+if _HAS_UNIX_STREAM_SERVER:
+
+    class _ThreadingUnixStreamServer(socketserver.ThreadingUnixStreamServer):
+        allow_reuse_address = True
+
+else:
+
+    class _ThreadingUnixStreamServer(socketserver.ThreadingTCPServer):
+        allow_reuse_address = True

@@ -16,9 +16,9 @@ def _pick_free_tcp_port() -> int:
         return int(sock.getsockname()[1])
 
 
-def _wait_for_http_health(port: int, *, token: str | None = None, timeout_seconds: float = 2.0) -> None:
-    deadline = time.time() + max(0.1, float(timeout_seconds))
-    while time.time() < deadline:
+def _wait_for_http_health(port: int, *, token: str | None = None, timeout_seconds: float = 8.0) -> None:
+    deadline = time.monotonic() + max(0.1, float(timeout_seconds))
+    while time.monotonic() < deadline:
         headers = {}
         if token:
             headers["X-DirectShell-Token"] = token
