@@ -32,10 +32,21 @@ class NativeExecutionHTTPServer:
         self.executor = executor or NativeDesktopExecutor(timeout_seconds=self.timeout_seconds)
         self._server: HTTPServer | None = None
 
+    def bind(self) -> int:
+        """Bind and initialize the HTTP server if needed, returning bound port."""
+        server = self._server
+        if server is None:
+            server = HTTPServer((self.host, self.port), self._build_handler())
+            server.timeout = self.timeout_seconds
+            self._server = server
+            self.port = int(server.server_port)
+        return int(server.server_port)
+
     def serve_forever(self) -> None:
-        server = HTTPServer((self.host, self.port), self._build_handler())
-        server.timeout = self.timeout_seconds
-        self._server = server
+        self.bind()
+        server = self._server
+        if server is None:
+            raise RuntimeError("native HTTP server failed to initialize")
         try:
             server.serve_forever()
         finally:

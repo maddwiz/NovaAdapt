@@ -16,19 +16,6 @@ def _open_local_http(req_or_url: request.Request | str, *, timeout: float):
     return _NO_PROXY_OPENER.open(req_or_url, timeout=timeout)
 
 
-def _start_http_server(server: NativeExecutionHTTPServer, thread: threading.Thread) -> int:
-    thread.start()
-    deadline = time.monotonic() + 5.0
-    while time.monotonic() < deadline:
-        bound = server._server
-        if bound is not None:
-            return int(bound.server_port)
-        if not thread.is_alive():
-            break
-        time.sleep(0.01)
-    raise AssertionError("native HTTP server failed to bind in time")
-
-
 def _wait_for_http_health(port: int, *, token: str | None = None, timeout_seconds: float = 8.0) -> None:
     deadline = time.monotonic() + max(0.1, float(timeout_seconds))
     while time.monotonic() < deadline:
@@ -54,8 +41,9 @@ class NativeHTTPServerTests(unittest.TestCase):
             timeout_seconds=5,
             executor=NativeDesktopExecutor(platform_name="plan9"),
         )
+        port = server.bind()
         thread = threading.Thread(target=server.serve_forever, daemon=True)
-        port = _start_http_server(server, thread)
+        thread.start()
 
         try:
             _wait_for_http_health(port)
@@ -89,8 +77,9 @@ class NativeHTTPServerTests(unittest.TestCase):
             timeout_seconds=5,
             executor=NativeDesktopExecutor(platform_name="plan9"),
         )
+        port = server.bind()
         thread = threading.Thread(target=server.serve_forever, daemon=True)
-        port = _start_http_server(server, thread)
+        thread.start()
 
         try:
             _wait_for_http_health(port, token="secret-http")
@@ -135,8 +124,9 @@ class NativeHTTPServerTests(unittest.TestCase):
             timeout_seconds=5,
             executor=NativeDesktopExecutor(platform_name="plan9"),
         )
+        port = server.bind()
         thread = threading.Thread(target=server.serve_forever, daemon=True)
-        port = _start_http_server(server, thread)
+        thread.start()
 
         try:
             _wait_for_http_health(port)
