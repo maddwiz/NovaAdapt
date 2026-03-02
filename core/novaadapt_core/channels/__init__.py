@@ -3,6 +3,7 @@ from .discord import DiscordChannelAdapter
 from .googlechat import GoogleChatChannelAdapter
 from .imessage import IMessageChannelAdapter
 from .matrix import MatrixChannelAdapter
+from .messenger import MessengerChannelAdapter
 from .registry import ChannelRegistry, build_channel_registry
 from .signal import SignalChannelAdapter
 from .slack import SlackChannelAdapter
@@ -19,6 +20,7 @@ __all__ = [
     "GoogleChatChannelAdapter",
     "IMessageChannelAdapter",
     "MatrixChannelAdapter",
+    "MessengerChannelAdapter",
     "SignalChannelAdapter",
     "SlackChannelAdapter",
     "TelegramChannelAdapter",

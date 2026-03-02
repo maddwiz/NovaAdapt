@@ -7,6 +7,7 @@ from .halo import HaloConnector
 from .http import HttpConnector
 from .imessage import IMessageConnector
 from .matrix import MatrixConnector
+from .messenger import MessengerConnector
 from .mcp import McpConnector
 from .signal import SignalConnector
 from .slack import SlackConnector
@@ -29,6 +30,11 @@ CONNECTOR_ALIASES: dict[str, str] = {
     "msteams": "teams",
     "microsoft_teams": "teams",
     "microsoft-teams": "teams",
+    "facebook_messenger": "messenger",
+    "facebook-messenger": "messenger",
+    "fb_messenger": "messenger",
+    "fb-messenger": "messenger",
+    "meta_messenger": "messenger",
     "xreal_x1": "xreal",
     "xreal-x1": "xreal",
     "x1": "xreal",
@@ -50,6 +56,7 @@ def build_gateway_connectors() -> dict[str, Connector]:
         DiscordConnector(),
         SlackConnector(),
         SignalConnector(),
+        MessengerConnector(),
         TeamsConnector(),
         GoogleChatConnector(),
         MatrixConnector(),
@@ -81,6 +88,7 @@ __all__ = [
     "TelegramConnector",
     "SlackConnector",
     "SignalConnector",
+    "MessengerConnector",
     "WhatsAppConnector",
     "IMessageConnector",
     "WebChatConnector",

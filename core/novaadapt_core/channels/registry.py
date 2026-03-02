@@ -7,6 +7,7 @@ from .discord import DiscordChannelAdapter
 from .googlechat import GoogleChatChannelAdapter
 from .imessage import IMessageChannelAdapter
 from .matrix import MatrixChannelAdapter
+from .messenger import MessengerChannelAdapter
 from .signal import SignalChannelAdapter
 from .slack import SlackChannelAdapter
 from .telegram import TelegramChannelAdapter
@@ -14,7 +15,7 @@ from .teams import TeamsChannelAdapter
 from .webchat import WebChatChannelAdapter
 from .whatsapp import WhatsAppChannelAdapter
 
-DIRECT_WEBHOOK_CHANNELS = {"discord", "slack", "whatsapp", "telegram", "signal"}
+DIRECT_WEBHOOK_CHANNELS = {"discord", "slack", "whatsapp", "telegram", "signal", "messenger"}
 
 CHANNEL_ALIASES: dict[str, str] = {
     "web_chat": "webchat",
@@ -29,6 +30,11 @@ CHANNEL_ALIASES: dict[str, str] = {
     "msteams": "teams",
     "microsoft_teams": "teams",
     "microsoft-teams": "teams",
+    "facebook_messenger": "messenger",
+    "facebook-messenger": "messenger",
+    "fb_messenger": "messenger",
+    "fb-messenger": "messenger",
+    "meta_messenger": "messenger",
 }
 
 CHANNEL_VERIFICATION_METHODS: dict[str, list[str]] = {
@@ -39,6 +45,7 @@ CHANNEL_VERIFICATION_METHODS: dict[str, list[str]] = {
     "discord": ["inbound_token", "discord_ed25519", "webhook_hmac"],
     "slack": ["inbound_token", "slack_signature"],
     "signal": ["inbound_token", "signal_hmac"],
+    "messenger": ["inbound_token", "messenger_signature"],
     "teams": ["inbound_token"],
     "googlechat": ["inbound_token"],
     "matrix": ["inbound_token"],
@@ -174,6 +181,7 @@ def build_channel_registry() -> ChannelRegistry:
             DiscordChannelAdapter(),
             SlackChannelAdapter(),
             SignalChannelAdapter(),
+            MessengerChannelAdapter(),
             TeamsChannelAdapter(),
             GoogleChatChannelAdapter(),
             MatrixChannelAdapter(),

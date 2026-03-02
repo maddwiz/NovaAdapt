@@ -19,6 +19,7 @@ from novaadapt_core.channels import (
     SignalChannelAdapter,
     SlackChannelAdapter,
     IMessageChannelAdapter,
+    MessengerChannelAdapter,
     TelegramChannelAdapter,
     WebChatChannelAdapter,
     WhatsAppChannelAdapter,
@@ -529,6 +530,7 @@ class ServiceTests(unittest.TestCase):
                 "discord",
                 "slack",
                 "signal",
+                "messenger",
                 "teams",
                 "googlechat",
                 "matrix",
@@ -545,6 +547,7 @@ class ServiceTests(unittest.TestCase):
                     WebChatChannelAdapter(),
                     IMessageChannelAdapter(),
                     GoogleChatChannelAdapter(),
+                    MessengerChannelAdapter(),
                     TeamsChannelAdapter(),
                 ]
             ),
@@ -560,6 +563,10 @@ class ServiceTests(unittest.TestCase):
         teams = service.channel_health("ms_teams")
         self.assertEqual(teams["channel"], "teams")
         self.assertEqual(teams.get("requested_channel"), "ms_teams")
+
+        messenger = service.channel_health("fb_messenger")
+        self.assertEqual(messenger["channel"], "messenger")
+        self.assertEqual(messenger.get("requested_channel"), "fb_messenger")
 
     def test_channel_send_alias_reports_requested_channel(self):
         service = NovaAdaptService(
@@ -815,6 +822,55 @@ class ServiceTests(unittest.TestCase):
             self.assertTrue(result["ok"])
             self.assertTrue(result["verification"])
             self.assertEqual(result["challenge"], "challenge-token")
+
+    def test_messenger_channel_inbound_enforces_signature_when_configured(self):
+        with mock.patch.dict(
+            os.environ,
+            {
+                "NOVAADAPT_CHANNEL_MESSENGER_APP_SECRET": "messenger-app-secret",
+            },
+            clear=False,
+        ):
+            service = NovaAdaptService(
+                default_config=Path("unused.json"),
+                router_loader=lambda _path: _StubRouter(),
+                directshell_factory=_StubDirectShell,
+                channel_registry=ChannelRegistry([MessengerChannelAdapter()]),
+            )
+            payload = {
+                "object": "page",
+                "entry": [
+                    {
+                        "id": "page-1",
+                        "messaging": [
+                            {
+                                "sender": {"id": "user-123"},
+                                "recipient": {"id": "page-1"},
+                                "message": {"mid": "m_123", "text": "status"},
+                            }
+                        ],
+                    }
+                ],
+            }
+            unauthorized = service.channel_inbound("messenger", payload)
+            self.assertFalse(unauthorized["ok"])
+            self.assertEqual(unauthorized["status_code"], 401)
+
+            raw = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+            signature = hmac.new(
+                b"messenger-app-secret",
+                raw.encode("utf-8"),
+                hashlib.sha256,
+            ).hexdigest()
+            authorized = service.channel_inbound(
+                "messenger",
+                payload,
+                request_headers={"X-Hub-Signature-256": f"sha256={signature}"},
+                request_body_text=raw,
+            )
+            self.assertTrue(authorized["ok"])
+            self.assertEqual(authorized["channel"], "messenger")
+            self.assertEqual(authorized["message"]["sender"], "user-123")
 
     def test_telegram_channel_inbound_enforces_webhook_secret_token_when_configured(self):
         with mock.patch.dict(

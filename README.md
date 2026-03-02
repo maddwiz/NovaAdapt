@@ -29,7 +29,7 @@ Implemented now:
   - Sends actions to DirectShell (or dry-run preview).
   - Records each action in a local undo queue database.
   - Integrates NovaSpine-compatible long-term memory for recall/augmentation + run/plan persistence.
-  - Exposes multi-channel messaging adapters (`webchat`, `iMessage`, `WhatsApp`, `Telegram`, `Discord`, `Slack`, `Signal`, `Teams`, `Google Chat`, `Matrix`) with normalized inbound + outbound send flows.
+  - Exposes multi-channel messaging adapters (`webchat`, `iMessage`, `WhatsApp`, `Messenger`, `Telegram`, `Discord`, `Slack`, `Signal`, `Teams`, `Google Chat`, `Matrix`) with normalized inbound + outbound send flows.
   - Exposes first-party plugin adapters (`novabridge`, `nova4d`, `novablox`) for external tool execution.
   - Exposes first-class Playwright browser automation routes/runtime (`/browser/*`) with domain allow/block policy hooks.
   - Records operator feedback (`/feedback`) into memory for self-improvement loops.
@@ -387,6 +387,16 @@ export NOVAADAPT_CHANNEL_WHATSAPP_PHONE_NUMBER_ID="..."
 # export NOVAADAPT_CHANNEL_WHATSAPP_APP_SECRET="..."
 # Optional strict mode: require signature even when inbound token is unset
 # export NOVAADAPT_CHANNEL_WHATSAPP_REQUIRE_SIGNATURE=1
+
+# Facebook Messenger (Page Inbox)
+export NOVAADAPT_CHANNEL_MESSENGER_ENABLED=1
+export NOVAADAPT_CHANNEL_MESSENGER_PAGE_ACCESS_TOKEN="..."
+# Optional page id metadata
+# export NOVAADAPT_CHANNEL_MESSENGER_PAGE_ID="..."
+# Optional inbound signature validation (X-Hub-Signature-256)
+# export NOVAADAPT_CHANNEL_MESSENGER_APP_SECRET="..."
+# Optional strict mode: require signature even when inbound token is unset
+# export NOVAADAPT_CHANNEL_MESSENGER_REQUIRE_SIGNATURE=1
 
 # Telegram Bot API
 export NOVAADAPT_CHANNEL_TELEGRAM_ENABLED=1

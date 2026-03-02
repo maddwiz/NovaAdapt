@@ -939,6 +939,73 @@ class ServerTests(unittest.TestCase):
                     server.server_close()
                     thread.join(timeout=2)
 
+    def test_messenger_inbound_accepts_direct_signed_webhook_payload(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch.dict(
+                os.environ,
+                {
+                    "NOVAADAPT_CHANNEL_MESSENGER_APP_SECRET": "server-messenger-secret",
+                },
+                clear=False,
+            ):
+                service = NovaAdaptService(
+                    default_config=Path("unused.json"),
+                    db_path=Path(tmp) / "actions.db",
+                    plans_db_path=Path(tmp) / "plans.db",
+                    router_loader=lambda _path: _StubRouter(),
+                    directshell_factory=_StubDirectShell,
+                )
+                server = create_server(
+                    "127.0.0.1",
+                    0,
+                    service,
+                    audit_db_path=str(Path(tmp) / "events.db"),
+                )
+                host, port = server.server_address
+                thread = threading.Thread(target=server.serve_forever, daemon=True)
+                thread.start()
+                try:
+                    payload = {
+                        "object": "page",
+                        "entry": [
+                            {
+                                "id": "page-1",
+                                "messaging": [
+                                    {
+                                        "sender": {"id": "user-123"},
+                                        "recipient": {"id": "page-1"},
+                                        "message": {"mid": "m_123", "text": "status report"},
+                                    }
+                                ],
+                            }
+                        ],
+                    }
+                    with self.assertRaises(error.HTTPError) as err:
+                        _post_json(f"http://{host}:{port}/channels/messenger/inbound", payload)
+                    self.assertEqual(err.exception.code, 401)
+                    err.exception.close()
+
+                    raw = json.dumps(payload)
+                    signature = hmac.new(
+                        b"server-messenger-secret",
+                        raw.encode("utf-8"),
+                        hashlib.sha256,
+                    ).hexdigest()
+                    signed, _ = _post_json_with_headers(
+                        f"http://{host}:{port}/channels/messenger/inbound",
+                        payload,
+                        extra_headers={
+                            "X-Hub-Signature-256": f"sha256={signature}",
+                        },
+                    )
+                    self.assertTrue(signed["ok"])
+                    self.assertEqual(signed["channel"], "messenger")
+                    self.assertEqual(signed["message"]["sender"], "user-123")
+                finally:
+                    server.shutdown()
+                    server.server_close()
+                    thread.join(timeout=2)
+
     def test_signal_inbound_accepts_direct_signed_webhook_payload(self):
         with tempfile.TemporaryDirectory() as tmp:
             with mock.patch.dict(
