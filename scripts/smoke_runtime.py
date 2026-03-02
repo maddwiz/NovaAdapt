@@ -15,6 +15,7 @@ from urllib import error, request
 ROOT_DIR = Path(__file__).resolve().parents[1]
 CORE_DIR = ROOT_DIR / "core"
 SHARED_DIR = ROOT_DIR / "shared"
+_NO_PROXY_OPENER = request.build_opener(request.ProxyHandler({}))
 
 for _path in (str(CORE_DIR), str(SHARED_DIR)):
     if _path not in sys.path:
@@ -36,15 +37,15 @@ def merged_pythonpath(existing: str | None) -> str:
     return os.pathsep.join(parts)
 
 
-def wait_for_http(url: str, token: str, timeout_seconds: float = 18.0) -> bool:
+def wait_for_http(url: str, token: str, timeout_seconds: float = 30.0) -> bool:
     deadline = time.monotonic() + timeout_seconds
     while time.monotonic() < deadline:
         req = request.Request(url=url, method="GET", headers={"X-DirectShell-Token": token})
         try:
-            with request.urlopen(req, timeout=1.0) as resp:
+            with _NO_PROXY_OPENER.open(req, timeout=1.0) as resp:
                 if 200 <= int(resp.status) < 400:
                     return True
-        except Exception:
+        except (error.URLError, TimeoutError, OSError):
             pass
         time.sleep(0.1)
     return False
@@ -167,7 +168,14 @@ def main() -> int:
         http_env = dict(base_env)
         http_env["DIRECTSHELL_HTTP_URL"] = f"http://127.0.0.1:{http_port}/execute"
         http_env["DIRECTSHELL_HTTP_TOKEN"] = str(args.http_token)
-        ok, probe_out = run_probe("http", str(args.http_token), env=http_env)
+        probe_deadline = time.monotonic() + 30.0
+        ok = False
+        probe_out = ""
+        while time.monotonic() < probe_deadline:
+            ok, probe_out = run_probe("http", str(args.http_token), env=http_env)
+            if ok:
+                break
+            time.sleep(0.2)
         if not ok:
             print("directshell-check failed for HTTP runtime", file=sys.stderr)
             print(probe_out, file=sys.stderr)
