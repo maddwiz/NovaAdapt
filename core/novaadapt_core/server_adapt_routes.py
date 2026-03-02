@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from .flags import coerce_bool
 from .service import NovaAdaptService
 
 
@@ -60,7 +61,7 @@ def post_adapt_bond_verify(
 ) -> int:
     adapt_id = str(payload.get("adapt_id") or "").strip()
     player_id = str(payload.get("player_id") or "").strip()
-    refresh_profile = bool(payload.get("refresh_profile", True))
+    refresh_profile = coerce_bool(payload.get("refresh_profile"), default=True)
     if not adapt_id:
         raise ValueError("'adapt_id' is required")
     if not player_id:

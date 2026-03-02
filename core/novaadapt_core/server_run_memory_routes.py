@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Callable
 
+from .flags import coerce_bool
 from .jobs import JobManager
 from .service import NovaAdaptService
 
@@ -68,8 +69,8 @@ def post_swarm_run(
         "model": payload.get("model"),
         "candidates": payload.get("candidates"),
         "fallbacks": payload.get("fallbacks"),
-        "execute": bool(payload.get("execute", False)),
-        "allow_dangerous": bool(payload.get("allow_dangerous", False)),
+        "execute": coerce_bool(payload.get("execute"), default=False),
+        "allow_dangerous": coerce_bool(payload.get("allow_dangerous"), default=False),
         "max_actions": int(payload.get("max_actions", 25)),
         "adapt_id": payload.get("adapt_id"),
         "player_id": payload.get("player_id"),
@@ -87,6 +88,10 @@ def post_swarm_run(
         "mesh_marketplace_list": payload.get("mesh_marketplace_list"),
         "mesh_marketplace_buy": payload.get("mesh_marketplace_buy"),
     }
+    if "use_kernel" in payload:
+        shared_payload["use_kernel"] = coerce_bool(payload.get("use_kernel"), default=False)
+    if "kernel_required" in payload:
+        shared_payload["kernel_required"] = coerce_bool(payload.get("kernel_required"), default=False)
 
     def _run_swarm() -> tuple[int, dict[str, object]]:
         jobs: list[dict[str, object]] = []

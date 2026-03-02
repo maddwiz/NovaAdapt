@@ -1767,6 +1767,30 @@ class ServiceTests(unittest.TestCase):
             self.assertIn("adapt", out)
             self.assertEqual(out["adapt"]["adapt_id"], "adapt-123")
 
+    def test_run_string_false_flags_do_not_enable_execution_or_mesh_probe(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            service = NovaAdaptService(
+                default_config=Path("unused.json"),
+                db_path=Path(tmp) / "actions.db",
+                router_loader=lambda _path: _StubRouter(),
+                directshell_factory=_StubDirectShell,
+                novaprime_client=_StubNovaPrimeBackend(),
+            )
+
+            out = service.run(
+                {
+                    "objective": "Treat string false as false",
+                    "execute": "false",
+                    "record_history": "false",
+                    "allow_dangerous": "false",
+                    "mesh_probe": "false",
+                    "mesh_probe_marketplace": "false",
+                }
+            )
+            self.assertEqual(out["results"][0]["status"], "preview")
+            self.assertEqual(out["action_log_ids"], [])
+            self.assertNotIn("novaprime", out)
+
     def test_run_uses_kernel_adapter_when_enabled(self):
         with tempfile.TemporaryDirectory() as tmp:
             service = NovaAdaptService(

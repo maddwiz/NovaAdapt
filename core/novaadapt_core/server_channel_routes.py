@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 
+from .flags import coerce_bool
 from .service import NovaAdaptService
 
 _DIRECT_WEBHOOK_CHANNELS = {"discord", "slack", "whatsapp", "messenger", "instagram", "telegram", "signal", "sms"}
@@ -151,8 +152,8 @@ def post_channel_inbound(
         normalized_payload = dict(normalized_payload)
         normalized_payload["auth_token"] = str(payload.get("auth_token") or "").strip()
     adapt_id = str(payload.get("adapt_id") or "").strip()
-    auto_run = bool(payload.get("auto_run", False))
-    execute = bool(payload.get("execute", False))
+    auto_run = coerce_bool(payload.get("auto_run"), default=False)
+    execute = coerce_bool(payload.get("execute"), default=False)
     request_headers = {str(k): str(v) for k, v in dict(handler.headers).items()}
     request_body_text = getattr(handler, "_last_raw_body", "")
 

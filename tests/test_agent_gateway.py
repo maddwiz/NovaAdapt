@@ -145,6 +145,26 @@ class AgentGatewayTests(unittest.TestCase):
             self.assertEqual(report["failed"], 1)
             self.assertEqual(len(ok_connector.sent), 1)
 
+    def test_worker_retries_when_runner_returns_unsuccessful_payload(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            queue = GatewayJobQueue(Path(tmp) / "gateway_jobs.db")
+            job_id = queue.enqueue({"objective": "retry me"})
+            worker = GatewayWorker(
+                queue=queue,
+                runner=lambda _job: {"ok": False, "error": "kernel path failed"},
+                retry_delay_seconds=1.0,
+                max_attempts=3,
+            )
+            outcome = worker.process_once()
+            self.assertTrue(outcome.processed)
+            self.assertEqual(outcome.job_id, job_id)
+            self.assertEqual(outcome.error, "kernel path failed")
+            row = queue.get_job(job_id)
+            self.assertIsNotNone(row)
+            assert row is not None
+            self.assertEqual(row.status, "retry_wait")
+            self.assertEqual(row.attempts, 1)
+
     def test_daemon_drains_connector_processes_and_delivers(self):
         with tempfile.TemporaryDirectory() as tmp:
             queue = GatewayJobQueue(Path(tmp) / "gateway_jobs.db")

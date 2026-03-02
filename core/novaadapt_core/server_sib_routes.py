@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from .flags import coerce_bool
 from .service import NovaAdaptService
 
 
@@ -50,7 +51,7 @@ def post_sib_resonance_start(handler, service: NovaAdaptService, payload: dict[s
 def post_sib_resonance_result(handler, service: NovaAdaptService, payload: dict[str, object]) -> int:
     player_id = str(payload.get("player_id") or "").strip()
     adapt_id = str(payload.get("adapt_id") or "").strip()
-    accepted = bool(payload.get("accepted", False))
+    accepted = coerce_bool(payload.get("accepted"), default=False)
     player_profile = payload.get("player_profile")
     toggle_mode = payload.get("toggle_mode")
     handler._send_json(

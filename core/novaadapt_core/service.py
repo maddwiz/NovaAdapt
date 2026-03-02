@@ -15,6 +15,7 @@ from .agent import NovaAdaptAgent
 from .browser_executor import BrowserExecutor
 from .channels import ChannelRegistry, build_channel_registry
 from .directshell import DirectShellClient
+from .flags import coerce_bool
 from .memory import MemoryBackend, build_memory_backend
 from .novaprime import (
     NovaPrimeBackend,
@@ -1361,9 +1362,9 @@ class NovaAdaptService:
         model_name = payload.get("model")
         candidate_models = self._as_name_list(payload.get("candidates"))
         fallback_models = self._as_name_list(payload.get("fallbacks"))
-        execute = bool(payload.get("execute", False))
-        record_history = bool(payload.get("record_history", True))
-        allow_dangerous = bool(payload.get("allow_dangerous", False))
+        execute = coerce_bool(payload.get("execute"), default=False)
+        record_history = coerce_bool(payload.get("record_history"), default=True)
+        allow_dangerous = coerce_bool(payload.get("allow_dangerous"), default=False)
         max_actions = int(payload.get("max_actions", 25))
         adapt_id = str(payload.get("adapt_id") or "").strip()
         player_id = str(payload.get("player_id") or "").strip()
@@ -1375,8 +1376,8 @@ class NovaAdaptService:
         mesh_credit_amount = payload.get("mesh_credit_amount")
         mesh_transfer_to = str(payload.get("mesh_transfer_to") or "").strip()
         mesh_transfer_amount = payload.get("mesh_transfer_amount")
-        mesh_probe = bool(payload.get("mesh_probe", False))
-        mesh_probe_marketplace = bool(payload.get("mesh_probe_marketplace", False))
+        mesh_probe = coerce_bool(payload.get("mesh_probe"), default=False)
+        mesh_probe_marketplace = coerce_bool(payload.get("mesh_probe_marketplace"), default=False)
         mesh_marketplace_list = payload.get("mesh_marketplace_list")
         mesh_marketplace_buy = payload.get("mesh_marketplace_buy")
         has_mesh_context = bool(
@@ -1613,12 +1614,12 @@ class NovaAdaptService:
         if plan["status"] == "executing":
             raise ValueError("Plan is already executing")
 
-        execute = bool(payload.get("execute", True))
-        allow_dangerous = bool(payload.get("allow_dangerous", False))
+        execute = coerce_bool(payload.get("execute"), default=True)
+        allow_dangerous = coerce_bool(payload.get("allow_dangerous"), default=False)
         max_actions = int(payload.get("max_actions", len(plan.get("actions", [])) or 1))
         action_retry_attempts = max(0, int(payload.get("action_retry_attempts", 0)))
         action_retry_backoff_seconds = max(0.0, float(payload.get("action_retry_backoff_seconds", 0.25)))
-        retry_failed_only = bool(payload.get("retry_failed_only", False))
+        retry_failed_only = coerce_bool(payload.get("retry_failed_only"), default=False)
 
         if plan["status"] == "executed":
             if retry_failed_only:
@@ -1817,8 +1818,8 @@ class NovaAdaptService:
         if not isinstance(action_log_ids, list) or not action_log_ids:
             raise ValueError("Plan has no recorded action logs to undo")
 
-        execute = bool(payload.get("execute", False))
-        mark_only = bool(payload.get("mark_only", False))
+        execute = coerce_bool(payload.get("execute"), default=False)
+        mark_only = coerce_bool(payload.get("mark_only"), default=False)
         results: list[dict[str, Any]] = []
         for action_id in reversed(action_log_ids):
             try:
@@ -1847,8 +1848,8 @@ class NovaAdaptService:
     def undo(self, payload: dict[str, Any]) -> dict[str, Any]:
         queue = UndoQueue(db_path=self.db_path)
         action_id = payload.get("id")
-        mark_only = bool(payload.get("mark_only", False))
-        execute = bool(payload.get("execute", False))
+        mark_only = coerce_bool(payload.get("mark_only"), default=False)
+        execute = coerce_bool(payload.get("execute"), default=False)
 
         item = queue.get(int(action_id)) if action_id is not None else queue.latest_pending()
         if item is None:

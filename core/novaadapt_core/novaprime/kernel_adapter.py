@@ -172,49 +172,51 @@ def run_with_kernel(
     output_text = str(getattr(kernel_result, "output_text", "") or "")
     kernel_ok = bool(getattr(kernel_result, "ok", False))
     kernel_error = str(getattr(kernel_result, "error", "") or "")
-    actions = NovaAdaptAgent._parse_actions(output_text, max_actions=max(1, int(max_actions)))
+    actions: list[dict[str, Any]] = []
 
     dry_run = not bool(execute)
     execution: list[dict[str, Any]] = []
     action_log_ids: list[int] = []
-    for action in actions:
-        decision = agent.policy.evaluate(action, allow_dangerous=bool(allow_dangerous))
-        undo_action = action.get("undo") if isinstance(action.get("undo"), dict) else None
-        if not dry_run and not decision.allowed:
-            blocked_payload = {
-                "status": "blocked",
-                "output": decision.reason,
-                "action": action,
-                "dangerous": decision.dangerous,
-            }
-            execution.append(blocked_payload)
+    if kernel_ok:
+        actions = NovaAdaptAgent._parse_actions(output_text, max_actions=max(1, int(max_actions)))
+        for action in actions:
+            decision = agent.policy.evaluate(action, allow_dangerous=bool(allow_dangerous))
+            undo_action = action.get("undo") if isinstance(action.get("undo"), dict) else None
+            if not dry_run and not decision.allowed:
+                blocked_payload = {
+                    "status": "blocked",
+                    "output": decision.reason,
+                    "action": action,
+                    "dangerous": decision.dangerous,
+                }
+                execution.append(blocked_payload)
+                if bool(record_history):
+                    action_log_ids.append(
+                        agent.undo_queue.record(
+                            action=action,
+                            status="blocked",
+                            undo_action=undo_action,
+                        )
+                    )
+                continue
+
+            run_result = agent.directshell.execute_action(action=action, dry_run=dry_run)
+            execution.append(
+                {
+                    "status": run_result.status,
+                    "output": run_result.output,
+                    "action": run_result.action,
+                    "dangerous": decision.dangerous,
+                }
+            )
             if bool(record_history):
                 action_log_ids.append(
                     agent.undo_queue.record(
-                        action=action,
-                        status="blocked",
+                        action=run_result.action,
+                        status=run_result.status,
                         undo_action=undo_action,
                     )
                 )
-            continue
-
-        run_result = agent.directshell.execute_action(action=action, dry_run=dry_run)
-        execution.append(
-            {
-                "status": run_result.status,
-                "output": run_result.output,
-                "action": run_result.action,
-                "dangerous": decision.dangerous,
-            }
-        )
-        if bool(record_history):
-            action_log_ids.append(
-                agent.undo_queue.record(
-                    action=run_result.action,
-                    status=run_result.status,
-                    undo_action=undo_action,
-                )
-            )
 
     model_errors: dict[str, Any] = {}
     if not kernel_ok:

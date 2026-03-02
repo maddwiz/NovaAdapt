@@ -72,8 +72,11 @@ class GatewayWorker:
             return WorkerOutcome(processed=False)
         try:
             result = self.runner(job)
+            payload = result if isinstance(result, dict) else {}
+            if not bool(payload.get("ok", True)):
+                raise RuntimeError(str(payload.get("error") or "gateway runner reported failure"))
             self.queue.mark_done(job.job_id)
-            return WorkerOutcome(processed=True, job_id=job.job_id, result=result if isinstance(result, dict) else {})
+            return WorkerOutcome(processed=True, job_id=job.job_id, result=payload)
         except Exception as exc:
             self.queue.mark_failed(
                 job.job_id,
