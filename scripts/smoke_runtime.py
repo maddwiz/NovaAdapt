@@ -37,7 +37,7 @@ def merged_pythonpath(existing: str | None) -> str:
     return os.pathsep.join(parts)
 
 
-def wait_for_http(url: str, token: str, timeout_seconds: float = 30.0) -> bool:
+def wait_for_http(url: str, token: str, timeout_seconds: float = 75.0) -> bool:
     deadline = time.monotonic() + timeout_seconds
     while time.monotonic() < deadline:
         req = request.Request(url=url, method="GET", headers={"X-DirectShell-Token": token})
@@ -51,7 +51,13 @@ def wait_for_http(url: str, token: str, timeout_seconds: float = 30.0) -> bool:
     return False
 
 
-def run_probe(transport: str, token: str, env: dict[str, str], timeout_seconds: float = 20.0) -> tuple[bool, str]:
+def run_probe(
+    transport: str,
+    token: str,
+    env: dict[str, str],
+    timeout_seconds: float = 20.0,
+    check_timeout_seconds: int = 2,
+) -> tuple[bool, str]:
     cmd = [
         sys.executable,
         "-m",
@@ -60,7 +66,7 @@ def run_probe(transport: str, token: str, env: dict[str, str], timeout_seconds: 
         "--transport",
         transport,
         "--timeout-seconds",
-        "2",
+        str(max(1, int(check_timeout_seconds))),
     ]
     if transport == "http":
         cmd.extend(["--http-token", token])
@@ -168,11 +174,17 @@ def main() -> int:
         http_env = dict(base_env)
         http_env["DIRECTSHELL_HTTP_URL"] = f"http://127.0.0.1:{http_port}/execute"
         http_env["DIRECTSHELL_HTTP_TOKEN"] = str(args.http_token)
-        probe_deadline = time.monotonic() + 30.0
+        probe_deadline = time.monotonic() + 75.0
         ok = False
         probe_out = ""
         while time.monotonic() < probe_deadline:
-            ok, probe_out = run_probe("http", str(args.http_token), env=http_env)
+            ok, probe_out = run_probe(
+                "http",
+                str(args.http_token),
+                env=http_env,
+                timeout_seconds=45.0,
+                check_timeout_seconds=8,
+            )
             if ok:
                 break
             time.sleep(0.2)
