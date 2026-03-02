@@ -385,6 +385,8 @@ export NOVAADAPT_CHANNEL_WHATSAPP_TOKEN="..."
 export NOVAADAPT_CHANNEL_WHATSAPP_PHONE_NUMBER_ID="..."
 # Optional inbound signature validation using Meta app secret (X-Hub-Signature-256)
 # export NOVAADAPT_CHANNEL_WHATSAPP_APP_SECRET="..."
+# Optional Meta webhook verification token for GET challenge flow
+# export NOVAADAPT_CHANNEL_WHATSAPP_VERIFY_TOKEN="..."
 # Optional strict mode: require signature even when inbound token is unset
 # export NOVAADAPT_CHANNEL_WHATSAPP_REQUIRE_SIGNATURE=1
 
@@ -395,6 +397,8 @@ export NOVAADAPT_CHANNEL_MESSENGER_PAGE_ACCESS_TOKEN="..."
 # export NOVAADAPT_CHANNEL_MESSENGER_PAGE_ID="..."
 # Optional inbound signature validation (X-Hub-Signature-256)
 # export NOVAADAPT_CHANNEL_MESSENGER_APP_SECRET="..."
+# Optional Meta webhook verification token for GET challenge flow
+# export NOVAADAPT_CHANNEL_MESSENGER_VERIFY_TOKEN="..."
 # Optional strict mode: require signature even when inbound token is unset
 # export NOVAADAPT_CHANNEL_MESSENGER_REQUIRE_SIGNATURE=1
 
@@ -405,6 +409,8 @@ export NOVAADAPT_CHANNEL_INSTAGRAM_ACCESS_TOKEN="..."
 # export NOVAADAPT_CHANNEL_INSTAGRAM_ACCOUNT_ID="..."
 # Optional inbound signature validation (X-Hub-Signature-256)
 # export NOVAADAPT_CHANNEL_INSTAGRAM_APP_SECRET="..."
+# Optional Meta webhook verification token for GET challenge flow
+# export NOVAADAPT_CHANNEL_INSTAGRAM_VERIFY_TOKEN="..."
 # Optional strict mode: require signature even when inbound token is unset
 # export NOVAADAPT_CHANNEL_INSTAGRAM_REQUIRE_SIGNATURE=1
 

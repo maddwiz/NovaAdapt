@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import os
+
 from .service import NovaAdaptService
 
 _DIRECT_WEBHOOK_CHANNELS = {"discord", "slack", "whatsapp", "messenger", "instagram", "telegram", "signal", "sms"}
+_META_CHALLENGE_CHANNELS = {"whatsapp", "messenger", "instagram"}
 
 
 def _channel_from_path(path: str, suffix: str) -> str:
@@ -24,6 +27,69 @@ def get_channel_health(
         handler._send_json(404, {"error": "Not found"})
         return 404
     handler._send_json(200, service.channel_health(channel_name))
+    return 200
+
+
+def get_channel_inbound(
+    handler,
+    service: NovaAdaptService,
+    single,
+    path: str,
+    query: dict[str, list[str]],
+) -> int:
+    channel_name = _channel_from_path(path, "inbound")
+    if not channel_name:
+        handler._send_json(404, {"error": "Not found"})
+        return 404
+
+    resolved = service.channel_registry.resolve_name(channel_name)
+    if resolved not in _META_CHALLENGE_CHANNELS:
+        handler._send_json(405, {"error": f"GET inbound not supported for channel: {resolved}"})
+        return 405
+
+    mode = str(single(query, "hub.mode") or "").strip().lower()
+    challenge = str(single(query, "hub.challenge") or "").strip()
+    provided_token = str(single(query, "hub.verify_token") or "").strip()
+    if mode != "subscribe" or not challenge:
+        handler._send_json(
+            400,
+            {
+                "ok": False,
+                "channel": resolved,
+                "error": "missing required challenge params: hub.mode=subscribe and hub.challenge",
+            },
+        )
+        return 400
+
+    expected_token = str(os.getenv(f"NOVAADAPT_CHANNEL_{resolved.upper()}_VERIFY_TOKEN", "")).strip()
+    if not expected_token:
+        handler._send_json(
+            503,
+            {
+                "ok": False,
+                "channel": resolved,
+                "error": f"webhook verify token not configured for {resolved}",
+            },
+        )
+        return 503
+    if not provided_token or provided_token != expected_token:
+        handler._send_json(
+            403,
+            {
+                "ok": False,
+                "channel": resolved,
+                "error": "invalid webhook verify token",
+            },
+        )
+        return 403
+
+    body = challenge.encode("utf-8")
+    handler.send_response(200)
+    handler.send_header("Content-Type", "text/plain; charset=utf-8")
+    handler.send_header("X-Request-ID", handler._request_id)
+    handler.send_header("Content-Length", str(len(body)))
+    handler.end_headers()
+    handler.wfile.write(body)
     return 200
 
 

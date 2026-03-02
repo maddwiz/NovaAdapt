@@ -1006,6 +1006,57 @@ class ServerTests(unittest.TestCase):
                     server.server_close()
                     thread.join(timeout=2)
 
+    def test_meta_webhook_challenge_get_inbound_uses_verify_token(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch.dict(
+                os.environ,
+                {
+                    "NOVAADAPT_CHANNEL_MESSENGER_VERIFY_TOKEN": "meta-verify-token",
+                    "NOVAADAPT_CHANNEL_INSTAGRAM_VERIFY_TOKEN": "meta-verify-token",
+                },
+                clear=False,
+            ):
+                service = NovaAdaptService(
+                    default_config=Path("unused.json"),
+                    db_path=Path(tmp) / "actions.db",
+                    plans_db_path=Path(tmp) / "plans.db",
+                    router_loader=lambda _path: _StubRouter(),
+                    directshell_factory=_StubDirectShell,
+                )
+                server = create_server(
+                    "127.0.0.1",
+                    0,
+                    service,
+                    audit_db_path=str(Path(tmp) / "events.db"),
+                )
+                host, port = server.server_address
+                thread = threading.Thread(target=server.serve_forever, daemon=True)
+                thread.start()
+                try:
+                    messenger_challenge = _get_text(
+                        f"http://{host}:{port}/channels/messenger/inbound"
+                        "?hub.mode=subscribe&hub.challenge=challenge-messenger&hub.verify_token=meta-verify-token"
+                    )
+                    self.assertEqual(messenger_challenge, "challenge-messenger")
+
+                    instagram_challenge = _get_text(
+                        f"http://{host}:{port}/channels/instagram/inbound"
+                        "?hub.mode=subscribe&hub.challenge=challenge-instagram&hub.verify_token=meta-verify-token"
+                    )
+                    self.assertEqual(instagram_challenge, "challenge-instagram")
+
+                    with self.assertRaises(error.HTTPError) as err:
+                        _get_text(
+                            f"http://{host}:{port}/channels/messenger/inbound"
+                            "?hub.mode=subscribe&hub.challenge=bad&hub.verify_token=wrong"
+                        )
+                    self.assertEqual(err.exception.code, 403)
+                    err.exception.close()
+                finally:
+                    server.shutdown()
+                    server.server_close()
+                    thread.join(timeout=2)
+
     def test_instagram_inbound_accepts_direct_signed_webhook_payload(self):
         with tempfile.TemporaryDirectory() as tmp:
             with mock.patch.dict(

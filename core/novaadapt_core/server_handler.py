@@ -301,6 +301,9 @@ def _build_handler(
         def _get_channel_health(self, path: str, _query: dict[str, list[str]]) -> int:
             return channel_routes.get_channel_health(self, service, path)
 
+        def _get_channel_inbound(self, path: str, query: dict[str, list[str]]) -> int:
+            return channel_routes.get_channel_inbound(self, service, _single, path, query)
+
         def _get_terminal_sessions(self, _query: dict[str, list[str]]) -> int:
             return terminal_browser_routes.get_terminal_sessions(self, terminal_manager)
 
@@ -539,7 +542,7 @@ def _build_handler(
             return remote_host or "unknown"
 
         def _check_auth(self, path: str, query: dict[str, list[str]] | None = None) -> bool:
-            if path == "/health" or not api_token:
+            if path == "/health" or (path.startswith("/channels/") and path.endswith("/inbound")) or not api_token:
                 return True
             if query is not None and path in {"/dashboard", "/dashboard/data"}:
                 query_token = _single(query, "token")

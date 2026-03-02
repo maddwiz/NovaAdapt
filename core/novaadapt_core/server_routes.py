@@ -47,6 +47,7 @@ def build_get_dynamic_routes(handler: Any) -> tuple[tuple[str, str, Any], ...]:
         ("/jobs/", "", handler._get_job_item),
         ("/plans/", "/stream", handler._get_plan_stream),
         ("/plans/", "", handler._get_plan_item),
+        ("/channels/", "/inbound", handler._get_channel_inbound),
         ("/channels/", "/health", handler._get_channel_health),
         ("/plugins/", "/health", handler._get_plugin_health),
         ("/terminal/sessions/", "/output", handler._get_terminal_output),
