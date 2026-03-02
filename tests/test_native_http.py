@@ -10,10 +10,17 @@ from novaadapt_core.native_executor import NativeDesktopExecutor
 from novaadapt_core.native_http import NativeExecutionHTTPServer
 
 
+_NO_PROXY_OPENER = request.build_opener(request.ProxyHandler({}))
+
+
 def _pick_free_tcp_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.bind(("127.0.0.1", 0))
         return int(sock.getsockname()[1])
+
+
+def _open_local_http(req_or_url: request.Request | str, *, timeout: float):
+    return _NO_PROXY_OPENER.open(req_or_url, timeout=timeout)
 
 
 def _wait_for_http_health(port: int, *, token: str | None = None, timeout_seconds: float = 8.0) -> None:
@@ -24,10 +31,10 @@ def _wait_for_http_health(port: int, *, token: str | None = None, timeout_second
             headers["X-DirectShell-Token"] = token
         req = request.Request(f"http://127.0.0.1:{port}/health", method="GET", headers=headers)
         try:
-            with request.urlopen(req, timeout=0.5) as response:
+            with _open_local_http(req, timeout=0.5) as response:
                 if int(response.status) in {200, 401, 403}:
                     return
-        except error.URLError:
+        except (error.URLError, TimeoutError, OSError):
             pass
         time.sleep(0.05)
     raise AssertionError(f"native HTTP server not ready on port {port}")
@@ -130,7 +137,7 @@ class NativeHTTPServerTests(unittest.TestCase):
 
         try:
             _wait_for_http_health(port)
-            with request.urlopen(f"http://127.0.0.1:{port}/health?deep=1", timeout=2) as response:
+            with _open_local_http(f"http://127.0.0.1:{port}/health?deep=1", timeout=2) as response:
                 payload = json.loads(response.read().decode("utf-8"))
         finally:
             server.shutdown()
