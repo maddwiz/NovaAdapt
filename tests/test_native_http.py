@@ -1,5 +1,4 @@
 import json
-import socket
 import threading
 import time
 import unittest
@@ -13,14 +12,21 @@ from novaadapt_core.native_http import NativeExecutionHTTPServer
 _NO_PROXY_OPENER = request.build_opener(request.ProxyHandler({}))
 
 
-def _pick_free_tcp_port() -> int:
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        sock.bind(("127.0.0.1", 0))
-        return int(sock.getsockname()[1])
-
-
 def _open_local_http(req_or_url: request.Request | str, *, timeout: float):
     return _NO_PROXY_OPENER.open(req_or_url, timeout=timeout)
+
+
+def _start_http_server(server: NativeExecutionHTTPServer, thread: threading.Thread) -> int:
+    thread.start()
+    deadline = time.monotonic() + 5.0
+    while time.monotonic() < deadline:
+        bound = server._server
+        if bound is not None:
+            return int(bound.server_port)
+        if not thread.is_alive():
+            break
+        time.sleep(0.01)
+    raise AssertionError("native HTTP server failed to bind in time")
 
 
 def _wait_for_http_health(port: int, *, token: str | None = None, timeout_seconds: float = 8.0) -> None:
@@ -42,15 +48,14 @@ def _wait_for_http_health(port: int, *, token: str | None = None, timeout_second
 
 class NativeHTTPServerTests(unittest.TestCase):
     def test_http_server_executes_action(self):
-        port = _pick_free_tcp_port()
         server = NativeExecutionHTTPServer(
             host="127.0.0.1",
-            port=port,
+            port=0,
             timeout_seconds=5,
             executor=NativeDesktopExecutor(platform_name="plan9"),
         )
         thread = threading.Thread(target=server.serve_forever, daemon=True)
-        thread.start()
+        port = _start_http_server(server, thread)
 
         try:
             _wait_for_http_health(port)
@@ -77,16 +82,15 @@ class NativeHTTPServerTests(unittest.TestCase):
         self.assertIn("note:note hello", result.output)
 
     def test_http_server_token_enforcement(self):
-        port = _pick_free_tcp_port()
         server = NativeExecutionHTTPServer(
             host="127.0.0.1",
-            port=port,
+            port=0,
             http_token="secret-http",
             timeout_seconds=5,
             executor=NativeDesktopExecutor(platform_name="plan9"),
         )
         thread = threading.Thread(target=server.serve_forever, daemon=True)
-        thread.start()
+        port = _start_http_server(server, thread)
 
         try:
             _wait_for_http_health(port, token="secret-http")
@@ -125,15 +129,14 @@ class NativeHTTPServerTests(unittest.TestCase):
         self.assertIn("note:note hello", auth_result.output)
 
     def test_http_server_health_deep(self):
-        port = _pick_free_tcp_port()
         server = NativeExecutionHTTPServer(
             host="127.0.0.1",
-            port=port,
+            port=0,
             timeout_seconds=5,
             executor=NativeDesktopExecutor(platform_name="plan9"),
         )
         thread = threading.Thread(target=server.serve_forever, daemon=True)
-        thread.start()
+        port = _start_http_server(server, thread)
 
         try:
             _wait_for_http_health(port)

@@ -25,7 +25,8 @@ class NativeExecutionHTTPServer:
         raw_token = os.getenv("DIRECTSHELL_HTTP_TOKEN", "") if http_token is None else str(http_token)
         self.http_token = raw_token.strip() or None
         self.host = str(host or "127.0.0.1")
-        self.port = max(1, int(port))
+        # Allow port=0 so callers can request an ephemeral OS-assigned port.
+        self.port = max(0, int(port))
         self.timeout_seconds = max(1, int(timeout_seconds))
         self.max_body_bytes = max(1, int(max_body_bytes))
         self.executor = executor or NativeDesktopExecutor(timeout_seconds=self.timeout_seconds)
