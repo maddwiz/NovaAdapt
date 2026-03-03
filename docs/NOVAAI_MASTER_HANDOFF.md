@@ -20,7 +20,10 @@ Current verification snapshot (2026-03-03):
   - partition reconcile policy versioning + scheduler hooks (`policy=lww|weighted_median`, `/api/v1/mesh/partition/reconcile/schedule`)
   - persistent reconcile daemon worker + peer snapshot transport (`python3 -m tools.reconcile_daemon`, `/mesh|/api ... /snapshot/{reputation,ledger}`)
   - sybil analysis + guarded allocation (`/api/v1/mesh/security/sybil`, sybil-aware `/mesh/jobs/allocate`)
-  - optional dilithium signature scaffolding (`MESH_SIGNING_SCHEME=dilithium-v1` with graceful fallback)
+  - node identity attestation + sybil enforcement (`/api/v1/mesh/security/identity/attestation*`, `/api/v1/mesh/security/sybil/enforce`)
+  - sandbox hardening v2 (`gvisor|firecracker` modes + high-risk attestation policy gate)
+  - signature policy modes + key lifecycle (`MESH_SIGNATURE_POLICY_MODE`, signer registry enforcement, `python3 -m tools.signing_keys ...`)
+  - reconcile daemon service lifecycle wrappers (systemd + launchd installers/templates)
 
 Important canonical constraints:
 - NovaAdapt remains standalone-capable; NovaPrime is optional and must fail open unless explicitly required.
