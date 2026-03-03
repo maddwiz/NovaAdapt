@@ -10,7 +10,7 @@ Current verification snapshot (2026-03-03):
 - NovaPrime smoke bundle pass:
   - `PYTHONPATH=. ./tools/ci_local.sh`
 - NovaPrime integration branch head:
-  - `35633ca` (`codex/the-space-in-between-novaprime-integration`)
+  - `f129f6c` (`codex/the-space-in-between-novaprime-integration`)
 - Latest NovaPrime handoff update includes:
   - sandbox isolation v1 (`local_restricted` + optional `docker`)
   - staking/slashing v1
@@ -35,6 +35,7 @@ Current verification snapshot (2026-03-03):
   - strict provenance attestation checks (provenance chain, hardware fingerprint, measurement hash)
   - cluster-wide Sybil defaults wired into analysis/enforcement/allocation (`NOVAPRIME_SYBIL_*_DEFAULT`)
   - strict mesh TLS peer enforcement (`MESH_TLS_REQUIRED`, fail-closed on non-HTTPS peers)
+  - mesh certificate pinning policy (`MESH_TLS_PINNED_CERT_SHA256*`) for peer transport verification
   - mesh node HTTPS/mTLS mode (`MESH_NODE_TLS_*`) + CLI TLS flags + transport policy tests
   - signed mesh request auth + anti-replay (`MESH_REQUEST_SIGNING_KEY`, `MESH_NODE_REQUIRE_SIGNED_REQUESTS`, nonce/timestamp verification)
   - reconcile daemon service lifecycle wrappers (systemd + launchd installers/templates)
