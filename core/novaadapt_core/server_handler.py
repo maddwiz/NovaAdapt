@@ -268,6 +268,9 @@ def _build_handler(
         def _get_novaprime_mesh_reputation(self, query: dict[str, list[str]]) -> int:
             return novaprime_routes.get_novaprime_mesh_reputation(self, service, _single, query)
 
+        def _get_novaprime_mesh_peers(self, _query: dict[str, list[str]]) -> int:
+            return novaprime_routes.get_novaprime_mesh_peers(self, service)
+
         def _get_novaprime_marketplace_listings(self, _query: dict[str, list[str]]) -> int:
             return novaprime_routes.get_novaprime_marketplace_listings(self, service)
 
@@ -407,6 +410,15 @@ def _build_handler(
 
         def _post_novaprime_mesh_transfer(self, _path: str, payload: dict[str, object]) -> int:
             return novaprime_routes.post_novaprime_mesh_transfer(self, service, payload)
+
+        def _post_novaprime_mesh_peer_register(self, _path: str, payload: dict[str, object]) -> int:
+            return novaprime_routes.post_novaprime_mesh_peer_register(self, service, payload)
+
+        def _post_novaprime_mesh_compute_request(self, _path: str, payload: dict[str, object]) -> int:
+            return novaprime_routes.post_novaprime_mesh_compute_request(self, service, payload)
+
+        def _post_novaprime_mesh_compute_settle(self, _path: str, payload: dict[str, object]) -> int:
+            return novaprime_routes.post_novaprime_mesh_compute_settle(self, service, payload)
 
         def _post_novaprime_marketplace_list(self, _path: str, payload: dict[str, object]) -> int:
             return novaprime_routes.post_novaprime_marketplace_list(self, service, payload)

@@ -272,6 +272,35 @@ class NovaAdaptService:
             "reputation": reputation,
         }
 
+    def novaprime_mesh_peers(self) -> dict[str, Any]:
+        peers = self.novaprime_client.mesh_peers()
+        if not isinstance(peers, list):
+            return {"ok": False, "error": "invalid novaprime mesh peers response", "count": 0, "peers": []}
+        return {"ok": True, "count": len(peers), "peers": peers}
+
+    def novaprime_mesh_peer_register(
+        self,
+        node_id: str,
+        url: str,
+        capabilities: list[str] | None = None,
+    ) -> dict[str, Any]:
+        normalized_node = str(node_id or "").strip()
+        normalized_url = str(url or "").strip()
+        if not normalized_node:
+            raise ValueError("'node_id' is required")
+        if not normalized_url:
+            raise ValueError("'url' is required")
+        caps = capabilities if isinstance(capabilities, list) else []
+        normalized_caps = [str(item).strip() for item in caps if str(item).strip()]
+        result = self.novaprime_client.mesh_peer_register(
+            normalized_node,
+            normalized_url,
+            normalized_caps,
+        )
+        if isinstance(result, dict):
+            return result
+        return {"ok": False, "error": "invalid novaprime mesh peer register response"}
+
     def novaprime_mesh_credit(self, node_id: str, amount: float) -> dict[str, Any]:
         normalized_node = str(node_id or "").strip()
         normalized_amount = float(amount)
@@ -298,6 +327,74 @@ class NovaAdaptService:
         if isinstance(result, dict):
             return result
         return {"ok": False, "error": "invalid novaprime mesh transfer response"}
+
+    def novaprime_mesh_compute_request(
+        self,
+        requester: str,
+        provider: str,
+        units: float,
+        unit_price: float,
+    ) -> dict[str, Any]:
+        normalized_requester = str(requester or "").strip()
+        normalized_provider = str(provider or "").strip()
+        normalized_units = float(units)
+        normalized_unit_price = float(unit_price)
+        if not normalized_requester:
+            raise ValueError("'requester' is required")
+        if not normalized_provider:
+            raise ValueError("'provider' is required")
+        if normalized_units <= 0:
+            raise ValueError("'units' must be > 0")
+        if normalized_unit_price <= 0:
+            raise ValueError("'unit_price' must be > 0")
+        result = self.novaprime_client.mesh_compute_request(
+            normalized_requester,
+            normalized_provider,
+            normalized_units,
+            normalized_unit_price,
+        )
+        if isinstance(result, dict):
+            return result
+        return {"ok": False, "error": "invalid novaprime mesh compute request response"}
+
+    def novaprime_mesh_compute_settle(
+        self,
+        *,
+        request_id: str = "",
+        requester: str,
+        provider: str,
+        units: float,
+        unit_price: float,
+        status: str = "requested",
+        ts: str = "",
+    ) -> dict[str, Any]:
+        normalized_requester = str(requester or "").strip()
+        normalized_provider = str(provider or "").strip()
+        normalized_units = float(units)
+        normalized_unit_price = float(unit_price)
+        normalized_request_id = str(request_id or "").strip()
+        normalized_status = str(status or "requested").strip() or "requested"
+        normalized_ts = str(ts or "").strip()
+        if not normalized_requester:
+            raise ValueError("'requester' is required")
+        if not normalized_provider:
+            raise ValueError("'provider' is required")
+        if normalized_units <= 0:
+            raise ValueError("'units' must be > 0")
+        if normalized_unit_price <= 0:
+            raise ValueError("'unit_price' must be > 0")
+        result = self.novaprime_client.mesh_compute_settle(
+            request_id=normalized_request_id,
+            requester=normalized_requester,
+            provider=normalized_provider,
+            units=normalized_units,
+            unit_price=normalized_unit_price,
+            status=normalized_status,
+            ts=normalized_ts,
+        )
+        if isinstance(result, dict):
+            return result
+        return {"ok": False, "error": "invalid novaprime mesh compute settle response"}
 
     def novaprime_marketplace_listings(self) -> dict[str, Any]:
         listings = self.novaprime_client.marketplace_listings()

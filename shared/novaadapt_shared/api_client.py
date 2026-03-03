@@ -244,6 +244,12 @@ class NovaAdaptAPIClient:
             return payload
         raise APIClientError("Expected object payload from /novaprime/mesh/reputation")
 
+    def novaprime_mesh_peers(self) -> dict[str, Any]:
+        payload = self._get_json("/novaprime/mesh/peers")
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /novaprime/mesh/peers")
+
     def novaprime_marketplace_listings(self) -> dict[str, Any]:
         payload = self._get_json("/novaprime/marketplace/listings")
         if isinstance(payload, dict):
@@ -321,6 +327,79 @@ class NovaAdaptAPIClient:
         if isinstance(payload, dict):
             return payload
         raise APIClientError("Expected object payload from /novaprime/mesh/transfer")
+
+    def novaprime_mesh_peer_register(
+        self,
+        node_id: str,
+        url: str,
+        capabilities: list[str] | None = None,
+        *,
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        payload = self._post_json(
+            "/novaprime/mesh/peers/register",
+            {
+                "node_id": str(node_id or ""),
+                "url": str(url or ""),
+                "capabilities": list(capabilities or []),
+            },
+            idempotency_key=idempotency_key,
+        )
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /novaprime/mesh/peers/register")
+
+    def novaprime_mesh_compute_request(
+        self,
+        requester: str,
+        provider: str,
+        units: float,
+        unit_price: float,
+        *,
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        payload = self._post_json(
+            "/novaprime/mesh/compute/request",
+            {
+                "requester": str(requester or ""),
+                "provider": str(provider or ""),
+                "units": float(units),
+                "unit_price": float(unit_price),
+            },
+            idempotency_key=idempotency_key,
+        )
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /novaprime/mesh/compute/request")
+
+    def novaprime_mesh_compute_settle(
+        self,
+        *,
+        request_id: str = "",
+        requester: str,
+        provider: str,
+        units: float,
+        unit_price: float,
+        status: str = "requested",
+        ts: str = "",
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        payload = self._post_json(
+            "/novaprime/mesh/compute/settle",
+            {
+                "request_id": str(request_id or ""),
+                "requester": str(requester or ""),
+                "provider": str(provider or ""),
+                "units": float(units),
+                "unit_price": float(unit_price),
+                "status": str(status or "requested"),
+                "ts": str(ts or ""),
+            },
+            idempotency_key=idempotency_key,
+        )
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /novaprime/mesh/compute/settle")
 
     def novaprime_marketplace_list(
         self,

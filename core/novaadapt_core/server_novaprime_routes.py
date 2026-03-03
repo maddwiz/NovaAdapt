@@ -35,6 +35,11 @@ def get_novaprime_mesh_reputation(
     return 200
 
 
+def get_novaprime_mesh_peers(handler, service: NovaAdaptService) -> int:
+    handler._send_json(200, service.novaprime_mesh_peers())
+    return 200
+
+
 def get_novaprime_marketplace_listings(handler, service: NovaAdaptService) -> int:
     handler._send_json(200, service.novaprime_marketplace_listings())
     return 200
@@ -86,6 +91,47 @@ def post_novaprime_mesh_transfer(handler, service: NovaAdaptService, payload: di
     to_node = str(payload.get("to_node") or "").strip()
     amount = float(payload.get("amount", 0.0))
     handler._send_json(200, service.novaprime_mesh_transfer(from_node, to_node, amount))
+    return 200
+
+
+def post_novaprime_mesh_peer_register(handler, service: NovaAdaptService, payload: dict[str, object]) -> int:
+    node_id = str(payload.get("node_id") or "").strip()
+    url = str(payload.get("url") or "").strip()
+    raw_caps = payload.get("capabilities")
+    capabilities = raw_caps if isinstance(raw_caps, list) else []
+    handler._send_json(200, service.novaprime_mesh_peer_register(node_id, url, capabilities))
+    return 200
+
+
+def post_novaprime_mesh_compute_request(handler, service: NovaAdaptService, payload: dict[str, object]) -> int:
+    requester = str(payload.get("requester") or "").strip()
+    provider = str(payload.get("provider") or "").strip()
+    units = float(payload.get("units", 0.0))
+    unit_price = float(payload.get("unit_price", 0.0))
+    handler._send_json(200, service.novaprime_mesh_compute_request(requester, provider, units, unit_price))
+    return 200
+
+
+def post_novaprime_mesh_compute_settle(handler, service: NovaAdaptService, payload: dict[str, object]) -> int:
+    request_id = str(payload.get("request_id") or "").strip()
+    requester = str(payload.get("requester") or "").strip()
+    provider = str(payload.get("provider") or "").strip()
+    units = float(payload.get("units", 0.0))
+    unit_price = float(payload.get("unit_price", 0.0))
+    status = str(payload.get("status") or "requested").strip()
+    ts = str(payload.get("ts") or "").strip()
+    handler._send_json(
+        200,
+        service.novaprime_mesh_compute_settle(
+            request_id=request_id,
+            requester=requester,
+            provider=provider,
+            units=units,
+            unit_price=unit_price,
+            status=status,
+            ts=ts,
+        ),
+    )
     return 200
 
 

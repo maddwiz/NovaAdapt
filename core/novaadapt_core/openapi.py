@@ -430,6 +430,12 @@ def build_openapi_spec() -> dict:
                     "responses": {"200": {"description": "Mesh reputation response"}},
                 }
             },
+            "/novaprime/mesh/peers": {
+                "get": {
+                    "summary": "List known NovaPrime mesh peers",
+                    "responses": {"200": {"description": "Mesh peers response"}},
+                }
+            },
             "/novaprime/marketplace/listings": {
                 "get": {
                     "summary": "Get NovaPrime marketplace listings",
@@ -480,6 +486,24 @@ def build_openapi_spec() -> dict:
                 "post": {
                     "summary": "Transfer mesh balance between nodes via NovaPrime",
                     "responses": {"200": {"description": "Mesh transfer response"}},
+                }
+            },
+            "/novaprime/mesh/peers/register": {
+                "post": {
+                    "summary": "Register or update a NovaPrime mesh peer",
+                    "responses": {"200": {"description": "Mesh peer registration response"}},
+                }
+            },
+            "/novaprime/mesh/compute/request": {
+                "post": {
+                    "summary": "Submit a community compute burst request via NovaPrime",
+                    "responses": {"200": {"description": "Compute request response"}},
+                }
+            },
+            "/novaprime/mesh/compute/settle": {
+                "post": {
+                    "summary": "Settle a community compute burst request via NovaPrime",
+                    "responses": {"200": {"description": "Compute settlement response"}},
                 }
             },
             "/novaprime/marketplace/list": {

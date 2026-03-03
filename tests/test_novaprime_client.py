@@ -26,6 +26,18 @@ class _NovaPrimeHandler(BaseHTTPRequestHandler):
             node_id = (parse_qs(parsed.query).get("node_id") or [""])[0]
             self._send(200, {"ok": True, "node_id": node_id, "reputation": 0.87})
             return
+        if path == "/api/v1/mesh/peers":
+            self._send(
+                200,
+                {
+                    "ok": True,
+                    "count": 1,
+                    "peers": [
+                        {"node_id": "node-1", "url": "http://127.0.0.1:8530", "capabilities": ["capsules", "compute"]}
+                    ],
+                },
+            )
+            return
         if path == "/api/v1/mesh/marketplace/listings":
             self._send(200, {"ok": True, "listings": [{"listing_id": "l1", "title": "Capsule"}]})
             return
@@ -68,6 +80,40 @@ class _NovaPrimeHandler(BaseHTTPRequestHandler):
                     "balances": {
                         str(body.get("from_node", "")): 5.0,
                         str(body.get("to_node", "")): 15.0,
+                    },
+                },
+            )
+            return
+        if path == "/api/v1/mesh/peers/register":
+            self._send(200, {"ok": True, "peer": {"node_id": body.get("node_id"), "url": body.get("url")}})
+            return
+        if path == "/api/v1/mesh/compute/request":
+            self._send(
+                200,
+                {
+                    "ok": True,
+                    "request": {
+                        "request_id": "node-a->node-b:2000",
+                        "requester": body.get("requester"),
+                        "provider": body.get("provider"),
+                        "units": body.get("units"),
+                        "unit_price": body.get("unit_price"),
+                    },
+                },
+            )
+            return
+        if path == "/api/v1/mesh/compute/settle":
+            self._send(
+                200,
+                {
+                    "ok": True,
+                    "settlement": {
+                        "ok": True,
+                        "request_id": body.get("request_id", ""),
+                        "balances": {
+                            str(body.get("requester", "")): 5.0,
+                            str(body.get("provider", "")): 15.0,
+                        },
                     },
                 },
             )
@@ -151,6 +197,7 @@ class NovaPrimeClientTests(unittest.TestCase):
         self.assertEqual(client.marketplace_listings(), [])
         self.assertEqual(client.mesh_balance("node-1"), 0.0)
         self.assertEqual(client.mesh_reputation("node-1"), 0.0)
+        self.assertEqual(client.mesh_peers(), [])
         self.assertFalse(client.identity_verify("adapt-1", "player-1"))
 
     def test_build_backend_disabled(self):
@@ -196,6 +243,23 @@ class NovaPrimeClientTests(unittest.TestCase):
 
             self.assertGreater(client.mesh_balance("node-1"), 0)
             self.assertGreater(client.mesh_reputation("node-1"), 0)
+            peers = client.mesh_peers()
+            self.assertEqual(peers[0]["node_id"], "node-1")
+            peer_reg = client.mesh_peer_register("node-2", "http://127.0.0.1:8531", ["capsules"])
+            self.assertTrue(peer_reg["ok"])
+            self.assertEqual(peer_reg["peer"]["node_id"], "node-2")
+            compute_req = client.mesh_compute_request("node-a", "node-b", 2.0, 1.5)
+            self.assertTrue(compute_req["ok"])
+            self.assertIn("request", compute_req)
+            compute_settle = client.mesh_compute_settle(
+                request_id="node-a->node-b:2000",
+                requester="node-a",
+                provider="node-b",
+                units=2.0,
+                unit_price=1.5,
+            )
+            self.assertTrue(compute_settle["ok"])
+            self.assertIn("settlement", compute_settle)
             listings = client.marketplace_listings()
             self.assertEqual(listings[0]["listing_id"], "l1")
             self.assertTrue(client.identity_verify("adapt-1", "player-1"))

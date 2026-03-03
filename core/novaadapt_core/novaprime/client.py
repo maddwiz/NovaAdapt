@@ -46,12 +46,37 @@ class NoopNovaPrimeClient:
         _ = node_id
         return 0.0
 
+    def mesh_peers(self) -> list[dict[str, Any]]:
+        return []
+
+    def mesh_peer_register(self, node_id: str, url: str, capabilities: list[str] | None = None) -> dict[str, Any]:
+        _ = (node_id, url, capabilities)
+        return self._disabled()
+
     def mesh_credit(self, node_id: str, amount: float) -> dict[str, Any]:
         _ = (node_id, amount)
         return self._disabled()
 
     def mesh_transfer(self, from_node: str, to_node: str, amount: float) -> dict[str, Any]:
         _ = (from_node, to_node, amount)
+        return self._disabled()
+
+    def mesh_compute_request(self, requester: str, provider: str, units: float, unit_price: float) -> dict[str, Any]:
+        _ = (requester, provider, units, unit_price)
+        return self._disabled()
+
+    def mesh_compute_settle(
+        self,
+        *,
+        request_id: str = "",
+        requester: str,
+        provider: str,
+        units: float,
+        unit_price: float,
+        status: str = "requested",
+        ts: str = "",
+    ) -> dict[str, Any]:
+        _ = (request_id, requester, provider, units, unit_price, status, ts)
         return self._disabled()
 
     def marketplace_listings(self) -> list[dict[str, Any]]:
@@ -198,6 +223,30 @@ class NovaPrimeClient:
         except Exception:
             return 0.0
 
+    def mesh_peers(self) -> list[dict[str, Any]]:
+        payload = self._get("/api/v1/mesh/peers")
+        rows = payload.get("peers")
+        if isinstance(rows, list):
+            return [item for item in rows if isinstance(item, dict)]
+        return []
+
+    def mesh_peer_register(
+        self,
+        node_id: str,
+        url: str,
+        capabilities: list[str] | None = None,
+    ) -> dict[str, Any]:
+        caps = capabilities if isinstance(capabilities, list) else []
+        normalized_caps = [str(item).strip() for item in caps if str(item).strip()]
+        return self._post(
+            "/api/v1/mesh/peers/register",
+            {
+                "node_id": str(node_id or ""),
+                "url": str(url or ""),
+                "capabilities": normalized_caps,
+            },
+        )
+
     def mesh_credit(self, node_id: str, amount: float) -> dict[str, Any]:
         return self._post(
             "/api/v1/mesh/credits/credit",
@@ -211,6 +260,41 @@ class NovaPrimeClient:
                 "from_node": str(from_node or ""),
                 "to_node": str(to_node or ""),
                 "amount": float(amount),
+            },
+        )
+
+    def mesh_compute_request(self, requester: str, provider: str, units: float, unit_price: float) -> dict[str, Any]:
+        return self._post(
+            "/api/v1/mesh/compute/request",
+            {
+                "requester": str(requester or ""),
+                "provider": str(provider or ""),
+                "units": float(units),
+                "unit_price": float(unit_price),
+            },
+        )
+
+    def mesh_compute_settle(
+        self,
+        *,
+        request_id: str = "",
+        requester: str,
+        provider: str,
+        units: float,
+        unit_price: float,
+        status: str = "requested",
+        ts: str = "",
+    ) -> dict[str, Any]:
+        return self._post(
+            "/api/v1/mesh/compute/settle",
+            {
+                "request_id": str(request_id or ""),
+                "requester": str(requester or ""),
+                "provider": str(provider or ""),
+                "units": float(units),
+                "unit_price": float(unit_price),
+                "status": str(status or "requested"),
+                "ts": str(ts or ""),
             },
         )
 

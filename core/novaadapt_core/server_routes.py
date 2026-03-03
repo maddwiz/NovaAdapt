@@ -28,6 +28,7 @@ def build_get_private_routes(handler: Any) -> dict[str, Any]:
         "/novaprime/reason/emotion": handler._get_novaprime_emotion,
         "/novaprime/mesh/balance": handler._get_novaprime_mesh_balance,
         "/novaprime/mesh/reputation": handler._get_novaprime_mesh_reputation,
+        "/novaprime/mesh/peers": handler._get_novaprime_mesh_peers,
         "/novaprime/marketplace/listings": handler._get_novaprime_marketplace_listings,
         "/novaprime/identity/profile": handler._get_novaprime_identity_profile,
         "/novaprime/presence": handler._get_novaprime_presence,
@@ -75,6 +76,15 @@ def build_post_exact_routes(handler: Any) -> dict[str, Any]:
         "/novaprime/mesh/credit": lambda body: handler._post_novaprime_mesh_credit("/novaprime/mesh/credit", body),
         "/novaprime/mesh/transfer": lambda body: handler._post_novaprime_mesh_transfer(
             "/novaprime/mesh/transfer", body
+        ),
+        "/novaprime/mesh/peers/register": lambda body: handler._post_novaprime_mesh_peer_register(
+            "/novaprime/mesh/peers/register", body
+        ),
+        "/novaprime/mesh/compute/request": lambda body: handler._post_novaprime_mesh_compute_request(
+            "/novaprime/mesh/compute/request", body
+        ),
+        "/novaprime/mesh/compute/settle": lambda body: handler._post_novaprime_mesh_compute_settle(
+            "/novaprime/mesh/compute/settle", body
         ),
         "/novaprime/marketplace/list": lambda body: handler._post_novaprime_marketplace_list(
             "/novaprime/marketplace/list", body
@@ -158,6 +168,9 @@ def is_idempotent_route(path: str) -> bool:
         "/novaprime/reason/emotion",
         "/novaprime/mesh/credit",
         "/novaprime/mesh/transfer",
+        "/novaprime/mesh/peers/register",
+        "/novaprime/mesh/compute/request",
+        "/novaprime/mesh/compute/settle",
         "/novaprime/marketplace/list",
         "/novaprime/marketplace/buy",
     }:

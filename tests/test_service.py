@@ -236,6 +236,21 @@ class _StubNovaPrimeBackend:
         self.calls.append({"method": "mesh_reputation", "node_id": node_id})
         return 0.87
 
+    def mesh_peers(self):
+        self.calls.append({"method": "mesh_peers"})
+        return [{"node_id": "node-1", "url": "http://127.0.0.1:8530", "capabilities": ["capsules", "compute"]}]
+
+    def mesh_peer_register(self, node_id: str, url: str, capabilities: list[str] | None = None):
+        self.calls.append(
+            {
+                "method": "mesh_peer_register",
+                "node_id": node_id,
+                "url": url,
+                "capabilities": list(capabilities or []),
+            }
+        )
+        return {"ok": True, "peer": {"node_id": node_id, "url": url, "capabilities": list(capabilities or [])}}
+
     def mesh_credit(self, node_id: str, amount: float):
         self.calls.append({"method": "mesh_credit", "node_id": node_id, "amount": amount})
         return {"ok": True, "node_id": node_id, "balance": 42.0 + float(amount)}
@@ -250,6 +265,68 @@ class _StubNovaPrimeBackend:
             }
         )
         return {"ok": True, "balances": {from_node: 20.0, to_node: 80.0}}
+
+    def mesh_compute_request(self, requester: str, provider: str, units: float, unit_price: float):
+        self.calls.append(
+            {
+                "method": "mesh_compute_request",
+                "requester": requester,
+                "provider": provider,
+                "units": units,
+                "unit_price": unit_price,
+            }
+        )
+        return {
+            "ok": True,
+            "request": {
+                "request_id": f"{requester}->{provider}:{int(float(units) * 1000)}",
+                "requester": requester,
+                "provider": provider,
+                "units": float(units),
+                "unit_price": float(unit_price),
+            },
+        }
+
+    def mesh_compute_settle(
+        self,
+        *,
+        request_id: str = "",
+        requester: str,
+        provider: str,
+        units: float,
+        unit_price: float,
+        status: str = "requested",
+        ts: str = "",
+    ):
+        self.calls.append(
+            {
+                "method": "mesh_compute_settle",
+                "request_id": request_id,
+                "requester": requester,
+                "provider": provider,
+                "units": units,
+                "unit_price": unit_price,
+                "status": status,
+                "ts": ts,
+            }
+        )
+        return {
+            "ok": True,
+            "request": {
+                "request_id": request_id or f"{requester}->{provider}:{int(float(units) * 1000)}",
+                "requester": requester,
+                "provider": provider,
+                "units": float(units),
+                "unit_price": float(unit_price),
+                "status": status,
+                "ts": ts,
+            },
+            "settlement": {
+                "ok": True,
+                "request_id": request_id or f"{requester}->{provider}:{int(float(units) * 1000)}",
+                "balances": {requester: 10.0, provider: 30.0},
+            },
+        }
 
     def marketplace_listings(self):
         self.calls.append({"method": "marketplace_listings"})
@@ -1626,11 +1703,34 @@ class ServiceTests(unittest.TestCase):
             mesh_reputation = service.novaprime_mesh_reputation("node-1")
             self.assertEqual(mesh_reputation["reputation"], 0.87)
 
+            peers = service.novaprime_mesh_peers()
+            self.assertTrue(peers["ok"])
+            self.assertEqual(peers["count"], 1)
+
+            peer_register = service.novaprime_mesh_peer_register(
+                "node-2",
+                "http://127.0.0.1:8531",
+                ["capsules", "compute"],
+            )
+            self.assertTrue(peer_register["ok"])
+
             mesh_credit = service.novaprime_mesh_credit("node-1", 10.0)
             self.assertTrue(mesh_credit["ok"])
 
             mesh_transfer = service.novaprime_mesh_transfer("node-1", "node-2", 5.0)
             self.assertTrue(mesh_transfer["ok"])
+
+            compute_request = service.novaprime_mesh_compute_request("node-1", "node-2", 2.0, 1.5)
+            self.assertTrue(compute_request["ok"])
+
+            compute_settle = service.novaprime_mesh_compute_settle(
+                request_id="node-1->node-2:2000",
+                requester="node-1",
+                provider="node-2",
+                units=2.0,
+                unit_price=1.5,
+            )
+            self.assertTrue(compute_settle["ok"])
 
             listings = service.novaprime_marketplace_listings()
             self.assertTrue(listings["ok"])
@@ -1648,8 +1748,12 @@ class ServiceTests(unittest.TestCase):
             self.assertIn("emotion_set", method_names)
             self.assertIn("mesh_balance", method_names)
             self.assertIn("mesh_reputation", method_names)
+            self.assertIn("mesh_peers", method_names)
+            self.assertIn("mesh_peer_register", method_names)
             self.assertIn("mesh_credit", method_names)
             self.assertIn("mesh_transfer", method_names)
+            self.assertIn("mesh_compute_request", method_names)
+            self.assertIn("mesh_compute_settle", method_names)
             self.assertIn("marketplace_listings", method_names)
             self.assertIn("marketplace_list", method_names)
             self.assertIn("marketplace_buy", method_names)
