@@ -18,6 +18,7 @@ Current verification snapshot (2026-03-03):
   - automated slashing policy API (`/api/v1/mesh/security/slash/*`)
   - council-governed slash flow (`/api/v1/mesh/security/slash/propose|vote|finalize`) with high-severity governance hook in `slash/apply`
   - partition reconcile policy versioning + scheduler hooks (`policy=lww|weighted_median`, `/api/v1/mesh/partition/reconcile/schedule`)
+  - persistent reconcile daemon worker + peer snapshot transport (`python3 -m tools.reconcile_daemon`, `/mesh|/api ... /snapshot/{reputation,ledger}`)
   - sybil analysis + guarded allocation (`/api/v1/mesh/security/sybil`, sybil-aware `/mesh/jobs/allocate`)
   - optional dilithium signature scaffolding (`MESH_SIGNING_SCHEME=dilithium-v1` with graceful fallback)
 
