@@ -10,7 +10,7 @@ Current verification snapshot (2026-03-03):
 - NovaPrime smoke bundle pass:
   - `PYTHONPATH=. ./tools/ci_local.sh`
 - NovaPrime integration branch head:
-  - `f0e7f31` (`codex/the-space-in-between-novaprime-integration`)
+  - `ecf9ac2` (`codex/the-space-in-between-novaprime-integration`)
 - Latest NovaPrime handoff update includes:
   - sandbox isolation v1 (`local_restricted` + optional `docker`)
   - staking/slashing v1
@@ -46,6 +46,7 @@ Current verification snapshot (2026-03-03):
   - active-peer transport policy (`MESH_ACTIVE_PEERS_ONLY`, `MESH_ACTIVE_PEERS_MAX_STALE_SEC`) applied to mesh exchange and council routing
   - compute settlement idempotence (`ledger.transfer_once`, `transfer_refs`, `request_id_conflict`, `idempotent` + stable `tx_id` in settle responses)
   - mesh node authenticated rate-limit scopes (`MESH_NODE_RATE_LIMIT_SCOPE=ip|token|node|auto`, signed-node bucket support, regression coverage)
+  - peer lifecycle API completion (`/api/v1/mesh/peers/heartbeat`, active-only peer listing query controls)
   - reconcile daemon service lifecycle wrappers (systemd + launchd installers/templates)
 
 Important canonical constraints:
