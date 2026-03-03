@@ -21,8 +21,11 @@ Current verification snapshot (2026-03-03):
   - persistent reconcile daemon worker + peer snapshot transport (`python3 -m tools.reconcile_daemon`, `/mesh|/api ... /snapshot/{reputation,ledger}`)
   - sybil analysis + guarded allocation (`/api/v1/mesh/security/sybil`, sybil-aware `/mesh/jobs/allocate`)
   - node identity attestation + sybil enforcement (`/api/v1/mesh/security/identity/attestation*`, `/api/v1/mesh/security/sybil/enforce`)
+  - strict attestation policy path (`/api/v1/mesh/security/identity/policy`, strong-attestation sybil guard toggles)
   - sandbox hardening v2 (`gvisor|firecracker` modes + high-risk attestation policy gate)
+  - sandbox hardening v3 firecracker external runner bridge (`NOVAPRIME_FIRECRACKER_RUNNER*`)
   - signature policy modes + key lifecycle (`MESH_SIGNATURE_POLICY_MODE`, signer registry enforcement, `python3 -m tools.signing_keys ...`)
+  - distributed signer-key mesh sync (`/mesh/v1/signer-keys`, `/api/v1/mesh/security/signer-keys*`, mesh sync CLI key gossip/pull)
   - reconcile daemon service lifecycle wrappers (systemd + launchd installers/templates)
 
 Important canonical constraints:
