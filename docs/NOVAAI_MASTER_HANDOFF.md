@@ -10,7 +10,7 @@ Current verification snapshot (2026-03-03):
 - NovaPrime smoke bundle pass:
   - `PYTHONPATH=. ./tools/ci_local.sh`
 - NovaPrime integration branch head:
-  - `2e49885` (`codex/the-space-in-between-novaprime-integration`)
+  - `72c98ee` (`codex/the-space-in-between-novaprime-integration`)
 - Latest NovaPrime handoff update includes:
   - sandbox isolation v1 (`local_restricted` + optional `docker`)
   - staking/slashing v1
@@ -41,6 +41,8 @@ Current verification snapshot (2026-03-03):
   - signed mesh key rotation/scoping (`X-Mesh-Key-Id`, `MESH_REQUEST_SIGNING_KEY_IDS_JSON`, `MESH_REQUEST_SIGNING_KEYS_BY_ID_JSON`, `MESH_NODE_SIGNING_KEYS_BY_ID_JSON`, `MESH_NODE_SIGNING_KEYS_BY_NODE_JSON`)
   - asymmetric request signing (`X-Mesh-Signature-Scheme: ed25519-v1`) with HMAC compatibility fallback and node-side trusted public-key maps
   - one-time signed-request challenge flow (`/mesh/v1/auth/challenge`, `X-Mesh-Challenge-Id`, `MESH_REQUEST_SIGNING_USE_CHALLENGE`, `MESH_NODE_REQUIRE_SIGNED_CHALLENGE`)
+  - recency-decay reputation scoring (`NOVAPRIME_REPUTATION_RECENCY_WEIGHT`, `NOVAPRIME_REPUTATION_RECENT_HALF_LIFE_DAYS`, `tools/test_reputation_recency_decay.py`)
+  - peer discovery heartbeat + active filtering (`heartbeat_peer`, `list_peers(active_only=True, ...)`, `MESH_PEER_STALE_SEC`)
   - reconcile daemon service lifecycle wrappers (systemd + launchd installers/templates)
 
 Important canonical constraints:
