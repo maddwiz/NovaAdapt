@@ -9,6 +9,8 @@ Current verification snapshot (2026-03-03):
   - `292` tests passed.
 - NovaPrime smoke bundle pass:
   - `PYTHONPATH=. ./tools/ci_local.sh`
+- NovaPrime integration branch head:
+  - `e6e81d5` (`codex/the-space-in-between-novaprime-integration`)
 - Latest NovaPrime handoff update includes:
   - sandbox isolation v1 (`local_restricted` + optional `docker`)
   - staking/slashing v1
@@ -25,8 +27,13 @@ Current verification snapshot (2026-03-03):
   - sandbox hardening v2 (`gvisor|firecracker` modes + high-risk attestation policy gate)
   - sandbox hardening v3 firecracker external runner bridge (`NOVAPRIME_FIRECRACKER_RUNNER*`)
   - native Firecracker runner module (`python3 -m tools.firecracker_runner`) with API-socket VM orchestration + bridge/result contract
+  - production Firecracker hardening (jailer profile wiring + guest result contracts: `host_bridge|vsock|serial|file|auto`)
+  - hardened guest agent reference (`python3 -m tools.firecracker_guest_agent`) + smoke coverage
   - signature policy modes + key lifecycle (`MESH_SIGNATURE_POLICY_MODE`, signer registry enforcement, `python3 -m tools.signing_keys ...`)
   - distributed signer-key mesh sync (`/mesh/v1/signer-keys`, `/api/v1/mesh/security/signer-keys*`, mesh sync CLI key gossip/pull)
+  - signer-key multisig governance flow (`/api/v1/mesh/security/signer-keys/propose|vote|finalize`, governed register/revoke/rotate)
+  - strict provenance attestation checks (provenance chain, hardware fingerprint, measurement hash)
+  - cluster-wide Sybil defaults wired into analysis/enforcement/allocation (`NOVAPRIME_SYBIL_*_DEFAULT`)
   - reconcile daemon service lifecycle wrappers (systemd + launchd installers/templates)
 
 Important canonical constraints:
