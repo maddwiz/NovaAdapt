@@ -230,11 +230,15 @@ class ServerTests(unittest.TestCase):
                 self.assertIn("/novaprime/reason/emotion", openapi["paths"])
                 self.assertIn("/novaprime/mesh/balance", openapi["paths"])
                 self.assertIn("/novaprime/mesh/reputation", openapi["paths"])
+                self.assertIn("/novaprime/mesh/peers", openapi["paths"])
                 self.assertIn("/novaprime/marketplace/listings", openapi["paths"])
                 self.assertIn("/novaprime/identity/profile", openapi["paths"])
                 self.assertIn("/novaprime/presence", openapi["paths"])
                 self.assertIn("/novaprime/mesh/credit", openapi["paths"])
                 self.assertIn("/novaprime/mesh/transfer", openapi["paths"])
+                self.assertIn("/novaprime/mesh/peers/register", openapi["paths"])
+                self.assertIn("/novaprime/mesh/compute/request", openapi["paths"])
+                self.assertIn("/novaprime/mesh/compute/settle", openapi["paths"])
                 self.assertIn("/novaprime/marketplace/list", openapi["paths"])
                 self.assertIn("/novaprime/marketplace/buy", openapi["paths"])
                 self.assertIn("/novaprime/identity/bond", openapi["paths"])
@@ -414,6 +418,18 @@ class ServerTests(unittest.TestCase):
                 self.assertTrue(novaprime_mesh_reputation["ok"])
                 self.assertEqual(novaprime_mesh_reputation["node_id"], "node-1")
 
+                novaprime_mesh_peers, _ = _get_json_with_headers(
+                    f"http://{host}:{port}/novaprime/mesh/peers"
+                )
+                self.assertTrue(novaprime_mesh_peers["ok"])
+                self.assertIn("peers", novaprime_mesh_peers)
+
+                novaprime_mesh_peer_register, _ = _post_json_with_headers(
+                    f"http://{host}:{port}/novaprime/mesh/peers/register",
+                    {"node_id": "node-1", "url": "http://127.0.0.1:8530", "capabilities": ["compute", "capsules"]},
+                )
+                self.assertIn("ok", novaprime_mesh_peer_register)
+
                 novaprime_marketplace_listings, _ = _get_json_with_headers(
                     f"http://{host}:{port}/novaprime/marketplace/listings"
                 )
@@ -449,6 +465,24 @@ class ServerTests(unittest.TestCase):
                     {"from_node": "node-1", "to_node": "node-2", "amount": 5},
                 )
                 self.assertIn("ok", novaprime_mesh_transfer)
+
+                novaprime_mesh_compute_request, _ = _post_json_with_headers(
+                    f"http://{host}:{port}/novaprime/mesh/compute/request",
+                    {"requester": "node-1", "provider": "node-2", "units": 12, "unit_price": 0.5},
+                )
+                self.assertIn("ok", novaprime_mesh_compute_request)
+
+                novaprime_mesh_compute_settle, _ = _post_json_with_headers(
+                    f"http://{host}:{port}/novaprime/mesh/compute/settle",
+                    {
+                        "request_id": "node-1->node-2:12000",
+                        "requester": "node-1",
+                        "provider": "node-2",
+                        "units": 12,
+                        "unit_price": 0.5,
+                    },
+                )
+                self.assertIn("ok", novaprime_mesh_compute_settle)
 
                 novaprime_marketplace_list, _ = _post_json_with_headers(
                     f"http://{host}:{port}/novaprime/marketplace/list",
