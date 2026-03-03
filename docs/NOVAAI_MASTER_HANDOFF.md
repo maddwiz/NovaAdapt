@@ -16,6 +16,7 @@ Current verification snapshot (2026-03-03):
   - reputation gossip sync transport (`mesh/exchange.py`, `/mesh/v1/reputation`)
   - partition reconcile apply API (`/api/v1/mesh/partition/reconcile`)
   - automated slashing policy API (`/api/v1/mesh/security/slash/*`)
+  - council-governed slash flow (`/api/v1/mesh/security/slash/propose|vote|finalize`) with high-severity governance hook in `slash/apply`
   - sybil analysis + guarded allocation (`/api/v1/mesh/security/sybil`, sybil-aware `/mesh/jobs/allocate`)
   - optional dilithium signature scaffolding (`MESH_SIGNING_SCHEME=dilithium-v1` with graceful fallback)
 
