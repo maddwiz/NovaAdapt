@@ -10,7 +10,7 @@ Current verification snapshot (2026-03-03):
 - NovaPrime smoke bundle pass:
   - `PYTHONPATH=. ./tools/ci_local.sh`
 - NovaPrime integration branch head:
-  - `441e353` (`codex/the-space-in-between-novaprime-integration`)
+  - `f2dc72a` (`codex/the-space-in-between-novaprime-integration`)
 - Latest NovaPrime handoff update includes:
   - sandbox isolation v1 (`local_restricted` + optional `docker`)
   - staking/slashing v1
@@ -58,6 +58,7 @@ Current verification snapshot (2026-03-03):
   - eval proof capsule hardening (`eval-proof-v2` commitment envelope + `verify_eval_proof_capsule(...)`, legacy verifier compatibility, smoke/test coverage)
   - eval proof control-plane APIs (`POST /api/v1/mesh/proof/eval/create|verify`, runtime capsule-store lookup, API regression coverage)
   - governance partition guardrails on finalize (`/mesh/security/signer-keys/finalize`, `/mesh/security/slash/finalize`, optional quorum enforcement + force override)
+  - job-settlement dispute gate (`/mesh/jobs/settle` blocks unresolved disputes by default, explicit override knob)
   - reconcile daemon service lifecycle wrappers (systemd + launchd installers/templates)
 
 Important canonical constraints:
