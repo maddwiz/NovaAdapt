@@ -10,7 +10,7 @@ Current verification snapshot (2026-03-03):
 - NovaPrime smoke bundle pass:
   - `PYTHONPATH=. ./tools/ci_local.sh`
 - NovaPrime integration branch head:
-  - `7f96059` (`codex/the-space-in-between-novaprime-integration`)
+  - `f825c22` (`codex/the-space-in-between-novaprime-integration`)
 - Latest NovaPrime handoff update includes:
   - sandbox isolation v1 (`local_restricted` + optional `docker`)
   - staking/slashing v1
@@ -49,7 +49,7 @@ Current verification snapshot (2026-03-03):
   - peer lifecycle API completion (`/api/v1/mesh/peers/heartbeat`, active-only peer listing query controls)
   - compute request-id integrity fix (unique-by-default request ids; explicit idempotence only when reusing request_id)
   - compute dispute governance flow (`/api/v1/mesh/compute/verify`, `/compute/dispute/open|resolve`, persistent dispute registry + penalty path)
-  - compute job protocol lifecycle (`/api/v1/mesh/jobs` + `/submit|bid|award|settle`, persistent job board, auto-bid collection + settle linkage)
+  - compute job protocol lifecycle (`/api/v1/mesh/jobs` + `/submit|bid|award|execute|verify|settle`, persistent job board, execution/verification recording, optional `require_verified` settle gate, auto-bid collection + settle linkage)
   - reconcile daemon service lifecycle wrappers (systemd + launchd installers/templates)
 
 Important canonical constraints:
