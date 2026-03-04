@@ -10,7 +10,7 @@ Current verification snapshot (2026-03-03):
 - NovaPrime smoke bundle pass:
   - `PYTHONPATH=. ./tools/ci_local.sh`
 - NovaPrime integration branch head:
-  - `70fc574` (`codex/the-space-in-between-novaprime-integration`)
+  - `caad047` (`codex/the-space-in-between-novaprime-integration`)
 - Latest NovaPrime handoff update includes:
   - sandbox isolation v1 (`local_restricted` + optional `docker`)
   - staking/slashing v1
@@ -52,6 +52,7 @@ Current verification snapshot (2026-03-03):
   - compute job protocol lifecycle (`/api/v1/mesh/jobs` + `/submit|bid|award|execute|verify|settle`, persistent job board, execution/verification recording, optional `require_verified` settle gate, auto-bid collection + settle linkage)
   - identity element subclass compatibility hardening (accepts polarity + canonical subclass names; stores stable `subclass` + canonical `subclass_name`)
   - fail-closed mesh capability normalization (malformed peer capability payloads no longer become low-cost bids in job allocation)
+  - API-level mesh capability sanitization (`/api/v1/mesh/peers/register|heartbeat` now normalize capability dicts before persistence)
   - reconcile daemon service lifecycle wrappers (systemd + launchd installers/templates)
 
 Important canonical constraints:
