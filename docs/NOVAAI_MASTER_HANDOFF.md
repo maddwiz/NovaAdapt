@@ -10,7 +10,7 @@ Current verification snapshot (2026-03-03):
 - NovaPrime smoke bundle pass:
   - `PYTHONPATH=. ./tools/ci_local.sh`
 - NovaPrime integration branch head:
-  - `1c1663b` (`codex/the-space-in-between-novaprime-integration`)
+  - `d325046` (`codex/the-space-in-between-novaprime-integration`)
 - Latest NovaPrime handoff update includes:
   - sandbox isolation v1 (`local_restricted` + optional `docker`)
   - staking/slashing v1
@@ -55,6 +55,7 @@ Current verification snapshot (2026-03-03):
   - API-level mesh capability sanitization (`/api/v1/mesh/peers/register|heartbeat` now normalize capability dicts before persistence)
   - swarm sentinel telemetry APIs (`/api/v1/mesh/swarm/status|reports|cycle|report`) with report-driven threat escalation and persisted sentinel report lifecycle
   - mesh-wide swarm report propagation (`gossip/pull/replay` for sentinel threat reports, mesh node `/mesh/v1/swarm/reports`, dedupe by `report_id`)
+  - eval proof capsule hardening (`eval-proof-v2` commitment envelope + `verify_eval_proof_capsule(...)`, legacy verifier compatibility, smoke/test coverage)
   - reconcile daemon service lifecycle wrappers (systemd + launchd installers/templates)
 
 Important canonical constraints:
