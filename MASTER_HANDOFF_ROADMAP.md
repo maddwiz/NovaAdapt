@@ -42,8 +42,12 @@ This file is the continuation map for future Codex sessions working from NovaAda
   - fixed HTTPError/URLError cleanup in shared/core HTTP clients (detach `fp/file` after close)
   - fixed terminal subprocess stream cleanup (`terminal.py`) by joining reader and explicitly closing stdin/stdout/stderr
   - aligned HTTPError test stubs to call `super().close()` in relevant tests
-- Warning-audit verification: `PYTHONWARNINGS=default PYTHONPATH=core:shared python3 -m unittest discover -s tests -p 'test_*.py' -v` → `294 tests OK`, `0 ResourceWarning` lines.
-- Latest verification run: `PYTHONPATH=core:shared python3 -m unittest discover -s tests` → `294 tests OK`.
+- Warning-audit verification: `PYTHONWARNINGS=default PYTHONPATH=core:shared python3 -m unittest discover -s tests -p 'test_*.py' -v` → `299 tests OK`, `0 ResourceWarning` lines.
+- Model router now supports `decompose` strategy end-to-end:
+  - `shared/novaadapt_shared/model_router.py` strategy path + config knob (`decompose_max_subtasks`)
+  - CLI accepts `--strategy decompose` for `run` and `plan-create`
+  - coverage added in `tests/test_model_router.py` and `tests/test_cli_adapt.py`
+- Latest verification run: `PYTHONPATH=core:shared python3 -m unittest discover -s tests` → `299 tests OK`.
 
 ## 2) Hard Invariants
 
@@ -61,9 +65,8 @@ This file is the continuation map for future Codex sessions working from NovaAda
 
 ### P1
 
-2. Add `decompose` strategy to shared model router while preserving `single`/`vote`.
-3. Add voice module (STT/TTS/wake) as optional backend adapters.
-4. Add canvas/workflow modules behind flags, keeping default footprint minimal.
+2. Add voice module (STT/TTS/wake) as optional backend adapters.
+3. Add canvas/workflow modules behind flags, keeping default footprint minimal.
 
 ## 4) Continuation Checklist
 

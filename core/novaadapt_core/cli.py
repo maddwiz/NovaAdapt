@@ -87,7 +87,7 @@ def _build_parser() -> argparse.ArgumentParser:
     run_cmd.add_argument("--config", type=Path, default=_default_config_path())
     run_cmd.add_argument("--db-path", type=Path, default=None)
     run_cmd.add_argument("--objective", required=True)
-    run_cmd.add_argument("--strategy", choices=["single", "vote"], default="single")
+    run_cmd.add_argument("--strategy", choices=["single", "vote", "decompose"], default="single")
     run_cmd.add_argument("--model", default=None)
     run_cmd.add_argument(
         "--candidates",
@@ -198,7 +198,7 @@ def _build_parser() -> argparse.ArgumentParser:
     plan_create_cmd.add_argument("--db-path", type=Path, default=None)
     plan_create_cmd.add_argument("--plans-db-path", type=Path, default=default_plans_db)
     plan_create_cmd.add_argument("--objective", required=True)
-    plan_create_cmd.add_argument("--strategy", choices=["single", "vote"], default="single")
+    plan_create_cmd.add_argument("--strategy", choices=["single", "vote", "decompose"], default="single")
     plan_create_cmd.add_argument("--model", default=None)
     plan_create_cmd.add_argument(
         "--candidates",

@@ -48,6 +48,7 @@ class ModelRouter:
         timeout_seconds: int = 90,
         default_vote_candidates: int = 3,
         min_vote_agreement: int = 1,
+        decompose_max_subtasks: int = 4,
         transport: Callable[[ModelEndpoint, list[dict[str, str]], float, int, int], str] | None = None,
     ) -> None:
         if not endpoints:
@@ -63,6 +64,7 @@ class ModelRouter:
         self.timeout_seconds = timeout_seconds
         self.default_vote_candidates = max(1, int(default_vote_candidates))
         self.min_vote_agreement = max(1, int(min_vote_agreement))
+        self.decompose_max_subtasks = max(1, int(decompose_max_subtasks))
         self._transport = transport
 
     @classmethod
@@ -91,6 +93,7 @@ class ModelRouter:
             timeout_seconds=int(routing.get("timeout_seconds", 90)),
             default_vote_candidates=int(routing.get("default_vote_candidates", 3)),
             min_vote_agreement=int(routing.get("min_vote_agreement", 1)),
+            decompose_max_subtasks=int(routing.get("decompose_max_subtasks", 4)),
         )
 
     def list_models(self) -> list[ModelEndpoint]:
@@ -104,36 +107,111 @@ class ModelRouter:
         candidate_models: Iterable[str] | None = None,
         fallback_models: Iterable[str] | None = None,
     ) -> RouterResult:
-        if strategy not in {"single", "vote"}:
-            raise ValueError("strategy must be 'single' or 'vote'")
+        if strategy not in {"single", "vote", "decompose"}:
+            raise ValueError("strategy must be 'single', 'vote', or 'decompose'")
 
         if strategy == "single":
-            primary_name = model_name or self.default_model
-            fallback_names = list(fallback_models or [])
-            ordered_names = self._dedupe_names([primary_name, *fallback_names])
-            errors: dict[str, str] = {}
-            endpoint = self._resolve_model(ordered_names[0])
-            content = ""
-            for name in ordered_names:
-                endpoint = self._resolve_model(name)
-                try:
-                    content = self._invoke(endpoint, messages)
-                    break
-                except Exception as exc:
-                    errors[name] = str(exc)
-            else:
-                joined = "; ".join(f"{k}: {v}" for k, v in errors.items())
-                raise RuntimeError(f"All model attempts failed: {joined}")
-
-            return RouterResult(
-                model_name=endpoint.name,
-                model_id=endpoint.model,
-                content=content,
-                strategy="single",
-                errors=errors,
-                attempted_models=ordered_names,
+            return self._chat_single(
+                messages=messages,
+                model_name=model_name,
+                fallback_models=fallback_models,
             )
+        if strategy == "vote":
+            return self._chat_vote(
+                messages=messages,
+                candidate_models=candidate_models,
+            )
+        return self._chat_decompose(
+            messages=messages,
+            model_name=model_name,
+            candidate_models=candidate_models,
+            fallback_models=fallback_models,
+        )
 
+    def health_check(
+        self,
+        model_names: Iterable[str] | None = None,
+        probe_prompt: str = "Reply with: OK",
+    ) -> list[dict[str, object]]:
+        names = self._dedupe_names(list(model_names or self._endpoints.keys()))
+        messages = [{"role": "user", "content": probe_prompt}]
+        report: list[dict[str, object]] = []
+        for name in names:
+            endpoint = self._resolve_model(name)
+            start = time.perf_counter()
+            try:
+                content = self._invoke(endpoint, messages)
+                elapsed_ms = round((time.perf_counter() - start) * 1000, 2)
+                report.append(
+                    {
+                        "name": endpoint.name,
+                        "model": endpoint.model,
+                        "provider": endpoint.provider,
+                        "ok": True,
+                        "latency_ms": elapsed_ms,
+                        "preview": content[:120],
+                    }
+                )
+            except Exception as exc:
+                elapsed_ms = round((time.perf_counter() - start) * 1000, 2)
+                report.append(
+                    {
+                        "name": endpoint.name,
+                        "model": endpoint.model,
+                        "provider": endpoint.provider,
+                        "ok": False,
+                        "latency_ms": elapsed_ms,
+                        "error": str(exc),
+                    }
+                )
+        return report
+
+    def _resolve_model(self, model_name: str | None) -> ModelEndpoint:
+        name = model_name or self.default_model
+        try:
+            return self._endpoints[name]
+        except KeyError as exc:
+            raise ValueError(f"Unknown model endpoint '{name}'") from exc
+
+    def _chat_single(
+        self,
+        *,
+        messages: list[dict[str, str]],
+        model_name: str | None,
+        fallback_models: Iterable[str] | None,
+    ) -> RouterResult:
+        primary_name = model_name or self.default_model
+        fallback_names = list(fallback_models or [])
+        ordered_names = self._dedupe_names([primary_name, *fallback_names])
+        errors: dict[str, str] = {}
+        endpoint = self._resolve_model(ordered_names[0])
+        content = ""
+        for name in ordered_names:
+            endpoint = self._resolve_model(name)
+            try:
+                content = self._invoke(endpoint, messages)
+                break
+            except Exception as exc:
+                errors[name] = str(exc)
+        else:
+            joined = "; ".join(f"{k}: {v}" for k, v in errors.items())
+            raise RuntimeError(f"All model attempts failed: {joined}")
+
+        return RouterResult(
+            model_name=endpoint.name,
+            model_id=endpoint.model,
+            content=content,
+            strategy="single",
+            errors=errors,
+            attempted_models=ordered_names,
+        )
+
+    def _chat_vote(
+        self,
+        *,
+        messages: list[dict[str, str]],
+        candidate_models: Iterable[str] | None,
+    ) -> RouterResult:
         names = self._dedupe_names(list(candidate_models or self._default_vote_models()))
         if not names:
             raise ValueError("candidate_models must not be empty when strategy='vote'")
@@ -194,50 +272,176 @@ class ModelRouter:
             },
         )
 
-    def health_check(
+    def _chat_decompose(
         self,
-        model_names: Iterable[str] | None = None,
-        probe_prompt: str = "Reply with: OK",
-    ) -> list[dict[str, object]]:
-        names = self._dedupe_names(list(model_names or self._endpoints.keys()))
-        messages = [{"role": "user", "content": probe_prompt}]
-        report: list[dict[str, object]] = []
-        for name in names:
-            endpoint = self._resolve_model(name)
-            start = time.perf_counter()
+        *,
+        messages: list[dict[str, str]],
+        model_name: str | None,
+        candidate_models: Iterable[str] | None,
+        fallback_models: Iterable[str] | None,
+    ) -> RouterResult:
+        planner_name = model_name or self.default_model
+        planner_endpoint = self._resolve_model(planner_name)
+        execution_pool = self._dedupe_names(list(candidate_models or self._endpoints.keys()))
+        if not execution_pool:
+            execution_pool = [planner_name]
+        objective = self._extract_user_objective(messages)
+
+        planner_messages = [
+            {
+                "role": "system",
+                "content": (
+                    "Build a concise JSON plan for decomposed execution. "
+                    "Return JSON only using schema: "
+                    "{\"subtasks\":[{\"id\":\"s1\",\"objective\":\"...\",\"model\":\"optional-model-name\"}]}"
+                ),
+            },
+            {
+                "role": "user",
+                "content": (
+                    f"Primary objective:\n{objective}\n\n"
+                    f"Available models: {', '.join(execution_pool)}\n"
+                    f"Return at most {self.decompose_max_subtasks} subtasks."
+                ),
+            },
+        ]
+
+        attempted_models: list[str] = [planner_name]
+        errors: dict[str, str] = {}
+
+        def _fallback(reason: str, planner_error: str, *, subtasks_total: int, subtasks_succeeded: int) -> RouterResult:
+            errors["decompose.planner"] = planner_error
             try:
-                content = self._invoke(endpoint, messages)
-                elapsed_ms = round((time.perf_counter() - start) * 1000, 2)
-                report.append(
+                fallback = self._chat_single(
+                    messages=messages,
+                    model_name=planner_name,
+                    fallback_models=fallback_models,
+                )
+            except Exception as exc:
+                errors["decompose.fallback"] = str(exc)
+                joined = "; ".join(f"{k}: {v}" for k, v in errors.items())
+                raise RuntimeError(f"decompose fallback failed: {joined}") from exc
+            return RouterResult(
+                model_name=fallback.model_name,
+                model_id=fallback.model_id,
+                content=fallback.content,
+                strategy="decompose",
+                errors={**fallback.errors, **errors},
+                attempted_models=self._dedupe_names([*attempted_models, *fallback.attempted_models]),
+                vote_summary={
+                    "fallback": "single",
+                    "reason": reason,
+                    "subtasks_total": subtasks_total,
+                    "subtasks_succeeded": subtasks_succeeded,
+                    "subtasks_failed": max(0, subtasks_total - subtasks_succeeded),
+                },
+            )
+
+        try:
+            raw_plan = self._invoke(planner_endpoint, planner_messages)
+            subtasks = self._parse_subtasks(raw_plan, max_items=self.decompose_max_subtasks)
+        except Exception as exc:
+            return _fallback("planner_failed", str(exc), subtasks_total=0, subtasks_succeeded=0)
+
+        if not subtasks:
+            return _fallback(
+                "invalid_plan",
+                "planner returned no usable subtasks",
+                subtasks_total=0,
+                subtasks_succeeded=0,
+            )
+
+        subtask_outputs: list[dict[str, str]] = []
+        subtask_votes: dict[str, str] = {}
+        for index, subtask in enumerate(subtasks, start=1):
+            subtask_id = str(subtask.get("id", f"s{index}")) or f"s{index}"
+            subtask_objective = str(subtask.get("objective", "")).strip()
+            if not subtask_objective:
+                errors[f"decompose.{subtask_id}"] = "missing objective"
+                continue
+
+            requested_model = str(subtask.get("model", "")).strip()
+            chosen_model = requested_model if requested_model in execution_pool else execution_pool[0]
+            sub_messages = [
+                {
+                    "role": "system",
+                    "content": "You are solving one subtask in a decomposed workflow. Return concise actionable output.",
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        f"Primary objective:\n{objective}\n\n"
+                        f"Subtask {subtask_id}:\n{subtask_objective}"
+                    ),
+                },
+            ]
+            try:
+                sub_result = self._chat_single(
+                    messages=sub_messages,
+                    model_name=chosen_model,
+                    fallback_models=fallback_models,
+                )
+                attempted_models.extend(sub_result.attempted_models)
+                for key, value in sub_result.errors.items():
+                    errors[f"decompose.{subtask_id}.{key}"] = value
+                subtask_votes[subtask_id] = sub_result.content
+                subtask_outputs.append(
                     {
-                        "name": endpoint.name,
-                        "model": endpoint.model,
-                        "provider": endpoint.provider,
-                        "ok": True,
-                        "latency_ms": elapsed_ms,
-                        "preview": content[:120],
+                        "id": subtask_id,
+                        "objective": subtask_objective,
+                        "model": sub_result.model_name,
+                        "output": sub_result.content,
                     }
                 )
             except Exception as exc:
-                elapsed_ms = round((time.perf_counter() - start) * 1000, 2)
-                report.append(
-                    {
-                        "name": endpoint.name,
-                        "model": endpoint.model,
-                        "provider": endpoint.provider,
-                        "ok": False,
-                        "latency_ms": elapsed_ms,
-                        "error": str(exc),
-                    }
-                )
-        return report
+                errors[f"decompose.{subtask_id}"] = str(exc)
 
-    def _resolve_model(self, model_name: str | None) -> ModelEndpoint:
-        name = model_name or self.default_model
-        try:
-            return self._endpoints[name]
-        except KeyError as exc:
-            raise ValueError(f"Unknown model endpoint '{name}'") from exc
+        if not subtask_outputs:
+            return _fallback(
+                "subtasks_failed",
+                "all subtasks failed",
+                subtasks_total=len(subtasks),
+                subtasks_succeeded=0,
+            )
+
+        synthesis_messages = [
+            {
+                "role": "system",
+                "content": "Synthesize final answer from subtask outputs. Keep it clear and complete.",
+            },
+            {
+                "role": "user",
+                "content": (
+                    f"Primary objective:\n{objective}\n\n"
+                    "Subtask outputs (JSON):\n"
+                    f"{json.dumps(subtask_outputs, ensure_ascii=True)}"
+                ),
+            },
+        ]
+        synthesis = self._chat_single(
+            messages=synthesis_messages,
+            model_name=planner_name,
+            fallback_models=fallback_models,
+        )
+        attempted_models.extend(synthesis.attempted_models)
+        for key, value in synthesis.errors.items():
+            errors[f"decompose.synthesis.{key}"] = value
+
+        return RouterResult(
+            model_name=synthesis.model_name,
+            model_id=synthesis.model_id,
+            content=synthesis.content,
+            strategy="decompose",
+            votes=subtask_votes,
+            errors=errors,
+            attempted_models=self._dedupe_names(attempted_models),
+            vote_summary={
+                "subtasks_total": len(subtasks),
+                "subtasks_succeeded": len(subtask_outputs),
+                "subtasks_failed": max(0, len(subtasks) - len(subtask_outputs)),
+                "quorum_met": len(subtask_outputs) > 0,
+            },
+        )
 
     def _invoke(self, endpoint: ModelEndpoint, messages: list[dict[str, str]]) -> str:
         if self._transport is not None:
@@ -377,6 +581,57 @@ class ModelRouter:
         ordered = [self.default_model]
         ordered.extend(name for name in self._endpoints if name != self.default_model)
         return ordered[: self.default_vote_candidates]
+
+    @staticmethod
+    def _extract_user_objective(messages: list[dict[str, str]]) -> str:
+        for item in reversed(messages):
+            if not isinstance(item, dict):
+                continue
+            if str(item.get("role", "")).strip() != "user":
+                continue
+            content = str(item.get("content", "")).strip()
+            if content:
+                return content
+        return json.dumps(messages, ensure_ascii=True)
+
+    @staticmethod
+    def _parse_subtasks(raw: str, *, max_items: int) -> list[dict[str, str]]:
+        text = str(raw or "").strip()
+        if not text:
+            return []
+        if text.startswith("```"):
+            lines = text.splitlines()
+            if len(lines) >= 3:
+                text = "\n".join(lines[1:-1]).strip()
+        start = text.find("{")
+        end = text.rfind("}")
+        if start >= 0 and end > start:
+            text = text[start : end + 1]
+        try:
+            parsed = json.loads(text)
+        except json.JSONDecodeError:
+            return []
+
+        items = parsed.get("subtasks") if isinstance(parsed, dict) else None
+        if not isinstance(items, list):
+            return []
+        out: list[dict[str, str]] = []
+        for index, item in enumerate(items, start=1):
+            if not isinstance(item, dict):
+                continue
+            objective = str(item.get("objective") or item.get("task") or item.get("prompt") or "").strip()
+            if not objective:
+                continue
+            out.append(
+                {
+                    "id": str(item.get("id") or f"s{index}"),
+                    "objective": objective,
+                    "model": str(item.get("model") or "").strip(),
+                }
+            )
+            if len(out) >= max(1, int(max_items)):
+                break
+        return out
 
     @staticmethod
     def _normalize(text: str) -> str:

@@ -156,6 +156,38 @@ class AdaptCLITests(unittest.TestCase):
         self.assertEqual(plan_payload["toggle_mode"], "ask_only")
         self.assertEqual(plan_payload["mesh_marketplace_buy"]["listing_id"], "listing-2")
 
+    def test_run_command_accepts_decompose_strategy(self):
+        service = mock.Mock()
+        service.run.return_value = {"ok": True}
+        with mock.patch("novaadapt_core.cli.NovaAdaptService", return_value=service):
+            payload = self._run_cli(
+                "run",
+                "--objective",
+                "Decompose this objective",
+                "--strategy",
+                "decompose",
+            )
+        self.assertTrue(payload["ok"])
+        service.run.assert_called_once()
+        run_payload = service.run.call_args.args[0]
+        self.assertEqual(run_payload["strategy"], "decompose")
+
+    def test_plan_create_command_accepts_decompose_strategy(self):
+        service = mock.Mock()
+        service.create_plan.return_value = {"id": "plan-2", "status": "pending"}
+        with mock.patch("novaadapt_core.cli.NovaAdaptService", return_value=service):
+            payload = self._run_cli(
+                "plan-create",
+                "--objective",
+                "Decompose plan objective",
+                "--strategy",
+                "decompose",
+            )
+        self.assertEqual(payload["id"], "plan-2")
+        service.create_plan.assert_called_once()
+        plan_payload = service.create_plan.call_args.args[0]
+        self.assertEqual(plan_payload["strategy"], "decompose")
+
     def test_run_rejects_invalid_mesh_json(self):
         service = mock.Mock()
         with mock.patch("novaadapt_core.cli.NovaAdaptService", return_value=service):

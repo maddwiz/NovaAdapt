@@ -144,6 +144,96 @@ class ModelRouterTests(unittest.TestCase):
                 candidate_models=["a", "b", "c"],
             )
 
+    def test_decompose_strategy_executes_subtasks_and_synthesizes(self):
+        endpoints = [
+            ModelEndpoint(name="planner", model="alpha", base_url="http://localhost:1"),
+            ModelEndpoint(name="worker", model="beta", base_url="http://localhost:2"),
+        ]
+
+        def transport(_endpoint, messages, _temperature, _max_tokens, _timeout):
+            system = str(messages[0].get("content", "")) if messages else ""
+            user = str(messages[-1].get("content", "")) if messages else ""
+            if "Build a concise JSON plan for decomposed execution." in system:
+                return json.dumps(
+                    {
+                        "subtasks": [
+                            {"id": "s1", "objective": "Gather price points", "model": "worker"},
+                            {"id": "s2", "objective": "Draft buyer message", "model": "planner"},
+                        ]
+                    }
+                )
+            if "You are solving one subtask in a decomposed workflow." in system:
+                if "Gather price points" in user:
+                    return "Price points: route A is cheaper."
+                if "Draft buyer message" in user:
+                    return "Buyer message draft: Let's proceed with route A."
+                return "Subtask complete."
+            if "Synthesize final answer from subtask outputs." in system:
+                return "Final plan: use route A and send the buyer message."
+            return "Fallback single response."
+
+        router = ModelRouter(endpoints=endpoints, default_model="planner", transport=transport)
+        result = router.chat(
+            messages=[{"role": "user", "content": "Plan trade route and buyer message"}],
+            strategy="decompose",
+            candidate_models=["planner", "worker"],
+        )
+
+        self.assertEqual(result.strategy, "decompose")
+        self.assertEqual(result.model_name, "planner")
+        self.assertIn("Final plan", result.content)
+        self.assertEqual(result.vote_summary["subtasks_total"], 2)
+        self.assertEqual(result.vote_summary["subtasks_succeeded"], 2)
+        self.assertEqual(result.vote_summary["subtasks_failed"], 0)
+        self.assertEqual(set(result.votes.keys()), {"s1", "s2"})
+        self.assertIn("worker", result.attempted_models)
+        self.assertIn("planner", result.attempted_models)
+
+    def test_decompose_strategy_falls_back_when_planner_plan_invalid(self):
+        endpoints = [ModelEndpoint(name="planner", model="alpha", base_url="http://localhost:1")]
+
+        def transport(_endpoint, messages, _temperature, _max_tokens, _timeout):
+            system = str(messages[0].get("content", "")) if messages else ""
+            if "Build a concise JSON plan for decomposed execution." in system:
+                return "not-json"
+            return "Fallback single response."
+
+        router = ModelRouter(endpoints=endpoints, default_model="planner", transport=transport)
+        result = router.chat(
+            messages=[{"role": "user", "content": "Plan a route"}],
+            strategy="decompose",
+        )
+
+        self.assertEqual(result.strategy, "decompose")
+        self.assertEqual(result.content, "Fallback single response.")
+        self.assertEqual(result.vote_summary["fallback"], "single")
+        self.assertEqual(result.vote_summary["reason"], "invalid_plan")
+        self.assertIn("decompose.planner", result.errors)
+        self.assertEqual(result.errors["decompose.planner"], "planner returned no usable subtasks")
+
+    def test_decompose_strategy_does_not_invoke_single_fallback_on_success(self):
+        endpoints = [ModelEndpoint(name="planner", model="alpha", base_url="http://localhost:1")]
+        fallback_probe = {"calls": 0}
+
+        def transport(_endpoint, messages, _temperature, _max_tokens, _timeout):
+            if messages == [{"role": "user", "content": "Plan route"}]:
+                fallback_probe["calls"] += 1
+                return "Fallback single response."
+            system = str(messages[0].get("content", "")) if messages else ""
+            if "Build a concise JSON plan for decomposed execution." in system:
+                return json.dumps({"subtasks": [{"id": "s1", "objective": "Choose the best route"}]})
+            if "You are solving one subtask in a decomposed workflow." in system:
+                return "Best route is corridor 7."
+            if "Synthesize final answer from subtask outputs." in system:
+                return "Use corridor 7."
+            return "Unexpected"
+
+        router = ModelRouter(endpoints=endpoints, default_model="planner", transport=transport)
+        result = router.chat(messages=[{"role": "user", "content": "Plan route"}], strategy="decompose")
+
+        self.assertEqual(result.content, "Use corridor 7.")
+        self.assertEqual(fallback_probe["calls"], 0)
+
     def test_from_config_file_loads_vote_routing_settings(self):
         with TemporaryDirectory() as tmp:
             config_path = Path(tmp) / "models.json"
@@ -157,6 +247,7 @@ class ModelRouterTests(unittest.TestCase):
                             "timeout_seconds": 20,
                             "default_vote_candidates": 2,
                             "min_vote_agreement": 2,
+                            "decompose_max_subtasks": 6,
                         },
                         "models": [
                             {
@@ -178,6 +269,7 @@ class ModelRouterTests(unittest.TestCase):
             router = ModelRouter.from_config_file(config_path)
             self.assertEqual(router.default_vote_candidates, 2)
             self.assertEqual(router.min_vote_agreement, 2)
+            self.assertEqual(router.decompose_max_subtasks, 6)
 
 
 if __name__ == "__main__":
