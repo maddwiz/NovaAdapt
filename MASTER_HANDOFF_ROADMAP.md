@@ -47,6 +47,12 @@ This file is the continuation map for future Codex sessions working from NovaAda
   - `shared/novaadapt_shared/model_router.py` strategy path + config knob (`decompose_max_subtasks`)
   - CLI accepts `--strategy decompose` for `run` and `plan-create`
   - coverage added in `tests/test_model_router.py` and `tests/test_cli_adapt.py`
+- Optional voice scaffold is now in place (standalone-safe, no required external providers):
+  - `core/novaadapt_core/voice/stt.py` (`NoopSTTBackend`, `StaticSTTBackend`, factory)
+  - `core/novaadapt_core/voice/tts.py` (`NoopTTSBackend`, `StaticTTSBackend`, factory)
+  - `core/novaadapt_core/voice/wake.py` (`KeywordWakeDetector`, factory)
+  - `core/novaadapt_core/voice/talk_mode.py` (`TalkModeSession`)
+  - coverage added in `tests/test_voice.py`
 - Latest verification run: `PYTHONPATH=core:shared python3 -m unittest discover -s tests` → `299 tests OK`.
 
 ## 2) Hard Invariants
@@ -65,7 +71,7 @@ This file is the continuation map for future Codex sessions working from NovaAda
 
 ### P1
 
-2. Add voice module (STT/TTS/wake) as optional backend adapters.
+2. Add production STT/TTS backends (Whisper/ElevenLabs/etc.) behind current optional voice interfaces.
 3. Add canvas/workflow modules behind flags, keeping default footprint minimal.
 
 ## 4) Continuation Checklist
