@@ -616,6 +616,22 @@ def render_canvas_workflows_html() -> str:
       line-height: 1.35;
       word-break: break-word;
     }
+    .safety-summary-row {
+      margin-top: 8px;
+      display: flex;
+      gap: 8px;
+      align-items: stretch;
+      flex-wrap: wrap;
+    }
+    .safety-summary-row .safety-summary {
+      margin-top: 0;
+      flex: 1 1 320px;
+    }
+    button.compact {
+      padding: 6px 10px;
+      font-size: 12px;
+      align-self: center;
+    }
     .posture-legend {
       border: 1px dashed var(--line);
       border-radius: 999px;
@@ -775,7 +791,10 @@ def render_canvas_workflows_html() -> str:
           >Legend?</span>
         </div>
         <div id=\"safety-risk-banner\" class=\"risk-banner hidden\"></div>
-        <div id=\"safety-inline-summary\" class=\"safety-summary\"></div>
+        <div class=\"safety-summary-row\">
+          <div id=\"safety-inline-summary\" class=\"safety-summary\"></div>
+          <button id=\"safety-summary-copy-btn\" class=\"compact\" title=\"Copy safety summary\">Copy</button>
+        </div>
         <div class=\"hint\">Badge reflects live toggles and can read `strict`, `balanced`, `lab`, or `custom`.</div>
         <div class=\"stack\">
           <button id=\"prefs-reset-btn\">Reset Operator Preferences</button>
@@ -1109,6 +1128,37 @@ def render_canvas_workflows_html() -> str:
       const confirmMutations = Boolean(document.getElementById('confirm-mutations').checked);
       const presetImportPreview = Boolean(document.getElementById('preset-import-preview').checked);
       return `Safety posture=${posture}, profile=${safetyProfile}, confirm=${confirmMutations ? 'on' : 'off'}, import_preview=${presetImportPreview ? 'on' : 'off'}`;
+    }
+
+    function fallbackCopyText(text){
+      const area = document.createElement('textarea');
+      area.value = text;
+      area.setAttribute('readonly', 'readonly');
+      area.style.position = 'absolute';
+      area.style.left = '-9999px';
+      document.body.appendChild(area);
+      area.select();
+      const copied = document.execCommand('copy');
+      area.remove();
+      return Boolean(copied);
+    }
+
+    async function copySafetySummary(){
+      const text = mutationSafetySummary();
+      try {
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(text);
+          setStatus('preset-status', 'Safety summary copied', 'ok');
+          return;
+        }
+      } catch (_err) {
+        // fallback below
+      }
+      if (fallbackCopyText(text)) {
+        setStatus('preset-status', 'Safety summary copied', 'ok');
+      } else {
+        setStatus('preset-status', 'Copy failed: clipboard unavailable', 'warn');
+      }
     }
 
     function resetOperatorPrefs(){
@@ -1490,6 +1540,7 @@ def render_canvas_workflows_html() -> str:
     document.getElementById('safety-profile-apply-btn').addEventListener('click', () => {
       applySafetyProfile(document.getElementById('safety-profile').value, true);
     });
+    document.getElementById('safety-summary-copy-btn').addEventListener('click', copySafetySummary);
     document.getElementById('prefs-reset-btn').addEventListener('click', resetOperatorPrefs);
 
     const back = document.getElementById('back-dashboard');
