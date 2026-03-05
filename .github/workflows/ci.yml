@@ -15,10 +15,17 @@ jobs:
           path: NovaAdapt
 
       - name: Checkout NovaPrime
+        id: checkout_novaprime
+        continue-on-error: true
         uses: actions/checkout@v4
         with:
           repository: maddwiz/NovaPrime
           path: NovaPrime
+
+      - name: Note NovaPrime checkout status
+        if: steps.checkout_novaprime.outcome != 'success'
+        run: |
+          echo "NovaPrime checkout not available in this context; live contract test will run in skip mode."
 
       - name: Setup Python
         uses: actions/setup-python@v5

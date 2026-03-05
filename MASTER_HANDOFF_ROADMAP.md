@@ -33,6 +33,7 @@ This file is the continuation map for future Codex sessions working from NovaAda
   - Test coverage updated in `tests/test_service.py`, `tests/test_server.py`, `tests/test_mcp.py`, `tests/test_api_client.py`
 - Live contract test added: `tests/test_novaprime_contract_e2e.py` (spins real NovaPrime API and verifies NovaAdapt `/novaprime/*` proxy surface).
 - CI job added for live contract coverage: `.github/workflows/ci.yml` job `novaprime-live-contract`.
+- CI live-contract checkout is now fork-safe: NovaPrime checkout is attempted with `continue-on-error`, and test runs in skip mode when unavailable.
 - Latest verification run: `PYTHONPATH=core:shared python3 -m unittest discover -s tests` → `293 tests OK`.
 
 ## 2) Hard Invariants
@@ -49,7 +50,7 @@ This file is the continuation map for future Codex sessions working from NovaAda
 
 1. Keep NovaPrime route parity in sync when NovaPrime adds/churns API routes (fail-open behavior required).
 2. Track and fix noisy ResourceWarnings in test suite (unclosed HTTPError/sqlite handles) to reduce CI noise.
-3. Add fallback logic for private-fork CI where `maddwiz/NovaPrime` checkout may require token/permissions.
+3. Add richer assertion coverage in `tests/test_novaprime_contract_e2e.py` for negative/error routes (invalid inputs, not-found sessions).
 
 ### P1
 
