@@ -41,6 +41,13 @@ class _NovaPrimeHandler(BaseHTTPRequestHandler):
         if path == "/api/v1/mesh/marketplace/listings":
             self._send(200, {"ok": True, "listings": [{"listing_id": "l1", "title": "Capsule"}]})
             return
+        if path == "/api/v1/mesh/aetherion/state":
+            refresh = (parse_qs(parsed.query).get("refresh") or ["1"])[0]
+            if str(refresh) == "0":
+                self._send(200, {"ok": True, "snapshot": {"civilization": {"threat_level": "yellow"}}})
+            else:
+                self._send(200, {"ok": True, "civilization": {"threat_level": "yellow"}})
+            return
         if path == "/api/v1/identity/profile":
             adapt_id = (parse_qs(parsed.query).get("adapt_id") or [""])[0]
             if adapt_id == "missing":
@@ -51,6 +58,18 @@ class _NovaPrimeHandler(BaseHTTPRequestHandler):
         if path == "/api/v1/identity/presence":
             adapt_id = (parse_qs(parsed.query).get("adapt_id") or [""])[0]
             self._send(200, {"ok": True, "presence": {"adapt_id": adapt_id, "realm": "aetherion", "activity": "idle"}})
+            return
+        if path == "/api/v1/sib/imprinting/session":
+            session_id = (parse_qs(parsed.query).get("session_id") or [""])[0]
+            if not session_id:
+                self._send(400, {"ok": False, "error": "session_id required"})
+                return
+            self._send(200, {"ok": True, "session": {"session_id": session_id, "status": "awaiting_acceptance"}})
+            return
+        if path == "/api/v1/narrative/bond/history":
+            adapt_id = (parse_qs(parsed.query).get("adapt_id") or [""])[0]
+            player_id = (parse_qs(parsed.query).get("player_id") or [""])[0]
+            self._send(200, {"ok": True, "adapt_id": adapt_id, "player_id": player_id, "event_count": 3})
             return
         self._send(404, {"ok": False, "error": "not found"})
 
@@ -161,6 +180,21 @@ class _NovaPrimeHandler(BaseHTTPRequestHandler):
         if path == "/api/v1/sib/resonance/bond":
             self._send(200, {"ok": True, "adapt_id": body.get("adapt_id") or "adapt-x"})
             return
+        if path == "/api/v1/sib/imprinting/start":
+            self._send(200, {"ok": True, "session": {"session_id": "imprint-test-1", "status": "awaiting_acceptance"}})
+            return
+        if path == "/api/v1/sib/imprinting/resolve":
+            self._send(200, {"ok": True, "adapt_id": body.get("adapt_id") or "adapt-z"})
+            return
+        if path == "/api/v1/sib/phase/evaluate":
+            self._send(200, {"ok": True, "triggered": True, "event": {"type": "echo"}})
+            return
+        if path == "/api/v1/sib/void/create":
+            self._send(200, {"ok": True, "state": {"state": "pre_form", "coherence": 0.4}, "utterance": "echo_before_name"})
+            return
+        if path == "/api/v1/sib/void/tick":
+            self._send(200, {"ok": True, "state": {"state": "pre_form", "coherence": 0.6}, "utterance": "i_am_becoming"})
+            return
         self._send(404, {"ok": False, "error": "not found"})
 
     def _send(self, status: int, payload):
@@ -198,7 +232,15 @@ class NovaPrimeClientTests(unittest.TestCase):
         self.assertEqual(client.mesh_balance("node-1"), 0.0)
         self.assertEqual(client.mesh_reputation("node-1"), 0.0)
         self.assertEqual(client.mesh_peers(), [])
+        self.assertFalse(client.mesh_aetherion_state()["ok"])
         self.assertFalse(client.identity_verify("adapt-1", "player-1"))
+        self.assertFalse(client.imprinting_start("player-1")["ok"])
+        self.assertFalse(client.imprinting_session("sess-1")["ok"])
+        self.assertFalse(client.imprinting_resolve("sess-1", accepted=True)["ok"])
+        self.assertFalse(client.phase_evaluate({"player_id": "p1"})["ok"])
+        self.assertFalse(client.void_create("player-1")["ok"])
+        self.assertFalse(client.void_tick({"state": "pre_form"})["ok"])
+        self.assertFalse(client.narrative_bond_history("adapt-1", "player-1")["ok"])
 
     def test_build_backend_disabled(self):
         with _patched_env("NOVAADAPT_NOVAPRIME_BACKEND", "off"):
@@ -275,6 +317,30 @@ class NovaPrimeClientTests(unittest.TestCase):
 
             resonance = client.resonance_score({"class": "sentinel"})
             self.assertEqual(resonance["chosen_element"], "light")
+
+            imprint_start = client.imprinting_start("player-1", {"class": "sentinel"})
+            self.assertTrue(imprint_start["ok"])
+            self.assertEqual(imprint_start["session"]["status"], "awaiting_acceptance")
+            imprint_get = client.imprinting_session("imprint-test-1")
+            self.assertTrue(imprint_get["ok"])
+            imprint_resolve = client.imprinting_resolve("imprint-test-1", accepted=True)
+            self.assertTrue(imprint_resolve["ok"])
+            phase = client.phase_evaluate({"player_id": "player-1", "emotional_intensity": 0.9})
+            self.assertTrue(phase["ok"])
+            self.assertTrue(phase["triggered"])
+            void_create = client.void_create("player-1", player_profile={"class": "chronomancer"})
+            self.assertTrue(void_create["ok"])
+            void_tick = client.void_tick(void_create["state"], stimulus={"attention": 0.8}, tick=2)
+            self.assertTrue(void_tick["ok"])
+            bond_history = client.narrative_bond_history("adapt-1", "player-1")
+            self.assertTrue(bond_history["ok"])
+            self.assertEqual(int(bond_history["event_count"]), 3)
+            aetherion_live = client.mesh_aetherion_state(refresh=True)
+            self.assertTrue(aetherion_live["ok"])
+            self.assertIn("civilization", aetherion_live)
+            aetherion_cached = client.mesh_aetherion_state(refresh=False)
+            self.assertTrue(aetherion_cached["ok"])
+            self.assertIn("snapshot", aetherion_cached)
         finally:
             server.shutdown()
             server.server_close()

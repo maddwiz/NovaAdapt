@@ -17,6 +17,12 @@ This file is the continuation map for future Codex sessions working from NovaAda
 - Multi-channel adapter/connector surface is present (including iMessage).
 - XREAL/X1 integration path is present (`xreal-intent` CLI + connector/bridge support).
 - Gateway components are present (`agent_gateway/*`) with queue/worker/delivery/scheduler modules.
+- NovaPrime now exposes additional SIB/Aetherion routes:
+  - `/api/v1/sib/imprinting/start|session|resolve`
+  - `/api/v1/sib/phase/evaluate`
+  - `/api/v1/sib/void/create|tick`
+  - `/api/v1/mesh/aetherion/state`
+  - `/api/v1/narrative/bond/history`
 
 ## 2) Hard Invariants
 
@@ -30,13 +36,8 @@ This file is the continuation map for future Codex sessions working from NovaAda
 
 ### P0
 
-1. Wire NovaPrime’s new SIB modules/endpoints once available:
-   - imprinting lifecycle
-   - phase event operations
-   - void-state session operations
-   - Aetherion world snapshot query
-   - bond history query
-2. Add client SDK methods + server routes for above (feature-flagged).
+1. Add `NovaPrimeClient` methods for newly available SIB/Aetherion routes.
+2. Add service/API route wiring for these methods (feature-flagged, fail-open).
 3. Add integration tests with NovaPrime optional/disabled mode and enabled mode.
 
 ### P1

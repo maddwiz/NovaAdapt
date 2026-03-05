@@ -90,6 +90,10 @@ class NoopNovaPrimeClient:
         _ = (listing_id, buyer)
         return self._disabled()
 
+    def mesh_aetherion_state(self, refresh: bool = True) -> dict[str, Any]:
+        _ = refresh
+        return self._disabled()
+
     def identity_bond(
         self,
         adapt_id: str,
@@ -135,6 +139,66 @@ class NoopNovaPrimeClient:
         adapt_id: str = "",
     ) -> dict[str, Any]:
         _ = (player_id, player_profile, adapt_id)
+        return self._disabled()
+
+    def imprinting_start(
+        self,
+        player_id: str,
+        player_profile: dict[str, Any] | None = None,
+        *,
+        ttl_sec: float = 1800.0,
+    ) -> dict[str, Any]:
+        _ = (player_id, player_profile, ttl_sec)
+        return self._disabled()
+
+    def imprinting_session(self, session_id: str) -> dict[str, Any]:
+        _ = session_id
+        return self._disabled()
+
+    def imprinting_resolve(
+        self,
+        session_id: str,
+        *,
+        accepted: bool,
+        adapt_id: str = "",
+    ) -> dict[str, Any]:
+        _ = (session_id, accepted, adapt_id)
+        return self._disabled()
+
+    def phase_evaluate(
+        self,
+        player_state: dict[str, Any],
+        *,
+        narrative_state: dict[str, Any] | None = None,
+        environment_state: dict[str, Any] | None = None,
+        adapt_id: str = "",
+        auto_presence_update: bool = False,
+    ) -> dict[str, Any]:
+        _ = (player_state, narrative_state, environment_state, adapt_id, auto_presence_update)
+        return self._disabled()
+
+    def void_create(
+        self,
+        player_id: str,
+        *,
+        player_profile: dict[str, Any] | None = None,
+        seed: str = "",
+    ) -> dict[str, Any]:
+        _ = (player_id, player_profile, seed)
+        return self._disabled()
+
+    def void_tick(
+        self,
+        state: dict[str, Any],
+        *,
+        stimulus: dict[str, Any] | None = None,
+        tick: int = 1,
+    ) -> dict[str, Any]:
+        _ = (state, stimulus, tick)
+        return self._disabled()
+
+    def narrative_bond_history(self, adapt_id: str, player_id: str, top_k: int = 120) -> dict[str, Any]:
+        _ = (adapt_id, player_id, top_k)
         return self._disabled()
 
 
@@ -331,6 +395,9 @@ class NovaPrimeClient:
             },
         )
 
+    def mesh_aetherion_state(self, refresh: bool = True) -> dict[str, Any]:
+        return self._get("/api/v1/mesh/aetherion/state", {"refresh": "1" if bool(refresh) else "0"})
+
     # ------------------------------------------------------------------
     # Identity channel
     # ------------------------------------------------------------------
@@ -422,6 +489,110 @@ class NovaPrimeClient:
                 "player_id": str(player_id or ""),
                 "player_profile": payload,
                 "adapt_id": str(adapt_id or ""),
+            },
+        )
+
+    def imprinting_start(
+        self,
+        player_id: str,
+        player_profile: dict[str, Any] | None = None,
+        *,
+        ttl_sec: float = 1800.0,
+    ) -> dict[str, Any]:
+        payload = player_profile if isinstance(player_profile, dict) else {}
+        return self._post(
+            "/api/v1/sib/imprinting/start",
+            {
+                "player_id": str(player_id or ""),
+                "player_profile": payload,
+                "ttl_sec": float(ttl_sec),
+            },
+        )
+
+    def imprinting_session(self, session_id: str) -> dict[str, Any]:
+        return self._get("/api/v1/sib/imprinting/session", {"session_id": str(session_id or "")})
+
+    def imprinting_resolve(
+        self,
+        session_id: str,
+        *,
+        accepted: bool,
+        adapt_id: str = "",
+    ) -> dict[str, Any]:
+        return self._post(
+            "/api/v1/sib/imprinting/resolve",
+            {
+                "session_id": str(session_id or ""),
+                "accepted": bool(accepted),
+                "adapt_id": str(adapt_id or ""),
+            },
+        )
+
+    def phase_evaluate(
+        self,
+        player_state: dict[str, Any],
+        *,
+        narrative_state: dict[str, Any] | None = None,
+        environment_state: dict[str, Any] | None = None,
+        adapt_id: str = "",
+        auto_presence_update: bool = False,
+    ) -> dict[str, Any]:
+        pstate = player_state if isinstance(player_state, dict) else {}
+        nstate = narrative_state if isinstance(narrative_state, dict) else {}
+        estate = environment_state if isinstance(environment_state, dict) else {}
+        return self._post(
+            "/api/v1/sib/phase/evaluate",
+            {
+                "player_state": pstate,
+                "narrative_state": nstate,
+                "environment_state": estate,
+                "adapt_id": str(adapt_id or ""),
+                "auto_presence_update": bool(auto_presence_update),
+            },
+        )
+
+    def void_create(
+        self,
+        player_id: str,
+        *,
+        player_profile: dict[str, Any] | None = None,
+        seed: str = "",
+    ) -> dict[str, Any]:
+        profile = player_profile if isinstance(player_profile, dict) else {}
+        return self._post(
+            "/api/v1/sib/void/create",
+            {
+                "player_id": str(player_id or ""),
+                "player_profile": profile,
+                "seed": str(seed or ""),
+            },
+        )
+
+    def void_tick(
+        self,
+        state: dict[str, Any],
+        *,
+        stimulus: dict[str, Any] | None = None,
+        tick: int = 1,
+    ) -> dict[str, Any]:
+        base_state = state if isinstance(state, dict) else {}
+        stim = stimulus if isinstance(stimulus, dict) else {}
+        return self._post(
+            "/api/v1/sib/void/tick",
+            {
+                "state": base_state,
+                "stimulus": stim,
+                "tick": int(tick),
+            },
+        )
+
+    def narrative_bond_history(self, adapt_id: str, player_id: str, top_k: int = 120) -> dict[str, Any]:
+        return self._get(
+            "/api/v1/narrative/bond/history",
+            {
+                "adapt_id": str(adapt_id or ""),
+                "player_id": str(player_id or ""),
+                "top_k": str(max(1, int(top_k))),
             },
         )
 
