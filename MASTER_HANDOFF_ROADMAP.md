@@ -84,7 +84,27 @@ This file is the continuation map for future Codex sessions working from NovaAda
     - `WorkflowStore` (SQLite WAL), `WorkflowCheckpointStore`, `WorkflowEngine`, `workflows_enabled()`
     - flags: `NOVAADAPT_ENABLE_WORKFLOWS=1` or `NOVAADAPT_ENABLE_WORKFLOWS_<CONTEXT>=1`
   - coverage added in `tests/test_canvas.py` and `tests/test_workflows.py`
-- Latest verification run: `PYTHONPATH=core:shared python3 -m unittest discover -s tests` → `330 tests OK`.
+- Optional surface wiring is now in place for canvas/workflows (default-off):
+  - Service methods in `core/novaadapt_core/service.py`
+  - HTTP routes:
+    - `GET /canvas/status`
+    - `GET /canvas/frames`
+    - `POST /canvas/render`
+    - `GET /workflows/status`
+    - `GET /workflows/list`
+    - `GET /workflows/item`
+    - `POST /workflows/start`
+    - `POST /workflows/advance`
+    - `POST /workflows/resume`
+  - CLI commands:
+    - `canvas-status`, `canvas-render`, `canvas-frames`
+    - `workflows-status`, `workflows-start`, `workflows-advance`, `workflows-resume`, `workflows-get`, `workflows-list`
+  - MCP tools:
+    - `novaadapt_canvas_status`, `novaadapt_canvas_render`, `novaadapt_canvas_frames`
+    - `novaadapt_workflows_status`, `novaadapt_workflows_start`, `novaadapt_workflows_advance`
+    - `novaadapt_workflows_resume`, `novaadapt_workflows_get`, `novaadapt_workflows_list`
+  - OpenAPI includes all new canvas/workflow routes.
+- Latest verification run: `PYTHONPATH=core:shared python3 -m unittest discover -s tests` → `340 tests OK`.
 
 ## 2) Hard Invariants
 
@@ -102,7 +122,7 @@ This file is the continuation map for future Codex sessions working from NovaAda
 
 ### P1
 
-2. Add optional API/CLI/MCP surface for canvas/workflows behind existing flags (default-off behavior must remain unchanged).
+2. Add shared SDK parity in `shared/novaadapt_shared/api_client.py` for new `/canvas/*` and `/workflows/*` routes.
 
 ## 4) Continuation Checklist
 

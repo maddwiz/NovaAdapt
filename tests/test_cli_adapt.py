@@ -243,6 +243,76 @@ class AdaptCLITests(unittest.TestCase):
             context="cli",
         )
 
+    def test_canvas_and_workflow_commands(self):
+        service = mock.Mock()
+        service.canvas_status.return_value = {"ok": True, "enabled": False}
+        service.canvas_render.return_value = {"ok": True, "session_id": "sess-1"}
+        service.canvas_frames.return_value = {"ok": True, "count": 1, "frames": [{"frame_id": "frame-1"}]}
+        service.workflows_status.return_value = {"ok": True, "enabled": False}
+        service.workflows_start.return_value = {"ok": True, "workflow_id": "wf-1"}
+        service.workflows_advance.return_value = {"ok": True, "workflow_id": "wf-1", "status": "running"}
+        service.workflows_resume.return_value = {"ok": True, "workflow_id": "wf-1", "status": "running"}
+        service.workflows_get.return_value = {"ok": True, "workflow_id": "wf-1", "status": "running"}
+        service.workflows_list.return_value = {"ok": True, "count": 1, "workflows": [{"workflow_id": "wf-1"}]}
+        with mock.patch("novaadapt_core.cli.NovaAdaptService", return_value=service):
+            canvas_status_payload = self._run_cli("canvas-status")
+            canvas_render_payload = self._run_cli(
+                "canvas-render",
+                "--title",
+                "Aetherion board",
+                "--session-id",
+                "sess-1",
+                "--sections",
+                '[{"heading":"Trade","body":"stable"}]',
+                "--metadata",
+                '{"realm":"aetherion"}',
+            )
+            canvas_frames_payload = self._run_cli("canvas-frames", "--session-id", "sess-1", "--limit", "5")
+            workflows_status_payload = self._run_cli("workflows-status")
+            workflows_start_payload = self._run_cli(
+                "workflows-start",
+                "--objective",
+                "Patrol route",
+                "--steps",
+                '[{"name":"scan"}]',
+                "--workflow-id",
+                "wf-1",
+            )
+            workflows_advance_payload = self._run_cli(
+                "workflows-advance",
+                "--workflow-id",
+                "wf-1",
+                "--result",
+                '{"ok":true}',
+            )
+            workflows_resume_payload = self._run_cli("workflows-resume", "--workflow-id", "wf-1")
+            workflows_get_payload = self._run_cli("workflows-get", "--workflow-id", "wf-1")
+            workflows_list_payload = self._run_cli("workflows-list", "--limit", "10")
+        self.assertTrue(canvas_status_payload["ok"])
+        self.assertTrue(canvas_render_payload["ok"])
+        self.assertTrue(canvas_frames_payload["ok"])
+        self.assertTrue(workflows_status_payload["ok"])
+        self.assertEqual(workflows_start_payload["workflow_id"], "wf-1")
+        self.assertTrue(workflows_advance_payload["ok"])
+        self.assertTrue(workflows_resume_payload["ok"])
+        self.assertTrue(workflows_get_payload["ok"])
+        self.assertTrue(workflows_list_payload["ok"])
+        service.canvas_render.assert_called_once_with(
+            "Aetherion board",
+            session_id="sess-1",
+            sections=[{"heading": "Trade", "body": "stable"}],
+            footer="",
+            metadata={"realm": "aetherion"},
+            context="cli",
+        )
+        service.workflows_start.assert_called_once_with(
+            "Patrol route",
+            steps=[{"name": "scan"}],
+            metadata={},
+            workflow_id="wf-1",
+            context="cli",
+        )
+
     def test_run_rejects_invalid_mesh_json(self):
         service = mock.Mock()
         with mock.patch("novaadapt_core.cli.NovaAdaptService", return_value=service):

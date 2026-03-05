@@ -758,6 +758,85 @@ def build_openapi_spec() -> dict:
                     "responses": {"200": {"description": "Synthesis result"}},
                 }
             },
+            "/canvas/status": {
+                "get": {
+                    "summary": "Get optional canvas feature status",
+                    "parameters": [
+                        {
+                            "name": "context",
+                            "in": "query",
+                            "required": False,
+                            "schema": {"type": "string", "enum": ["api", "cli", "mcp"]},
+                        }
+                    ],
+                    "responses": {"200": {"description": "Canvas feature status"}},
+                }
+            },
+            "/canvas/frames": {
+                "get": {
+                    "summary": "List rendered canvas frames for a session",
+                    "parameters": [
+                        {"name": "session_id", "in": "query", "required": True, "schema": {"type": "string"}},
+                        {"name": "limit", "in": "query", "required": False, "schema": {"type": "integer"}},
+                        {"name": "context", "in": "query", "required": False, "schema": {"type": "string"}},
+                    ],
+                    "responses": {"200": {"description": "Canvas frames"}},
+                }
+            },
+            "/canvas/render": {
+                "post": {
+                    "summary": "Render and persist a canvas frame",
+                    "responses": {"200": {"description": "Rendered canvas frame"}},
+                }
+            },
+            "/workflows/status": {
+                "get": {
+                    "summary": "Get optional workflows feature status",
+                    "parameters": [
+                        {"name": "context", "in": "query", "required": False, "schema": {"type": "string"}}
+                    ],
+                    "responses": {"200": {"description": "Workflows feature status"}},
+                }
+            },
+            "/workflows/list": {
+                "get": {
+                    "summary": "List workflow records",
+                    "parameters": [
+                        {"name": "limit", "in": "query", "required": False, "schema": {"type": "integer"}},
+                        {"name": "status", "in": "query", "required": False, "schema": {"type": "string"}},
+                        {"name": "context", "in": "query", "required": False, "schema": {"type": "string"}},
+                    ],
+                    "responses": {"200": {"description": "Workflow list"}},
+                }
+            },
+            "/workflows/item": {
+                "get": {
+                    "summary": "Get workflow by workflow_id",
+                    "parameters": [
+                        {"name": "workflow_id", "in": "query", "required": True, "schema": {"type": "string"}},
+                        {"name": "context", "in": "query", "required": False, "schema": {"type": "string"}},
+                    ],
+                    "responses": {"200": {"description": "Workflow record"}},
+                }
+            },
+            "/workflows/start": {
+                "post": {
+                    "summary": "Start a workflow",
+                    "responses": {"200": {"description": "Started workflow"}},
+                }
+            },
+            "/workflows/advance": {
+                "post": {
+                    "summary": "Advance workflow by one step",
+                    "responses": {"200": {"description": "Advanced workflow"}},
+                }
+            },
+            "/workflows/resume": {
+                "post": {
+                    "summary": "Resume a paused/failed workflow",
+                    "responses": {"200": {"description": "Resumed workflow"}},
+                }
+            },
             "/memory/recall": {
                 "post": {
                     "summary": "Recall memory entries relevant to a query",

@@ -573,6 +573,144 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Surface context for flag evaluation",
     )
 
+    canvas_status_cmd = sub.add_parser(
+        "canvas-status",
+        help="Show optional canvas feature status",
+    )
+    canvas_status_cmd.add_argument("--config", type=Path, default=_default_config_path())
+    canvas_status_cmd.add_argument(
+        "--context",
+        default="cli",
+        choices=["cli", "api", "mcp"],
+        help="Surface context for flag evaluation",
+    )
+
+    canvas_render_cmd = sub.add_parser(
+        "canvas-render",
+        help="Render and persist a canvas frame",
+    )
+    canvas_render_cmd.add_argument("--config", type=Path, default=_default_config_path())
+    canvas_render_cmd.add_argument("--title", required=True)
+    canvas_render_cmd.add_argument("--session-id", default="default")
+    canvas_render_cmd.add_argument(
+        "--sections",
+        default="",
+        help='Optional JSON array of sections, e.g. [{"heading":"H","body":"..."}]',
+    )
+    canvas_render_cmd.add_argument("--footer", default="")
+    canvas_render_cmd.add_argument(
+        "--metadata",
+        default="",
+        help="Optional JSON object metadata",
+    )
+    canvas_render_cmd.add_argument(
+        "--context",
+        default="cli",
+        choices=["cli", "api", "mcp"],
+        help="Surface context for flag evaluation",
+    )
+
+    canvas_frames_cmd = sub.add_parser(
+        "canvas-frames",
+        help="List canvas frames for a session",
+    )
+    canvas_frames_cmd.add_argument("--config", type=Path, default=_default_config_path())
+    canvas_frames_cmd.add_argument("--session-id", required=True)
+    canvas_frames_cmd.add_argument("--limit", type=int, default=20)
+    canvas_frames_cmd.add_argument(
+        "--context",
+        default="cli",
+        choices=["cli", "api", "mcp"],
+        help="Surface context for flag evaluation",
+    )
+
+    workflows_status_cmd = sub.add_parser(
+        "workflows-status",
+        help="Show optional workflows feature status",
+    )
+    workflows_status_cmd.add_argument("--config", type=Path, default=_default_config_path())
+    workflows_status_cmd.add_argument(
+        "--context",
+        default="cli",
+        choices=["cli", "api", "mcp"],
+        help="Surface context for flag evaluation",
+    )
+
+    workflows_start_cmd = sub.add_parser(
+        "workflows-start",
+        help="Create/start a workflow",
+    )
+    workflows_start_cmd.add_argument("--config", type=Path, default=_default_config_path())
+    workflows_start_cmd.add_argument("--objective", required=True)
+    workflows_start_cmd.add_argument(
+        "--steps",
+        default="",
+        help='Optional JSON array of step objects, e.g. [{"name":"scan"}]',
+    )
+    workflows_start_cmd.add_argument("--metadata", default="", help="Optional JSON object metadata")
+    workflows_start_cmd.add_argument("--workflow-id", default="")
+    workflows_start_cmd.add_argument(
+        "--context",
+        default="cli",
+        choices=["cli", "api", "mcp"],
+        help="Surface context for flag evaluation",
+    )
+
+    workflows_advance_cmd = sub.add_parser(
+        "workflows-advance",
+        help="Advance workflow by one step",
+    )
+    workflows_advance_cmd.add_argument("--config", type=Path, default=_default_config_path())
+    workflows_advance_cmd.add_argument("--workflow-id", required=True)
+    workflows_advance_cmd.add_argument("--result", default="", help="Optional JSON object result payload")
+    workflows_advance_cmd.add_argument("--error", default="")
+    workflows_advance_cmd.add_argument(
+        "--context",
+        default="cli",
+        choices=["cli", "api", "mcp"],
+        help="Surface context for flag evaluation",
+    )
+
+    workflows_resume_cmd = sub.add_parser(
+        "workflows-resume",
+        help="Resume a workflow",
+    )
+    workflows_resume_cmd.add_argument("--config", type=Path, default=_default_config_path())
+    workflows_resume_cmd.add_argument("--workflow-id", required=True)
+    workflows_resume_cmd.add_argument(
+        "--context",
+        default="cli",
+        choices=["cli", "api", "mcp"],
+        help="Surface context for flag evaluation",
+    )
+
+    workflows_get_cmd = sub.add_parser(
+        "workflows-get",
+        help="Get workflow by id",
+    )
+    workflows_get_cmd.add_argument("--config", type=Path, default=_default_config_path())
+    workflows_get_cmd.add_argument("--workflow-id", required=True)
+    workflows_get_cmd.add_argument(
+        "--context",
+        default="cli",
+        choices=["cli", "api", "mcp"],
+        help="Surface context for flag evaluation",
+    )
+
+    workflows_list_cmd = sub.add_parser(
+        "workflows-list",
+        help="List workflows",
+    )
+    workflows_list_cmd.add_argument("--config", type=Path, default=_default_config_path())
+    workflows_list_cmd.add_argument("--limit", type=int, default=50)
+    workflows_list_cmd.add_argument("--status", default="")
+    workflows_list_cmd.add_argument(
+        "--context",
+        default="cli",
+        choices=["cli", "api", "mcp"],
+        help="Surface context for flag evaluation",
+    )
+
     directshell_check_cmd = sub.add_parser(
         "directshell-check",
         help="Probe DirectShell execution transport readiness",
@@ -1702,6 +1840,123 @@ def main() -> None:
             )
             return
 
+        if args.command == "canvas-status":
+            service = NovaAdaptService(default_config=args.config)
+            print(json.dumps(service.canvas_status(context=str(args.context or "cli")), indent=2))
+            return
+
+        if args.command == "canvas-render":
+            service = NovaAdaptService(default_config=args.config)
+            sections = _parse_optional_json_array(args.sections, "--sections")
+            metadata = _parse_optional_json_object(args.metadata, "--metadata")
+            print(
+                json.dumps(
+                    service.canvas_render(
+                        str(args.title or ""),
+                        session_id=str(args.session_id or "default"),
+                        sections=[dict(item) for item in sections if isinstance(item, dict)] if sections else [],
+                        footer=str(args.footer or ""),
+                        metadata=metadata if isinstance(metadata, dict) else {},
+                        context=str(args.context or "cli"),
+                    ),
+                    indent=2,
+                )
+            )
+            return
+
+        if args.command == "canvas-frames":
+            service = NovaAdaptService(default_config=args.config)
+            print(
+                json.dumps(
+                    service.canvas_frames(
+                        str(args.session_id or ""),
+                        limit=max(1, int(args.limit)),
+                        context=str(args.context or "cli"),
+                    ),
+                    indent=2,
+                )
+            )
+            return
+
+        if args.command == "workflows-status":
+            service = NovaAdaptService(default_config=args.config)
+            print(json.dumps(service.workflows_status(context=str(args.context or "cli")), indent=2))
+            return
+
+        if args.command == "workflows-start":
+            service = NovaAdaptService(default_config=args.config)
+            steps = _parse_optional_json_array(args.steps, "--steps")
+            metadata = _parse_optional_json_object(args.metadata, "--metadata")
+            print(
+                json.dumps(
+                    service.workflows_start(
+                        str(args.objective or ""),
+                        steps=[dict(item) for item in steps if isinstance(item, dict)] if steps else [],
+                        metadata=metadata if isinstance(metadata, dict) else {},
+                        workflow_id=str(args.workflow_id or ""),
+                        context=str(args.context or "cli"),
+                    ),
+                    indent=2,
+                )
+            )
+            return
+
+        if args.command == "workflows-advance":
+            service = NovaAdaptService(default_config=args.config)
+            result = _parse_optional_json_object(args.result, "--result")
+            print(
+                json.dumps(
+                    service.workflows_advance(
+                        str(args.workflow_id or ""),
+                        result=result if isinstance(result, dict) else {},
+                        error=str(args.error or ""),
+                        context=str(args.context or "cli"),
+                    ),
+                    indent=2,
+                )
+            )
+            return
+
+        if args.command == "workflows-resume":
+            service = NovaAdaptService(default_config=args.config)
+            print(
+                json.dumps(
+                    service.workflows_resume(
+                        str(args.workflow_id or ""),
+                        context=str(args.context or "cli"),
+                    ),
+                    indent=2,
+                )
+            )
+            return
+
+        if args.command == "workflows-get":
+            service = NovaAdaptService(default_config=args.config)
+            print(
+                json.dumps(
+                    service.workflows_get(
+                        str(args.workflow_id or ""),
+                        context=str(args.context or "cli"),
+                    ),
+                    indent=2,
+                )
+            )
+            return
+
+        if args.command == "workflows-list":
+            service = NovaAdaptService(default_config=args.config)
+            print(
+                json.dumps(
+                    service.workflows_list(
+                        limit=max(1, int(args.limit)),
+                        status=str(args.status or ""),
+                        context=str(args.context or "cli"),
+                    ),
+                    indent=2,
+                )
+            )
+            return
+
         if args.command == "directshell-check":
             client = DirectShellClient(
                 transport=args.transport,
@@ -2045,6 +2300,16 @@ def _parse_optional_json_object(raw: object, arg_name: str) -> dict[str, object]
     parsed = json.loads(text)
     if not isinstance(parsed, dict):
         raise ValueError(f"{arg_name} must be a JSON object")
+    return parsed
+
+
+def _parse_optional_json_array(raw: object, arg_name: str) -> list[object] | None:
+    text = str(raw or "").strip()
+    if not text:
+        return None
+    parsed = json.loads(text)
+    if not isinstance(parsed, list):
+        raise ValueError(f"{arg_name} must be a JSON array")
     return parsed
 
 

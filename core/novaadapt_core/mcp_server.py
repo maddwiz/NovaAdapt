@@ -742,6 +742,116 @@ class NovaAdaptMCPServer:
                 },
             ),
             MCPTool(
+                name="novaadapt_canvas_status",
+                description="Get canvas feature status for MCP context",
+                input_schema={
+                    "type": "object",
+                    "properties": {"context": {"type": "string"}},
+                },
+            ),
+            MCPTool(
+                name="novaadapt_canvas_render",
+                description="Render and store a canvas frame",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "title": {"type": "string"},
+                        "session_id": {"type": "string"},
+                        "sections": {"type": "array", "items": {"type": "object"}},
+                        "footer": {"type": "string"},
+                        "metadata": {"type": "object"},
+                        "context": {"type": "string"},
+                    },
+                    "required": ["title"],
+                },
+            ),
+            MCPTool(
+                name="novaadapt_canvas_frames",
+                description="List canvas frames for a session",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "session_id": {"type": "string"},
+                        "limit": {"type": "integer"},
+                        "context": {"type": "string"},
+                    },
+                    "required": ["session_id"],
+                },
+            ),
+            MCPTool(
+                name="novaadapt_workflows_status",
+                description="Get workflows feature status for MCP context",
+                input_schema={
+                    "type": "object",
+                    "properties": {"context": {"type": "string"}},
+                },
+            ),
+            MCPTool(
+                name="novaadapt_workflows_start",
+                description="Start a workflow",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "objective": {"type": "string"},
+                        "steps": {"type": "array", "items": {"type": "object"}},
+                        "metadata": {"type": "object"},
+                        "workflow_id": {"type": "string"},
+                        "context": {"type": "string"},
+                    },
+                    "required": ["objective"],
+                },
+            ),
+            MCPTool(
+                name="novaadapt_workflows_advance",
+                description="Advance workflow one step",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "workflow_id": {"type": "string"},
+                        "result": {"type": "object"},
+                        "error": {"type": "string"},
+                        "context": {"type": "string"},
+                    },
+                    "required": ["workflow_id"],
+                },
+            ),
+            MCPTool(
+                name="novaadapt_workflows_resume",
+                description="Resume a workflow",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "workflow_id": {"type": "string"},
+                        "context": {"type": "string"},
+                    },
+                    "required": ["workflow_id"],
+                },
+            ),
+            MCPTool(
+                name="novaadapt_workflows_get",
+                description="Get workflow by id",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "workflow_id": {"type": "string"},
+                        "context": {"type": "string"},
+                    },
+                    "required": ["workflow_id"],
+                },
+            ),
+            MCPTool(
+                name="novaadapt_workflows_list",
+                description="List workflows",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "limit": {"type": "integer"},
+                        "status": {"type": "string"},
+                        "context": {"type": "string"},
+                    },
+                },
+            ),
+            MCPTool(
                 name="novaadapt_memory_recall",
                 description="Recall relevant long-term memory entries",
                 input_schema={
@@ -1423,6 +1533,80 @@ class NovaAdaptMCPServer:
                 voice=str(arguments.get("voice", "")).strip(),
                 metadata=metadata if isinstance(metadata, dict) else None,
                 backend=str(arguments.get("backend", "")).strip(),
+                context=str(arguments.get("context", "mcp")).strip() or "mcp",
+            )
+        if tool_name == "novaadapt_canvas_status":
+            context = str(arguments.get("context", "mcp")).strip() or "mcp"
+            return self.service.canvas_status(context=context)
+        if tool_name == "novaadapt_canvas_render":
+            title = str(arguments.get("title", "")).strip()
+            if not title:
+                raise ValueError("'title' is required")
+            sections = arguments.get("sections")
+            metadata = arguments.get("metadata")
+            return self.service.canvas_render(
+                title,
+                session_id=str(arguments.get("session_id", "default")).strip() or "default",
+                sections=[dict(item) for item in sections if isinstance(item, dict)] if isinstance(sections, list) else [],
+                footer=str(arguments.get("footer", "")).strip(),
+                metadata=metadata if isinstance(metadata, dict) else None,
+                context=str(arguments.get("context", "mcp")).strip() or "mcp",
+            )
+        if tool_name == "novaadapt_canvas_frames":
+            session_id = str(arguments.get("session_id", "")).strip()
+            if not session_id:
+                raise ValueError("'session_id' is required")
+            return self.service.canvas_frames(
+                session_id,
+                limit=max(1, min(200, int(arguments.get("limit", 20)))),
+                context=str(arguments.get("context", "mcp")).strip() or "mcp",
+            )
+        if tool_name == "novaadapt_workflows_status":
+            return self.service.workflows_status(context=str(arguments.get("context", "mcp")).strip() or "mcp")
+        if tool_name == "novaadapt_workflows_start":
+            objective = str(arguments.get("objective", "")).strip()
+            if not objective:
+                raise ValueError("'objective' is required")
+            steps = arguments.get("steps")
+            metadata = arguments.get("metadata")
+            return self.service.workflows_start(
+                objective,
+                steps=[dict(item) for item in steps if isinstance(item, dict)] if isinstance(steps, list) else None,
+                metadata=metadata if isinstance(metadata, dict) else None,
+                workflow_id=str(arguments.get("workflow_id", "")).strip(),
+                context=str(arguments.get("context", "mcp")).strip() or "mcp",
+            )
+        if tool_name == "novaadapt_workflows_advance":
+            workflow_id = str(arguments.get("workflow_id", "")).strip()
+            if not workflow_id:
+                raise ValueError("'workflow_id' is required")
+            result = arguments.get("result")
+            return self.service.workflows_advance(
+                workflow_id,
+                result=result if isinstance(result, dict) else None,
+                error=str(arguments.get("error", "")).strip(),
+                context=str(arguments.get("context", "mcp")).strip() or "mcp",
+            )
+        if tool_name == "novaadapt_workflows_resume":
+            workflow_id = str(arguments.get("workflow_id", "")).strip()
+            if not workflow_id:
+                raise ValueError("'workflow_id' is required")
+            return self.service.workflows_resume(
+                workflow_id,
+                context=str(arguments.get("context", "mcp")).strip() or "mcp",
+            )
+        if tool_name == "novaadapt_workflows_get":
+            workflow_id = str(arguments.get("workflow_id", "")).strip()
+            if not workflow_id:
+                raise ValueError("'workflow_id' is required")
+            return self.service.workflows_get(
+                workflow_id,
+                context=str(arguments.get("context", "mcp")).strip() or "mcp",
+            )
+        if tool_name == "novaadapt_workflows_list":
+            return self.service.workflows_list(
+                limit=max(1, min(500, int(arguments.get("limit", 50)))),
+                status=str(arguments.get("status", "")).strip(),
                 context=str(arguments.get("context", "mcp")).strip() or "mcp",
             )
         if tool_name == "novaadapt_memory_recall":

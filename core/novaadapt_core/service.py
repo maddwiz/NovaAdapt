@@ -15,6 +15,7 @@ from .audit_store import AuditStore
 from .agent import NovaAdaptAgent
 from .browser_executor import BrowserExecutor
 from .channels import ChannelRegistry, build_channel_registry
+from .canvas import CanvasRenderResult, CanvasRenderer, CanvasSessionStore, canvas_enabled
 from .directshell import DirectShellClient
 from .flags import coerce_bool
 from .memory import MemoryBackend, build_memory_backend
@@ -29,6 +30,7 @@ from .plan_store import PlanStore
 from .policy import ActionPolicy
 from .plugins import PluginRegistry, SIBBridge, build_plugin_registry
 from .voice import build_stt_backend, build_tts_backend
+from .workflows import WorkflowCheckpointStore, WorkflowEngine, WorkflowRecord, WorkflowStore, workflows_enabled
 
 
 class NovaAdaptService:
@@ -69,6 +71,11 @@ class NovaAdaptService:
         self._audit_store: AuditStore | None = None
         self._browser_executor: BrowserExecutor | None = None
         self._sib_bridge: SIBBridge | None = None
+        self._canvas_renderer: CanvasRenderer | None = None
+        self._canvas_sessions: CanvasSessionStore | None = None
+        self._workflow_store: WorkflowStore | None = None
+        self._workflow_checkpoints: WorkflowCheckpointStore | None = None
+        self._workflow_engine: WorkflowEngine | None = None
 
     def close(self) -> None:
         browser = self._browser_executor
@@ -1035,6 +1042,215 @@ class NovaAdaptService:
             "output_path": str(result.output_path or ""),
             "error": result.error,
             "metadata": dict(result.metadata or {}),
+        }
+
+    def _canvas_enabled(self, *, context: str = "api") -> bool:
+        return canvas_enabled(context=str(context or "api"))
+
+    def canvas_status(self, *, context: str = "api") -> dict[str, Any]:
+        normalized_context = str(context or "api").strip().lower() or "api"
+        enabled = self._canvas_enabled(context=normalized_context)
+        out: dict[str, Any] = {
+            "ok": True,
+            "enabled": enabled,
+            "context": normalized_context,
+            "flag_hint": {
+                "global": "NOVAADAPT_ENABLE_CANVAS=1",
+                "context": f"NOVAADAPT_ENABLE_CANVAS_{normalized_context.upper()}=1",
+            },
+        }
+        if enabled and self._canvas_sessions is not None:
+            out["loaded_sessions"] = len(getattr(self._canvas_sessions, "_sessions", {}))
+        return out
+
+    def canvas_render(
+        self,
+        title: str,
+        *,
+        session_id: str = "default",
+        sections: list[dict[str, Any]] | None = None,
+        footer: str = "",
+        metadata: dict[str, Any] | None = None,
+        context: str = "api",
+    ) -> dict[str, Any]:
+        normalized_context = str(context or "api").strip().lower() or "api"
+        if not self._canvas_enabled(context=normalized_context):
+            raise ValueError(
+                "canvas feature disabled for this surface. "
+                f"Set NOVAADAPT_ENABLE_CANVAS=1 or NOVAADAPT_ENABLE_CANVAS_{normalized_context.upper()}=1"
+            )
+        normalized_title = str(title or "").strip()
+        if not normalized_title:
+            raise ValueError("'title' is required")
+        normalized_session = str(session_id or "default").strip() or "default"
+        frame = self._canvas_renderer_obj().render(
+            normalized_title,
+            sections=list(sections or []),
+            footer=str(footer or ""),
+            metadata=metadata if isinstance(metadata, dict) else {},
+        )
+        self._canvas_store().push(normalized_session, frame)
+        out = self._canvas_frame_payload(frame)
+        out.update({"ok": True, "session_id": normalized_session, "context": normalized_context})
+        return out
+
+    def canvas_frames(
+        self,
+        session_id: str,
+        *,
+        limit: int = 20,
+        context: str = "api",
+    ) -> dict[str, Any]:
+        normalized_context = str(context or "api").strip().lower() or "api"
+        if not self._canvas_enabled(context=normalized_context):
+            raise ValueError(
+                "canvas feature disabled for this surface. "
+                f"Set NOVAADAPT_ENABLE_CANVAS=1 or NOVAADAPT_ENABLE_CANVAS_{normalized_context.upper()}=1"
+            )
+        normalized_session = str(session_id or "").strip()
+        if not normalized_session:
+            raise ValueError("'session_id' is required")
+        frames = self._canvas_store().list(normalized_session, limit=max(1, min(200, int(limit))))
+        return {
+            "ok": True,
+            "context": normalized_context,
+            "session_id": normalized_session,
+            "count": len(frames),
+            "frames": [self._canvas_frame_payload(item) for item in frames],
+        }
+
+    def _workflows_enabled(self, *, context: str = "api") -> bool:
+        return workflows_enabled(context=str(context or "api"))
+
+    def workflows_status(self, *, context: str = "api") -> dict[str, Any]:
+        normalized_context = str(context or "api").strip().lower() or "api"
+        enabled = self._workflows_enabled(context=normalized_context)
+        out: dict[str, Any] = {
+            "ok": True,
+            "enabled": enabled,
+            "context": normalized_context,
+            "flag_hint": {
+                "global": "NOVAADAPT_ENABLE_WORKFLOWS=1",
+                "context": f"NOVAADAPT_ENABLE_WORKFLOWS_{normalized_context.upper()}=1",
+            },
+            "db_path": str(self._workflow_db_path()),
+        }
+        if enabled and self._workflow_store is not None:
+            out["count"] = len(self._workflow_store.list(limit=500))
+        return out
+
+    def workflows_start(
+        self,
+        objective: str,
+        *,
+        steps: list[dict[str, Any]] | None = None,
+        metadata: dict[str, Any] | None = None,
+        workflow_id: str = "",
+        context: str = "api",
+    ) -> dict[str, Any]:
+        normalized_context = str(context or "api").strip().lower() or "api"
+        if not self._workflows_enabled(context=normalized_context):
+            raise ValueError(
+                "workflow feature disabled for this surface. "
+                f"Set NOVAADAPT_ENABLE_WORKFLOWS=1 or NOVAADAPT_ENABLE_WORKFLOWS_{normalized_context.upper()}=1"
+            )
+        ctx = dict(metadata or {})
+        ctx.setdefault("surface", normalized_context)
+        record = self._workflow_engine_obj().start(
+            str(objective or ""),
+            steps=[dict(step) for step in (steps or [])],
+            context=ctx,
+            workflow_id=str(workflow_id or ""),
+        )
+        out = self._workflow_payload(record)
+        out["ok"] = True
+        return out
+
+    def workflows_advance(
+        self,
+        workflow_id: str,
+        *,
+        result: dict[str, Any] | None = None,
+        error: str = "",
+        context: str = "api",
+    ) -> dict[str, Any]:
+        normalized_context = str(context or "api").strip().lower() or "api"
+        if not self._workflows_enabled(context=normalized_context):
+            raise ValueError(
+                "workflow feature disabled for this surface. "
+                f"Set NOVAADAPT_ENABLE_WORKFLOWS=1 or NOVAADAPT_ENABLE_WORKFLOWS_{normalized_context.upper()}=1"
+            )
+        normalized_id = str(workflow_id or "").strip()
+        if not normalized_id:
+            raise ValueError("'workflow_id' is required")
+        record = self._workflow_engine_obj().advance(normalized_id, result=result, error=str(error or ""))
+        if record is None:
+            return {"ok": False, "error": "workflow not found", "workflow_id": normalized_id}
+        out = self._workflow_payload(record)
+        out["ok"] = True
+        return out
+
+    def workflows_resume(
+        self,
+        workflow_id: str,
+        *,
+        context: str = "api",
+    ) -> dict[str, Any]:
+        normalized_context = str(context or "api").strip().lower() or "api"
+        if not self._workflows_enabled(context=normalized_context):
+            raise ValueError(
+                "workflow feature disabled for this surface. "
+                f"Set NOVAADAPT_ENABLE_WORKFLOWS=1 or NOVAADAPT_ENABLE_WORKFLOWS_{normalized_context.upper()}=1"
+            )
+        normalized_id = str(workflow_id or "").strip()
+        if not normalized_id:
+            raise ValueError("'workflow_id' is required")
+        record = self._workflow_engine_obj().resume(normalized_id)
+        if record is None:
+            return {"ok": False, "error": "workflow not found", "workflow_id": normalized_id}
+        out = self._workflow_payload(record)
+        out["ok"] = True
+        return out
+
+    def workflows_get(self, workflow_id: str, *, context: str = "api") -> dict[str, Any]:
+        normalized_context = str(context or "api").strip().lower() or "api"
+        if not self._workflows_enabled(context=normalized_context):
+            raise ValueError(
+                "workflow feature disabled for this surface. "
+                f"Set NOVAADAPT_ENABLE_WORKFLOWS=1 or NOVAADAPT_ENABLE_WORKFLOWS_{normalized_context.upper()}=1"
+            )
+        normalized_id = str(workflow_id or "").strip()
+        if not normalized_id:
+            raise ValueError("'workflow_id' is required")
+        record = self._workflow_store_obj().get(normalized_id)
+        if record is None:
+            return {"ok": False, "error": "workflow not found", "workflow_id": normalized_id}
+        out = self._workflow_payload(record)
+        out["ok"] = True
+        return out
+
+    def workflows_list(
+        self,
+        *,
+        limit: int = 50,
+        status: str = "",
+        context: str = "api",
+    ) -> dict[str, Any]:
+        normalized_context = str(context or "api").strip().lower() or "api"
+        if not self._workflows_enabled(context=normalized_context):
+            raise ValueError(
+                "workflow feature disabled for this surface. "
+                f"Set NOVAADAPT_ENABLE_WORKFLOWS=1 or NOVAADAPT_ENABLE_WORKFLOWS_{normalized_context.upper()}=1"
+            )
+        rows = self._workflow_store_obj().list(
+            limit=max(1, min(500, int(limit))),
+            status=str(status or "").strip(),
+        )
+        return {
+            "ok": True,
+            "count": len(rows),
+            "workflows": [self._workflow_payload(item) for item in rows],
+            "context": normalized_context,
         }
 
     def channels(self) -> list[dict[str, Any]]:
@@ -2323,6 +2539,66 @@ class NovaAdaptService:
             )
         except Exception:
             return
+
+    def _canvas_renderer_obj(self) -> CanvasRenderer:
+        if self._canvas_renderer is None:
+            self._canvas_renderer = CanvasRenderer()
+        return self._canvas_renderer
+
+    def _canvas_store(self) -> CanvasSessionStore:
+        if self._canvas_sessions is None:
+            self._canvas_sessions = CanvasSessionStore()
+        return self._canvas_sessions
+
+    def _workflow_db_path(self) -> Path:
+        if isinstance(self.db_path, Path):
+            return self.db_path.with_name("novaadapt_workflows.sqlite3")
+        base_dir = self.default_config.parent if isinstance(self.default_config, Path) else Path(".")
+        return base_dir / ".novaadapt_workflows.sqlite3"
+
+    def _workflow_store_obj(self) -> WorkflowStore:
+        if self._workflow_store is None:
+            db_path = self._workflow_db_path()
+            db_path.parent.mkdir(parents=True, exist_ok=True)
+            self._workflow_store = WorkflowStore(str(db_path))
+        return self._workflow_store
+
+    def _workflow_checkpoints_obj(self) -> WorkflowCheckpointStore:
+        if self._workflow_checkpoints is None:
+            db_path = self._workflow_db_path()
+            db_path.parent.mkdir(parents=True, exist_ok=True)
+            self._workflow_checkpoints = WorkflowCheckpointStore(str(db_path))
+        return self._workflow_checkpoints
+
+    def _workflow_engine_obj(self) -> WorkflowEngine:
+        if self._workflow_engine is None:
+            self._workflow_engine = WorkflowEngine(
+                self._workflow_store_obj(),
+                checkpoints=self._workflow_checkpoints_obj(),
+            )
+        return self._workflow_engine
+
+    @staticmethod
+    def _canvas_frame_payload(frame: CanvasRenderResult) -> dict[str, Any]:
+        return {
+            "frame_id": str(frame.frame_id),
+            "html": str(frame.html),
+            "created_at": str(frame.created_at),
+            "metadata": dict(frame.metadata),
+        }
+
+    @staticmethod
+    def _workflow_payload(record: WorkflowRecord) -> dict[str, Any]:
+        return {
+            "workflow_id": str(record.workflow_id),
+            "status": str(record.status),
+            "objective": str(record.objective),
+            "steps": [dict(item) for item in record.steps],
+            "context": dict(record.context),
+            "created_at": str(record.created_at),
+            "updated_at": str(record.updated_at),
+            "last_error": str(record.last_error),
+        }
 
     def _plans(self) -> PlanStore:
         if self._plan_store is None:

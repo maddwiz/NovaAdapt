@@ -40,6 +40,11 @@ def build_get_private_routes(handler: Any) -> dict[str, Any]:
         "/adapt/bond": handler._get_adapt_bond,
         "/adapt/persona": handler._get_adapt_persona,
         "/voice/status": handler._get_voice_status,
+        "/canvas/status": handler._get_canvas_status,
+        "/canvas/frames": handler._get_canvas_frames,
+        "/workflows/status": handler._get_workflows_status,
+        "/workflows/list": handler._get_workflows_list,
+        "/workflows/item": handler._get_workflow_item,
         "/terminal/sessions": handler._get_terminal_sessions,
         "/browser/status": handler._get_browser_status,
         "/browser/pages": handler._get_browser_pages,
@@ -133,6 +138,10 @@ def build_post_exact_routes(handler: Any) -> dict[str, Any]:
         "/adapt/bond/verify": lambda body: handler._post_adapt_bond_verify("/adapt/bond/verify", body),
         "/voice/transcribe": lambda body: handler._post_voice_transcribe("/voice/transcribe", body),
         "/voice/synthesize": lambda body: handler._post_voice_synthesize("/voice/synthesize", body),
+        "/canvas/render": lambda body: handler._post_canvas_render("/canvas/render", body),
+        "/workflows/start": lambda body: handler._post_workflows_start("/workflows/start", body),
+        "/workflows/advance": lambda body: handler._post_workflows_advance("/workflows/advance", body),
+        "/workflows/resume": lambda body: handler._post_workflows_resume("/workflows/resume", body),
         "/memory/recall": lambda body: handler._post_memory_recall("/memory/recall", body),
         "/memory/ingest": lambda body: handler._post_memory_ingest("/memory/ingest", body),
         "/terminal/sessions": lambda body: handler._post_terminal_start("/terminal/sessions", body),
@@ -206,6 +215,8 @@ def is_idempotent_route(path: str) -> bool:
     if path in {"/adapt/bond/verify"}:
         return True
     if path in {"/voice/transcribe", "/voice/synthesize"}:
+        return True
+    if path in {"/canvas/render", "/workflows/start", "/workflows/advance", "/workflows/resume"}:
         return True
     if path in {"/memory/ingest"}:
         return True

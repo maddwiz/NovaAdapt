@@ -370,6 +370,83 @@ class _StubService:
             "context": context,
         }
 
+    def canvas_status(self, *, context: str = "mcp"):
+        return {"ok": True, "enabled": True, "context": context}
+
+    def canvas_render(
+        self,
+        title: str,
+        *,
+        session_id: str = "default",
+        sections: list[dict] | None = None,
+        footer: str = "",
+        metadata: dict | None = None,
+        context: str = "mcp",
+    ):
+        return {
+            "ok": True,
+            "title": title,
+            "session_id": session_id,
+            "sections": sections or [],
+            "footer": footer,
+            "metadata": metadata or {},
+            "context": context,
+        }
+
+    def canvas_frames(self, session_id: str, *, limit: int = 20, context: str = "mcp"):
+        return {
+            "ok": True,
+            "session_id": session_id,
+            "count": 1,
+            "context": context,
+            "frames": [{"frame_id": "frame-1"}],
+        }
+
+    def workflows_status(self, *, context: str = "mcp"):
+        return {"ok": True, "enabled": True, "context": context}
+
+    def workflows_start(
+        self,
+        objective: str,
+        *,
+        steps: list[dict] | None = None,
+        metadata: dict | None = None,
+        workflow_id: str = "",
+        context: str = "mcp",
+    ):
+        return {
+            "ok": True,
+            "workflow_id": workflow_id or "wf-1",
+            "objective": objective,
+            "steps": steps or [],
+            "metadata": metadata or {},
+            "context": context,
+        }
+
+    def workflows_advance(
+        self,
+        workflow_id: str,
+        *,
+        result: dict | None = None,
+        error: str = "",
+        context: str = "mcp",
+    ):
+        return {"ok": True, "workflow_id": workflow_id, "result": result or {}, "error": error, "context": context}
+
+    def workflows_resume(self, workflow_id: str, *, context: str = "mcp"):
+        return {"ok": True, "workflow_id": workflow_id, "context": context}
+
+    def workflows_get(self, workflow_id: str, *, context: str = "mcp"):
+        return {"ok": True, "workflow_id": workflow_id, "status": "running", "context": context}
+
+    def workflows_list(self, *, limit: int = 50, status: str = "", context: str = "mcp"):
+        return {
+            "ok": True,
+            "count": 1,
+            "context": context,
+            "workflows": [{"workflow_id": "wf-1", "status": status or "running", "limit": limit}],
+        }
+
     def memory_recall(self, query, top_k=10):
         return {"query": query, "top_k": top_k, "count": 1, "memories": [{"content": "remembered"}]}
 
@@ -460,6 +537,15 @@ class MCPServerTests(unittest.TestCase):
         self.assertIn("novaadapt_voice_status", names)
         self.assertIn("novaadapt_voice_transcribe", names)
         self.assertIn("novaadapt_voice_synthesize", names)
+        self.assertIn("novaadapt_canvas_status", names)
+        self.assertIn("novaadapt_canvas_render", names)
+        self.assertIn("novaadapt_canvas_frames", names)
+        self.assertIn("novaadapt_workflows_status", names)
+        self.assertIn("novaadapt_workflows_start", names)
+        self.assertIn("novaadapt_workflows_advance", names)
+        self.assertIn("novaadapt_workflows_resume", names)
+        self.assertIn("novaadapt_workflows_get", names)
+        self.assertIn("novaadapt_workflows_list", names)
         self.assertIn("novaadapt_memory_recall", names)
         self.assertIn("novaadapt_memory_ingest", names)
         self.assertIn("novaadapt_browser_status", names)
@@ -1298,6 +1384,123 @@ class MCPServerTests(unittest.TestCase):
         self.assertTrue(voice_synthesize_payload["ok"])
         self.assertEqual(voice_synthesize_payload["output_path"], "/tmp/out.mp3")
         self.assertEqual(voice_synthesize_payload["context"], "mcp")
+
+        canvas_status_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 920,
+                "method": "tools/call",
+                "params": {"name": "novaadapt_canvas_status", "arguments": {}},
+            }
+        )
+        canvas_status_payload = canvas_status_resp["result"]["content"][0]["json"]
+        self.assertTrue(canvas_status_payload["ok"])
+
+        canvas_render_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 921,
+                "method": "tools/call",
+                "params": {
+                    "name": "novaadapt_canvas_render",
+                    "arguments": {
+                        "title": "Aetherion Snapshot",
+                        "session_id": "sess-1",
+                        "sections": [{"heading": "Trade", "body": "stable"}],
+                    },
+                },
+            }
+        )
+        canvas_render_payload = canvas_render_resp["result"]["content"][0]["json"]
+        self.assertTrue(canvas_render_payload["ok"])
+        self.assertEqual(canvas_render_payload["session_id"], "sess-1")
+
+        canvas_frames_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 922,
+                "method": "tools/call",
+                "params": {
+                    "name": "novaadapt_canvas_frames",
+                    "arguments": {"session_id": "sess-1", "limit": 5},
+                },
+            }
+        )
+        canvas_frames_payload = canvas_frames_resp["result"]["content"][0]["json"]
+        self.assertTrue(canvas_frames_payload["ok"])
+        self.assertEqual(canvas_frames_payload["session_id"], "sess-1")
+
+        workflows_status_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 923,
+                "method": "tools/call",
+                "params": {"name": "novaadapt_workflows_status", "arguments": {}},
+            }
+        )
+        workflows_status_payload = workflows_status_resp["result"]["content"][0]["json"]
+        self.assertTrue(workflows_status_payload["ok"])
+
+        workflows_start_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 924,
+                "method": "tools/call",
+                "params": {
+                    "name": "novaadapt_workflows_start",
+                    "arguments": {"objective": "Patrol route", "workflow_id": "wf-1"},
+                },
+            }
+        )
+        workflows_start_payload = workflows_start_resp["result"]["content"][0]["json"]
+        self.assertEqual(workflows_start_payload["workflow_id"], "wf-1")
+
+        workflows_advance_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 925,
+                "method": "tools/call",
+                "params": {
+                    "name": "novaadapt_workflows_advance",
+                    "arguments": {"workflow_id": "wf-1", "result": {"ok": True}},
+                },
+            }
+        )
+        workflows_advance_payload = workflows_advance_resp["result"]["content"][0]["json"]
+        self.assertTrue(workflows_advance_payload["ok"])
+
+        workflows_resume_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 926,
+                "method": "tools/call",
+                "params": {"name": "novaadapt_workflows_resume", "arguments": {"workflow_id": "wf-1"}},
+            }
+        )
+        workflows_resume_payload = workflows_resume_resp["result"]["content"][0]["json"]
+        self.assertTrue(workflows_resume_payload["ok"])
+
+        workflows_get_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 927,
+                "method": "tools/call",
+                "params": {"name": "novaadapt_workflows_get", "arguments": {"workflow_id": "wf-1"}},
+            }
+        )
+        workflows_get_payload = workflows_get_resp["result"]["content"][0]["json"]
+        self.assertEqual(workflows_get_payload["workflow_id"], "wf-1")
+
+        workflows_list_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 928,
+                "method": "tools/call",
+                "params": {"name": "novaadapt_workflows_list", "arguments": {"limit": 10}},
+            }
+        )
+        workflows_list_payload = workflows_list_resp["result"]["content"][0]["json"]
+        self.assertTrue(workflows_list_payload["ok"])
 
         memory_recall_resp = server.handle_request(
             {

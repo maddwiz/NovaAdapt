@@ -32,6 +32,8 @@ from . import server_memory_routes as memory_routes
 from . import server_novaprime_routes as novaprime_routes
 from . import server_sib_routes as sib_routes
 from . import server_voice_routes as voice_routes
+from . import server_canvas_routes as canvas_routes
+from . import server_workflow_routes as workflow_routes
 from . import server_plugin_routes as plugin_routes
 from . import server_idempotency_utils as idempotency_utils
 from . import server_stream_utils as stream_utils
@@ -305,6 +307,21 @@ def _build_handler(
         def _get_voice_status(self, query: dict[str, list[str]]) -> int:
             return voice_routes.get_voice_status(self, service, _single, query)
 
+        def _get_canvas_status(self, query: dict[str, list[str]]) -> int:
+            return canvas_routes.get_canvas_status(self, service, _single, query)
+
+        def _get_canvas_frames(self, query: dict[str, list[str]]) -> int:
+            return canvas_routes.get_canvas_frames(self, service, _single, query)
+
+        def _get_workflows_status(self, query: dict[str, list[str]]) -> int:
+            return workflow_routes.get_workflows_status(self, service, _single, query)
+
+        def _get_workflows_list(self, query: dict[str, list[str]]) -> int:
+            return workflow_routes.get_workflows_list(self, service, _single, query)
+
+        def _get_workflow_item(self, query: dict[str, list[str]]) -> int:
+            return workflow_routes.get_workflow_item(self, service, _single, query)
+
         def _get_browser_status(self, _query: dict[str, list[str]]) -> int:
             return terminal_browser_routes.get_browser_status(self, service)
 
@@ -486,6 +503,18 @@ def _build_handler(
 
         def _post_voice_synthesize(self, _path: str, payload: dict[str, object]) -> int:
             return voice_routes.post_voice_synthesize(self, service, payload)
+
+        def _post_canvas_render(self, _path: str, payload: dict[str, object]) -> int:
+            return canvas_routes.post_canvas_render(self, service, payload)
+
+        def _post_workflows_start(self, _path: str, payload: dict[str, object]) -> int:
+            return workflow_routes.post_workflows_start(self, service, payload)
+
+        def _post_workflows_advance(self, _path: str, payload: dict[str, object]) -> int:
+            return workflow_routes.post_workflows_advance(self, service, payload)
+
+        def _post_workflows_resume(self, _path: str, payload: dict[str, object]) -> int:
+            return workflow_routes.post_workflows_resume(self, service, payload)
 
         def _post_memory_ingest(self, path: str, payload: dict[str, object]) -> int:
             return memory_routes.post_memory_ingest(self, service, path, payload)
