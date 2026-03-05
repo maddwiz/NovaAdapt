@@ -1472,6 +1472,11 @@ class NovaAdaptAPIClient:
                         exc.close()
                     except Exception:
                         pass
+                    try:
+                        exc.fp = None
+                        exc.file = None
+                    except Exception:
+                        pass
                 last_error = APIClientError(f"HTTP {exc.code}: {body_text}")
                 if not self._should_retry_http(exc.code) or attempt >= attempts - 1:
                     raise last_error from exc
@@ -1483,6 +1488,11 @@ class NovaAdaptAPIClient:
                         close_fn()
                     except Exception:
                         pass
+                try:
+                    setattr(reason, "fp", None)
+                    setattr(reason, "file", None)
+                except Exception:
+                    pass
                 last_error = APIClientError(f"Request failed: {exc.reason}")
                 if attempt >= attempts - 1:
                     raise last_error from exc

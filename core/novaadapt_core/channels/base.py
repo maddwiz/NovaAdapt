@@ -50,7 +50,19 @@ def http_json_request(
             raw = resp.read().decode("utf-8")
             code = int(resp.status)
     except error.HTTPError as exc:
-        raw = exc.read().decode("utf-8", errors="ignore")
+        raw = ""
+        try:
+            raw = exc.read().decode("utf-8", errors="ignore")
+        finally:
+            try:
+                exc.close()
+            except Exception:
+                pass
+            try:
+                exc.fp = None
+                exc.file = None
+            except Exception:
+                pass
         try:
             parsed = json.loads(raw) if raw else {}
         except Exception:
@@ -62,6 +74,18 @@ def http_json_request(
             "response": parsed if isinstance(parsed, dict) else {"data": parsed},
         }
     except error.URLError as exc:
+        reason = exc.reason
+        close_fn = getattr(reason, "close", None)
+        if callable(close_fn):
+            try:
+                close_fn()
+            except Exception:
+                pass
+        try:
+            setattr(reason, "fp", None)
+            setattr(reason, "file", None)
+        except Exception:
+            pass
         return {"ok": False, "error": f"transport: {exc.reason}"}
     except Exception as exc:  # pragma: no cover - defensive boundary
         return {"ok": False, "error": str(exc)}

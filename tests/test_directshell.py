@@ -307,6 +307,10 @@ class DirectShellClientTests(unittest.TestCase):
                 return b'{"error":"upstream failed"}'
 
             def close(self):
+                try:
+                    super().close()
+                except Exception:
+                    pass
                 self.closed = True
 
         err = _ClosingHTTPError()

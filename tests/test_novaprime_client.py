@@ -362,6 +362,10 @@ class NovaPrimeClientTests(unittest.TestCase):
                 return b'{"error":"unavailable"}'
 
             def close(self):
+                try:
+                    super().close()
+                except Exception:
+                    pass
                 self.closed = True
 
         err = _ClosingHTTPError()

@@ -124,6 +124,20 @@ class _TerminalSession:
             except subprocess.TimeoutExpired:
                 proc.kill()
                 proc.wait(timeout=3.0)
+
+        try:
+            self._reader.join(timeout=1.0)
+        except Exception:
+            pass
+
+        for stream in (proc.stdin, proc.stdout, proc.stderr):
+            if stream is None:
+                continue
+            try:
+                stream.close()
+            except Exception:
+                continue
+
         return {
             "id": self.session_id,
             "closed": True,
@@ -135,16 +149,20 @@ class _TerminalSession:
         stream = self._process.stdout
         if stream is None:
             return
-        while True:
-            chunk = stream.read(4096)
-            if not chunk:
-                break
-            text = chunk.decode("utf-8", errors="replace")
-            if not text:
-                continue
-            with self._lock:
-                self._append_chunk_locked(text, stream="stdout")
-        self._process.poll()
+        try:
+            while True:
+                chunk = stream.read(4096)
+                if not chunk:
+                    break
+                text = chunk.decode("utf-8", errors="replace")
+                if not text:
+                    continue
+                with self._lock:
+                    self._append_chunk_locked(text, stream="stdout")
+        except Exception:
+            return
+        finally:
+            self._process.poll()
 
     def _append_chunk_locked(self, text: str, *, stream: str) -> None:
         self._chunks.append(

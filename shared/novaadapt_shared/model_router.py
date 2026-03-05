@@ -314,9 +314,33 @@ class ModelRouter:
             with request.urlopen(req, timeout=self.timeout_seconds) as response:
                 raw = json.loads(response.read().decode("utf-8"))
         except error.HTTPError as exc:
-            body = exc.read().decode("utf-8", errors="ignore")
+            body = ""
+            try:
+                body = exc.read().decode("utf-8", errors="ignore")
+            finally:
+                try:
+                    exc.close()
+                except Exception:
+                    pass
+                try:
+                    exc.fp = None
+                    exc.file = None
+                except Exception:
+                    pass
             raise RuntimeError(f"Model endpoint '{endpoint.name}' failed ({exc.code}): {body}") from exc
         except error.URLError as exc:
+            reason = exc.reason
+            close_fn = getattr(reason, "close", None)
+            if callable(close_fn):
+                try:
+                    close_fn()
+                except Exception:
+                    pass
+            try:
+                setattr(reason, "fp", None)
+                setattr(reason, "file", None)
+            except Exception:
+                pass
             raise RuntimeError(f"Model endpoint '{endpoint.name}' unreachable: {exc.reason}") from exc
 
         choices = raw.get("choices") or []

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import uuid
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -47,8 +48,16 @@ class GatewayJobQueue:
         conn.row_factory = sqlite3.Row
         return conn
 
+    @contextmanager
+    def _connection(self):
+        conn = self._connect()
+        try:
+            yield conn
+        finally:
+            conn.close()
+
     def _init_db(self) -> None:
-        with self._connect() as conn:
+        with self._connection() as conn:
             conn.execute("PRAGMA journal_mode=WAL")
             conn.execute(
                 """
@@ -97,7 +106,7 @@ class GatewayJobQueue:
     ) -> str:
         resolved_job_id = str(job_id or uuid.uuid4())
         now = _to_ts(_utc_now())
-        with self._connect() as conn:
+        with self._connection() as conn:
             conn.execute(
                 """
                 INSERT INTO jobs (
@@ -122,7 +131,7 @@ class GatewayJobQueue:
     def claim_next(self, *, now: datetime | None = None) -> JobRecord | None:
         current = now or _utc_now()
         now_ts = _to_ts(current)
-        with self._connect() as conn:
+        with self._connection() as conn:
             row = conn.execute(
                 """
                 SELECT * FROM jobs
@@ -152,7 +161,7 @@ class GatewayJobQueue:
 
     def mark_done(self, job_id: str) -> None:
         now = _to_ts(_utc_now())
-        with self._connect() as conn:
+        with self._connection() as conn:
             conn.execute(
                 "UPDATE jobs SET status='done', updated_at=? WHERE job_id=?",
                 (now, str(job_id)),
@@ -168,7 +177,7 @@ class GatewayJobQueue:
     ) -> str:
         now = _utc_now()
         now_ts = _to_ts(now)
-        with self._connect() as conn:
+        with self._connection() as conn:
             row = conn.execute(
                 "SELECT attempts FROM jobs WHERE job_id=? LIMIT 1",
                 (str(job_id),),
@@ -194,7 +203,7 @@ class GatewayJobQueue:
             return status
 
     def get_job(self, job_id: str) -> JobRecord | None:
-        with self._connect() as conn:
+        with self._connection() as conn:
             row = conn.execute("SELECT * FROM jobs WHERE job_id=? LIMIT 1", (str(job_id),)).fetchone()
             if row is None:
                 return None
@@ -210,7 +219,7 @@ class GatewayJobQueue:
         status: str = "pending",
         last_error: str = "",
     ) -> None:
-        with self._connect() as conn:
+        with self._connection() as conn:
             conn.execute(
                 """
                 INSERT INTO deliveries (job_id, connector, address, token, status, last_error, last_attempt_at)
@@ -230,7 +239,7 @@ class GatewayJobQueue:
             conn.commit()
 
     def list_pending_deliveries(self, job_id: str) -> list[dict[str, Any]]:
-        with self._connect() as conn:
+        with self._connection() as conn:
             rows = conn.execute(
                 """
                 SELECT * FROM deliveries
@@ -243,7 +252,7 @@ class GatewayJobQueue:
 
     def mark_delivery(self, *, job_id: str, connector: str, address: str, status: str, last_error: str = "") -> None:
         now_ts = _to_ts(_utc_now())
-        with self._connect() as conn:
+        with self._connection() as conn:
             conn.execute(
                 """
                 UPDATE deliveries

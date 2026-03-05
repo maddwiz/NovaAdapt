@@ -37,7 +37,13 @@ This file is the continuation map for future Codex sessions working from NovaAda
 - Live contract test now includes negative-path assertions (missing IDs, not-found sessions, invalid payload shapes).
 - Live contract test is now version-tolerant against `NovaPrime@main`: it capability-probes advanced SIB/Aetherion routes and `skipTest`s when those optional routes are absent (prevents false-red CI on cross-repo drift).
 - Live contract coverage now includes auth-required mode: with `NOVAPRIME_API_TOKEN` enabled upstream, NovaAdapt route calls correctly fail without bearer token and succeed when `NOVAADAPT_NOVAPRIME_TOKEN` is configured.
-- Latest verification run: `PYTHONPATH=core:shared python3 -m unittest discover -s tests` → `293 tests OK`.
+- ResourceWarning cleanup completed:
+  - fixed unclosed SQLite connections in gateway queue (`agent_gateway/job_queue.py`) by using explicit close context manager
+  - fixed HTTPError/URLError cleanup in shared/core HTTP clients (detach `fp/file` after close)
+  - fixed terminal subprocess stream cleanup (`terminal.py`) by joining reader and explicitly closing stdin/stdout/stderr
+  - aligned HTTPError test stubs to call `super().close()` in relevant tests
+- Warning-audit verification: `PYTHONWARNINGS=default PYTHONPATH=core:shared python3 -m unittest discover -s tests -p 'test_*.py' -v` → `294 tests OK`, `0 ResourceWarning` lines.
+- Latest verification run: `PYTHONPATH=core:shared python3 -m unittest discover -s tests` → `294 tests OK`.
 
 ## 2) Hard Invariants
 
@@ -52,13 +58,12 @@ This file is the continuation map for future Codex sessions working from NovaAda
 ### P0
 
 1. Keep NovaPrime route parity in sync when NovaPrime adds/churns API routes (fail-open behavior required).
-2. Track and fix noisy ResourceWarnings in test suite (unclosed HTTPError/sqlite handles) to reduce CI noise.
 
 ### P1
 
-4. Add `decompose` strategy to shared model router while preserving `single`/`vote`.
-5. Add voice module (STT/TTS/wake) as optional backend adapters.
-6. Add canvas/workflow modules behind flags, keeping default footprint minimal.
+2. Add `decompose` strategy to shared model router while preserving `single`/`vote`.
+3. Add voice module (STT/TTS/wake) as optional backend adapters.
+4. Add canvas/workflow modules behind flags, keeping default footprint minimal.
 
 ## 4) Continuation Checklist
 

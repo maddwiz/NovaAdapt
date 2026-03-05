@@ -265,6 +265,11 @@ class DirectShellClient:
                     exc.close()
                 except Exception:
                     pass
+                try:
+                    exc.fp = None
+                    exc.file = None
+                except Exception:
+                    pass
             return ExecutionResult(action=action, status="failed", output=f"HTTP {exc.code}: {body}")
         except error.URLError as exc:
             reason = exc.reason
@@ -274,6 +279,11 @@ class DirectShellClient:
                     close_fn()
                 except Exception:
                     pass
+            try:
+                setattr(reason, "fp", None)
+                setattr(reason, "file", None)
+            except Exception:
+                pass
             return ExecutionResult(action=action, status="failed", output=f"HTTP transport error: {exc.reason}")
 
         try:
@@ -317,6 +327,11 @@ class DirectShellClient:
                     exc.close()
                 except Exception:
                     pass
+                try:
+                    exc.fp = None
+                    exc.file = None
+                except Exception:
+                    pass
             return {
                 "ok": False,
                 "transport": "http",
@@ -333,6 +348,11 @@ class DirectShellClient:
                     close_fn()
                 except Exception:
                     pass
+            try:
+                setattr(reason, "fp", None)
+                setattr(reason, "file", None)
+            except Exception:
+                pass
             return {
                 "ok": False,
                 "transport": "http",

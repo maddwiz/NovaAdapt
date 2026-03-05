@@ -114,6 +114,10 @@ class PluginRegistryTests(unittest.TestCase):
                 return self._body[: int(amt)]
 
             def close(self):
+                try:
+                    super().close()
+                except Exception:
+                    pass
                 self.closed = True
 
         err = _ClosingHTTPError()

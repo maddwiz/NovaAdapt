@@ -1026,6 +1026,10 @@ class APIClientTests(unittest.TestCase):
                 return b'{"error":"temporary upstream"}'
 
             def close(self):
+                try:
+                    super().close()
+                except Exception:
+                    pass
                 self.closed = True
 
         err = _ClosingHTTPError()

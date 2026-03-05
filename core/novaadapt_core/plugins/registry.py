@@ -126,6 +126,11 @@ class PluginRegistry:
                     exc.close()
                 except Exception:
                     pass
+                try:
+                    exc.fp = None
+                    exc.file = None
+                except Exception:
+                    pass
             truncated = len(raw) > self.max_response_bytes
             if truncated:
                 raw = raw[: self.max_response_bytes]
@@ -151,6 +156,11 @@ class PluginRegistry:
                     close_fn()
                 except Exception:
                     pass
+            try:
+                setattr(reason, "fp", None)
+                setattr(reason, "file", None)
+            except Exception:
+                pass
             return {
                 "ok": False,
                 "plugin": cfg.name,

@@ -142,6 +142,10 @@ class MemoryBackendTests(unittest.TestCase):
                 return b'{"error":"unavailable"}'
 
             def close(self):
+                try:
+                    super().close()
+                except Exception:
+                    pass
                 self._closed = True
 
         backend = NovaSpineHTTPMemoryBackend(base_url="http://127.0.0.1:8420", timeout_seconds=0.1)
