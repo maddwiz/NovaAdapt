@@ -104,6 +104,10 @@ This file is the continuation map for future Codex sessions working from NovaAda
     - `novaadapt_workflows_status`, `novaadapt_workflows_start`, `novaadapt_workflows_advance`
     - `novaadapt_workflows_resume`, `novaadapt_workflows_get`, `novaadapt_workflows_list`
   - OpenAPI includes all new canvas/workflow routes.
+- Shared SDK parity now includes canvas/workflow routes in `shared/novaadapt_shared/api_client.py`:
+  - `canvas_status`, `canvas_render`, `canvas_frames`
+  - `workflows_status`, `workflows_start`, `workflows_advance`, `workflows_resume`, `workflows_get`, `workflows_list`
+  - covered by `tests/test_api_client.py`
 - Latest verification run: `PYTHONPATH=core:shared python3 -m unittest discover -s tests` → `340 tests OK`.
 
 ## 2) Hard Invariants
@@ -122,7 +126,7 @@ This file is the continuation map for future Codex sessions working from NovaAda
 
 ### P1
 
-2. Add shared SDK parity in `shared/novaadapt_shared/api_client.py` for new `/canvas/*` and `/workflows/*` routes.
+2. Add optional UI layer for canvas/workflow inspection in `view/` behind flags, while preserving default-off behavior.
 
 ## 4) Continuation Checklist
 

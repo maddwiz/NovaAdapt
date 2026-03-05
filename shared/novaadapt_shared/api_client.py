@@ -912,6 +912,157 @@ class NovaAdaptAPIClient:
             return payload
         raise APIClientError("Expected object payload from /voice/synthesize")
 
+    def canvas_status(self, *, context: str = "api") -> dict[str, Any]:
+        normalized = str(context or "api").strip().lower() or "api"
+        payload = self._get_json(f"/canvas/status?context={quote(normalized, safe='')}")
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /canvas/status")
+
+    def canvas_frames(
+        self,
+        session_id: str,
+        *,
+        limit: int = 20,
+        context: str = "api",
+    ) -> dict[str, Any]:
+        normalized_session = str(session_id or "").strip()
+        if not normalized_session:
+            raise ValueError("'session_id' is required")
+        normalized_context = str(context or "api").strip().lower() or "api"
+        payload = self._get_json(
+            "/canvas/frames"
+            f"?session_id={quote(normalized_session, safe='')}"
+            f"&limit={max(1, int(limit))}"
+            f"&context={quote(normalized_context, safe='')}"
+        )
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /canvas/frames")
+
+    def canvas_render(
+        self,
+        title: str,
+        *,
+        session_id: str = "default",
+        sections: list[dict[str, Any]] | None = None,
+        footer: str = "",
+        metadata: dict[str, Any] | None = None,
+        context: str = "api",
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {
+            "title": str(title or ""),
+            "session_id": str(session_id or "default"),
+            "sections": list(sections or []),
+            "footer": str(footer or ""),
+            "context": str(context or "api"),
+        }
+        if isinstance(metadata, dict):
+            body["metadata"] = metadata
+        payload = self._post_json("/canvas/render", body, idempotency_key=idempotency_key)
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /canvas/render")
+
+    def workflows_status(self, *, context: str = "api") -> dict[str, Any]:
+        normalized = str(context or "api").strip().lower() or "api"
+        payload = self._get_json(f"/workflows/status?context={quote(normalized, safe='')}")
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /workflows/status")
+
+    def workflows_list(
+        self,
+        *,
+        limit: int = 50,
+        status: str = "",
+        context: str = "api",
+    ) -> dict[str, Any]:
+        normalized_context = str(context or "api").strip().lower() or "api"
+        normalized_status = str(status or "").strip()
+        query = f"/workflows/list?limit={max(1, int(limit))}&context={quote(normalized_context, safe='')}"
+        if normalized_status:
+            query = f"{query}&status={quote(normalized_status, safe='')}"
+        payload = self._get_json(query)
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /workflows/list")
+
+    def workflows_get(self, workflow_id: str, *, context: str = "api") -> dict[str, Any]:
+        normalized_id = str(workflow_id or "").strip()
+        if not normalized_id:
+            raise ValueError("'workflow_id' is required")
+        normalized_context = str(context or "api").strip().lower() or "api"
+        payload = self._get_json(
+            "/workflows/item"
+            f"?workflow_id={quote(normalized_id, safe='')}"
+            f"&context={quote(normalized_context, safe='')}"
+        )
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /workflows/item")
+
+    def workflows_start(
+        self,
+        objective: str,
+        *,
+        steps: list[dict[str, Any]] | None = None,
+        metadata: dict[str, Any] | None = None,
+        workflow_id: str = "",
+        context: str = "api",
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {
+            "objective": str(objective or ""),
+            "steps": list(steps or []),
+            "workflow_id": str(workflow_id or ""),
+            "context": str(context or "api"),
+        }
+        if isinstance(metadata, dict):
+            body["metadata"] = metadata
+        payload = self._post_json("/workflows/start", body, idempotency_key=idempotency_key)
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /workflows/start")
+
+    def workflows_advance(
+        self,
+        workflow_id: str,
+        *,
+        result: dict[str, Any] | None = None,
+        error: str = "",
+        context: str = "api",
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {
+            "workflow_id": str(workflow_id or ""),
+            "error": str(error or ""),
+            "context": str(context or "api"),
+        }
+        if isinstance(result, dict):
+            body["result"] = result
+        payload = self._post_json("/workflows/advance", body, idempotency_key=idempotency_key)
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /workflows/advance")
+
+    def workflows_resume(
+        self,
+        workflow_id: str,
+        *,
+        context: str = "api",
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        payload = self._post_json(
+            "/workflows/resume",
+            {"workflow_id": str(workflow_id or ""), "context": str(context or "api")},
+            idempotency_key=idempotency_key,
+        )
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /workflows/resume")
+
     def memory_recall(self, query: str, top_k: int = 10) -> dict[str, Any]:
         payload = self._post_json(
             "/memory/recall",

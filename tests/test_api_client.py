@@ -180,6 +180,42 @@ class _Handler(BaseHTTPRequestHandler):
                 },
             )
             return
+        if self.path.startswith("/canvas/status?"):
+            self._send(
+                200,
+                {
+                    "ok": True,
+                    "enabled": True,
+                    "context": "api",
+                },
+            )
+            return
+        if self.path.startswith("/canvas/frames?"):
+            self._send(
+                200,
+                {
+                    "ok": True,
+                    "session_id": "sess-1",
+                    "count": 1,
+                    "frames": [{"frame_id": "frame-1"}],
+                },
+            )
+            return
+        if self.path.startswith("/workflows/status?"):
+            self._send(200, {"ok": True, "enabled": True, "context": "api"})
+            return
+        if self.path.startswith("/workflows/list?"):
+            self._send(
+                200,
+                {"ok": True, "count": 1, "workflows": [{"workflow_id": "wf-1", "status": "running"}]},
+            )
+            return
+        if self.path.startswith("/workflows/item?"):
+            self._send(
+                200,
+                {"ok": True, "workflow_id": "wf-1", "status": "running"},
+            )
+            return
         if self.path == "/browser/status":
             self._send(200, {"ok": True, "transport": "browser", "capabilities": ["navigate", "click_selector"]})
             return
@@ -358,6 +394,10 @@ class _Handler(BaseHTTPRequestHandler):
             "/adapt/bond/verify",
             "/voice/transcribe",
             "/voice/synthesize",
+            "/canvas/render",
+            "/workflows/start",
+            "/workflows/advance",
+            "/workflows/resume",
             "/memory/recall",
             "/memory/ingest",
             "/browser/action",
@@ -673,6 +713,43 @@ class _Handler(BaseHTTPRequestHandler):
                         "ok": True,
                         "backend": payload.get("backend", "static-tts"),
                         "output_path": payload.get("output_path", "/tmp/voice.mp3"),
+                    },
+                )
+            elif self.path == "/canvas/render":
+                self._send(
+                    200,
+                    {
+                        "ok": True,
+                        "session_id": payload.get("session_id", "default"),
+                        "frame_id": "frame-1",
+                        "html": "<html></html>",
+                    },
+                )
+            elif self.path == "/workflows/start":
+                self._send(
+                    200,
+                    {
+                        "ok": True,
+                        "workflow_id": payload.get("workflow_id", "wf-1") or "wf-1",
+                        "status": "queued",
+                    },
+                )
+            elif self.path == "/workflows/advance":
+                self._send(
+                    200,
+                    {
+                        "ok": True,
+                        "workflow_id": payload.get("workflow_id", "wf-1"),
+                        "status": "running",
+                    },
+                )
+            elif self.path == "/workflows/resume":
+                self._send(
+                    200,
+                    {
+                        "ok": True,
+                        "workflow_id": payload.get("workflow_id", "wf-1"),
+                        "status": "running",
                     },
                 )
             elif self.path == "/memory/recall":
@@ -1005,6 +1082,32 @@ class APIClientTests(unittest.TestCase):
                 backend="openai",
             )["ok"]
         )
+        self.assertTrue(client.canvas_status(context="api")["ok"])
+        self.assertTrue(
+            client.canvas_render(
+                "Aetherion board",
+                session_id="sess-1",
+                sections=[{"heading": "Trade", "body": "stable"}],
+            )["ok"]
+        )
+        self.assertTrue(client.canvas_frames("sess-1", limit=5)["ok"])
+        self.assertTrue(client.workflows_status(context="api")["ok"])
+        self.assertTrue(
+            client.workflows_start(
+                "Patrol route",
+                steps=[{"name": "scan"}],
+                workflow_id="wf-1",
+            )["ok"]
+        )
+        self.assertTrue(
+            client.workflows_advance(
+                "wf-1",
+                result={"ok": True},
+            )["ok"]
+        )
+        self.assertTrue(client.workflows_resume("wf-1")["ok"])
+        self.assertTrue(client.workflows_get("wf-1")["ok"])
+        self.assertTrue(client.workflows_list(limit=10)["ok"])
         recall_payload = client.memory_recall("excel formatting", top_k=3)
         self.assertEqual(recall_payload["query"], "excel formatting")
         self.assertEqual(recall_payload["count"], 1)
