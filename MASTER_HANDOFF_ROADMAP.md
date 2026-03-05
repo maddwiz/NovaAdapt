@@ -35,6 +35,7 @@ This file is the continuation map for future Codex sessions working from NovaAda
 - CI job added for live contract coverage: `.github/workflows/ci.yml` job `novaprime-live-contract`.
 - CI live-contract checkout is now fork-safe: NovaPrime checkout is attempted with `continue-on-error`, and test runs in skip mode when unavailable.
 - Live contract test now includes negative-path assertions (missing IDs, not-found sessions, invalid payload shapes).
+- Live contract test is now version-tolerant against `NovaPrime@main`: it capability-probes advanced SIB/Aetherion routes and `skipTest`s when those optional routes are absent (prevents false-red CI on cross-repo drift).
 - Latest verification run: `PYTHONPATH=core:shared python3 -m unittest discover -s tests` → `293 tests OK`.
 
 ## 2) Hard Invariants
