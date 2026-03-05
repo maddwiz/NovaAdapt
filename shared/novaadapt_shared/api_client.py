@@ -849,6 +849,69 @@ class NovaAdaptAPIClient:
             return payload
         raise APIClientError("Expected object payload from /adapt/persona")
 
+    def voice_status(self, *, context: str = "api") -> dict[str, Any]:
+        normalized = str(context or "api").strip().lower() or "api"
+        payload = self._get_json(f"/voice/status?context={quote(normalized, safe='')}")
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /voice/status")
+
+    def voice_transcribe(
+        self,
+        audio_path: str,
+        *,
+        hints: list[str] | None = None,
+        metadata: dict[str, Any] | None = None,
+        backend: str = "",
+        context: str = "api",
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {
+            "audio_path": str(audio_path or ""),
+            "hints": list(hints or []),
+            "context": str(context or "api"),
+        }
+        normalized_backend = str(backend or "").strip()
+        if normalized_backend:
+            body["backend"] = normalized_backend
+        if isinstance(metadata, dict):
+            body["metadata"] = metadata
+        payload = self._post_json("/voice/transcribe", body, idempotency_key=idempotency_key)
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /voice/transcribe")
+
+    def voice_synthesize(
+        self,
+        text: str,
+        *,
+        output_path: str = "",
+        voice: str = "",
+        metadata: dict[str, Any] | None = None,
+        backend: str = "",
+        context: str = "api",
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {
+            "text": str(text or ""),
+            "context": str(context or "api"),
+        }
+        normalized_output = str(output_path or "").strip()
+        if normalized_output:
+            body["output_path"] = normalized_output
+        normalized_voice = str(voice or "").strip()
+        if normalized_voice:
+            body["voice"] = normalized_voice
+        normalized_backend = str(backend or "").strip()
+        if normalized_backend:
+            body["backend"] = normalized_backend
+        if isinstance(metadata, dict):
+            body["metadata"] = metadata
+        payload = self._post_json("/voice/synthesize", body, idempotency_key=idempotency_key)
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /voice/synthesize")
+
     def memory_recall(self, query: str, top_k: int = 10) -> dict[str, Any]:
         payload = self._post_json(
             "/memory/recall",

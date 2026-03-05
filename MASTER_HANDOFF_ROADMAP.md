@@ -65,6 +65,11 @@ This file is the continuation map for future Codex sessions working from NovaAda
   - New route module: `core/novaadapt_core/server_voice_routes.py`
   - OpenAPI updated for voice routes
   - Flag gating: `NOVAADAPT_ENABLE_VOICE=1` or context-specific `NOVAADAPT_ENABLE_VOICE_API=1` / `NOVAADAPT_ENABLE_VOICE_CLI=1`
+- Shared SDK parity added for voice surface in `shared/novaadapt_shared/api_client.py`:
+  - `voice_status(context="api")`
+  - `voice_transcribe(audio_path, hints, metadata, backend, context)`
+  - `voice_synthesize(text, output_path, voice, metadata, backend, context)`
+  - covered by `tests/test_api_client.py`
 - Latest verification run: `PYTHONPATH=core:shared python3 -m unittest discover -s tests` → `321 tests OK`.
 
 ## 2) Hard Invariants
@@ -84,7 +89,7 @@ This file is the continuation map for future Codex sessions working from NovaAda
 ### P1
 
 2. Add canvas/workflow modules behind flags, keeping default footprint minimal.
-3. Add typed shared SDK methods for new `/voice/*` routes (`shared/novaadapt_shared/api_client.py`) and optional MCP tool exposure.
+3. Optional MCP tool exposure for new voice surface.
 
 ## 4) Continuation Checklist
 

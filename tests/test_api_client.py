@@ -169,6 +169,17 @@ class _Handler(BaseHTTPRequestHandler):
                 },
             )
             return
+        if self.path.startswith("/voice/status?"):
+            self._send(
+                200,
+                {
+                    "ok": True,
+                    "enabled": True,
+                    "context": "api",
+                    "configured": {"stt_backend": "static", "tts_backend": "static"},
+                },
+            )
+            return
         if self.path == "/browser/status":
             self._send(200, {"ok": True, "transport": "browser", "capabilities": ["navigate", "click_selector"]})
             return
@@ -345,6 +356,8 @@ class _Handler(BaseHTTPRequestHandler):
             "/sib/resonance/result",
             "/adapt/toggle",
             "/adapt/bond/verify",
+            "/voice/transcribe",
+            "/voice/synthesize",
             "/memory/recall",
             "/memory/ingest",
             "/browser/action",
@@ -641,6 +654,25 @@ class _Handler(BaseHTTPRequestHandler):
                         "player_id": payload.get("player_id"),
                         "verified": True,
                         "source": "novaprime",
+                    },
+                )
+            elif self.path == "/voice/transcribe":
+                self._send(
+                    200,
+                    {
+                        "ok": True,
+                        "backend": payload.get("backend", "static-stt"),
+                        "text": "voice transcript",
+                        "confidence": 0.88,
+                    },
+                )
+            elif self.path == "/voice/synthesize":
+                self._send(
+                    200,
+                    {
+                        "ok": True,
+                        "backend": payload.get("backend", "static-tts"),
+                        "output_path": payload.get("output_path", "/tmp/voice.mp3"),
                     },
                 )
             elif self.path == "/memory/recall":
@@ -956,6 +988,23 @@ class APIClientTests(unittest.TestCase):
         self.assertTrue(client.adapt_bond("adapt-1")["found"])
         self.assertTrue(client.adapt_bond_verify("adapt-1", "player-1")["verified"])
         self.assertTrue(client.adapt_persona("adapt-1", player_id="player-1")["bond_verified"])
+        self.assertTrue(client.voice_status(context="api")["ok"])
+        self.assertTrue(
+            client.voice_transcribe(
+                "/tmp/input.wav",
+                hints=["nav"],
+                metadata={"realm": "game_world"},
+                backend="static",
+            )["ok"]
+        )
+        self.assertTrue(
+            client.voice_synthesize(
+                "route confirmed",
+                output_path="/tmp/voice.mp3",
+                voice="alloy",
+                backend="openai",
+            )["ok"]
+        )
         recall_payload = client.memory_recall("excel formatting", top_k=3)
         self.assertEqual(recall_payload["query"], "excel formatting")
         self.assertEqual(recall_payload["count"], 1)
