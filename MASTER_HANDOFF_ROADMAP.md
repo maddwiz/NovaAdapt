@@ -124,9 +124,10 @@ This file is the continuation map for future Codex sessions working from NovaAda
   - safety lock profile selector (`strict`/`balanced`/`lab`) now applies recommended operator defaults in one click
   - active safety posture badge now reflects live mutation posture (`strict`/`balanced`/`lab`/`custom`) at a glance
   - one-line legend tooltip now explains recommended posture contexts for `strict`, `balanced`, `lab`, and `custom`
+  - manual safety-toggle edits now auto-sync profile selector to `custom` when values diverge from selected profile defaults
   - explicit reset control now restores operator safety preferences to defaults (`confirm-mutations=true`, `preset-import-preview=true`)
   - confirmation gate toggle for mutating actions (render/start/advance/resume), enabled by default
-  - coverage assertions updated in `tests/test_server.py` for preset/safety/export/import/diff-preview/profile/posture/legend/localStorage controls in rendered HTML
+  - coverage assertions updated in `tests/test_server.py` for preset/safety/export/import/diff-preview/profile/posture/legend/custom-sync/localStorage controls in rendered HTML
 - Latest verification runs:
   - `PYTHONPATH=core:shared python3 -m unittest tests.test_server` → `26 tests OK`
   - `PYTHONPATH=core:shared python3 -m unittest discover -s tests` → `341 tests OK`
@@ -147,7 +148,7 @@ This file is the continuation map for future Codex sessions working from NovaAda
 
 ### P1
 
-2. Auto-sync `safety-profile` select to `custom` immediately when operators manually toggle safety checkboxes away from profile defaults.
+2. Add a small pre-mutation banner when posture is `lab` or `custom` to reinforce elevated operator risk before mutating actions.
 
 ## 4) Continuation Checklist
 

@@ -722,6 +722,7 @@ def render_canvas_workflows_html() -> str:
               <option value=\"strict\">strict</option>
               <option value=\"balanced\">balanced</option>
               <option value=\"lab\">lab</option>
+              <option value=\"custom\" disabled>custom (derived)</option>
             </select>
           </div>
           <div>
@@ -780,6 +781,7 @@ def render_canvas_workflows_html() -> str:
     const PRESET_KEY = 'novaadapt_canvas_workflow_presets_v1';
     const UI_PREFS_KEY = 'novaadapt_canvas_workflow_ui_prefs_v1';
     const DEFAULT_SAFETY_PROFILE = 'strict';
+    const CUSTOM_SAFETY_PROFILE = 'custom';
     const SAFETY_PROFILES = {
       strict: { confirmMutations: true, presetImportPreview: true },
       balanced: { confirmMutations: true, presetImportPreview: false },
@@ -945,6 +947,7 @@ def render_canvas_workflows_html() -> str:
 
     function normalizeSafetyProfile(profile){
       const raw = String(profile || '').trim().toLowerCase();
+      if (raw === CUSTOM_SAFETY_PROFILE) return CUSTOM_SAFETY_PROFILE;
       return Object.prototype.hasOwnProperty.call(SAFETY_PROFILES, raw) ? raw : DEFAULT_SAFETY_PROFILE;
     }
 
@@ -968,7 +971,7 @@ def render_canvas_workflows_html() -> str:
 
     function profileDefaults(profile){
       const normalized = normalizeSafetyProfile(profile);
-      return SAFETY_PROFILES[normalized];
+      return SAFETY_PROFILES[normalized] || SAFETY_PROFILES[DEFAULT_SAFETY_PROFILE];
     }
 
     function applyUIPrefsToControls(){
@@ -983,6 +986,12 @@ def render_canvas_workflows_html() -> str:
       const previewValue = typeof prefs.presetImportPreview === 'boolean' ? prefs.presetImportPreview : defaults.presetImportPreview;
       confirmMutations.checked = Boolean(confirmValue);
       presetImportPreview.checked = Boolean(previewValue);
+      if (profile !== CUSTOM_SAFETY_PROFILE) {
+        const profileMatches =
+          Boolean(confirmValue) === Boolean(defaults.confirmMutations)
+          && Boolean(previewValue) === Boolean(defaults.presetImportPreview);
+        if (!profileMatches && safetyProfile) safetyProfile.value = CUSTOM_SAFETY_PROFILE;
+      }
       updateSafetyPostureBadge();
     }
 
@@ -1003,6 +1012,10 @@ def render_canvas_workflows_html() -> str:
 
     function applySafetyProfile(profile, includeStatus=true){
       const normalized = normalizeSafetyProfile(profile);
+      if (normalized === CUSTOM_SAFETY_PROFILE) {
+        setStatus('preset-status', 'Custom posture is derived from manual toggle changes', 'warn');
+        return;
+      }
       const defaults = profileDefaults(normalized);
       const confirmMutations = document.getElementById('confirm-mutations');
       const presetImportPreview = document.getElementById('preset-import-preview');
@@ -1018,6 +1031,21 @@ def render_canvas_workflows_html() -> str:
           'ok',
         );
       }
+    }
+
+    function onSafetyToggleChanged(){
+      const safetyProfile = document.getElementById('safety-profile');
+      const selectedProfile = normalizeSafetyProfile(safetyProfile ? safetyProfile.value : DEFAULT_SAFETY_PROFILE);
+      if (selectedProfile !== CUSTOM_SAFETY_PROFILE) {
+        const defaults = profileDefaults(selectedProfile);
+        const confirmMutations = Boolean(document.getElementById('confirm-mutations').checked);
+        const presetImportPreview = Boolean(document.getElementById('preset-import-preview').checked);
+        const profileMatches =
+          confirmMutations === Boolean(defaults.confirmMutations)
+          && presetImportPreview === Boolean(defaults.presetImportPreview);
+        if (!profileMatches && safetyProfile) safetyProfile.value = CUSTOM_SAFETY_PROFILE;
+      }
+      persistUIPrefsFromControls();
     }
 
     function resetOperatorPrefs(){
@@ -1393,8 +1421,8 @@ def render_canvas_workflows_html() -> str:
     document.getElementById('template-aetherion-btn').addEventListener('click', () => applyTemplate('aetherion'));
     document.getElementById('template-patrol-btn').addEventListener('click', () => applyTemplate('patrol'));
     document.getElementById('template-reset-btn').addEventListener('click', () => applyTemplate('reset'));
-    document.getElementById('confirm-mutations').addEventListener('change', persistUIPrefsFromControls);
-    document.getElementById('preset-import-preview').addEventListener('change', persistUIPrefsFromControls);
+    document.getElementById('confirm-mutations').addEventListener('change', onSafetyToggleChanged);
+    document.getElementById('preset-import-preview').addEventListener('change', onSafetyToggleChanged);
     document.getElementById('safety-profile-apply-btn').addEventListener('click', () => {
       applySafetyProfile(document.getElementById('safety-profile').value, true);
     });
