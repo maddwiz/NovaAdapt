@@ -24,6 +24,7 @@ This file is the continuation map for future Codex sessions working from NovaAda
 2. NovaPrime integration is opt-in, fail-open by default unless explicitly required.
 3. Gateway layer is plumbing/routing/delivery, not cognition.
 4. Public mesh/game perks are additive, not mandatory for OSS users.
+5. Entropy is game storyline only, not a real-world representation.
 
 ## 3) Open Gaps (Priority)
 
@@ -59,4 +60,3 @@ This file is the continuation map for future Codex sessions working from NovaAda
 - Keep API compatibility with NovaPrime’s optional route surface.
 - Any new NovaPrime route usage in NovaAdapt must degrade safely when unavailable.
 - Update this roadmap with exact next tasks and command-based verification at end of each session.
-
