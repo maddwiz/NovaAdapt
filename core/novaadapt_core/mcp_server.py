@@ -701,6 +701,47 @@ class NovaAdaptMCPServer:
                 },
             ),
             MCPTool(
+                name="novaadapt_voice_status",
+                description="Get voice feature status/configuration for MCP surface",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "context": {"type": "string"},
+                    },
+                },
+            ),
+            MCPTool(
+                name="novaadapt_voice_transcribe",
+                description="Transcribe audio through configured STT backend",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "audio_path": {"type": "string"},
+                        "hints": {"type": "array", "items": {"type": "string"}},
+                        "metadata": {"type": "object"},
+                        "backend": {"type": "string"},
+                        "context": {"type": "string"},
+                    },
+                    "required": ["audio_path"],
+                },
+            ),
+            MCPTool(
+                name="novaadapt_voice_synthesize",
+                description="Synthesize text through configured TTS backend",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "text": {"type": "string"},
+                        "output_path": {"type": "string"},
+                        "voice": {"type": "string"},
+                        "metadata": {"type": "object"},
+                        "backend": {"type": "string"},
+                        "context": {"type": "string"},
+                    },
+                    "required": ["text"],
+                },
+            ),
+            MCPTool(
                 name="novaadapt_memory_recall",
                 description="Recall relevant long-term memory entries",
                 input_schema={
@@ -1355,6 +1396,35 @@ class NovaAdaptMCPServer:
             if not adapt_id:
                 raise ValueError("'adapt_id' is required")
             return self.service.adapt_persona_get(adapt_id, player_id=player_id)
+        if tool_name == "novaadapt_voice_status":
+            context = str(arguments.get("context", "mcp")).strip() or "mcp"
+            return self.service.voice_status(context=context)
+        if tool_name == "novaadapt_voice_transcribe":
+            audio_path = str(arguments.get("audio_path", "")).strip()
+            if not audio_path:
+                raise ValueError("'audio_path' is required")
+            hints = arguments.get("hints")
+            metadata = arguments.get("metadata")
+            return self.service.voice_transcribe(
+                audio_path,
+                hints=[str(item) for item in hints] if isinstance(hints, list) else None,
+                metadata=metadata if isinstance(metadata, dict) else None,
+                backend=str(arguments.get("backend", "")).strip(),
+                context=str(arguments.get("context", "mcp")).strip() or "mcp",
+            )
+        if tool_name == "novaadapt_voice_synthesize":
+            text = str(arguments.get("text", "")).strip()
+            if not text:
+                raise ValueError("'text' is required")
+            metadata = arguments.get("metadata")
+            return self.service.voice_synthesize(
+                text,
+                output_path=str(arguments.get("output_path", "")).strip(),
+                voice=str(arguments.get("voice", "")).strip(),
+                metadata=metadata if isinstance(metadata, dict) else None,
+                backend=str(arguments.get("backend", "")).strip(),
+                context=str(arguments.get("context", "mcp")).strip() or "mcp",
+            )
         if tool_name == "novaadapt_memory_recall":
             query = str(arguments.get("query", "")).strip()
             if not query:

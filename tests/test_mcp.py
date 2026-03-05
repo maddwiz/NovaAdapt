@@ -323,6 +323,53 @@ class _StubService:
             "persona": {"adapt_id": adapt_id, "communication_style": "in_world", "trust_band": "bonded"},
         }
 
+    def voice_status(self, *, context: str = "mcp"):
+        return {
+            "ok": True,
+            "enabled": True,
+            "context": context,
+            "configured": {"stt_backend": "static", "tts_backend": "static"},
+        }
+
+    def voice_transcribe(
+        self,
+        audio_path: str,
+        *,
+        hints: list[str] | None = None,
+        metadata: dict | None = None,
+        backend: str = "",
+        context: str = "mcp",
+    ):
+        return {
+            "ok": True,
+            "audio_path": audio_path,
+            "hints": list(hints or []),
+            "metadata": metadata or {},
+            "backend": backend or "static-stt",
+            "context": context,
+            "text": "transcript",
+        }
+
+    def voice_synthesize(
+        self,
+        text: str,
+        *,
+        output_path: str = "",
+        voice: str = "",
+        metadata: dict | None = None,
+        backend: str = "",
+        context: str = "mcp",
+    ):
+        return {
+            "ok": True,
+            "text": text,
+            "output_path": output_path or "/tmp/voice.mp3",
+            "voice": voice or "alloy",
+            "metadata": metadata or {},
+            "backend": backend or "static-tts",
+            "context": context,
+        }
+
     def memory_recall(self, query, top_k=10):
         return {"query": query, "top_k": top_k, "count": 1, "memories": [{"content": "remembered"}]}
 
@@ -410,6 +457,9 @@ class MCPServerTests(unittest.TestCase):
         self.assertIn("novaadapt_adapt_bond_get", names)
         self.assertIn("novaadapt_adapt_bond_verify", names)
         self.assertIn("novaadapt_adapt_persona_get", names)
+        self.assertIn("novaadapt_voice_status", names)
+        self.assertIn("novaadapt_voice_transcribe", names)
+        self.assertIn("novaadapt_voice_synthesize", names)
         self.assertIn("novaadapt_memory_recall", names)
         self.assertIn("novaadapt_memory_ingest", names)
         self.assertIn("novaadapt_browser_status", names)
@@ -1192,6 +1242,62 @@ class MCPServerTests(unittest.TestCase):
         adapt_persona_payload = adapt_persona_resp["result"]["content"][0]["json"]
         self.assertTrue(adapt_persona_payload["ok"])
         self.assertEqual(adapt_persona_payload["persona"]["adapt_id"], "adapt-1")
+
+        voice_status_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 917,
+                "method": "tools/call",
+                "params": {
+                    "name": "novaadapt_voice_status",
+                    "arguments": {},
+                },
+            }
+        )
+        voice_status_payload = voice_status_resp["result"]["content"][0]["json"]
+        self.assertTrue(voice_status_payload["ok"])
+        self.assertEqual(voice_status_payload["context"], "mcp")
+
+        voice_transcribe_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 918,
+                "method": "tools/call",
+                "params": {
+                    "name": "novaadapt_voice_transcribe",
+                    "arguments": {
+                        "audio_path": "/tmp/input.wav",
+                        "hints": ["quest", "map"],
+                        "backend": "static",
+                    },
+                },
+            }
+        )
+        voice_transcribe_payload = voice_transcribe_resp["result"]["content"][0]["json"]
+        self.assertTrue(voice_transcribe_payload["ok"])
+        self.assertEqual(voice_transcribe_payload["audio_path"], "/tmp/input.wav")
+        self.assertEqual(voice_transcribe_payload["context"], "mcp")
+
+        voice_synthesize_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 919,
+                "method": "tools/call",
+                "params": {
+                    "name": "novaadapt_voice_synthesize",
+                    "arguments": {
+                        "text": "route confirmed",
+                        "output_path": "/tmp/out.mp3",
+                        "voice": "alloy",
+                        "backend": "openai",
+                    },
+                },
+            }
+        )
+        voice_synthesize_payload = voice_synthesize_resp["result"]["content"][0]["json"]
+        self.assertTrue(voice_synthesize_payload["ok"])
+        self.assertEqual(voice_synthesize_payload["output_path"], "/tmp/out.mp3")
+        self.assertEqual(voice_synthesize_payload["context"], "mcp")
 
         memory_recall_resp = server.handle_request(
             {

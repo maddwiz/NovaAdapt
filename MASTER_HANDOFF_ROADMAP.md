@@ -70,6 +70,12 @@ This file is the continuation map for future Codex sessions working from NovaAda
   - `voice_transcribe(audio_path, hints, metadata, backend, context)`
   - `voice_synthesize(text, output_path, voice, metadata, backend, context)`
   - covered by `tests/test_api_client.py`
+- Optional MCP tool exposure added for voice surface:
+  - `novaadapt_voice_status`
+  - `novaadapt_voice_transcribe`
+  - `novaadapt_voice_synthesize`
+  - defaults to `context="mcp"` so env gating can use `NOVAADAPT_ENABLE_VOICE_MCP=1`
+  - covered by `tests/test_mcp.py`
 - Latest verification run: `PYTHONPATH=core:shared python3 -m unittest discover -s tests` → `321 tests OK`.
 
 ## 2) Hard Invariants
@@ -89,7 +95,6 @@ This file is the continuation map for future Codex sessions working from NovaAda
 ### P1
 
 2. Add canvas/workflow modules behind flags, keeping default footprint minimal.
-3. Optional MCP tool exposure for new voice surface.
 
 ## 4) Continuation Checklist
 
