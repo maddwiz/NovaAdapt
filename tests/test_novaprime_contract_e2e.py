@@ -115,6 +115,11 @@ def _post_json_with_status(url: str, payload: dict) -> tuple[int, dict]:
                 exc.close()
             except Exception:
                 pass
+            try:
+                exc.fp = None
+                exc.file = None
+            except Exception:
+                pass
     parsed = json.loads(body or "{}")
     if not isinstance(parsed, dict):
         raise RuntimeError(f"Expected JSON object from {url}")
@@ -134,6 +139,11 @@ def _get_json_with_status(url: str) -> tuple[int, dict]:
         finally:
             try:
                 exc.close()
+            except Exception:
+                pass
+            try:
+                exc.fp = None
+                exc.file = None
             except Exception:
                 pass
     parsed = json.loads(body or "{}")
@@ -368,6 +378,135 @@ class NovaPrimeContractE2ETests(unittest.TestCase):
                     server.server_close()
                 if thread is not None:
                     thread.join(timeout=5.0)
+
+                if proc.poll() is None:
+                    proc.terminate()
+                    try:
+                        proc.wait(timeout=8.0)
+                    except subprocess.TimeoutExpired:
+                        proc.kill()
+                        proc.wait(timeout=5.0)
+                if proc.stdout is not None:
+                    proc.stdout.close()
+                if proc.stderr is not None:
+                    proc.stderr.close()
+
+    def test_novaadapt_propagates_novaprime_bearer_token_for_protected_routes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmpdir = Path(tmp)
+            np_state = tmpdir / "novaprime_state"
+            np_state.mkdir(parents=True, exist_ok=True)
+
+            np_port = _find_free_port()
+            np_url = f"http://127.0.0.1:{np_port}"
+            api_token = "contract-token-e2e"
+
+            env = os.environ.copy()
+            env.update(
+                {
+                    "NOVAPRIME_API_TOKEN": api_token,
+                    "C3_MEMORY_BACKEND": "local",
+                    "C3_MEMORY_FAILOVER_PATH": str(np_state / "memory_events.jsonl"),
+                    "NOVAPRIME_IDENTITY_STORE_PATH": str(np_state / "identity_state.json"),
+                    "NOVAPRIME_IMPRINTING_STORE_PATH": str(np_state / "imprinting_sessions.json"),
+                    "NOVAPRIME_AETHERION_STATE_PATH": str(np_state / "aetherion_state.json"),
+                    "NOVAPRIME_LEDGER_PATH": str(np_state / "ledger.sqlite3"),
+                    "NOVAPRIME_PEERS_PATH": str(np_state / "peers.json"),
+                    "NOVAPRIME_SWARM_STATE_PATH": str(np_state / "swarm_state.json"),
+                    "NOVAPRIME_COMPUTE_JOBS_PATH": str(np_state / "compute_jobs.jsonl"),
+                    "NOVAPRIME_COMPUTE_DISPUTES_PATH": str(np_state / "compute_disputes.jsonl"),
+                    "NOVAPRIME_REPUTATION_CONSENSUS_PATH": str(np_state / "reputation_consensus.json"),
+                    "NOVAPRIME_RECONCILE_SCHEDULER_PATH": str(np_state / "reconcile_scheduler_state.json"),
+                    "NOVAPRIME_PARTITION_STATE_PATH": str(np_state / "partition_state.json"),
+                    "NOVAPRIME_TRANSFER_QUEUE_PATH": str(np_state / "transfer_queue.jsonl"),
+                }
+            )
+
+            proc = subprocess.Popen(
+                ["python3", "-m", "core.entrypoints.api_server", "--host", "127.0.0.1", "--port", str(np_port)],
+                cwd=str(NOVAPRIME_REPO),
+                env=env,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+
+            server_without_token = None
+            thread_without_token = None
+            server_with_token = None
+            thread_with_token = None
+            try:
+                _wait_health(f"{np_url}/api/v1/health", timeout_sec=25.0)
+
+                service_without_token = NovaAdaptService(
+                    default_config=Path("unused.json"),
+                    db_path=tmpdir / "actions_without_token.db",
+                    plans_db_path=tmpdir / "plans_without_token.db",
+                    router_loader=lambda _path: _StubRouter(),
+                    directshell_factory=_StubDirectShell,
+                    novaprime_client=NovaPrimeClient(
+                        base_url=np_url,
+                        timeout_seconds=5.0,
+                        retry_after_seconds=1.0,
+                        token="",
+                    ),
+                )
+                server_without_token = create_server(
+                    "127.0.0.1",
+                    0,
+                    service_without_token,
+                    audit_db_path=str(tmpdir / "events_without_token.db"),
+                )
+                host_without_token, port_without_token = server_without_token.server_address
+                thread_without_token = threading.Thread(target=server_without_token.serve_forever, daemon=True)
+                thread_without_token.start()
+
+                unauthorized = _get_json(
+                    f"http://{host_without_token}:{port_without_token}/novaprime/reason/emotion"
+                )
+                self.assertFalse(unauthorized.get("ok", True))
+                self.assertEqual(int(unauthorized.get("status_code", 0)), 401)
+
+                service_with_token = NovaAdaptService(
+                    default_config=Path("unused.json"),
+                    db_path=tmpdir / "actions_with_token.db",
+                    plans_db_path=tmpdir / "plans_with_token.db",
+                    router_loader=lambda _path: _StubRouter(),
+                    directshell_factory=_StubDirectShell,
+                    novaprime_client=NovaPrimeClient(
+                        base_url=np_url,
+                        timeout_seconds=5.0,
+                        retry_after_seconds=1.0,
+                        token=api_token,
+                    ),
+                )
+                server_with_token = create_server(
+                    "127.0.0.1",
+                    0,
+                    service_with_token,
+                    audit_db_path=str(tmpdir / "events_with_token.db"),
+                )
+                host_with_token, port_with_token = server_with_token.server_address
+                thread_with_token = threading.Thread(target=server_with_token.serve_forever, daemon=True)
+                thread_with_token.start()
+
+                authorized = _get_json(
+                    f"http://{host_with_token}:{port_with_token}/novaprime/reason/emotion"
+                )
+                self.assertTrue(authorized.get("ok", False))
+                self.assertIn("emotions", authorized)
+            finally:
+                if server_without_token is not None:
+                    server_without_token.shutdown()
+                    server_without_token.server_close()
+                if thread_without_token is not None:
+                    thread_without_token.join(timeout=5.0)
+
+                if server_with_token is not None:
+                    server_with_token.shutdown()
+                    server_with_token.server_close()
+                if thread_with_token is not None:
+                    thread_with_token.join(timeout=5.0)
 
                 if proc.poll() is None:
                     proc.terminate()
