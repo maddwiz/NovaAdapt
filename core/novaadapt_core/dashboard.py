@@ -644,6 +644,17 @@ def render_canvas_workflows_html() -> str:
       cursor: help;
       user-select: none;
     }
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
     .json.compact {
       min-height: 70px;
       max-height: 190px;
@@ -803,6 +814,7 @@ def render_canvas_workflows_html() -> str:
             Include UTC timestamp
           </label>
         </div>
+        <div id=\"safety-copy-live\" class=\"sr-only\" aria-live=\"polite\" aria-atomic=\"true\"></div>
         <div class=\"hint\">Shortcut: `Ctrl/Cmd+Shift+C` copies the inline safety summary when not typing in inputs.</div>
         <div class=\"hint\">Badge reflects live toggles and can read `strict`, `balanced`, `lab`, or `custom`.</div>
         <div class=\"stack\">
@@ -1170,6 +1182,7 @@ def render_canvas_workflows_html() -> str:
         if (navigator.clipboard && window.isSecureContext) {
           await navigator.clipboard.writeText(text);
           flashCopiedButtonState();
+          announceCopyStatus('Safety summary copied to clipboard');
           setStatus('preset-status', 'Safety summary copied', 'ok');
           return;
         }
@@ -1178,10 +1191,21 @@ def render_canvas_workflows_html() -> str:
       }
       if (fallbackCopyText(text)) {
         flashCopiedButtonState();
+        announceCopyStatus('Safety summary copied to clipboard');
         setStatus('preset-status', 'Safety summary copied', 'ok');
       } else {
+        announceCopyStatus('Safety summary copy failed: clipboard unavailable');
         setStatus('preset-status', 'Copy failed: clipboard unavailable', 'warn');
       }
+    }
+
+    function announceCopyStatus(message){
+      const live = document.getElementById('safety-copy-live');
+      if (!live) return;
+      live.textContent = '';
+      window.setTimeout(() => {
+        live.textContent = String(message || '');
+      }, 0);
     }
 
     function shortcutInEditableTarget(event){

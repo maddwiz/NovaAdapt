@@ -132,9 +132,10 @@ This file is the continuation map for future Codex sessions working from NovaAda
   - optional timestamp suffix (`copied_at_utc`) can now be appended to copied summaries, with persisted preference toggle
   - copy control now shows a short `Copied` flash state for quick visual confirmation after successful clipboard writes
   - optional keyboard shortcut (`Ctrl/Cmd+Shift+C`) now triggers copy for inline safety summary (guarded when typing in inputs)
+  - `aria-live` copy announcer now emits success/failure confirmation text for accessibility screen readers
   - explicit reset control now restores operator safety preferences to defaults (`confirm-mutations=true`, `preset-import-preview=true`)
   - confirmation gate toggle for mutating actions (render/start/advance/resume), enabled by default
-  - coverage assertions updated in `tests/test_server.py` for preset/safety/export/import/diff-preview/profile/posture/legend/custom-sync/risk-banner/prompt-summary/inline-summary/copy/timestamp/flash/shortcut/localStorage controls in rendered HTML
+  - coverage assertions updated in `tests/test_server.py` for preset/safety/export/import/diff-preview/profile/posture/legend/custom-sync/risk-banner/prompt-summary/inline-summary/copy/timestamp/flash/shortcut/aria-live/localStorage controls in rendered HTML
 - Latest verification runs:
   - `PYTHONPATH=core:shared python3 -m unittest tests.test_server` → `26 tests OK`
   - `PYTHONPATH=core:shared python3 -m unittest discover -s tests` → `341 tests OK`
@@ -155,7 +156,7 @@ This file is the continuation map for future Codex sessions working from NovaAda
 
 ### P1
 
-2. Add optional `aria-live` copy confirmation text for accessibility screen readers when safety summary copy succeeds/fails.
+2. Auto-clear `aria-live` copy announcements after a short delay so repeated copy actions always retrigger screen-reader announcements cleanly.
 
 ## 4) Continuation Checklist
 
