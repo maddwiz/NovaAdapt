@@ -1,9 +1,16 @@
 from __future__ import annotations
 
+import os
+
 from .audit_store import AuditStore
-from .dashboard import render_dashboard_html
+from .dashboard import render_canvas_workflows_html, render_dashboard_html
+from .flags import coerce_bool
 from .openapi import build_openapi_spec
 from .service import NovaAdaptService
+
+
+def _canvas_workflows_ui_enabled() -> bool:
+    return coerce_bool(os.getenv("NOVAADAPT_ENABLE_CANVAS_WORKFLOWS_UI"), default=False)
 
 
 def get_health(
@@ -92,6 +99,16 @@ def get_dashboard(handler, query: dict[str, list[str]]) -> int:
     if not handler._check_auth("/dashboard", query):
         return 401
     handler._send_html(200, render_dashboard_html())
+    return 200
+
+
+def get_dashboard_canvas_workflows(handler, query: dict[str, list[str]]) -> int:
+    if not _canvas_workflows_ui_enabled():
+        handler._send_json(404, {"error": "Not found"})
+        return 404
+    if not handler._check_auth("/dashboard/canvas-workflows", query):
+        return 401
+    handler._send_html(200, render_canvas_workflows_html())
     return 200
 
 

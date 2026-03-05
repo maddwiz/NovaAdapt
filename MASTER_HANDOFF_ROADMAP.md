@@ -108,7 +108,14 @@ This file is the continuation map for future Codex sessions working from NovaAda
   - `canvas_status`, `canvas_render`, `canvas_frames`
   - `workflows_status`, `workflows_start`, `workflows_advance`, `workflows_resume`, `workflows_get`, `workflows_list`
   - covered by `tests/test_api_client.py`
-- Latest verification run: `PYTHONPATH=core:shared python3 -m unittest discover -s tests` → `340 tests OK`.
+- Optional operator dashboard route now exists for canvas/workflows inspection (default-off):
+  - `GET /dashboard/canvas-workflows`
+  - gated by `NOVAADAPT_ENABLE_CANVAS_WORKFLOWS_UI=1`
+  - auth-compatible with both bearer header and `?token=` query flow
+  - when disabled, route returns `404` by design
+  - OpenAPI includes `/dashboard/canvas-workflows`
+  - covered in `tests/test_server.py` (`test_canvas_workflows_dashboard_flag_and_auth`)
+- Latest verification run: `PYTHONPATH=core:shared python3 -m unittest discover -s tests` → `341 tests OK`.
 
 ## 2) Hard Invariants
 
@@ -126,7 +133,7 @@ This file is the continuation map for future Codex sessions working from NovaAda
 
 ### P1
 
-2. Add optional UI layer for canvas/workflow inspection in `view/` behind flags, while preserving default-off behavior.
+2. Expand the canvas/workflow dashboard with persisted presets and safer action templates (while keeping route default-off).
 
 ## 4) Continuation Checklist
 

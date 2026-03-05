@@ -7,6 +7,7 @@ def build_get_public_routes(handler: Any) -> dict[str, Any]:
     return {
         "/health": handler._get_health,
         "/dashboard": handler._get_dashboard,
+        "/dashboard/canvas-workflows": handler._get_dashboard_canvas_workflows,
         "/dashboard/data": handler._get_dashboard_data,
         "/openapi.json": handler._get_openapi,
         "/metrics": handler._get_metrics,

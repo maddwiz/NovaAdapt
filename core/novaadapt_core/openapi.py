@@ -34,6 +34,12 @@ def build_openapi_spec() -> dict:
                     "responses": {"200": {"description": "Dashboard"}},
                 }
             },
+            "/dashboard/canvas-workflows": {
+                "get": {
+                    "summary": "Optional Canvas + Workflows inspector dashboard HTML",
+                    "responses": {"200": {"description": "Canvas/workflows dashboard"}, "404": {"description": "Disabled"}},
+                }
+            },
             "/dashboard/data": {
                 "get": {
                     "summary": "Dashboard JSON data (health/metrics/jobs/plans)",

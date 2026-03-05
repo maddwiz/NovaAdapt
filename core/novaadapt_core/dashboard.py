@@ -397,3 +397,355 @@ def render_dashboard_html() -> str:
 </body>
 </html>
 """
+
+
+def render_canvas_workflows_html() -> str:
+    return """<!doctype html>
+<html lang=\"en\">
+<head>
+  <meta charset=\"utf-8\" />
+  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />
+  <title>NovaAdapt Canvas + Workflows Inspector</title>
+  <style>
+    :root {
+      --bg: #0a101a;
+      --panel: #101a2a;
+      --panel-2: #172235;
+      --text: #d8e3f0;
+      --muted: #91a0b5;
+      --line: #2b3a54;
+      --accent: #4bb3fd;
+      --ok: #53d18c;
+      --warn: #efb949;
+      --bad: #f77979;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(900px 450px at 15% -10%, #1b2a44 0%, transparent 42%),
+        radial-gradient(700px 400px at 100% -15%, #0f3e59 0%, transparent 38%),
+        var(--bg);
+      min-height: 100vh;
+    }
+    .wrap { max-width: 1200px; margin: 0 auto; padding: 18px; }
+    h1 { margin: 0 0 6px; font-size: 25px; }
+    .sub { margin: 0 0 14px; color: var(--muted); }
+    .nav { display: flex; gap: 8px; margin: 0 0 12px; }
+    .nav a {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      color: var(--text);
+      text-decoration: none;
+      border-radius: 8px;
+      padding: 7px 10px;
+      font-size: 13px;
+    }
+    .grid {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(auto-fit, minmax(330px, 1fr));
+    }
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: linear-gradient(180deg, var(--panel), var(--panel-2));
+      padding: 12px;
+    }
+    .card h2 {
+      margin: 0 0 10px;
+      font-size: 13px;
+      letter-spacing: .05em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    label {
+      display: block;
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 4px;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+    }
+    .row { display: grid; gap: 8px; grid-template-columns: 1fr 1fr; margin-bottom: 8px; }
+    .row.single { grid-template-columns: 1fr; }
+    input, textarea, select {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #0c1422;
+      color: var(--text);
+      padding: 8px;
+      font: inherit;
+      font-size: 13px;
+    }
+    textarea {
+      min-height: 110px;
+      resize: vertical;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+    }
+    button {
+      border: 1px solid var(--line);
+      background: #162742;
+      color: var(--text);
+      border-radius: 8px;
+      padding: 8px 11px;
+      cursor: pointer;
+    }
+    button:hover { border-color: var(--accent); }
+    .stack { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+    .json {
+      margin-top: 8px;
+      border: 1px solid var(--line);
+      background: #09111d;
+      border-radius: 8px;
+      padding: 8px;
+      min-height: 90px;
+      max-height: 260px;
+      overflow: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+      line-height: 1.4;
+    }
+    .status { font-size: 12px; margin-top: 8px; color: var(--muted); }
+    .status.ok { color: var(--ok); }
+    .status.warn { color: var(--warn); }
+    .status.bad { color: var(--bad); }
+    @media (max-width: 760px) { .row { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <div class=\"wrap\">
+    <h1>Canvas + Workflows Inspector</h1>
+    <p class=\"sub\">Optional operator UI for the new canvas/workflow surfaces. This page requires the dedicated UI flag.</p>
+    <div class=\"nav\">
+      <a id=\"back-dashboard\" href=\"/dashboard\">Core Dashboard</a>
+    </div>
+    <div class=\"grid\">
+      <section class=\"card\">
+        <h2>Canvas</h2>
+        <div class=\"row\">
+          <div>
+            <label for=\"canvas-context\">Context</label>
+            <select id=\"canvas-context\">
+              <option value=\"api\">api</option>
+              <option value=\"cli\">cli</option>
+              <option value=\"mcp\">mcp</option>
+            </select>
+          </div>
+          <div>
+            <label for=\"canvas-session\">Session ID</label>
+            <input id=\"canvas-session\" value=\"default\" />
+          </div>
+        </div>
+        <div class=\"row single\">
+          <div>
+            <label for=\"canvas-title\">Title</label>
+            <input id=\"canvas-title\" value=\"Aetherion Snapshot\" />
+          </div>
+        </div>
+        <div class=\"row single\">
+          <div>
+            <label for=\"canvas-sections\">Sections JSON Array</label>
+            <textarea id=\"canvas-sections\">[{"heading":"Trade","body":"Market stable","meta":"live"}]</textarea>
+          </div>
+        </div>
+        <div class=\"stack\">
+          <button id=\"canvas-status-btn\">Status</button>
+          <button id=\"canvas-render-btn\">Render</button>
+          <button id=\"canvas-frames-btn\">Frames</button>
+        </div>
+        <div id=\"canvas-status\" class=\"status\"></div>
+        <pre id=\"canvas-json\" class=\"json\"></pre>
+      </section>
+
+      <section class=\"card\">
+        <h2>Workflows</h2>
+        <div class=\"row\">
+          <div>
+            <label for=\"wf-context\">Context</label>
+            <select id=\"wf-context\">
+              <option value=\"api\">api</option>
+              <option value=\"cli\">cli</option>
+              <option value=\"mcp\">mcp</option>
+            </select>
+          </div>
+          <div>
+            <label for=\"wf-id\">Workflow ID</label>
+            <input id=\"wf-id\" value=\"wf-demo\" />
+          </div>
+        </div>
+        <div class=\"row single\">
+          <div>
+            <label for=\"wf-objective\">Objective</label>
+            <input id=\"wf-objective\" value=\"Patrol route in Aetherion\" />
+          </div>
+        </div>
+        <div class=\"row single\">
+          <div>
+            <label for=\"wf-steps\">Steps JSON Array</label>
+            <textarea id=\"wf-steps\">[{"name":"scan"},{"name":"report"}]</textarea>
+          </div>
+        </div>
+        <div class=\"stack\">
+          <button id=\"wf-status-btn\">Status</button>
+          <button id=\"wf-start-btn\">Start</button>
+          <button id=\"wf-advance-btn\">Advance</button>
+          <button id=\"wf-resume-btn\">Resume</button>
+          <button id=\"wf-get-btn\">Get</button>
+          <button id=\"wf-list-btn\">List</button>
+        </div>
+        <div id=\"wf-status\" class=\"status\"></div>
+        <pre id=\"wf-json\" class=\"json\"></pre>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    const token = new URLSearchParams(window.location.search).get('token');
+
+    function withToken(path){
+      if (!token) return path;
+      const sep = path.includes('?') ? '&' : '?';
+      return `${path}${sep}token=${encodeURIComponent(token)}`;
+    }
+
+    function headers(includeJSON=false){
+      const out = {};
+      if (token) out['Authorization'] = `Bearer ${token}`;
+      if (includeJSON) out['Content-Type'] = 'application/json';
+      return out;
+    }
+
+    function stringify(value){
+      try { return JSON.stringify(value, null, 2); }
+      catch { return String(value); }
+    }
+
+    function parseJSONArea(id, fallback){
+      const raw = document.getElementById(id).value.trim();
+      if (!raw) return fallback;
+      const parsed = JSON.parse(raw);
+      return parsed;
+    }
+
+    function setStatus(id, text, kind){
+      const el = document.getElementById(id);
+      el.textContent = text;
+      el.className = `status ${kind || ''}`;
+    }
+
+    async function getJSON(path){
+      const response = await fetch(withToken(path), {
+        credentials: 'same-origin',
+        headers: headers(false),
+      });
+      const text = await response.text();
+      let parsed = {};
+      try { parsed = text ? JSON.parse(text) : {}; } catch { parsed = { raw: text }; }
+      if (!response.ok) throw new Error(parsed.error ? `HTTP ${response.status}: ${parsed.error}` : `HTTP ${response.status}`);
+      return parsed;
+    }
+
+    async function postJSON(path, body){
+      const response = await fetch(path, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: headers(true),
+        body: JSON.stringify(body || {}),
+      });
+      const text = await response.text();
+      let parsed = {};
+      try { parsed = text ? JSON.parse(text) : {}; } catch { parsed = { raw: text }; }
+      if (!response.ok) throw new Error(parsed.error ? `HTTP ${response.status}: ${parsed.error}` : `HTTP ${response.status}`);
+      return parsed;
+    }
+
+    async function runCanvas(action){
+      const context = document.getElementById('canvas-context').value;
+      const session = document.getElementById('canvas-session').value.trim() || 'default';
+      const title = document.getElementById('canvas-title').value.trim();
+      try {
+        let out = {};
+        if (action === 'status'){
+          out = await getJSON(`/canvas/status?context=${encodeURIComponent(context)}`);
+        } else if (action === 'render'){
+          const sections = parseJSONArea('canvas-sections', []);
+          out = await postJSON('/canvas/render', {
+            title,
+            session_id: session,
+            sections,
+            context,
+          });
+        } else if (action === 'frames'){
+          out = await getJSON(`/canvas/frames?session_id=${encodeURIComponent(session)}&context=${encodeURIComponent(context)}&limit=20`);
+        }
+        document.getElementById('canvas-json').textContent = stringify(out);
+        setStatus('canvas-status', 'Canvas request ok', 'ok');
+      } catch (err) {
+        document.getElementById('canvas-json').textContent = String(err);
+        setStatus('canvas-status', String(err), 'bad');
+      }
+    }
+
+    async function runWorkflow(action){
+      const context = document.getElementById('wf-context').value;
+      const workflowId = document.getElementById('wf-id').value.trim();
+      const objective = document.getElementById('wf-objective').value.trim();
+      try {
+        let out = {};
+        if (action === 'status'){
+          out = await getJSON(`/workflows/status?context=${encodeURIComponent(context)}`);
+        } else if (action === 'start'){
+          const steps = parseJSONArea('wf-steps', []);
+          out = await postJSON('/workflows/start', {
+            objective,
+            workflow_id: workflowId,
+            steps,
+            context,
+          });
+        } else if (action === 'advance'){
+          out = await postJSON('/workflows/advance', {
+            workflow_id: workflowId,
+            result: { ok: true, source: 'ui' },
+            context,
+          });
+        } else if (action === 'resume'){
+          out = await postJSON('/workflows/resume', { workflow_id: workflowId, context });
+        } else if (action === 'get'){
+          out = await getJSON(`/workflows/item?workflow_id=${encodeURIComponent(workflowId)}&context=${encodeURIComponent(context)}`);
+        } else if (action === 'list'){
+          out = await getJSON(`/workflows/list?limit=20&context=${encodeURIComponent(context)}`);
+        }
+        document.getElementById('wf-json').textContent = stringify(out);
+        setStatus('wf-status', 'Workflow request ok', 'ok');
+      } catch (err) {
+        document.getElementById('wf-json').textContent = String(err);
+        setStatus('wf-status', String(err), 'bad');
+      }
+    }
+
+    document.getElementById('canvas-status-btn').addEventListener('click', () => runCanvas('status'));
+    document.getElementById('canvas-render-btn').addEventListener('click', () => runCanvas('render'));
+    document.getElementById('canvas-frames-btn').addEventListener('click', () => runCanvas('frames'));
+    document.getElementById('wf-status-btn').addEventListener('click', () => runWorkflow('status'));
+    document.getElementById('wf-start-btn').addEventListener('click', () => runWorkflow('start'));
+    document.getElementById('wf-advance-btn').addEventListener('click', () => runWorkflow('advance'));
+    document.getElementById('wf-resume-btn').addEventListener('click', () => runWorkflow('resume'));
+    document.getElementById('wf-get-btn').addEventListener('click', () => runWorkflow('get'));
+    document.getElementById('wf-list-btn').addEventListener('click', () => runWorkflow('list'));
+
+    const back = document.getElementById('back-dashboard');
+    if (token) back.href = `/dashboard?token=${encodeURIComponent(token)}`;
+
+    runCanvas('status');
+    runWorkflow('status');
+  </script>
+</body>
+</html>
+"""

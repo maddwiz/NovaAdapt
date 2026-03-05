@@ -204,6 +204,9 @@ def _build_handler(
         def _get_dashboard(self, query: dict[str, list[str]]) -> int:
             return admin_routes.get_dashboard(self, query)
 
+        def _get_dashboard_canvas_workflows(self, query: dict[str, list[str]]) -> int:
+            return admin_routes.get_dashboard_canvas_workflows(self, query)
+
         def _get_dashboard_data(self, query: dict[str, list[str]]) -> int:
             return admin_routes.get_dashboard_data(
                 self,
@@ -619,7 +622,7 @@ def _build_handler(
         def _check_auth(self, path: str, query: dict[str, list[str]] | None = None) -> bool:
             if path == "/health" or (path.startswith("/channels/") and path.endswith("/inbound")) or not api_token:
                 return True
-            if query is not None and path in {"/dashboard", "/dashboard/data"}:
+            if query is not None and path in {"/dashboard", "/dashboard/canvas-workflows", "/dashboard/data"}:
                 query_token = _single(query, "token")
                 if query_token == api_token:
                     return True

@@ -194,6 +194,11 @@ class ServerTests(unittest.TestCase):
                 self.assertIn("Approve Async", dashboard_html)
                 self.assertIn("cancel-job", dashboard_html)
 
+                with self.assertRaises(error.HTTPError) as err:
+                    _get_text(f"http://{host}:{port}/dashboard/canvas-workflows")
+                self.assertEqual(err.exception.code, 404)
+                err.exception.close()
+
                 dashboard_data, _ = _get_json_with_headers(f"http://{host}:{port}/dashboard/data")
                 self.assertTrue(dashboard_data["health"]["ok"])
                 self.assertIn("metrics", dashboard_data)
@@ -213,6 +218,7 @@ class ServerTests(unittest.TestCase):
                 self.assertIn("/plans/{id}/retry_failed", openapi["paths"])
                 self.assertIn("/plans/{id}/retry_failed_async", openapi["paths"])
                 self.assertIn("/plans/{id}/undo", openapi["paths"])
+                self.assertIn("/dashboard/canvas-workflows", openapi["paths"])
                 self.assertIn("/dashboard/data", openapi["paths"])
                 self.assertIn("/events", openapi["paths"])
                 self.assertIn("/events/stream", openapi["paths"])
@@ -1529,6 +1535,53 @@ class ServerTests(unittest.TestCase):
                 server2.shutdown()
                 server2.server_close()
                 thread2.join(timeout=2)
+
+    def test_canvas_workflows_dashboard_flag_and_auth(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch.dict(
+                os.environ,
+                {"NOVAADAPT_ENABLE_CANVAS_WORKFLOWS_UI": "1"},
+                clear=False,
+            ):
+                service = NovaAdaptService(
+                    default_config=Path("unused.json"),
+                    db_path=Path(tmp) / "actions.db",
+                    plans_db_path=Path(tmp) / "plans.db",
+                    router_loader=lambda _path: _StubRouter(),
+                    directshell_factory=_StubDirectShell,
+                )
+                server = create_server(
+                    "127.0.0.1",
+                    0,
+                    service,
+                    api_token="secret",
+                    audit_db_path=str(Path(tmp) / "events.db"),
+                )
+                host, port = server.server_address
+                thread = threading.Thread(target=server.serve_forever, daemon=True)
+                thread.start()
+
+                try:
+                    with self.assertRaises(error.HTTPError) as err:
+                        _get_text(f"http://{host}:{port}/dashboard/canvas-workflows")
+                    self.assertEqual(err.exception.code, 401)
+                    err.exception.close()
+
+                    html_with_query = _get_text(
+                        f"http://{host}:{port}/dashboard/canvas-workflows?token=secret"
+                    )
+                    self.assertIn("Canvas + Workflows Inspector", html_with_query)
+                    self.assertIn("/workflows/status", html_with_query)
+
+                    html_with_header = _get_text(
+                        f"http://{host}:{port}/dashboard/canvas-workflows",
+                        token="secret",
+                    )
+                    self.assertIn("Canvas + Workflows Inspector", html_with_header)
+                finally:
+                    server.shutdown()
+                    server.server_close()
+                    thread.join(timeout=2)
 
     def test_cancel_running_plan_approval_job(self):
         with tempfile.TemporaryDirectory() as tmp:
