@@ -142,6 +142,9 @@ This file is the continuation map for future Codex sessions working from NovaAda
 
 ## 4) Continuation Checklist
 
+0. One-command resume helper:
+   - `./scripts/codex_resume.sh` (quick checks + context snapshot)
+   - `./scripts/codex_resume.sh --full-tests` (includes full suite)
 1. Validate local state:
    - `git status --short --branch`
 2. Run targeted tests:
