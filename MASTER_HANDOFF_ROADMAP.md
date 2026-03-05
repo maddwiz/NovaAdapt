@@ -31,7 +31,8 @@ This file is the continuation map for future Codex sessions working from NovaAda
   - shared SDK methods (`shared/novaadapt_shared/api_client.py`)
   - OpenAPI path documentation
   - Test coverage updated in `tests/test_service.py`, `tests/test_server.py`, `tests/test_mcp.py`, `tests/test_api_client.py`
-- Latest verification run: `PYTHONPATH=core:shared python3 -m unittest discover -s tests` → `292 tests OK`.
+- Live contract test added: `tests/test_novaprime_contract_e2e.py` (spins real NovaPrime API and verifies NovaAdapt `/novaprime/*` proxy surface).
+- Latest verification run: `PYTHONPATH=core:shared python3 -m unittest discover -s tests` → `293 tests OK`.
 
 ## 2) Hard Invariants
 
@@ -63,6 +64,7 @@ This file is the continuation map for future Codex sessions working from NovaAda
    - `PYTHONPATH=core:shared python3 -m unittest tests.test_service tests.test_novaprime_client tests.test_kernel_adapter`
    - `PYTHONPATH=core:shared python3 -m unittest tests.test_agent_gateway tests.test_cli_channels tests.test_cli_xreal tests.test_server`
    - If NovaPrime-facing files changed: `PYTHONPATH=core:shared python3 -m unittest tests.test_mcp tests.test_api_client`
+   - If sibling `NovaPrime` exists: `PYTHONPATH=core:shared python3 -m unittest tests.test_novaprime_contract_e2e`
 3. Confirm standalone health payload still reports `requires_novaprime: false`.
 4. Only stage source/test/docs files.
 
