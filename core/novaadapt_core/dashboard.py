@@ -794,6 +794,10 @@ def render_canvas_workflows_html() -> str:
         <div class=\"safety-summary-row\">
           <div id=\"safety-inline-summary\" class=\"safety-summary\"></div>
           <button id=\"safety-summary-copy-btn\" class=\"compact\" title=\"Copy safety summary\">Copy</button>
+          <label class=\"checkbox\" for=\"safety-summary-include-ts\">
+            <input id=\"safety-summary-include-ts\" type=\"checkbox\" />
+            Include UTC timestamp
+          </label>
         </div>
         <div class=\"hint\">Badge reflects live toggles and can read `strict`, `balanced`, `lab`, or `custom`.</div>
         <div class=\"stack\">
@@ -1055,11 +1059,14 @@ def render_canvas_workflows_html() -> str:
       const confirmMutations = document.getElementById('confirm-mutations');
       const presetImportPreview = document.getElementById('preset-import-preview');
       const safetyProfile = document.getElementById('safety-profile');
+      const summaryTimestamp = document.getElementById('safety-summary-include-ts');
       if (safetyProfile) safetyProfile.value = profile;
       const confirmValue = typeof prefs.confirmMutations === 'boolean' ? prefs.confirmMutations : defaults.confirmMutations;
       const previewValue = typeof prefs.presetImportPreview === 'boolean' ? prefs.presetImportPreview : defaults.presetImportPreview;
+      const copySummaryTimestamp = typeof prefs.copySummaryTimestamp === 'boolean' ? prefs.copySummaryTimestamp : false;
       confirmMutations.checked = Boolean(confirmValue);
       presetImportPreview.checked = Boolean(previewValue);
+      if (summaryTimestamp) summaryTimestamp.checked = Boolean(copySummaryTimestamp);
       if (profile !== CUSTOM_SAFETY_PROFILE) {
         const profileMatches =
           Boolean(confirmValue) === Boolean(defaults.confirmMutations)
@@ -1073,6 +1080,7 @@ def render_canvas_workflows_html() -> str:
       const confirmMutations = document.getElementById('confirm-mutations');
       const presetImportPreview = document.getElementById('preset-import-preview');
       const safetyProfile = document.getElementById('safety-profile');
+      const summaryTimestamp = document.getElementById('safety-summary-include-ts');
       const selectedProfile = normalizeSafetyProfile(
         forcedProfile || (safetyProfile ? safetyProfile.value : DEFAULT_SAFETY_PROFILE),
       );
@@ -1080,6 +1088,7 @@ def render_canvas_workflows_html() -> str:
         confirmMutations: Boolean(confirmMutations && confirmMutations.checked),
         presetImportPreview: Boolean(presetImportPreview && presetImportPreview.checked),
         safetyProfile: selectedProfile,
+        copySummaryTimestamp: Boolean(summaryTimestamp && summaryTimestamp.checked),
       });
       updateSafetyRiskBanner(updateSafetyPostureBadge());
     }
@@ -1130,6 +1139,13 @@ def render_canvas_workflows_html() -> str:
       return `Safety posture=${posture}, profile=${safetyProfile}, confirm=${confirmMutations ? 'on' : 'off'}, import_preview=${presetImportPreview ? 'on' : 'off'}`;
     }
 
+    function buildCopySafetySummary(){
+      const base = mutationSafetySummary();
+      const includeTimestamp = Boolean(document.getElementById('safety-summary-include-ts').checked);
+      if (!includeTimestamp) return base;
+      return `${base}, copied_at_utc=${new Date().toISOString()}`;
+    }
+
     function fallbackCopyText(text){
       const area = document.createElement('textarea');
       area.value = text;
@@ -1144,7 +1160,7 @@ def render_canvas_workflows_html() -> str:
     }
 
     async function copySafetySummary(){
-      const text = mutationSafetySummary();
+      const text = buildCopySafetySummary();
       try {
         if (navigator.clipboard && window.isSecureContext) {
           await navigator.clipboard.writeText(text);
@@ -1541,6 +1557,7 @@ def render_canvas_workflows_html() -> str:
       applySafetyProfile(document.getElementById('safety-profile').value, true);
     });
     document.getElementById('safety-summary-copy-btn').addEventListener('click', copySafetySummary);
+    document.getElementById('safety-summary-include-ts').addEventListener('change', persistUIPrefsFromControls);
     document.getElementById('prefs-reset-btn').addEventListener('click', resetOperatorPrefs);
 
     const back = document.getElementById('back-dashboard');
