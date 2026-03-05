@@ -604,6 +604,18 @@ def render_canvas_workflows_html() -> str:
     .risk-banner.hidden {
       display: none;
     }
+    .safety-summary {
+      margin-top: 8px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #0c1422;
+      color: var(--text);
+      padding: 7px 9px;
+      font-size: 12px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      line-height: 1.35;
+      word-break: break-word;
+    }
     .posture-legend {
       border: 1px dashed var(--line);
       border-radius: 999px;
@@ -763,6 +775,7 @@ def render_canvas_workflows_html() -> str:
           >Legend?</span>
         </div>
         <div id=\"safety-risk-banner\" class=\"risk-banner hidden\"></div>
+        <div id=\"safety-inline-summary\" class=\"safety-summary\"></div>
         <div class=\"hint\">Badge reflects live toggles and can read `strict`, `balanced`, `lab`, or `custom`.</div>
         <div class=\"stack\">
           <button id=\"prefs-reset-btn\">Reset Operator Preferences</button>
@@ -993,6 +1006,8 @@ def render_canvas_workflows_html() -> str:
 
     function updateSafetyRiskBanner(posture){
       const banner = document.getElementById('safety-risk-banner');
+      const summary = document.getElementById('safety-inline-summary');
+      if (summary) summary.textContent = mutationSafetySummary();
       if (!banner) return;
       const current = posture || deriveActiveSafetyPosture();
       if (current === 'lab') {

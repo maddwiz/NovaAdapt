@@ -1583,6 +1583,7 @@ class ServerTests(unittest.TestCase):
                     self.assertIn("safety-posture-badge", html_with_query)
                     self.assertIn("safety-posture-legend", html_with_query)
                     self.assertIn("safety-risk-banner", html_with_query)
+                    self.assertIn("safety-inline-summary", html_with_query)
                     self.assertIn("prefs-reset-btn", html_with_query)
                     self.assertIn("novaadapt_canvas_workflow_ui_prefs_v1", html_with_query)
                     self.assertIn("confirm-mutations", html_with_query)

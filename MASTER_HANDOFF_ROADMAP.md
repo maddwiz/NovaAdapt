@@ -127,9 +127,10 @@ This file is the continuation map for future Codex sessions working from NovaAda
   - manual safety-toggle edits now auto-sync profile selector to `custom` when values diverge from selected profile defaults
   - pre-mutation risk banner now appears for elevated postures (`lab`/`custom`) to reinforce operator risk before mutating actions
   - mutation confirmation prompts now include compact safety context (`posture`, `profile`, `confirm`, `import_preview`) before payload preview
+  - always-visible inline safety summary now appears beside posture controls so operators can verify active settings without opening prompts
   - explicit reset control now restores operator safety preferences to defaults (`confirm-mutations=true`, `preset-import-preview=true`)
   - confirmation gate toggle for mutating actions (render/start/advance/resume), enabled by default
-  - coverage assertions updated in `tests/test_server.py` for preset/safety/export/import/diff-preview/profile/posture/legend/custom-sync/risk-banner/prompt-summary/localStorage controls in rendered HTML
+  - coverage assertions updated in `tests/test_server.py` for preset/safety/export/import/diff-preview/profile/posture/legend/custom-sync/risk-banner/prompt-summary/inline-summary/localStorage controls in rendered HTML
 - Latest verification runs:
   - `PYTHONPATH=core:shared python3 -m unittest tests.test_server` → `26 tests OK`
   - `PYTHONPATH=core:shared python3 -m unittest discover -s tests` → `341 tests OK`
@@ -150,7 +151,7 @@ This file is the continuation map for future Codex sessions working from NovaAda
 
 ### P1
 
-2. Add an always-visible inline safety summary string beside the posture badge so operators do not need to open prompts to verify settings.
+2. Add a compact copy button for the inline safety summary so operators can paste current safety context into incident notes.
 
 ## 4) Continuation Checklist
 
