@@ -1572,6 +1572,9 @@ class ServerTests(unittest.TestCase):
                     )
                     self.assertIn("Canvas + Workflows Inspector", html_with_query)
                     self.assertIn("/workflows/status", html_with_query)
+                    self.assertIn("preset-save-btn", html_with_query)
+                    self.assertIn("confirm-mutations", html_with_query)
+                    self.assertIn("Template: Aetherion Monitor", html_with_query)
 
                     html_with_header = _get_text(
                         f"http://{host}:{port}/dashboard/canvas-workflows",

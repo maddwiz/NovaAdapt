@@ -115,6 +115,11 @@ This file is the continuation map for future Codex sessions working from NovaAda
   - when disabled, route returns `404` by design
   - OpenAPI includes `/dashboard/canvas-workflows`
   - covered in `tests/test_server.py` (`test_canvas_workflows_dashboard_flag_and_auth`)
+- Canvas/workflow inspector UI now includes operator safety/persistence tooling:
+  - local preset save/load/delete using browser localStorage
+  - template loaders (`Aetherion Monitor`, `Patrol Cycle`, `Minimal Safe`)
+  - confirmation gate toggle for mutating actions (render/start/advance/resume), enabled by default
+  - coverage assertion added in `tests/test_server.py` for preset/safety controls in rendered HTML
 - Latest verification run: `PYTHONPATH=core:shared python3 -m unittest discover -s tests` → `341 tests OK`.
 
 ## 2) Hard Invariants
@@ -133,7 +138,7 @@ This file is the continuation map for future Codex sessions working from NovaAda
 
 ### P1
 
-2. Expand the canvas/workflow dashboard with persisted presets and safer action templates (while keeping route default-off).
+2. Add operator export/import of preset bundles and per-template policy hints in the canvas/workflow dashboard.
 
 ## 4) Continuation Checklist
 

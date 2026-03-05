@@ -516,6 +516,23 @@ def render_canvas_workflows_html() -> str:
     .status.ok { color: var(--ok); }
     .status.warn { color: var(--warn); }
     .status.bad { color: var(--bad); }
+    .checkbox {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      color: var(--text);
+      text-transform: none;
+      letter-spacing: 0;
+      margin: 0;
+    }
+    .checkbox input { width: auto; }
+    .hint {
+      margin-top: 8px;
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.4;
+    }
     @media (max-width: 760px) { .row { grid-template-columns: 1fr; } }
   </style>
 </head>
@@ -603,11 +620,48 @@ def render_canvas_workflows_html() -> str:
         <div id=\"wf-status\" class=\"status\"></div>
         <pre id=\"wf-json\" class=\"json\"></pre>
       </section>
+
+      <section class=\"card\">
+        <h2>Presets + Safety</h2>
+        <div class=\"row\">
+          <div>
+            <label for=\"preset-name\">Preset Name</label>
+            <input id=\"preset-name\" placeholder=\"aetherion-monitor\" />
+          </div>
+          <div>
+            <label for=\"preset-select\">Saved Presets</label>
+            <select id=\"preset-select\">
+              <option value=\"\">(none)</option>
+            </select>
+          </div>
+        </div>
+        <div class=\"stack\">
+          <button id=\"preset-save-btn\">Save Preset</button>
+          <button id=\"preset-load-btn\">Load Preset</button>
+          <button id=\"preset-delete-btn\">Delete Preset</button>
+        </div>
+        <div class=\"stack\">
+          <button id=\"template-aetherion-btn\">Template: Aetherion Monitor</button>
+          <button id=\"template-patrol-btn\">Template: Patrol Cycle</button>
+          <button id=\"template-reset-btn\">Template: Minimal Safe</button>
+        </div>
+        <div class=\"row single\">
+          <div>
+            <label class=\"checkbox\" for=\"confirm-mutations\">
+              <input id=\"confirm-mutations\" type=\"checkbox\" checked />
+              Require confirmation before mutating actions (render/start/advance/resume)
+            </label>
+            <div class=\"hint\">Keep this enabled in production. Disable only for local controlled testing.</div>
+          </div>
+        </div>
+        <div id=\"preset-status\" class=\"status\"></div>
+      </section>
     </div>
   </div>
 
   <script>
     const token = new URLSearchParams(window.location.search).get('token');
+    const PRESET_KEY = 'novaadapt_canvas_workflow_presets_v1';
 
     function withToken(path){
       if (!token) return path;
@@ -638,6 +692,166 @@ def render_canvas_workflows_html() -> str:
       const el = document.getElementById(id);
       el.textContent = text;
       el.className = `status ${kind || ''}`;
+    }
+
+    function defaultTemplate(kind){
+      if (kind === 'aetherion') {
+        return {
+          canvasContext: 'api',
+          canvasSession: 'aetherion-live',
+          canvasTitle: 'Aetherion District Snapshot',
+          canvasSections: JSON.stringify([
+            { heading: 'Market', body: 'Listings + demand stable', meta: 'economic' },
+            { heading: 'Defense', body: 'Sentinel readiness nominal', meta: 'security' },
+          ], null, 0),
+          workflowContext: 'api',
+          workflowId: 'wf-aetherion-monitor',
+          workflowObjective: 'Collect district snapshot and publish operator summary',
+          workflowSteps: JSON.stringify([
+            { name: 'fetch_market' },
+            { name: 'fetch_presence' },
+            { name: 'summarize' },
+          ], null, 0),
+        };
+      }
+      if (kind === 'patrol') {
+        return {
+          canvasContext: 'api',
+          canvasSession: 'patrol-route',
+          canvasTitle: 'Patrol Route Board',
+          canvasSections: JSON.stringify([
+            { heading: 'Route', body: 'East gate -> mid ring -> archive lane', meta: 'pathing' },
+            { heading: 'Watchpoints', body: '3 anomalies flagged for follow-up', meta: 'alerts' },
+          ], null, 0),
+          workflowContext: 'api',
+          workflowId: 'wf-patrol-cycle',
+          workflowObjective: 'Run patrol cycle and report anomalies',
+          workflowSteps: JSON.stringify([
+            { name: 'scan_route' },
+            { name: 'triage_alerts' },
+            { name: 'send_report' },
+          ], null, 0),
+        };
+      }
+      return {
+        canvasContext: 'api',
+        canvasSession: 'default',
+        canvasTitle: 'Aetherion Snapshot',
+        canvasSections: '[{"heading":"Trade","body":"Market stable","meta":"live"}]',
+        workflowContext: 'api',
+        workflowId: 'wf-demo',
+        workflowObjective: 'Patrol route in Aetherion',
+        workflowSteps: '[{"name":"scan"},{"name":"report"}]',
+      };
+    }
+
+    function readFormSnapshot(){
+      return {
+        canvasContext: document.getElementById('canvas-context').value,
+        canvasSession: document.getElementById('canvas-session').value,
+        canvasTitle: document.getElementById('canvas-title').value,
+        canvasSections: document.getElementById('canvas-sections').value,
+        workflowContext: document.getElementById('wf-context').value,
+        workflowId: document.getElementById('wf-id').value,
+        workflowObjective: document.getElementById('wf-objective').value,
+        workflowSteps: document.getElementById('wf-steps').value,
+      };
+    }
+
+    function applySnapshot(snapshot){
+      if (!snapshot || typeof snapshot !== 'object') return;
+      if (typeof snapshot.canvasContext === 'string') document.getElementById('canvas-context').value = snapshot.canvasContext;
+      if (typeof snapshot.canvasSession === 'string') document.getElementById('canvas-session').value = snapshot.canvasSession;
+      if (typeof snapshot.canvasTitle === 'string') document.getElementById('canvas-title').value = snapshot.canvasTitle;
+      if (typeof snapshot.canvasSections === 'string') document.getElementById('canvas-sections').value = snapshot.canvasSections;
+      if (typeof snapshot.workflowContext === 'string') document.getElementById('wf-context').value = snapshot.workflowContext;
+      if (typeof snapshot.workflowId === 'string') document.getElementById('wf-id').value = snapshot.workflowId;
+      if (typeof snapshot.workflowObjective === 'string') document.getElementById('wf-objective').value = snapshot.workflowObjective;
+      if (typeof snapshot.workflowSteps === 'string') document.getElementById('wf-steps').value = snapshot.workflowSteps;
+    }
+
+    function readPresets(){
+      try {
+        const raw = localStorage.getItem(PRESET_KEY);
+        if (!raw) return {};
+        const parsed = JSON.parse(raw);
+        return parsed && typeof parsed === 'object' ? parsed : {};
+      } catch (_err) {
+        return {};
+      }
+    }
+
+    function writePresets(presets){
+      localStorage.setItem(PRESET_KEY, JSON.stringify(presets || {}));
+    }
+
+    function refreshPresetSelect(selected=''){
+      const select = document.getElementById('preset-select');
+      const presets = readPresets();
+      const names = Object.keys(presets).sort();
+      select.innerHTML = '<option value="">(none)</option>';
+      for (const name of names) {
+        const option = document.createElement('option');
+        option.value = name;
+        option.textContent = name;
+        select.appendChild(option);
+      }
+      if (selected && presets[selected]) select.value = selected;
+    }
+
+    function savePreset(){
+      const name = document.getElementById('preset-name').value.trim().toLowerCase();
+      if (!name || !/^[a-z0-9._-]{1,48}$/.test(name)) {
+        setStatus('preset-status', 'Invalid preset name. Use 1-48 chars: a-z 0-9 . _ -', 'bad');
+        return;
+      }
+      const presets = readPresets();
+      presets[name] = readFormSnapshot();
+      writePresets(presets);
+      refreshPresetSelect(name);
+      setStatus('preset-status', `Preset saved: ${name}`, 'ok');
+    }
+
+    function loadPreset(){
+      const name = document.getElementById('preset-select').value;
+      if (!name) {
+        setStatus('preset-status', 'Pick a preset first', 'warn');
+        return;
+      }
+      const presets = readPresets();
+      applySnapshot(presets[name]);
+      document.getElementById('preset-name').value = name;
+      setStatus('preset-status', `Preset loaded: ${name}`, 'ok');
+    }
+
+    function deletePreset(){
+      const name = document.getElementById('preset-select').value;
+      if (!name) {
+        setStatus('preset-status', 'Pick a preset first', 'warn');
+        return;
+      }
+      if (!window.confirm(`Delete preset "${name}"?`)) {
+        setStatus('preset-status', 'Delete canceled', 'warn');
+        return;
+      }
+      const presets = readPresets();
+      delete presets[name];
+      writePresets(presets);
+      refreshPresetSelect();
+      setStatus('preset-status', `Preset deleted: ${name}`, 'ok');
+    }
+
+    function applyTemplate(kind){
+      const snapshot = defaultTemplate(kind);
+      applySnapshot(snapshot);
+      setStatus('preset-status', `Template loaded: ${kind}`, 'ok');
+    }
+
+    function mutationAllowed(actionLabel, payload){
+      const required = document.getElementById('confirm-mutations').checked;
+      if (!required) return true;
+      const preview = stringify(payload).slice(0, 500);
+      return window.confirm(`Confirm ${actionLabel}?\n\n${preview}`);
     }
 
     async function getJSON(path){
@@ -676,11 +890,18 @@ def render_canvas_workflows_html() -> str:
           out = await getJSON(`/canvas/status?context=${encodeURIComponent(context)}`);
         } else if (action === 'render'){
           const sections = parseJSONArea('canvas-sections', []);
-          out = await postJSON('/canvas/render', {
+          const requestPayload = {
             title,
             session_id: session,
             sections,
             context,
+          };
+          if (!mutationAllowed('canvas render', requestPayload)) {
+            setStatus('canvas-status', 'Canvas render canceled by operator', 'warn');
+            return;
+          }
+          out = await postJSON('/canvas/render', {
+            ...requestPayload,
           });
         } else if (action === 'frames'){
           out = await getJSON(`/canvas/frames?session_id=${encodeURIComponent(session)}&context=${encodeURIComponent(context)}&limit=20`);
@@ -703,19 +924,38 @@ def render_canvas_workflows_html() -> str:
           out = await getJSON(`/workflows/status?context=${encodeURIComponent(context)}`);
         } else if (action === 'start'){
           const steps = parseJSONArea('wf-steps', []);
-          out = await postJSON('/workflows/start', {
+          const requestPayload = {
             objective,
             workflow_id: workflowId,
             steps,
             context,
+          };
+          if (!mutationAllowed('workflow start', requestPayload)) {
+            setStatus('wf-status', 'Workflow start canceled by operator', 'warn');
+            return;
+          }
+          out = await postJSON('/workflows/start', {
+            ...requestPayload,
           });
         } else if (action === 'advance'){
-          out = await postJSON('/workflows/advance', {
+          const requestPayload = {
             workflow_id: workflowId,
             result: { ok: true, source: 'ui' },
             context,
+          };
+          if (!mutationAllowed('workflow advance', requestPayload)) {
+            setStatus('wf-status', 'Workflow advance canceled by operator', 'warn');
+            return;
+          }
+          out = await postJSON('/workflows/advance', {
+            ...requestPayload,
           });
         } else if (action === 'resume'){
+          const requestPayload = { workflow_id: workflowId, context };
+          if (!mutationAllowed('workflow resume', requestPayload)) {
+            setStatus('wf-status', 'Workflow resume canceled by operator', 'warn');
+            return;
+          }
           out = await postJSON('/workflows/resume', { workflow_id: workflowId, context });
         } else if (action === 'get'){
           out = await getJSON(`/workflows/item?workflow_id=${encodeURIComponent(workflowId)}&context=${encodeURIComponent(context)}`);
@@ -739,10 +979,18 @@ def render_canvas_workflows_html() -> str:
     document.getElementById('wf-resume-btn').addEventListener('click', () => runWorkflow('resume'));
     document.getElementById('wf-get-btn').addEventListener('click', () => runWorkflow('get'));
     document.getElementById('wf-list-btn').addEventListener('click', () => runWorkflow('list'));
+    document.getElementById('preset-save-btn').addEventListener('click', savePreset);
+    document.getElementById('preset-load-btn').addEventListener('click', loadPreset);
+    document.getElementById('preset-delete-btn').addEventListener('click', deletePreset);
+    document.getElementById('template-aetherion-btn').addEventListener('click', () => applyTemplate('aetherion'));
+    document.getElementById('template-patrol-btn').addEventListener('click', () => applyTemplate('patrol'));
+    document.getElementById('template-reset-btn').addEventListener('click', () => applyTemplate('reset'));
 
     const back = document.getElementById('back-dashboard');
     if (token) back.href = `/dashboard?token=${encodeURIComponent(token)}`;
 
+    applyTemplate('reset');
+    refreshPresetSelect();
     runCanvas('status');
     runWorkflow('status');
   </script>
