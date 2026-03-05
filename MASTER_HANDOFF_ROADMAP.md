@@ -76,7 +76,15 @@ This file is the continuation map for future Codex sessions working from NovaAda
   - `novaadapt_voice_synthesize`
   - defaults to `context="mcp"` so env gating can use `NOVAADAPT_ENABLE_VOICE_MCP=1`
   - covered by `tests/test_mcp.py`
-- Latest verification run: `PYTHONPATH=core:shared python3 -m unittest discover -s tests` → `321 tests OK`.
+- Canvas/workflow foundation modules are now present and flag-gated by default:
+  - `core/novaadapt_core/canvas/`:
+    - `CanvasRenderer`, `CanvasActionRouter`, `CanvasSessionStore`, `canvas_enabled()`
+    - flags: `NOVAADAPT_ENABLE_CANVAS=1` or `NOVAADAPT_ENABLE_CANVAS_<CONTEXT>=1`
+  - `core/novaadapt_core/workflows/`:
+    - `WorkflowStore` (SQLite WAL), `WorkflowCheckpointStore`, `WorkflowEngine`, `workflows_enabled()`
+    - flags: `NOVAADAPT_ENABLE_WORKFLOWS=1` or `NOVAADAPT_ENABLE_WORKFLOWS_<CONTEXT>=1`
+  - coverage added in `tests/test_canvas.py` and `tests/test_workflows.py`
+- Latest verification run: `PYTHONPATH=core:shared python3 -m unittest discover -s tests` → `330 tests OK`.
 
 ## 2) Hard Invariants
 
@@ -94,7 +102,7 @@ This file is the continuation map for future Codex sessions working from NovaAda
 
 ### P1
 
-2. Add canvas/workflow modules behind flags, keeping default footprint minimal.
+2. Add optional API/CLI/MCP surface for canvas/workflows behind existing flags (default-off behavior must remain unchanged).
 
 ## 4) Continuation Checklist
 
