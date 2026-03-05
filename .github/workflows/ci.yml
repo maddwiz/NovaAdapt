@@ -6,6 +6,30 @@ on:
   pull_request:
 
 jobs:
+  novaprime-live-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout NovaAdapt
+        uses: actions/checkout@v4
+        with:
+          path: NovaAdapt
+
+      - name: Checkout NovaPrime
+        uses: actions/checkout@v4
+        with:
+          repository: maddwiz/NovaPrime
+          path: NovaPrime
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Run live NovaPrime contract test
+        working-directory: NovaAdapt
+        run: |
+          PYTHONPATH=core:shared python -m unittest tests.test_novaprime_contract_e2e -v
+
   novaprime-modes:
     runs-on: ubuntu-latest
     strategy:
