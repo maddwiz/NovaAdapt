@@ -583,6 +583,27 @@ def render_canvas_workflows_html() -> str:
       border-color: var(--accent);
       color: var(--accent);
     }
+    .risk-banner {
+      margin-top: 8px;
+      padding: 8px 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #0c1422;
+      font-size: 12px;
+      line-height: 1.4;
+      color: var(--muted);
+    }
+    .risk-banner.warn {
+      border-color: color-mix(in oklab, var(--warn), #000 15%);
+      color: var(--warn);
+    }
+    .risk-banner.bad {
+      border-color: color-mix(in oklab, var(--bad), #000 15%);
+      color: var(--bad);
+    }
+    .risk-banner.hidden {
+      display: none;
+    }
     .posture-legend {
       border: 1px dashed var(--line);
       border-radius: 999px;
@@ -741,6 +762,7 @@ def render_canvas_workflows_html() -> str:
             aria-label=\"Safety posture legend tooltip\"
           >Legend?</span>
         </div>
+        <div id=\"safety-risk-banner\" class=\"risk-banner hidden\"></div>
         <div class=\"hint\">Badge reflects live toggles and can read `strict`, `balanced`, `lab`, or `custom`.</div>
         <div class=\"stack\">
           <button id=\"prefs-reset-btn\">Reset Operator Preferences</button>
@@ -969,6 +991,24 @@ def render_canvas_workflows_html() -> str:
       return posture;
     }
 
+    function updateSafetyRiskBanner(posture){
+      const banner = document.getElementById('safety-risk-banner');
+      if (!banner) return;
+      const current = posture || deriveActiveSafetyPosture();
+      if (current === 'lab') {
+        banner.className = 'risk-banner bad';
+        banner.textContent = 'Lab posture active: mutating actions can run without confirmation and diff preview. Use only in isolated local testing.';
+        return;
+      }
+      if (current === 'custom') {
+        banner.className = 'risk-banner warn';
+        banner.textContent = 'Custom posture active: manual safety toggles diverge from profile defaults. Review settings before mutating actions.';
+        return;
+      }
+      banner.className = 'risk-banner hidden';
+      banner.textContent = '';
+    }
+
     function profileDefaults(profile){
       const normalized = normalizeSafetyProfile(profile);
       return SAFETY_PROFILES[normalized] || SAFETY_PROFILES[DEFAULT_SAFETY_PROFILE];
@@ -992,7 +1032,7 @@ def render_canvas_workflows_html() -> str:
           && Boolean(previewValue) === Boolean(defaults.presetImportPreview);
         if (!profileMatches && safetyProfile) safetyProfile.value = CUSTOM_SAFETY_PROFILE;
       }
-      updateSafetyPostureBadge();
+      updateSafetyRiskBanner(updateSafetyPostureBadge());
     }
 
     function persistUIPrefsFromControls(forcedProfile){
@@ -1007,7 +1047,7 @@ def render_canvas_workflows_html() -> str:
         presetImportPreview: Boolean(presetImportPreview && presetImportPreview.checked),
         safetyProfile: selectedProfile,
       });
-      updateSafetyPostureBadge();
+      updateSafetyRiskBanner(updateSafetyPostureBadge());
     }
 
     function applySafetyProfile(profile, includeStatus=true){
