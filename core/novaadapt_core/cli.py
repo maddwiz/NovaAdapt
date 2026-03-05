@@ -516,6 +516,63 @@ def _build_parser() -> argparse.ArgumentParser:
     adapt_persona_cmd.add_argument("--adapt-id", required=True)
     adapt_persona_cmd.add_argument("--player-id", default="")
 
+    voice_status_cmd = sub.add_parser(
+        "voice-status",
+        help="Show optional voice feature/backend status",
+    )
+    voice_status_cmd.add_argument("--config", type=Path, default=_default_config_path())
+    voice_status_cmd.add_argument(
+        "--context",
+        default="cli",
+        choices=["cli", "api"],
+        help="Surface context for flag evaluation",
+    )
+
+    voice_transcribe_cmd = sub.add_parser(
+        "voice-transcribe",
+        help="Transcribe audio with optional voice backend",
+    )
+    voice_transcribe_cmd.add_argument("--config", type=Path, default=_default_config_path())
+    voice_transcribe_cmd.add_argument("--audio-path", required=True)
+    voice_transcribe_cmd.add_argument(
+        "--hints",
+        default="",
+        help="Comma-separated hint phrases",
+    )
+    voice_transcribe_cmd.add_argument(
+        "--metadata",
+        default="",
+        help="Optional JSON object metadata passed to backend",
+    )
+    voice_transcribe_cmd.add_argument("--backend", default="", help="Optional backend override")
+    voice_transcribe_cmd.add_argument(
+        "--context",
+        default="cli",
+        choices=["cli", "api"],
+        help="Surface context for flag evaluation",
+    )
+
+    voice_synthesize_cmd = sub.add_parser(
+        "voice-synthesize",
+        help="Synthesize speech with optional voice backend",
+    )
+    voice_synthesize_cmd.add_argument("--config", type=Path, default=_default_config_path())
+    voice_synthesize_cmd.add_argument("--text", required=True)
+    voice_synthesize_cmd.add_argument("--output-path", default="")
+    voice_synthesize_cmd.add_argument("--voice", default="")
+    voice_synthesize_cmd.add_argument(
+        "--metadata",
+        default="",
+        help="Optional JSON object metadata passed to backend",
+    )
+    voice_synthesize_cmd.add_argument("--backend", default="", help="Optional backend override")
+    voice_synthesize_cmd.add_argument(
+        "--context",
+        default="cli",
+        choices=["cli", "api"],
+        help="Surface context for flag evaluation",
+    )
+
     directshell_check_cmd = sub.add_parser(
         "directshell-check",
         help="Probe DirectShell execution transport readiness",
@@ -1599,6 +1656,46 @@ def main() -> None:
                     service.adapt_persona_get(
                         str(args.adapt_id),
                         player_id=str(args.player_id or ""),
+                    ),
+                    indent=2,
+                )
+            )
+            return
+
+        if args.command == "voice-status":
+            service = NovaAdaptService(default_config=args.config)
+            print(json.dumps(service.voice_status(context=str(args.context or "cli")), indent=2))
+            return
+
+        if args.command == "voice-transcribe":
+            service = NovaAdaptService(default_config=args.config)
+            metadata = _parse_optional_json_object(args.metadata, "--metadata")
+            print(
+                json.dumps(
+                    service.voice_transcribe(
+                        str(args.audio_path or ""),
+                        hints=_parse_csv(args.hints),
+                        metadata=metadata if isinstance(metadata, dict) else {},
+                        backend=str(args.backend or ""),
+                        context=str(args.context or "cli"),
+                    ),
+                    indent=2,
+                )
+            )
+            return
+
+        if args.command == "voice-synthesize":
+            service = NovaAdaptService(default_config=args.config)
+            metadata = _parse_optional_json_object(args.metadata, "--metadata")
+            print(
+                json.dumps(
+                    service.voice_synthesize(
+                        str(args.text or ""),
+                        output_path=str(args.output_path or ""),
+                        voice=str(args.voice or ""),
+                        metadata=metadata if isinstance(metadata, dict) else {},
+                        backend=str(args.backend or ""),
+                        context=str(args.context or "cli"),
                     ),
                     indent=2,
                 )

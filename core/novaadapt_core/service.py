@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import time
 import uuid
 from datetime import datetime, timezone
@@ -27,6 +28,7 @@ from .novaprime import (
 from .plan_store import PlanStore
 from .policy import ActionPolicy
 from .plugins import PluginRegistry, SIBBridge, build_plugin_registry
+from .voice import build_stt_backend, build_tts_backend
 
 
 class NovaAdaptService:
@@ -935,6 +937,105 @@ class NovaAdaptService:
         if profile_error:
             out["profile_error"] = profile_error
         return out
+
+    def _voice_enabled(self, *, context: str = "api") -> bool:
+        normalized_context = str(context or "api").strip().upper() or "API"
+        global_enabled = coerce_bool(os.getenv("NOVAADAPT_ENABLE_VOICE"), default=False)
+        context_enabled = coerce_bool(os.getenv(f"NOVAADAPT_ENABLE_VOICE_{normalized_context}"), default=False)
+        return bool(global_enabled or context_enabled)
+
+    def voice_status(self, *, context: str = "api") -> dict[str, Any]:
+        normalized_context = str(context or "api").strip().lower() or "api"
+        enabled = self._voice_enabled(context=normalized_context)
+        configured_stt = str(os.getenv("NOVAADAPT_STT_BACKEND", "noop")).strip().lower() or "noop"
+        configured_tts = str(os.getenv("NOVAADAPT_TTS_BACKEND", "noop")).strip().lower() or "noop"
+        out: dict[str, Any] = {
+            "ok": True,
+            "enabled": enabled,
+            "context": normalized_context,
+            "configured": {
+                "stt_backend": configured_stt,
+                "tts_backend": configured_tts,
+            },
+            "flag_hint": {
+                "global": "NOVAADAPT_ENABLE_VOICE=1",
+                "context": f"NOVAADAPT_ENABLE_VOICE_{normalized_context.upper()}=1",
+            },
+        }
+        if not enabled:
+            return out
+        try:
+            out["stt_backend"] = build_stt_backend().name
+        except Exception as exc:
+            out["stt_error"] = str(exc)
+        try:
+            out["tts_backend"] = build_tts_backend().name
+        except Exception as exc:
+            out["tts_error"] = str(exc)
+        return out
+
+    def voice_transcribe(
+        self,
+        audio_path: str,
+        *,
+        hints: list[str] | None = None,
+        metadata: dict[str, Any] | None = None,
+        backend: str = "",
+        context: str = "api",
+    ) -> dict[str, Any]:
+        normalized_context = str(context or "api").strip().lower() or "api"
+        if not self._voice_enabled(context=normalized_context):
+            raise ValueError(
+                "voice feature disabled for this surface. "
+                f"Set NOVAADAPT_ENABLE_VOICE=1 or NOVAADAPT_ENABLE_VOICE_{normalized_context.upper()}=1"
+            )
+        backend_name = str(backend or "").strip()
+        stt = build_stt_backend(backend_name or None)
+        result = stt.transcribe(
+            str(audio_path or "").strip(),
+            hints=list(hints or []),
+            metadata=metadata if isinstance(metadata, dict) else {},
+        )
+        return {
+            "ok": bool(result.ok),
+            "backend": str(result.backend or stt.name),
+            "text": str(result.text or ""),
+            "confidence": result.confidence,
+            "error": result.error,
+            "metadata": dict(result.metadata or {}),
+        }
+
+    def voice_synthesize(
+        self,
+        text: str,
+        *,
+        output_path: str = "",
+        voice: str = "",
+        metadata: dict[str, Any] | None = None,
+        backend: str = "",
+        context: str = "api",
+    ) -> dict[str, Any]:
+        normalized_context = str(context or "api").strip().lower() or "api"
+        if not self._voice_enabled(context=normalized_context):
+            raise ValueError(
+                "voice feature disabled for this surface. "
+                f"Set NOVAADAPT_ENABLE_VOICE=1 or NOVAADAPT_ENABLE_VOICE_{normalized_context.upper()}=1"
+            )
+        backend_name = str(backend or "").strip()
+        tts = build_tts_backend(backend_name or None)
+        result = tts.synthesize(
+            str(text or ""),
+            output_path=str(output_path or ""),
+            voice=str(voice or ""),
+            metadata=metadata if isinstance(metadata, dict) else {},
+        )
+        return {
+            "ok": bool(result.ok),
+            "backend": str(result.backend or tts.name),
+            "output_path": str(result.output_path or ""),
+            "error": result.error,
+            "metadata": dict(result.metadata or {}),
+        }
 
     def channels(self) -> list[dict[str, Any]]:
         return self.channel_registry.list_channels()

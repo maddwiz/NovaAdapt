@@ -31,6 +31,7 @@ from . import server_channel_routes as channel_routes
 from . import server_memory_routes as memory_routes
 from . import server_novaprime_routes as novaprime_routes
 from . import server_sib_routes as sib_routes
+from . import server_voice_routes as voice_routes
 from . import server_plugin_routes as plugin_routes
 from . import server_idempotency_utils as idempotency_utils
 from . import server_stream_utils as stream_utils
@@ -301,6 +302,9 @@ def _build_handler(
         def _get_adapt_persona(self, query: dict[str, list[str]]) -> int:
             return adapt_routes.get_adapt_persona(self, service, _single, query)
 
+        def _get_voice_status(self, query: dict[str, list[str]]) -> int:
+            return voice_routes.get_voice_status(self, service, _single, query)
+
         def _get_browser_status(self, _query: dict[str, list[str]]) -> int:
             return terminal_browser_routes.get_browser_status(self, service)
 
@@ -476,6 +480,12 @@ def _build_handler(
 
         def _post_adapt_bond_verify(self, _path: str, payload: dict[str, object]) -> int:
             return adapt_routes.post_adapt_bond_verify(self, service, payload)
+
+        def _post_voice_transcribe(self, _path: str, payload: dict[str, object]) -> int:
+            return voice_routes.post_voice_transcribe(self, service, payload)
+
+        def _post_voice_synthesize(self, _path: str, payload: dict[str, object]) -> int:
+            return voice_routes.post_voice_synthesize(self, service, payload)
 
         def _post_memory_ingest(self, path: str, payload: dict[str, object]) -> int:
             return memory_routes.post_memory_ingest(self, service, path, payload)

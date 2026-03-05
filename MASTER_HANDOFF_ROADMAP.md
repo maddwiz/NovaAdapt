@@ -58,7 +58,14 @@ This file is the continuation map for future Codex sessions working from NovaAda
   - `OpenAISTTBackend` + `OpenAITTSBackend` (HTTP adapters, API-key gated, still optional)
   - factories now support `static`, `command`, and `openai` backend modes for both STT and TTS
   - extended tests in `tests/test_voice.py` for command/openai paths
-- Latest verification run: `PYTHONPATH=core:shared python3 -m unittest discover -s tests` → `312 tests OK`.
+- Voice is now wired into CLI + HTTP behind feature flags:
+  - Service methods: `voice_status`, `voice_transcribe`, `voice_synthesize` in `core/novaadapt_core/service.py`
+  - New CLI commands: `voice-status`, `voice-transcribe`, `voice-synthesize`
+  - New API routes: `GET /voice/status`, `POST /voice/transcribe`, `POST /voice/synthesize`
+  - New route module: `core/novaadapt_core/server_voice_routes.py`
+  - OpenAPI updated for voice routes
+  - Flag gating: `NOVAADAPT_ENABLE_VOICE=1` or context-specific `NOVAADAPT_ENABLE_VOICE_API=1` / `NOVAADAPT_ENABLE_VOICE_CLI=1`
+- Latest verification run: `PYTHONPATH=core:shared python3 -m unittest discover -s tests` → `321 tests OK`.
 
 ## 2) Hard Invariants
 
@@ -76,8 +83,8 @@ This file is the continuation map for future Codex sessions working from NovaAda
 
 ### P1
 
-2. Wire optional voice backends into CLI/server surface behind feature flags (do not auto-enable).
-3. Add canvas/workflow modules behind flags, keeping default footprint minimal.
+2. Add canvas/workflow modules behind flags, keeping default footprint minimal.
+3. Add typed shared SDK methods for new `/voice/*` routes (`shared/novaadapt_shared/api_client.py`) and optional MCP tool exposure.
 
 ## 4) Continuation Checklist
 

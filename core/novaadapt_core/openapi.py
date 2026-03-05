@@ -732,6 +732,32 @@ def build_openapi_spec() -> dict:
                     "responses": {"200": {"description": "Adapt persona context"}},
                 }
             },
+            "/voice/status": {
+                "get": {
+                    "summary": "Get optional voice feature status and configured backends",
+                    "parameters": [
+                        {
+                            "name": "context",
+                            "in": "query",
+                            "required": False,
+                            "schema": {"type": "string", "enum": ["api", "cli"]},
+                        }
+                    ],
+                    "responses": {"200": {"description": "Voice feature status"}},
+                }
+            },
+            "/voice/transcribe": {
+                "post": {
+                    "summary": "Transcribe audio with configured optional STT backend",
+                    "responses": {"200": {"description": "Transcription result"}},
+                }
+            },
+            "/voice/synthesize": {
+                "post": {
+                    "summary": "Synthesize speech with configured optional TTS backend",
+                    "responses": {"200": {"description": "Synthesis result"}},
+                }
+            },
             "/memory/recall": {
                 "post": {
                     "summary": "Recall memory entries relevant to a query",

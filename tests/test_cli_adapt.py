@@ -188,6 +188,61 @@ class AdaptCLITests(unittest.TestCase):
         plan_payload = service.create_plan.call_args.args[0]
         self.assertEqual(plan_payload["strategy"], "decompose")
 
+    def test_voice_status_command(self):
+        service = mock.Mock()
+        service.voice_status.return_value = {"ok": True, "enabled": False}
+        with mock.patch("novaadapt_core.cli.NovaAdaptService", return_value=service):
+            payload = self._run_cli("voice-status")
+        self.assertTrue(payload["ok"])
+        service.voice_status.assert_called_once_with(context="cli")
+
+    def test_voice_transcribe_and_synthesize_commands(self):
+        service = mock.Mock()
+        service.voice_transcribe.return_value = {"ok": True, "text": "hello"}
+        service.voice_synthesize.return_value = {"ok": True, "output_path": "/tmp/out.mp3"}
+        with mock.patch("novaadapt_core.cli.NovaAdaptService", return_value=service):
+            transcribe_payload = self._run_cli(
+                "voice-transcribe",
+                "--audio-path",
+                "/tmp/in.wav",
+                "--hints",
+                "nav,combat",
+                "--metadata",
+                '{"realm":"game_world"}',
+                "--backend",
+                "static",
+            )
+            synth_payload = self._run_cli(
+                "voice-synthesize",
+                "--text",
+                "route locked",
+                "--output-path",
+                "/tmp/out.mp3",
+                "--voice",
+                "alloy",
+                "--metadata",
+                '{"realm":"aetherion"}',
+                "--backend",
+                "openai",
+            )
+        self.assertTrue(transcribe_payload["ok"])
+        self.assertTrue(synth_payload["ok"])
+        service.voice_transcribe.assert_called_once_with(
+            "/tmp/in.wav",
+            hints=["nav", "combat"],
+            metadata={"realm": "game_world"},
+            backend="static",
+            context="cli",
+        )
+        service.voice_synthesize.assert_called_once_with(
+            "route locked",
+            output_path="/tmp/out.mp3",
+            voice="alloy",
+            metadata={"realm": "aetherion"},
+            backend="openai",
+            context="cli",
+        )
+
     def test_run_rejects_invalid_mesh_json(self):
         service = mock.Mock()
         with mock.patch("novaadapt_core.cli.NovaAdaptService", return_value=service):
