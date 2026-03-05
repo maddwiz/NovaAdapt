@@ -1,0 +1,62 @@
+# MASTER HANDOFF ROADMAP
+
+Last Updated: 2026-03-05  
+Repo: `maddwiz/NovaAdapt`  
+Kernel Pair: `maddwiz/NovaPrime`
+
+This file is the continuation map for future Codex sessions working from NovaAdapt first.
+
+## 1) Current State (Verified)
+
+- NovaAdapt remains standalone-ready (no NovaPrime required).
+- Kernel optional path is implemented via:
+  - `core/novaadapt_core/novaprime/kernel_adapter.py`
+  - `core/novaadapt_core/novaprime/client.py`
+  - `core/novaadapt_core/service.py`
+- `NoopNovaPrimeClient` graceful fallback is present.
+- Multi-channel adapter/connector surface is present (including iMessage).
+- XREAL/X1 integration path is present (`xreal-intent` CLI + connector/bridge support).
+- Gateway components are present (`agent_gateway/*`) with queue/worker/delivery/scheduler modules.
+
+## 2) Hard Invariants
+
+1. Never remove standalone behavior.
+2. NovaPrime integration is opt-in, fail-open by default unless explicitly required.
+3. Gateway layer is plumbing/routing/delivery, not cognition.
+4. Public mesh/game perks are additive, not mandatory for OSS users.
+
+## 3) Open Gaps (Priority)
+
+### P0
+
+1. Wire NovaPrime’s new SIB modules/endpoints once available:
+   - imprinting lifecycle
+   - phase event operations
+   - void-state session operations
+   - Aetherion world snapshot query
+   - bond history query
+2. Add client SDK methods + server routes for above (feature-flagged).
+3. Add integration tests with NovaPrime optional/disabled mode and enabled mode.
+
+### P1
+
+4. Add `decompose` strategy to shared model router while preserving `single`/`vote`.
+5. Add voice module (STT/TTS/wake) as optional backend adapters.
+6. Add canvas/workflow modules behind flags, keeping default footprint minimal.
+
+## 4) Continuation Checklist
+
+1. Validate local state:
+   - `git status --short --branch`
+2. Run targeted tests:
+   - `PYTHONPATH=core:shared python3 -m unittest tests.test_service tests.test_novaprime_client tests.test_kernel_adapter`
+   - `PYTHONPATH=core:shared python3 -m unittest tests.test_agent_gateway tests.test_cli_channels tests.test_cli_xreal tests.test_server`
+3. Confirm standalone health payload still reports `requires_novaprime: false`.
+4. Only stage source/test/docs files.
+
+## 5) Cross-Repo Contract
+
+- Keep API compatibility with NovaPrime’s optional route surface.
+- Any new NovaPrime route usage in NovaAdapt must degrade safely when unavailable.
+- Update this roadmap with exact next tasks and command-based verification at end of each session.
+
