@@ -115,6 +115,9 @@ class _StubService:
     def novaprime_mesh_transfer(self, from_node: str, to_node: str, amount: float):
         return {"ok": True, "balances": {from_node: 20.0, to_node: 80.0}, "amount": amount}
 
+    def novaprime_mesh_aetherion_state(self, *, refresh: bool = True):
+        return {"ok": True, "refresh": bool(refresh), "snapshot": {"population": 12, "districts": 4}}
+
     def novaprime_marketplace_listings(self):
         return {"ok": True, "listings": [{"listing_id": "listing-1", "title": "Storm Slash", "price": 25.0}]}
 
@@ -192,6 +195,70 @@ class _StubService:
             "player_id": player_id,
             "adapt_id": adapt_id or "adapt-generated",
             "resonance": {"element": "light", "subclass": "light"},
+        }
+
+    def novaprime_imprinting_start(self, player_id: str, player_profile: dict | None = None, *, ttl_sec: float = 1800.0):
+        return {
+            "ok": True,
+            "session_id": "imp-1",
+            "player_id": player_id,
+            "ttl_sec": float(ttl_sec),
+            "player_profile": player_profile or {},
+        }
+
+    def novaprime_imprinting_session(self, session_id: str):
+        return {
+            "ok": True,
+            "session_id": session_id,
+            "status": "awaiting_acceptance",
+            "adapt_profile": {"element": "light", "subclass": "light"},
+        }
+
+    def novaprime_imprinting_resolve(self, session_id: str, *, accepted: bool, adapt_id: str = ""):
+        return {
+            "ok": True,
+            "session_id": session_id,
+            "accepted": bool(accepted),
+            "adapt_id": adapt_id or "adapt-generated",
+        }
+
+    def novaprime_phase_evaluate(
+        self,
+        player_state: dict | None = None,
+        *,
+        narrative_state: dict | None = None,
+        environment_state: dict | None = None,
+        adapt_id: str = "",
+        auto_presence_update: bool = False,
+    ):
+        return {
+            "ok": True,
+            "triggered": bool((player_state or {}).get("trigger", False)),
+            "event_type": "echo",
+            "score": 0.61,
+            "adapt_id": adapt_id,
+            "auto_presence_update": bool(auto_presence_update),
+            "narrative_state": narrative_state or {},
+            "environment_state": environment_state or {},
+        }
+
+    def novaprime_void_create(self, player_id: str, *, player_profile: dict | None = None, seed: str = ""):
+        return {
+            "ok": True,
+            "state": {"state_id": "void-1", "player_id": player_id, "seed": seed or "auto-seed"},
+            "player_profile": player_profile or {},
+        }
+
+    def novaprime_void_tick(self, state: dict | None = None, *, stimulus: dict | None = None, tick: int = 1):
+        return {"ok": True, "state": state or {}, "stimulus": stimulus or {}, "tick": int(tick)}
+
+    def novaprime_narrative_bond_history(self, adapt_id: str, player_id: str, *, top_k: int = 120):
+        return {
+            "ok": True,
+            "adapt_id": adapt_id,
+            "player_id": player_id,
+            "top_k": int(top_k),
+            "events": [{"type": "first_bond", "weight": 1.0}],
         }
 
     def sib_status(self):
@@ -323,6 +390,14 @@ class MCPServerTests(unittest.TestCase):
         self.assertIn("novaadapt_novaprime_presence_update", names)
         self.assertIn("novaadapt_novaprime_resonance_score", names)
         self.assertIn("novaadapt_novaprime_resonance_bond", names)
+        self.assertIn("novaadapt_novaprime_mesh_aetherion_state", names)
+        self.assertIn("novaadapt_novaprime_imprinting_start", names)
+        self.assertIn("novaadapt_novaprime_imprinting_session", names)
+        self.assertIn("novaadapt_novaprime_imprinting_resolve", names)
+        self.assertIn("novaadapt_novaprime_phase_evaluate", names)
+        self.assertIn("novaadapt_novaprime_void_create", names)
+        self.assertIn("novaadapt_novaprime_void_tick", names)
+        self.assertIn("novaadapt_novaprime_narrative_bond_history", names)
         self.assertIn("novaadapt_sib_status", names)
         self.assertIn("novaadapt_sib_realm", names)
         self.assertIn("novaadapt_sib_companion_state", names)
@@ -826,6 +901,118 @@ class MCPServerTests(unittest.TestCase):
         )
         novaprime_resonance_bond_payload = novaprime_resonance_bond_resp["result"]["content"][0]["json"]
         self.assertEqual(novaprime_resonance_bond_payload["adapt_id"], "adapt-1")
+
+        novaprime_aetherion_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 911081,
+                "method": "tools/call",
+                "params": {
+                    "name": "novaadapt_novaprime_mesh_aetherion_state",
+                    "arguments": {"refresh": True},
+                },
+            }
+        )
+        novaprime_aetherion_payload = novaprime_aetherion_resp["result"]["content"][0]["json"]
+        self.assertTrue(novaprime_aetherion_payload["ok"])
+
+        novaprime_imprint_start_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 911082,
+                "method": "tools/call",
+                "params": {
+                    "name": "novaadapt_novaprime_imprinting_start",
+                    "arguments": {"player_id": "player-1", "player_profile": {"class": "sentinel"}, "ttl_sec": 900},
+                },
+            }
+        )
+        novaprime_imprint_start_payload = novaprime_imprint_start_resp["result"]["content"][0]["json"]
+        self.assertEqual(novaprime_imprint_start_payload["session_id"], "imp-1")
+
+        novaprime_imprint_session_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 911083,
+                "method": "tools/call",
+                "params": {
+                    "name": "novaadapt_novaprime_imprinting_session",
+                    "arguments": {"session_id": "imp-1"},
+                },
+            }
+        )
+        novaprime_imprint_session_payload = novaprime_imprint_session_resp["result"]["content"][0]["json"]
+        self.assertEqual(novaprime_imprint_session_payload["session_id"], "imp-1")
+
+        novaprime_imprint_resolve_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 911084,
+                "method": "tools/call",
+                "params": {
+                    "name": "novaadapt_novaprime_imprinting_resolve",
+                    "arguments": {"session_id": "imp-1", "accepted": True, "adapt_id": "adapt-1"},
+                },
+            }
+        )
+        novaprime_imprint_resolve_payload = novaprime_imprint_resolve_resp["result"]["content"][0]["json"]
+        self.assertEqual(novaprime_imprint_resolve_payload["adapt_id"], "adapt-1")
+
+        novaprime_phase_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 911085,
+                "method": "tools/call",
+                "params": {
+                    "name": "novaadapt_novaprime_phase_evaluate",
+                    "arguments": {"player_state": {"trigger": True}, "adapt_id": "adapt-1"},
+                },
+            }
+        )
+        novaprime_phase_payload = novaprime_phase_resp["result"]["content"][0]["json"]
+        self.assertTrue(novaprime_phase_payload["ok"])
+
+        novaprime_void_create_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 911086,
+                "method": "tools/call",
+                "params": {
+                    "name": "novaadapt_novaprime_void_create",
+                    "arguments": {"player_id": "player-1", "player_profile": {"class": "warden"}, "seed": "alpha"},
+                },
+            }
+        )
+        novaprime_void_create_payload = novaprime_void_create_resp["result"]["content"][0]["json"]
+        self.assertTrue(novaprime_void_create_payload["ok"])
+
+        novaprime_void_tick_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 911087,
+                "method": "tools/call",
+                "params": {
+                    "name": "novaadapt_novaprime_void_tick",
+                    "arguments": {"state": {"state_id": "void-1"}, "stimulus": {"tone": "calm"}, "tick": 2},
+                },
+            }
+        )
+        novaprime_void_tick_payload = novaprime_void_tick_resp["result"]["content"][0]["json"]
+        self.assertEqual(novaprime_void_tick_payload["tick"], 2)
+
+        novaprime_bond_history_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 911088,
+                "method": "tools/call",
+                "params": {
+                    "name": "novaadapt_novaprime_narrative_bond_history",
+                    "arguments": {"adapt_id": "adapt-1", "player_id": "player-1", "top_k": 50},
+                },
+            }
+        )
+        novaprime_bond_history_payload = novaprime_bond_history_resp["result"]["content"][0]["json"]
+        self.assertEqual(novaprime_bond_history_payload["adapt_id"], "adapt-1")
 
         sib_status_resp = server.handle_request(
             {

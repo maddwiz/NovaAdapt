@@ -271,6 +271,9 @@ def _build_handler(
         def _get_novaprime_mesh_peers(self, _query: dict[str, list[str]]) -> int:
             return novaprime_routes.get_novaprime_mesh_peers(self, service)
 
+        def _get_novaprime_mesh_aetherion_state(self, query: dict[str, list[str]]) -> int:
+            return novaprime_routes.get_novaprime_mesh_aetherion_state(self, service, _single, query)
+
         def _get_novaprime_marketplace_listings(self, _query: dict[str, list[str]]) -> int:
             return novaprime_routes.get_novaprime_marketplace_listings(self, service)
 
@@ -279,6 +282,12 @@ def _build_handler(
 
         def _get_novaprime_presence(self, query: dict[str, list[str]]) -> int:
             return novaprime_routes.get_novaprime_presence(self, service, _single, query)
+
+        def _get_novaprime_imprinting_session(self, query: dict[str, list[str]]) -> int:
+            return novaprime_routes.get_novaprime_imprinting_session(self, service, _single, query)
+
+        def _get_novaprime_narrative_bond_history(self, query: dict[str, list[str]]) -> int:
+            return novaprime_routes.get_novaprime_narrative_bond_history(self, service, _single, query)
 
         def _get_sib_status(self, _query: dict[str, list[str]]) -> int:
             return sib_routes.get_sib_status(self, service)
@@ -443,6 +452,21 @@ def _build_handler(
 
         def _post_novaprime_resonance_bond(self, _path: str, payload: dict[str, object]) -> int:
             return novaprime_routes.post_novaprime_resonance_bond(self, service, payload)
+
+        def _post_novaprime_imprinting_start(self, _path: str, payload: dict[str, object]) -> int:
+            return novaprime_routes.post_novaprime_imprinting_start(self, service, payload)
+
+        def _post_novaprime_imprinting_resolve(self, _path: str, payload: dict[str, object]) -> int:
+            return novaprime_routes.post_novaprime_imprinting_resolve(self, service, payload)
+
+        def _post_novaprime_phase_evaluate(self, _path: str, payload: dict[str, object]) -> int:
+            return novaprime_routes.post_novaprime_phase_evaluate(self, service, payload)
+
+        def _post_novaprime_void_create(self, _path: str, payload: dict[str, object]) -> int:
+            return novaprime_routes.post_novaprime_void_create(self, service, payload)
+
+        def _post_novaprime_void_tick(self, _path: str, payload: dict[str, object]) -> int:
+            return novaprime_routes.post_novaprime_void_tick(self, service, payload)
 
         def _post_memory_recall(self, _path: str, payload: dict[str, object]) -> int:
             return memory_routes.post_memory_recall(self, service, payload)

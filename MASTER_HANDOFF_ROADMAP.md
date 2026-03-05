@@ -23,6 +23,15 @@ This file is the continuation map for future Codex sessions working from NovaAda
   - `/api/v1/sib/void/create|tick`
   - `/api/v1/mesh/aetherion/state`
   - `/api/v1/narrative/bond/history`
+- NovaAdapt now wires the above NovaPrime routes end-to-end:
+  - `NovaPrimeClient` methods
+  - `NovaAdaptService` passthrough methods
+  - HTTP API routes (`/novaprime/...`)
+  - MCP tools (`novaadapt_novaprime_*`)
+  - shared SDK methods (`shared/novaadapt_shared/api_client.py`)
+  - OpenAPI path documentation
+  - Test coverage updated in `tests/test_service.py`, `tests/test_server.py`, `tests/test_mcp.py`, `tests/test_api_client.py`
+- Latest verification run: `PYTHONPATH=core:shared python3 -m unittest discover -s tests` → `292 tests OK`.
 
 ## 2) Hard Invariants
 
@@ -36,9 +45,9 @@ This file is the continuation map for future Codex sessions working from NovaAda
 
 ### P0
 
-1. Add `NovaPrimeClient` methods for newly available SIB/Aetherion routes.
-2. Add service/API route wiring for these methods (feature-flagged, fail-open).
-3. Add integration tests with NovaPrime optional/disabled mode and enabled mode.
+1. Keep NovaPrime route parity in sync when NovaPrime adds/churns API routes (fail-open behavior required).
+2. Add explicit smoke/contract test job that runs NovaAdapt against a live NovaPrime API process.
+3. Track and fix noisy ResourceWarnings in test suite (unclosed HTTPError/sqlite handles) to reduce CI noise.
 
 ### P1
 
@@ -53,6 +62,7 @@ This file is the continuation map for future Codex sessions working from NovaAda
 2. Run targeted tests:
    - `PYTHONPATH=core:shared python3 -m unittest tests.test_service tests.test_novaprime_client tests.test_kernel_adapter`
    - `PYTHONPATH=core:shared python3 -m unittest tests.test_agent_gateway tests.test_cli_channels tests.test_cli_xreal tests.test_server`
+   - If NovaPrime-facing files changed: `PYTHONPATH=core:shared python3 -m unittest tests.test_mcp tests.test_api_client`
 3. Confirm standalone health payload still reports `requires_novaprime: false`.
 4. Only stage source/test/docs files.
 

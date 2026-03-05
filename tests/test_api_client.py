@@ -89,6 +89,9 @@ class _Handler(BaseHTTPRequestHandler):
         if self.path.startswith("/novaprime/mesh/reputation?"):
             self._send(200, {"ok": True, "node_id": "node-1", "reputation": 0.87})
             return
+        if self.path.startswith("/novaprime/mesh/aetherion/state?"):
+            self._send(200, {"ok": True, "snapshot": {"population": 12, "districts": 4}, "refresh": True})
+            return
         if self.path == "/novaprime/marketplace/listings":
             self._send(
                 200,
@@ -116,6 +119,29 @@ class _Handler(BaseHTTPRequestHandler):
                     "ok": True,
                     "adapt_id": "adapt-1",
                     "presence": {"adapt_id": "adapt-1", "realm": "aetherion", "activity": "idle"},
+                },
+            )
+            return
+        if self.path.startswith("/novaprime/sib/imprinting/session?"):
+            self._send(
+                200,
+                {
+                    "ok": True,
+                    "session_id": "imp-1",
+                    "status": "awaiting_acceptance",
+                    "adapt_profile": {"element": "light", "subclass": "light"},
+                },
+            )
+            return
+        if self.path.startswith("/novaprime/narrative/bond/history?"):
+            self._send(
+                200,
+                {
+                    "ok": True,
+                    "adapt_id": "adapt-1",
+                    "player_id": "player-1",
+                    "summary": "Shared milestones detected.",
+                    "events": [{"type": "first_bond", "weight": 1.0}],
                 },
             )
             return
@@ -306,6 +332,11 @@ class _Handler(BaseHTTPRequestHandler):
             "/novaprime/presence/update",
             "/novaprime/resonance/score",
             "/novaprime/resonance/bond",
+            "/novaprime/sib/imprinting/start",
+            "/novaprime/sib/imprinting/resolve",
+            "/novaprime/sib/phase/evaluate",
+            "/novaprime/sib/void/create",
+            "/novaprime/sib/void/tick",
             "/sib/realm",
             "/sib/companion/state",
             "/sib/companion/speak",
@@ -530,6 +561,56 @@ class _Handler(BaseHTTPRequestHandler):
                         "player_id": payload.get("player_id"),
                         "adapt_id": payload.get("adapt_id", "") or "adapt-generated",
                         "resonance": {"element": "light", "subclass": "light"},
+                    },
+                )
+            elif self.path == "/novaprime/sib/imprinting/start":
+                self._send(
+                    200,
+                    {
+                        "ok": True,
+                        "session_id": "imp-1",
+                        "player_id": payload.get("player_id"),
+                        "ttl_sec": payload.get("ttl_sec", 1800.0),
+                    },
+                )
+            elif self.path == "/novaprime/sib/imprinting/resolve":
+                self._send(
+                    200,
+                    {
+                        "ok": True,
+                        "session_id": payload.get("session_id"),
+                        "accepted": bool(payload.get("accepted", False)),
+                        "adapt_id": payload.get("adapt_id") or "adapt-generated",
+                    },
+                )
+            elif self.path == "/novaprime/sib/phase/evaluate":
+                self._send(
+                    200,
+                    {
+                        "ok": True,
+                        "triggered": bool(payload.get("player_state", {}).get("trigger", False)),
+                        "event_type": "echo",
+                    },
+                )
+            elif self.path == "/novaprime/sib/void/create":
+                self._send(
+                    200,
+                    {
+                        "ok": True,
+                        "state": {
+                            "state_id": "void-1",
+                            "player_id": payload.get("player_id"),
+                            "seed": payload.get("seed", "auto-seed"),
+                        },
+                    },
+                )
+            elif self.path == "/novaprime/sib/void/tick":
+                self._send(
+                    200,
+                    {
+                        "ok": True,
+                        "state": payload.get("state", {}),
+                        "tick": int(payload.get("tick", 1)),
                     },
                 )
             elif self.path.startswith("/sib/"):
@@ -835,6 +916,14 @@ class APIClientTests(unittest.TestCase):
         self.assertTrue(
             client.novaprime_resonance_bond("player-1", {"class": "sentinel"}, adapt_id="adapt-1")["ok"]
         )
+        self.assertTrue(client.novaprime_mesh_aetherion_state(refresh=True)["ok"])
+        self.assertTrue(client.novaprime_imprinting_start("player-1", {"class": "sentinel"}, ttl_sec=900)["ok"])
+        self.assertTrue(client.novaprime_imprinting_session("imp-1")["ok"])
+        self.assertTrue(client.novaprime_imprinting_resolve("imp-1", True, adapt_id="adapt-1")["ok"])
+        self.assertTrue(client.novaprime_phase_evaluate({"trigger": True}, adapt_id="adapt-1")["ok"])
+        self.assertTrue(client.novaprime_void_create("player-1", player_profile={"class": "warden"})["ok"])
+        self.assertTrue(client.novaprime_void_tick({"state_id": "void-1"}, tick=2)["ok"])
+        self.assertTrue(client.novaprime_narrative_bond_history("adapt-1", "player-1", top_k=50)["ok"])
         self.assertTrue(client.sib_status()["ok"])
         self.assertEqual(client.sib_realm("player-1", "game_world")["plugin"], "sib_bridge")
         self.assertEqual(

@@ -231,9 +231,12 @@ class ServerTests(unittest.TestCase):
                 self.assertIn("/novaprime/mesh/balance", openapi["paths"])
                 self.assertIn("/novaprime/mesh/reputation", openapi["paths"])
                 self.assertIn("/novaprime/mesh/peers", openapi["paths"])
+                self.assertIn("/novaprime/mesh/aetherion/state", openapi["paths"])
                 self.assertIn("/novaprime/marketplace/listings", openapi["paths"])
                 self.assertIn("/novaprime/identity/profile", openapi["paths"])
                 self.assertIn("/novaprime/presence", openapi["paths"])
+                self.assertIn("/novaprime/sib/imprinting/session", openapi["paths"])
+                self.assertIn("/novaprime/narrative/bond/history", openapi["paths"])
                 self.assertIn("/novaprime/mesh/credit", openapi["paths"])
                 self.assertIn("/novaprime/mesh/transfer", openapi["paths"])
                 self.assertIn("/novaprime/mesh/peers/register", openapi["paths"])
@@ -247,6 +250,11 @@ class ServerTests(unittest.TestCase):
                 self.assertIn("/novaprime/presence/update", openapi["paths"])
                 self.assertIn("/novaprime/resonance/score", openapi["paths"])
                 self.assertIn("/novaprime/resonance/bond", openapi["paths"])
+                self.assertIn("/novaprime/sib/imprinting/start", openapi["paths"])
+                self.assertIn("/novaprime/sib/imprinting/resolve", openapi["paths"])
+                self.assertIn("/novaprime/sib/phase/evaluate", openapi["paths"])
+                self.assertIn("/novaprime/sib/void/create", openapi["paths"])
+                self.assertIn("/novaprime/sib/void/tick", openapi["paths"])
                 self.assertIn("/sib/status", openapi["paths"])
                 self.assertIn("/sib/realm", openapi["paths"])
                 self.assertIn("/sib/companion/state", openapi["paths"])
@@ -424,6 +432,11 @@ class ServerTests(unittest.TestCase):
                 self.assertTrue(novaprime_mesh_peers["ok"])
                 self.assertIn("peers", novaprime_mesh_peers)
 
+                novaprime_aetherion, _ = _get_json_with_headers(
+                    f"http://{host}:{port}/novaprime/mesh/aetherion/state?refresh=1"
+                )
+                self.assertIn("ok", novaprime_aetherion)
+
                 novaprime_mesh_peer_register, _ = _post_json_with_headers(
                     f"http://{host}:{port}/novaprime/mesh/peers/register",
                     {"node_id": "node-1", "url": "http://127.0.0.1:8530", "capabilities": ["compute", "capsules"]},
@@ -526,6 +539,48 @@ class ServerTests(unittest.TestCase):
                     {"player_id": "player-1", "player_profile": {"class": "sentinel"}, "adapt_id": "adapt-1"},
                 )
                 self.assertIn("ok", novaprime_resonance_bond)
+
+                novaprime_imprinting_start, _ = _post_json_with_headers(
+                    f"http://{host}:{port}/novaprime/sib/imprinting/start",
+                    {"player_id": "player-1", "player_profile": {"class": "sentinel"}, "ttl_sec": 900},
+                )
+                self.assertIn("ok", novaprime_imprinting_start)
+                if bool(novaprime_imprinting_start.get("ok", False)):
+                    self.assertIn("session_id", novaprime_imprinting_start)
+
+                novaprime_imprinting_session, _ = _get_json_with_headers(
+                    f"http://{host}:{port}/novaprime/sib/imprinting/session?session_id=imp-1"
+                )
+                self.assertIn("ok", novaprime_imprinting_session)
+
+                novaprime_imprinting_resolve, _ = _post_json_with_headers(
+                    f"http://{host}:{port}/novaprime/sib/imprinting/resolve",
+                    {"session_id": "imp-1", "accepted": True, "adapt_id": "adapt-1"},
+                )
+                self.assertIn("ok", novaprime_imprinting_resolve)
+
+                novaprime_phase, _ = _post_json_with_headers(
+                    f"http://{host}:{port}/novaprime/sib/phase/evaluate",
+                    {"player_state": {"trigger": True}, "adapt_id": "adapt-1", "auto_presence_update": True},
+                )
+                self.assertIn("ok", novaprime_phase)
+
+                novaprime_void_create, _ = _post_json_with_headers(
+                    f"http://{host}:{port}/novaprime/sib/void/create",
+                    {"player_id": "player-1", "player_profile": {"class": "warden"}, "seed": "alpha"},
+                )
+                self.assertIn("ok", novaprime_void_create)
+
+                novaprime_void_tick, _ = _post_json_with_headers(
+                    f"http://{host}:{port}/novaprime/sib/void/tick",
+                    {"state": {"state_id": "void-1"}, "stimulus": {"tone": "calm"}, "tick": 2},
+                )
+                self.assertIn("ok", novaprime_void_tick)
+
+                novaprime_bond_history, _ = _get_json_with_headers(
+                    f"http://{host}:{port}/novaprime/narrative/bond/history?adapt_id=adapt-1&player_id=player-1&top_k=50"
+                )
+                self.assertIn("ok", novaprime_bond_history)
 
                 sib_status, _ = _get_json_with_headers(f"http://{host}:{port}/sib/status")
                 self.assertEqual(sib_status["plugin"], "sib_bridge")

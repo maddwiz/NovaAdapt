@@ -540,6 +540,147 @@ class NovaAdaptAPIClient:
             return payload
         raise APIClientError("Expected object payload from /novaprime/resonance/bond")
 
+    def novaprime_mesh_aetherion_state(self, *, refresh: bool = True) -> dict[str, Any]:
+        q = "1" if bool(refresh) else "0"
+        payload = self._get_json(f"/novaprime/mesh/aetherion/state?refresh={quote(q, safe='')}")
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /novaprime/mesh/aetherion/state")
+
+    def novaprime_imprinting_start(
+        self,
+        player_id: str,
+        player_profile: dict[str, Any] | None = None,
+        *,
+        ttl_sec: float = 1800.0,
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        payload = self._post_json(
+            "/novaprime/sib/imprinting/start",
+            {
+                "player_id": str(player_id or ""),
+                "player_profile": player_profile if isinstance(player_profile, dict) else {},
+                "ttl_sec": float(ttl_sec),
+            },
+            idempotency_key=idempotency_key,
+        )
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /novaprime/sib/imprinting/start")
+
+    def novaprime_imprinting_session(self, session_id: str) -> dict[str, Any]:
+        payload = self._get_json(
+            f"/novaprime/sib/imprinting/session?session_id={quote(str(session_id), safe='')}"
+        )
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /novaprime/sib/imprinting/session")
+
+    def novaprime_imprinting_resolve(
+        self,
+        session_id: str,
+        accepted: bool,
+        *,
+        adapt_id: str = "",
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        payload = self._post_json(
+            "/novaprime/sib/imprinting/resolve",
+            {
+                "session_id": str(session_id or ""),
+                "accepted": bool(accepted),
+                "adapt_id": str(adapt_id or ""),
+            },
+            idempotency_key=idempotency_key,
+        )
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /novaprime/sib/imprinting/resolve")
+
+    def novaprime_phase_evaluate(
+        self,
+        player_state: dict[str, Any] | None = None,
+        *,
+        narrative_state: dict[str, Any] | None = None,
+        environment_state: dict[str, Any] | None = None,
+        adapt_id: str = "",
+        auto_presence_update: bool = False,
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        payload = self._post_json(
+            "/novaprime/sib/phase/evaluate",
+            {
+                "player_state": player_state if isinstance(player_state, dict) else {},
+                "narrative_state": narrative_state if isinstance(narrative_state, dict) else {},
+                "environment_state": environment_state if isinstance(environment_state, dict) else {},
+                "adapt_id": str(adapt_id or ""),
+                "auto_presence_update": bool(auto_presence_update),
+            },
+            idempotency_key=idempotency_key,
+        )
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /novaprime/sib/phase/evaluate")
+
+    def novaprime_void_create(
+        self,
+        player_id: str,
+        *,
+        player_profile: dict[str, Any] | None = None,
+        seed: str = "",
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        payload = self._post_json(
+            "/novaprime/sib/void/create",
+            {
+                "player_id": str(player_id or ""),
+                "player_profile": player_profile if isinstance(player_profile, dict) else {},
+                "seed": str(seed or ""),
+            },
+            idempotency_key=idempotency_key,
+        )
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /novaprime/sib/void/create")
+
+    def novaprime_void_tick(
+        self,
+        state: dict[str, Any] | None = None,
+        *,
+        stimulus: dict[str, Any] | None = None,
+        tick: int = 1,
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        payload = self._post_json(
+            "/novaprime/sib/void/tick",
+            {
+                "state": state if isinstance(state, dict) else {},
+                "stimulus": stimulus if isinstance(stimulus, dict) else {},
+                "tick": int(tick),
+            },
+            idempotency_key=idempotency_key,
+        )
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /novaprime/sib/void/tick")
+
+    def novaprime_narrative_bond_history(
+        self,
+        adapt_id: str,
+        player_id: str,
+        *,
+        top_k: int = 120,
+    ) -> dict[str, Any]:
+        payload = self._get_json(
+            "/novaprime/narrative/bond/history"
+            f"?adapt_id={quote(str(adapt_id), safe='')}"
+            f"&player_id={quote(str(player_id), safe='')}"
+            f"&top_k={quote(str(max(1, int(top_k))), safe='')}"
+        )
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /novaprime/narrative/bond/history")
+
     def sib_status(self) -> dict[str, Any]:
         payload = self._get_json("/sib/status")
         if isinstance(payload, dict):

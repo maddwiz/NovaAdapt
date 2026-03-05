@@ -641,6 +641,144 @@ class NovaAdaptService:
             return out
         return {"ok": False, "error": "invalid novaprime resonance bond response"}
 
+    def novaprime_mesh_aetherion_state(self, *, refresh: bool = True) -> dict[str, Any]:
+        result = self.novaprime_client.mesh_aetherion_state(refresh=bool(refresh))
+        if isinstance(result, dict):
+            return result
+        return {"ok": False, "error": "invalid novaprime aetherion state response"}
+
+    def novaprime_imprinting_start(
+        self,
+        player_id: str,
+        player_profile: dict[str, Any] | None = None,
+        *,
+        ttl_sec: float = 1800.0,
+    ) -> dict[str, Any]:
+        normalized_player = str(player_id or "").strip()
+        if not normalized_player:
+            raise ValueError("'player_id' is required")
+        result = self.novaprime_client.imprinting_start(
+            normalized_player,
+            player_profile if isinstance(player_profile, dict) else {},
+            ttl_sec=float(ttl_sec),
+        )
+        if isinstance(result, dict):
+            return result
+        return {"ok": False, "error": "invalid novaprime imprinting start response"}
+
+    def novaprime_imprinting_session(self, session_id: str) -> dict[str, Any]:
+        normalized_session = str(session_id or "").strip()
+        if not normalized_session:
+            raise ValueError("'session_id' is required")
+        result = self.novaprime_client.imprinting_session(normalized_session)
+        if isinstance(result, dict):
+            return result
+        return {"ok": False, "error": "invalid novaprime imprinting session response"}
+
+    def novaprime_imprinting_resolve(
+        self,
+        session_id: str,
+        *,
+        accepted: bool,
+        adapt_id: str = "",
+    ) -> dict[str, Any]:
+        normalized_session = str(session_id or "").strip()
+        if not normalized_session:
+            raise ValueError("'session_id' is required")
+        result = self.novaprime_client.imprinting_resolve(
+            normalized_session,
+            accepted=bool(accepted),
+            adapt_id=str(adapt_id or ""),
+        )
+        if isinstance(result, dict):
+            out = dict(result)
+            cached = self._cache_bond_from_novaprime_result(
+                result=out,
+                adapt_id_hint=str(adapt_id or ""),
+                source="novaprime_imprinting_resolve",
+            )
+            if isinstance(cached, dict):
+                out["cached_bond"] = cached
+            return out
+        return {"ok": False, "error": "invalid novaprime imprinting resolve response"}
+
+    def novaprime_phase_evaluate(
+        self,
+        player_state: dict[str, Any] | None = None,
+        *,
+        narrative_state: dict[str, Any] | None = None,
+        environment_state: dict[str, Any] | None = None,
+        adapt_id: str = "",
+        auto_presence_update: bool = False,
+    ) -> dict[str, Any]:
+        result = self.novaprime_client.phase_evaluate(
+            player_state if isinstance(player_state, dict) else {},
+            narrative_state=narrative_state if isinstance(narrative_state, dict) else {},
+            environment_state=environment_state if isinstance(environment_state, dict) else {},
+            adapt_id=str(adapt_id or ""),
+            auto_presence_update=bool(auto_presence_update),
+        )
+        if isinstance(result, dict):
+            return result
+        return {"ok": False, "error": "invalid novaprime phase evaluate response"}
+
+    def novaprime_void_create(
+        self,
+        player_id: str,
+        *,
+        player_profile: dict[str, Any] | None = None,
+        seed: str = "",
+    ) -> dict[str, Any]:
+        normalized_player = str(player_id or "").strip()
+        if not normalized_player:
+            raise ValueError("'player_id' is required")
+        result = self.novaprime_client.void_create(
+            normalized_player,
+            player_profile=player_profile if isinstance(player_profile, dict) else {},
+            seed=str(seed or ""),
+        )
+        if isinstance(result, dict):
+            return result
+        return {"ok": False, "error": "invalid novaprime void create response"}
+
+    def novaprime_void_tick(
+        self,
+        state: dict[str, Any] | None = None,
+        *,
+        stimulus: dict[str, Any] | None = None,
+        tick: int = 1,
+    ) -> dict[str, Any]:
+        result = self.novaprime_client.void_tick(
+            state if isinstance(state, dict) else {},
+            stimulus=stimulus if isinstance(stimulus, dict) else {},
+            tick=int(tick),
+        )
+        if isinstance(result, dict):
+            return result
+        return {"ok": False, "error": "invalid novaprime void tick response"}
+
+    def novaprime_narrative_bond_history(
+        self,
+        adapt_id: str,
+        player_id: str,
+        *,
+        top_k: int = 120,
+    ) -> dict[str, Any]:
+        normalized_adapt = str(adapt_id or "").strip()
+        normalized_player = str(player_id or "").strip()
+        if not normalized_adapt:
+            raise ValueError("'adapt_id' is required")
+        if not normalized_player:
+            raise ValueError("'player_id' is required")
+        result = self.novaprime_client.narrative_bond_history(
+            normalized_adapt,
+            normalized_player,
+            top_k=max(1, int(top_k)),
+        )
+        if isinstance(result, dict):
+            return result
+        return {"ok": False, "error": "invalid novaprime bond history response"}
+
     def adapt_toggle_get(self, adapt_id: str) -> dict[str, Any]:
         return self.adapt_toggle_store.get(adapt_id)
 

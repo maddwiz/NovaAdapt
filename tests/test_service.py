@@ -240,6 +240,14 @@ class _StubNovaPrimeBackend:
         self.calls.append({"method": "mesh_peers"})
         return [{"node_id": "node-1", "url": "http://127.0.0.1:8530", "capabilities": ["capsules", "compute"]}]
 
+    def mesh_aetherion_state(self, refresh: bool = True):
+        self.calls.append({"method": "mesh_aetherion_state", "refresh": bool(refresh)})
+        return {
+            "ok": True,
+            "refresh": bool(refresh),
+            "snapshot": {"population": 12, "districts": 4, "threat_level": 0.22},
+        }
+
     def mesh_peer_register(self, node_id: str, url: str, capabilities: list[str] | None = None):
         self.calls.append(
             {
@@ -404,6 +412,126 @@ class _StubNovaPrimeBackend:
             "player_id": player_id,
             "adapt_id": adapt_id or "adapt-generated",
             "resonance": {"element": "light", "subclass": "light"},
+        }
+
+    def imprinting_start(self, player_id: str, player_profile: dict[str, object] | None = None, *, ttl_sec: float = 1800.0):
+        self.calls.append(
+            {
+                "method": "imprinting_start",
+                "player_id": player_id,
+                "player_profile": dict(player_profile or {}),
+                "ttl_sec": float(ttl_sec),
+            }
+        )
+        return {
+            "ok": True,
+            "session_id": "imp-1",
+            "player_id": player_id,
+            "ttl_sec": float(ttl_sec),
+        }
+
+    def imprinting_session(self, session_id: str):
+        self.calls.append({"method": "imprinting_session", "session_id": session_id})
+        return {
+            "ok": True,
+            "session_id": session_id,
+            "status": "awaiting_acceptance",
+            "player_id": "player-1",
+            "adapt_profile": {"element": "light", "subclass": "light"},
+        }
+
+    def imprinting_resolve(self, session_id: str, *, accepted: bool, adapt_id: str = ""):
+        self.calls.append(
+            {
+                "method": "imprinting_resolve",
+                "session_id": session_id,
+                "accepted": bool(accepted),
+                "adapt_id": adapt_id,
+            }
+        )
+        return {
+            "ok": True,
+            "session_id": session_id,
+            "accepted": bool(accepted),
+            "adapt_id": adapt_id or "adapt-generated",
+            "bond": {
+                "adapt_id": adapt_id or "adapt-generated",
+                "player_id": "player-1",
+                "element": "light",
+                "subclass": "light",
+            },
+        }
+
+    def phase_evaluate(
+        self,
+        player_state: dict[str, object],
+        *,
+        narrative_state: dict[str, object] | None = None,
+        environment_state: dict[str, object] | None = None,
+        adapt_id: str = "",
+        auto_presence_update: bool = False,
+    ):
+        self.calls.append(
+            {
+                "method": "phase_evaluate",
+                "player_state": dict(player_state),
+                "narrative_state": dict(narrative_state or {}),
+                "environment_state": dict(environment_state or {}),
+                "adapt_id": adapt_id,
+                "auto_presence_update": bool(auto_presence_update),
+            }
+        )
+        return {
+            "ok": True,
+            "triggered": bool(player_state.get("trigger", False)),
+            "event_type": "echo",
+            "score": 0.61,
+        }
+
+    def void_create(self, player_id: str, *, player_profile: dict[str, object] | None = None, seed: str = ""):
+        self.calls.append(
+            {
+                "method": "void_create",
+                "player_id": player_id,
+                "player_profile": dict(player_profile or {}),
+                "seed": seed,
+            }
+        )
+        return {
+            "ok": True,
+            "state": {
+                "state_id": "void-1",
+                "player_id": player_id,
+                "seed": seed or "auto-seed",
+            },
+        }
+
+    def void_tick(self, state: dict[str, object], *, stimulus: dict[str, object] | None = None, tick: int = 1):
+        self.calls.append(
+            {
+                "method": "void_tick",
+                "state": dict(state),
+                "stimulus": dict(stimulus or {}),
+                "tick": int(tick),
+            }
+        )
+        return {"ok": True, "state": dict(state), "tick": int(tick), "coherence": 0.77}
+
+    def narrative_bond_history(self, adapt_id: str, player_id: str, top_k: int = 120):
+        self.calls.append(
+            {
+                "method": "narrative_bond_history",
+                "adapt_id": adapt_id,
+                "player_id": player_id,
+                "top_k": int(top_k),
+            }
+        )
+        return {
+            "ok": True,
+            "adapt_id": adapt_id,
+            "player_id": player_id,
+            "summary": "Shared milestones detected.",
+            "events": [{"type": "first_bond", "weight": 1.0}],
         }
 
 
@@ -1687,6 +1815,48 @@ class ServiceTests(unittest.TestCase):
             self.assertTrue(resonance_bond["ok"])
             self.assertTrue(isinstance(resonance_bond.get("cached_bond"), dict))
 
+            aetherion_state = service.novaprime_mesh_aetherion_state(refresh=True)
+            self.assertTrue(aetherion_state["ok"])
+            self.assertIn("snapshot", aetherion_state)
+
+            imprint_start = service.novaprime_imprinting_start(
+                "player-1",
+                {"class": "sentinel"},
+                ttl_sec=900.0,
+            )
+            self.assertTrue(imprint_start["ok"])
+            self.assertEqual(imprint_start["session_id"], "imp-1")
+
+            imprint_session = service.novaprime_imprinting_session("imp-1")
+            self.assertTrue(imprint_session["ok"])
+            self.assertEqual(imprint_session["session_id"], "imp-1")
+
+            imprint_resolve = service.novaprime_imprinting_resolve("imp-1", accepted=True, adapt_id="adapt-1")
+            self.assertTrue(imprint_resolve["ok"])
+            self.assertTrue(isinstance(imprint_resolve.get("cached_bond"), dict))
+
+            phase = service.novaprime_phase_evaluate(
+                {"trigger": True},
+                narrative_state={"chapter": 2},
+                environment_state={"storm": True},
+                adapt_id="adapt-1",
+                auto_presence_update=True,
+            )
+            self.assertTrue(phase["ok"])
+            self.assertTrue(phase["triggered"])
+
+            void_state = service.novaprime_void_create("player-1", player_profile={"class": "warden"}, seed="alpha")
+            self.assertTrue(void_state["ok"])
+            self.assertIn("state", void_state)
+
+            void_tick = service.novaprime_void_tick({"state_id": "void-1"}, stimulus={"tone": "calm"}, tick=2)
+            self.assertTrue(void_tick["ok"])
+            self.assertEqual(void_tick["tick"], 2)
+
+            bond_history = service.novaprime_narrative_bond_history("adapt-1", "player-1", top_k=50)
+            self.assertTrue(bond_history["ok"])
+            self.assertIn("events", bond_history)
+
             reason = service.novaprime_reason_dual("Map eastern patrol routes")
             self.assertTrue(reason["ok"])
 
@@ -1749,6 +1919,7 @@ class ServiceTests(unittest.TestCase):
             self.assertIn("mesh_balance", method_names)
             self.assertIn("mesh_reputation", method_names)
             self.assertIn("mesh_peers", method_names)
+            self.assertIn("mesh_aetherion_state", method_names)
             self.assertIn("mesh_peer_register", method_names)
             self.assertIn("mesh_credit", method_names)
             self.assertIn("mesh_transfer", method_names)
@@ -1765,6 +1936,13 @@ class ServiceTests(unittest.TestCase):
             self.assertIn("presence_update", method_names)
             self.assertIn("resonance_score", method_names)
             self.assertIn("resonance_bond", method_names)
+            self.assertIn("imprinting_start", method_names)
+            self.assertIn("imprinting_session", method_names)
+            self.assertIn("imprinting_resolve", method_names)
+            self.assertIn("phase_evaluate", method_names)
+            self.assertIn("void_create", method_names)
+            self.assertIn("void_tick", method_names)
+            self.assertIn("narrative_bond_history", method_names)
 
     def test_adapt_toggle_set_and_get(self):
         with tempfile.TemporaryDirectory() as tmp:

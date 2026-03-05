@@ -461,6 +461,103 @@ class NovaAdaptMCPServer:
                 },
             ),
             MCPTool(
+                name="novaadapt_novaprime_mesh_aetherion_state",
+                description="Get NovaPrime Aetherion aggregate world state",
+                input_schema={
+                    "type": "object",
+                    "properties": {"refresh": {"type": "boolean"}},
+                },
+            ),
+            MCPTool(
+                name="novaadapt_novaprime_imprinting_start",
+                description="Start NovaPrime SIB imprinting ceremony session",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "player_id": {"type": "string"},
+                        "player_profile": {"type": "object"},
+                        "ttl_sec": {"type": "number"},
+                    },
+                    "required": ["player_id"],
+                },
+            ),
+            MCPTool(
+                name="novaadapt_novaprime_imprinting_session",
+                description="Get NovaPrime SIB imprinting session details",
+                input_schema={
+                    "type": "object",
+                    "properties": {"session_id": {"type": "string"}},
+                    "required": ["session_id"],
+                },
+            ),
+            MCPTool(
+                name="novaadapt_novaprime_imprinting_resolve",
+                description="Resolve NovaPrime SIB imprinting session acceptance",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "session_id": {"type": "string"},
+                        "accepted": {"type": "boolean"},
+                        "adapt_id": {"type": "string"},
+                    },
+                    "required": ["session_id", "accepted"],
+                },
+            ),
+            MCPTool(
+                name="novaadapt_novaprime_phase_evaluate",
+                description="Evaluate NovaPrime SIB phase event trigger",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "player_state": {"type": "object"},
+                        "narrative_state": {"type": "object"},
+                        "environment_state": {"type": "object"},
+                        "adapt_id": {"type": "string"},
+                        "auto_presence_update": {"type": "boolean"},
+                    },
+                    "required": ["player_state"],
+                },
+            ),
+            MCPTool(
+                name="novaadapt_novaprime_void_create",
+                description="Create NovaPrime SIB pre-form void state",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "player_id": {"type": "string"},
+                        "player_profile": {"type": "object"},
+                        "seed": {"type": "string"},
+                    },
+                    "required": ["player_id"],
+                },
+            ),
+            MCPTool(
+                name="novaadapt_novaprime_void_tick",
+                description="Advance NovaPrime SIB pre-form void state",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "state": {"type": "object"},
+                        "stimulus": {"type": "object"},
+                        "tick": {"type": "integer"},
+                    },
+                    "required": ["state"],
+                },
+            ),
+            MCPTool(
+                name="novaadapt_novaprime_narrative_bond_history",
+                description="Generate NovaPrime narrative bond history timeline",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "adapt_id": {"type": "string"},
+                        "player_id": {"type": "string"},
+                        "top_k": {"type": "integer"},
+                    },
+                    "required": ["adapt_id", "player_id"],
+                },
+            ),
+            MCPTool(
                 name="novaadapt_sib_status",
                 description="Get SIB bridge status",
                 input_schema={"type": "object", "properties": {}},
@@ -1083,6 +1180,80 @@ class NovaAdaptMCPServer:
                 player_id,
                 profile if isinstance(profile, dict) else {},
                 adapt_id=str(arguments.get("adapt_id", "")).strip(),
+            )
+        if tool_name == "novaadapt_novaprime_mesh_aetherion_state":
+            return self.service.novaprime_mesh_aetherion_state(
+                refresh=bool(arguments.get("refresh", True))
+            )
+        if tool_name == "novaadapt_novaprime_imprinting_start":
+            player_id = str(arguments.get("player_id", "")).strip()
+            if not player_id:
+                raise ValueError("'player_id' is required")
+            profile = arguments.get("player_profile")
+            return self.service.novaprime_imprinting_start(
+                player_id,
+                profile if isinstance(profile, dict) else {},
+                ttl_sec=float(arguments.get("ttl_sec", 1800.0)),
+            )
+        if tool_name == "novaadapt_novaprime_imprinting_session":
+            session_id = str(arguments.get("session_id", "")).strip()
+            if not session_id:
+                raise ValueError("'session_id' is required")
+            return self.service.novaprime_imprinting_session(session_id)
+        if tool_name == "novaadapt_novaprime_imprinting_resolve":
+            session_id = str(arguments.get("session_id", "")).strip()
+            if not session_id:
+                raise ValueError("'session_id' is required")
+            accepted = bool(arguments.get("accepted", False))
+            return self.service.novaprime_imprinting_resolve(
+                session_id,
+                accepted=accepted,
+                adapt_id=str(arguments.get("adapt_id", "")).strip(),
+            )
+        if tool_name == "novaadapt_novaprime_phase_evaluate":
+            player_state = arguments.get("player_state")
+            if not isinstance(player_state, dict):
+                raise ValueError("'player_state' is required and must be an object")
+            narrative_state = arguments.get("narrative_state")
+            environment_state = arguments.get("environment_state")
+            return self.service.novaprime_phase_evaluate(
+                player_state,
+                narrative_state=narrative_state if isinstance(narrative_state, dict) else {},
+                environment_state=environment_state if isinstance(environment_state, dict) else {},
+                adapt_id=str(arguments.get("adapt_id", "")).strip(),
+                auto_presence_update=bool(arguments.get("auto_presence_update", False)),
+            )
+        if tool_name == "novaadapt_novaprime_void_create":
+            player_id = str(arguments.get("player_id", "")).strip()
+            if not player_id:
+                raise ValueError("'player_id' is required")
+            player_profile = arguments.get("player_profile")
+            return self.service.novaprime_void_create(
+                player_id,
+                player_profile=player_profile if isinstance(player_profile, dict) else {},
+                seed=str(arguments.get("seed", "")).strip(),
+            )
+        if tool_name == "novaadapt_novaprime_void_tick":
+            state = arguments.get("state")
+            if not isinstance(state, dict):
+                raise ValueError("'state' is required and must be an object")
+            stimulus = arguments.get("stimulus")
+            return self.service.novaprime_void_tick(
+                state,
+                stimulus=stimulus if isinstance(stimulus, dict) else {},
+                tick=int(arguments.get("tick", 1)),
+            )
+        if tool_name == "novaadapt_novaprime_narrative_bond_history":
+            adapt_id = str(arguments.get("adapt_id", "")).strip()
+            player_id = str(arguments.get("player_id", "")).strip()
+            if not adapt_id:
+                raise ValueError("'adapt_id' is required")
+            if not player_id:
+                raise ValueError("'player_id' is required")
+            return self.service.novaprime_narrative_bond_history(
+                adapt_id,
+                player_id,
+                top_k=int(arguments.get("top_k", 120)),
             )
         if tool_name == "novaadapt_sib_status":
             return self.service.sib_status()

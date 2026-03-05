@@ -436,6 +436,20 @@ def build_openapi_spec() -> dict:
                     "responses": {"200": {"description": "Mesh peers response"}},
                 }
             },
+            "/novaprime/mesh/aetherion/state": {
+                "get": {
+                    "summary": "Get NovaPrime Aetherion aggregate world state",
+                    "parameters": [
+                        {
+                            "name": "refresh",
+                            "in": "query",
+                            "required": False,
+                            "schema": {"type": "boolean"},
+                        }
+                    ],
+                    "responses": {"200": {"description": "Aetherion world state response"}},
+                }
+            },
             "/novaprime/marketplace/listings": {
                 "get": {
                     "summary": "Get NovaPrime marketplace listings",
@@ -468,6 +482,46 @@ def build_openapi_spec() -> dict:
                         }
                     ],
                     "responses": {"200": {"description": "Presence response"}},
+                }
+            },
+            "/novaprime/sib/imprinting/session": {
+                "get": {
+                    "summary": "Get NovaPrime SIB imprinting session details",
+                    "parameters": [
+                        {
+                            "name": "session_id",
+                            "in": "query",
+                            "required": True,
+                            "schema": {"type": "string"},
+                        }
+                    ],
+                    "responses": {"200": {"description": "Imprinting session response"}},
+                }
+            },
+            "/novaprime/narrative/bond/history": {
+                "get": {
+                    "summary": "Generate NovaPrime narrative bond history timeline",
+                    "parameters": [
+                        {
+                            "name": "adapt_id",
+                            "in": "query",
+                            "required": True,
+                            "schema": {"type": "string"},
+                        },
+                        {
+                            "name": "player_id",
+                            "in": "query",
+                            "required": True,
+                            "schema": {"type": "string"},
+                        },
+                        {
+                            "name": "top_k",
+                            "in": "query",
+                            "required": False,
+                            "schema": {"type": "integer"},
+                        },
+                    ],
+                    "responses": {"200": {"description": "Narrative bond history response"}},
                 }
             },
             "/novaprime/identity/bond": {
@@ -546,6 +600,36 @@ def build_openapi_spec() -> dict:
                 "post": {
                     "summary": "Run resonance bonding flow via NovaPrime",
                     "responses": {"200": {"description": "Resonance bond result"}},
+                }
+            },
+            "/novaprime/sib/imprinting/start": {
+                "post": {
+                    "summary": "Start NovaPrime SIB imprinting ceremony session",
+                    "responses": {"200": {"description": "Imprinting session start response"}},
+                }
+            },
+            "/novaprime/sib/imprinting/resolve": {
+                "post": {
+                    "summary": "Resolve NovaPrime SIB imprinting ceremony acceptance",
+                    "responses": {"200": {"description": "Imprinting resolve response"}},
+                }
+            },
+            "/novaprime/sib/phase/evaluate": {
+                "post": {
+                    "summary": "Evaluate NovaPrime SIB phase transition trigger",
+                    "responses": {"200": {"description": "Phase evaluation response"}},
+                }
+            },
+            "/novaprime/sib/void/create": {
+                "post": {
+                    "summary": "Create NovaPrime SIB pre-form void state",
+                    "responses": {"200": {"description": "Void create response"}},
+                }
+            },
+            "/novaprime/sib/void/tick": {
+                "post": {
+                    "summary": "Advance NovaPrime SIB pre-form void state",
+                    "responses": {"200": {"description": "Void tick response"}},
                 }
             },
             "/sib/status": {

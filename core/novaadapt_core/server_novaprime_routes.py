@@ -40,6 +40,18 @@ def get_novaprime_mesh_peers(handler, service: NovaAdaptService) -> int:
     return 200
 
 
+def get_novaprime_mesh_aetherion_state(
+    handler,
+    service: NovaAdaptService,
+    single,
+    query: dict[str, list[str]],
+) -> int:
+    refresh_raw = str(single(query, "refresh") or "").strip().lower()
+    refresh = refresh_raw not in {"0", "false", "no", "off"}
+    handler._send_json(200, service.novaprime_mesh_aetherion_state(refresh=refresh))
+    return 200
+
+
 def get_novaprime_marketplace_listings(handler, service: NovaAdaptService) -> int:
     handler._send_json(200, service.novaprime_marketplace_listings())
     return 200
@@ -64,6 +76,34 @@ def get_novaprime_presence(
 ) -> int:
     adapt_id = str(single(query, "adapt_id") or "").strip()
     handler._send_json(200, service.novaprime_presence_get(adapt_id))
+    return 200
+
+
+def get_novaprime_imprinting_session(
+    handler,
+    service: NovaAdaptService,
+    single,
+    query: dict[str, list[str]],
+) -> int:
+    session_id = str(single(query, "session_id") or "").strip()
+    handler._send_json(200, service.novaprime_imprinting_session(session_id))
+    return 200
+
+
+def get_novaprime_narrative_bond_history(
+    handler,
+    service: NovaAdaptService,
+    single,
+    query: dict[str, list[str]],
+) -> int:
+    adapt_id = str(single(query, "adapt_id") or "").strip()
+    player_id = str(single(query, "player_id") or "").strip()
+    raw_top_k = single(query, "top_k")
+    top_k = int(raw_top_k) if raw_top_k is not None else 120
+    handler._send_json(
+        200,
+        service.novaprime_narrative_bond_history(adapt_id, player_id, top_k=top_k),
+    )
     return 200
 
 
@@ -224,6 +264,81 @@ def post_novaprime_resonance_bond(handler, service: NovaAdaptService, payload: d
             player_id,
             player_profile if isinstance(player_profile, dict) else None,
             adapt_id=adapt_id,
+        ),
+    )
+    return 200
+
+
+def post_novaprime_imprinting_start(handler, service: NovaAdaptService, payload: dict[str, object]) -> int:
+    player_id = str(payload.get("player_id") or "").strip()
+    player_profile = payload.get("player_profile")
+    ttl_sec = float(payload.get("ttl_sec", 1800.0))
+    handler._send_json(
+        200,
+        service.novaprime_imprinting_start(
+            player_id,
+            player_profile if isinstance(player_profile, dict) else {},
+            ttl_sec=ttl_sec,
+        ),
+    )
+    return 200
+
+
+def post_novaprime_imprinting_resolve(handler, service: NovaAdaptService, payload: dict[str, object]) -> int:
+    session_id = str(payload.get("session_id") or "").strip()
+    accepted = bool(payload.get("accepted", False))
+    adapt_id = str(payload.get("adapt_id") or "").strip()
+    handler._send_json(
+        200,
+        service.novaprime_imprinting_resolve(session_id, accepted=accepted, adapt_id=adapt_id),
+    )
+    return 200
+
+
+def post_novaprime_phase_evaluate(handler, service: NovaAdaptService, payload: dict[str, object]) -> int:
+    player_state = payload.get("player_state")
+    narrative_state = payload.get("narrative_state")
+    environment_state = payload.get("environment_state")
+    adapt_id = str(payload.get("adapt_id") or "").strip()
+    auto_presence_update = bool(payload.get("auto_presence_update", False))
+    handler._send_json(
+        200,
+        service.novaprime_phase_evaluate(
+            player_state if isinstance(player_state, dict) else {},
+            narrative_state=narrative_state if isinstance(narrative_state, dict) else {},
+            environment_state=environment_state if isinstance(environment_state, dict) else {},
+            adapt_id=adapt_id,
+            auto_presence_update=auto_presence_update,
+        ),
+    )
+    return 200
+
+
+def post_novaprime_void_create(handler, service: NovaAdaptService, payload: dict[str, object]) -> int:
+    player_id = str(payload.get("player_id") or "").strip()
+    player_profile = payload.get("player_profile")
+    seed = str(payload.get("seed") or "").strip()
+    handler._send_json(
+        200,
+        service.novaprime_void_create(
+            player_id,
+            player_profile=player_profile if isinstance(player_profile, dict) else {},
+            seed=seed,
+        ),
+    )
+    return 200
+
+
+def post_novaprime_void_tick(handler, service: NovaAdaptService, payload: dict[str, object]) -> int:
+    state = payload.get("state")
+    stimulus = payload.get("stimulus")
+    tick = int(payload.get("tick", 1))
+    handler._send_json(
+        200,
+        service.novaprime_void_tick(
+            state if isinstance(state, dict) else {},
+            stimulus=stimulus if isinstance(stimulus, dict) else {},
+            tick=tick,
         ),
     )
     return 200

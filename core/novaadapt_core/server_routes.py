@@ -29,9 +29,12 @@ def build_get_private_routes(handler: Any) -> dict[str, Any]:
         "/novaprime/mesh/balance": handler._get_novaprime_mesh_balance,
         "/novaprime/mesh/reputation": handler._get_novaprime_mesh_reputation,
         "/novaprime/mesh/peers": handler._get_novaprime_mesh_peers,
+        "/novaprime/mesh/aetherion/state": handler._get_novaprime_mesh_aetherion_state,
         "/novaprime/marketplace/listings": handler._get_novaprime_marketplace_listings,
         "/novaprime/identity/profile": handler._get_novaprime_identity_profile,
         "/novaprime/presence": handler._get_novaprime_presence,
+        "/novaprime/sib/imprinting/session": handler._get_novaprime_imprinting_session,
+        "/novaprime/narrative/bond/history": handler._get_novaprime_narrative_bond_history,
         "/sib/status": handler._get_sib_status,
         "/adapt/toggle": handler._get_adapt_toggle,
         "/adapt/bond": handler._get_adapt_bond,
@@ -110,6 +113,21 @@ def build_post_exact_routes(handler: Any) -> dict[str, Any]:
         "/novaprime/resonance/bond": lambda body: handler._post_novaprime_resonance_bond(
             "/novaprime/resonance/bond", body
         ),
+        "/novaprime/sib/imprinting/start": lambda body: handler._post_novaprime_imprinting_start(
+            "/novaprime/sib/imprinting/start", body
+        ),
+        "/novaprime/sib/imprinting/resolve": lambda body: handler._post_novaprime_imprinting_resolve(
+            "/novaprime/sib/imprinting/resolve", body
+        ),
+        "/novaprime/sib/phase/evaluate": lambda body: handler._post_novaprime_phase_evaluate(
+            "/novaprime/sib/phase/evaluate", body
+        ),
+        "/novaprime/sib/void/create": lambda body: handler._post_novaprime_void_create(
+            "/novaprime/sib/void/create", body
+        ),
+        "/novaprime/sib/void/tick": lambda body: handler._post_novaprime_void_tick(
+            "/novaprime/sib/void/tick", body
+        ),
         "/adapt/toggle": lambda body: handler._post_adapt_toggle("/adapt/toggle", body),
         "/adapt/bond/verify": lambda body: handler._post_adapt_bond_verify("/adapt/bond/verify", body),
         "/memory/recall": lambda body: handler._post_memory_recall("/memory/recall", body),
@@ -173,6 +191,11 @@ def is_idempotent_route(path: str) -> bool:
         "/novaprime/mesh/compute/settle",
         "/novaprime/marketplace/list",
         "/novaprime/marketplace/buy",
+        "/novaprime/sib/imprinting/start",
+        "/novaprime/sib/imprinting/resolve",
+        "/novaprime/sib/phase/evaluate",
+        "/novaprime/sib/void/create",
+        "/novaprime/sib/void/tick",
     }:
         return True
     if path in {"/adapt/toggle"}:
