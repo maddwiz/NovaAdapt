@@ -632,6 +632,10 @@ def render_canvas_workflows_html() -> str:
       font-size: 12px;
       align-self: center;
     }
+    button.compact.copied {
+      border-color: color-mix(in oklab, var(--ok), #000 20%);
+      color: var(--ok);
+    }
     .posture-legend {
       border: 1px dashed var(--line);
       border-radius: 999px;
@@ -1164,6 +1168,7 @@ def render_canvas_workflows_html() -> str:
       try {
         if (navigator.clipboard && window.isSecureContext) {
           await navigator.clipboard.writeText(text);
+          flashCopiedButtonState();
           setStatus('preset-status', 'Safety summary copied', 'ok');
           return;
         }
@@ -1171,10 +1176,28 @@ def render_canvas_workflows_html() -> str:
         // fallback below
       }
       if (fallbackCopyText(text)) {
+        flashCopiedButtonState();
         setStatus('preset-status', 'Safety summary copied', 'ok');
       } else {
         setStatus('preset-status', 'Copy failed: clipboard unavailable', 'warn');
       }
+    }
+
+    function flashCopiedButtonState(){
+      const button = document.getElementById('safety-summary-copy-btn');
+      if (!button) return;
+      if (!button.dataset.defaultLabel) button.dataset.defaultLabel = button.textContent || 'Copy';
+      if (button.dataset.flashTimerId) {
+        window.clearTimeout(Number(button.dataset.flashTimerId));
+      }
+      button.textContent = 'Copied';
+      button.classList.add('copied');
+      const timerId = window.setTimeout(() => {
+        button.textContent = button.dataset.defaultLabel || 'Copy';
+        button.classList.remove('copied');
+        delete button.dataset.flashTimerId;
+      }, 1000);
+      button.dataset.flashTimerId = String(timerId);
     }
 
     function resetOperatorPrefs(){
