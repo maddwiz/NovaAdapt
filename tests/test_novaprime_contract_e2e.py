@@ -94,6 +94,54 @@ def _post_json(url: str, payload: dict) -> dict:
     return parsed
 
 
+def _post_json_with_status(url: str, payload: dict) -> tuple[int, dict]:
+    raw = json.dumps(payload, ensure_ascii=True).encode("utf-8")
+    req = request.Request(
+        url,
+        data=raw,
+        method="POST",
+        headers={"Content-Type": "application/json", "Accept": "application/json"},
+    )
+    try:
+        with request.urlopen(req, timeout=10) as response:
+            body = response.read().decode("utf-8")
+            status = int(response.getcode())
+    except request.HTTPError as exc:
+        status = int(exc.code)
+        try:
+            body = exc.read().decode("utf-8")
+        finally:
+            try:
+                exc.close()
+            except Exception:
+                pass
+    parsed = json.loads(body or "{}")
+    if not isinstance(parsed, dict):
+        raise RuntimeError(f"Expected JSON object from {url}")
+    return status, parsed
+
+
+def _get_json_with_status(url: str) -> tuple[int, dict]:
+    req = request.Request(url, method="GET", headers={"Accept": "application/json"})
+    try:
+        with request.urlopen(req, timeout=10) as response:
+            body = response.read().decode("utf-8")
+            status = int(response.getcode())
+    except request.HTTPError as exc:
+        status = int(exc.code)
+        try:
+            body = exc.read().decode("utf-8")
+        finally:
+            try:
+                exc.close()
+            except Exception:
+                pass
+    parsed = json.loads(body or "{}")
+    if not isinstance(parsed, dict):
+        raise RuntimeError(f"Expected JSON object from {url}")
+    return status, parsed
+
+
 def _wait_health(url: str, *, timeout_sec: float = 20.0) -> None:
     deadline = time.time() + max(1.0, float(timeout_sec))
     last_error = ""
@@ -197,12 +245,42 @@ class NovaPrimeContractE2ETests(unittest.TestCase):
                 self.assertTrue(imprint_session["ok"])
                 self.assertEqual(imprint_session["session"]["session_id"], session_id)
 
+                not_found_status, not_found_session = _get_json_with_status(
+                    f"{base}/novaprime/sib/imprinting/session?session_id=missing-session"
+                )
+                self.assertEqual(not_found_status, 200)
+                self.assertFalse(not_found_session.get("ok", True))
+                self.assertIn("session_not_found", str(not_found_session.get("error", "")))
+
+                missing_player_status, missing_player = _post_json_with_status(
+                    f"{base}/novaprime/sib/imprinting/start",
+                    {"player_profile": {"class": "sentinel"}},
+                )
+                self.assertEqual(missing_player_status, 400)
+                self.assertTrue(("ok" not in missing_player) or (not missing_player.get("ok", True)))
+                self.assertIn("player_id", str(missing_player.get("error", "")).lower())
+
                 imprint_resolve = _post_json(
                     f"{base}/novaprime/sib/imprinting/resolve",
                     {"session_id": session_id, "accepted": False, "adapt_id": "adapt-e2e"},
                 )
                 self.assertTrue(imprint_resolve["ok"])
                 self.assertFalse(imprint_resolve.get("accepted", True))
+
+                missing_session_status, missing_session_resolve = _post_json_with_status(
+                    f"{base}/novaprime/sib/imprinting/resolve",
+                    {"session_id": "missing-session", "accepted": True},
+                )
+                self.assertEqual(missing_session_status, 200)
+                self.assertFalse(missing_session_resolve.get("ok", True))
+                self.assertIn("session_not_found", str(missing_session_resolve.get("error", "")))
+
+                invalid_phase_status, invalid_phase = _post_json_with_status(
+                    f"{base}/novaprime/sib/phase/evaluate",
+                    {"player_state": "bad-shape"},
+                )
+                self.assertEqual(invalid_phase_status, 200)
+                self.assertIn("ok", invalid_phase)
 
                 phase = _post_json(
                     f"{base}/novaprime/sib/phase/evaluate",
@@ -231,6 +309,13 @@ class NovaPrimeContractE2ETests(unittest.TestCase):
                 self.assertTrue(void_ticked["ok"])
                 self.assertIn("state", void_ticked)
 
+                invalid_void_status, invalid_void = _post_json_with_status(
+                    f"{base}/novaprime/sib/void/tick",
+                    {"state": "not-an-object"},
+                )
+                self.assertEqual(invalid_void_status, 200)
+                self.assertIn("ok", invalid_void)
+
                 bond_history = _get_json(
                     f"{base}/novaprime/narrative/bond/history?adapt_id=adapt-e2e&player_id=player-e2e&top_k=20"
                 )
@@ -238,6 +323,12 @@ class NovaPrimeContractE2ETests(unittest.TestCase):
                 self.assertEqual(bond_history["adapt_id"], "adapt-e2e")
                 self.assertEqual(bond_history["player_id"], "player-e2e")
                 self.assertIn("summary", bond_history)
+
+                invalid_history_status, invalid_history = _get_json_with_status(
+                    f"{base}/novaprime/narrative/bond/history?adapt_id=&player_id=player-e2e"
+                )
+                self.assertEqual(invalid_history_status, 400)
+                self.assertTrue(("ok" not in invalid_history) or (not invalid_history.get("ok", True)))
             finally:
                 if server is not None:
                     server.shutdown()
