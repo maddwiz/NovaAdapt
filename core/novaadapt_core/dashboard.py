@@ -533,6 +533,68 @@ def render_canvas_workflows_html() -> str:
       color: var(--muted);
       line-height: 1.4;
     }
+    .hint-panel {
+      margin-top: 6px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #0c1422;
+      color: var(--text);
+      padding: 8px;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+    .posture-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 8px;
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.4;
+    }
+    .posture-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 72px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      padding: 3px 10px;
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+      color: var(--text);
+      background: #0c1422;
+    }
+    .posture-badge.strict {
+      border-color: color-mix(in oklab, var(--ok), #000 20%);
+      color: var(--ok);
+    }
+    .posture-badge.balanced {
+      border-color: color-mix(in oklab, var(--warn), #000 20%);
+      color: var(--warn);
+    }
+    .posture-badge.lab {
+      border-color: color-mix(in oklab, var(--bad), #000 20%);
+      color: var(--bad);
+    }
+    .posture-badge.custom {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+    .posture-legend {
+      border: 1px dashed var(--line);
+      border-radius: 999px;
+      padding: 2px 8px;
+      color: var(--muted);
+      cursor: help;
+      user-select: none;
+    }
+    .json.compact {
+      min-height: 70px;
+      max-height: 190px;
+    }
     @media (max-width: 760px) { .row { grid-template-columns: 1fr; } }
   </style>
 </head>
@@ -641,9 +703,63 @@ def render_canvas_workflows_html() -> str:
           <button id=\"preset-delete-btn\">Delete Preset</button>
         </div>
         <div class=\"stack\">
+          <button id=\"preset-export-btn\">Export Bundle</button>
+          <button id=\"preset-import-btn\">Import Bundle</button>
+          <input id=\"preset-import-file\" type=\"file\" accept=\"application/json,.json\" style=\"display:none\" />
+        </div>
+        <div class=\"row single\">
+          <div>
+            <label class=\"checkbox\" for=\"preset-import-preview\">
+              <input id=\"preset-import-preview\" type=\"checkbox\" checked />
+              Preview dry-run diff before replacing existing preset names
+            </label>
+          </div>
+        </div>
+        <div class=\"row\">
+          <div>
+            <label for=\"safety-profile\">Safety Lock Profile</label>
+            <select id=\"safety-profile\">
+              <option value=\"strict\">strict</option>
+              <option value=\"balanced\">balanced</option>
+              <option value=\"lab\">lab</option>
+            </select>
+          </div>
+          <div>
+            <label for=\"safety-profile-apply-btn\">Profile Action</label>
+            <button id=\"safety-profile-apply-btn\">Apply Profile</button>
+          </div>
+        </div>
+        <div class=\"hint\">`strict`: confirm + diff preview. `balanced`: confirm only. `lab`: both disabled for controlled local experiments.</div>
+        <div class=\"posture-row\">
+          <span>Active Safety Posture</span>
+          <span id=\"safety-posture-badge\" class=\"posture-badge\">strict</span>
+          <span
+            id=\"safety-posture-legend\"
+            class=\"posture-legend\"
+            title=\"strict=production/shared operators; balanced=trusted operator sessions; lab=local sandbox experiments only; custom=manual toggle mix\"
+            aria-label=\"Safety posture legend tooltip\"
+          >Legend?</span>
+        </div>
+        <div class=\"hint\">Badge reflects live toggles and can read `strict`, `balanced`, `lab`, or `custom`.</div>
+        <div class=\"stack\">
+          <button id=\"prefs-reset-btn\">Reset Operator Preferences</button>
+        </div>
+        <div class=\"row single\">
+          <div>
+            <label for=\"preset-import-diff\">Import Diff Preview</label>
+            <pre id=\"preset-import-diff\" class=\"json compact\"></pre>
+          </div>
+        </div>
+        <div class=\"stack\">
           <button id=\"template-aetherion-btn\">Template: Aetherion Monitor</button>
           <button id=\"template-patrol-btn\">Template: Patrol Cycle</button>
           <button id=\"template-reset-btn\">Template: Minimal Safe</button>
+        </div>
+        <div class=\"row single\">
+          <div>
+            <label for=\"template-policy-hint\">Template Policy Hint</label>
+            <div id=\"template-policy-hint\" class=\"hint-panel\"></div>
+          </div>
         </div>
         <div class=\"row single\">
           <div>
@@ -662,6 +778,30 @@ def render_canvas_workflows_html() -> str:
   <script>
     const token = new URLSearchParams(window.location.search).get('token');
     const PRESET_KEY = 'novaadapt_canvas_workflow_presets_v1';
+    const UI_PREFS_KEY = 'novaadapt_canvas_workflow_ui_prefs_v1';
+    const DEFAULT_SAFETY_PROFILE = 'strict';
+    const SAFETY_PROFILES = {
+      strict: { confirmMutations: true, presetImportPreview: true },
+      balanced: { confirmMutations: true, presetImportPreview: false },
+      lab: { confirmMutations: false, presetImportPreview: false },
+    };
+    const PRESET_BUNDLE_KIND = 'novaadapt_canvas_workflow_presets_bundle';
+    const PRESET_BUNDLE_VERSION = 1;
+    const SNAPSHOT_FIELDS = [
+      'canvasContext',
+      'canvasSession',
+      'canvasTitle',
+      'canvasSections',
+      'workflowContext',
+      'workflowId',
+      'workflowObjective',
+      'workflowSteps',
+    ];
+    const TEMPLATE_POLICY_HINTS = {
+      aetherion: 'Policy hint (Aetherion Monitor): keep confirmation enabled and verify outputs before publishing operational summaries.',
+      patrol: 'Policy hint (Patrol Cycle): confirm workflow_id belongs to the active patrol before each advance/resume mutation.',
+      reset: 'Policy hint (Minimal Safe): baseline read-first defaults for controlled testing before using mutating actions.',
+    };
 
     function withToken(path){
       if (!token) return path;
@@ -775,7 +915,8 @@ def render_canvas_workflows_html() -> str:
         const raw = localStorage.getItem(PRESET_KEY);
         if (!raw) return {};
         const parsed = JSON.parse(raw);
-        return parsed && typeof parsed === 'object' ? parsed : {};
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+        return parsed;
       } catch (_err) {
         return {};
       }
@@ -783,6 +924,105 @@ def render_canvas_workflows_html() -> str:
 
     function writePresets(presets){
       localStorage.setItem(PRESET_KEY, JSON.stringify(presets || {}));
+    }
+
+    function readUIPrefs(){
+      try {
+        const raw = localStorage.getItem(UI_PREFS_KEY);
+        if (!raw) return {};
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+        return parsed;
+      } catch (_err) {
+        return {};
+      }
+    }
+
+    function writeUIPrefs(nextPrefs){
+      const prefs = nextPrefs && typeof nextPrefs === 'object' && !Array.isArray(nextPrefs) ? nextPrefs : {};
+      localStorage.setItem(UI_PREFS_KEY, JSON.stringify(prefs));
+    }
+
+    function normalizeSafetyProfile(profile){
+      const raw = String(profile || '').trim().toLowerCase();
+      return Object.prototype.hasOwnProperty.call(SAFETY_PROFILES, raw) ? raw : DEFAULT_SAFETY_PROFILE;
+    }
+
+    function deriveActiveSafetyPosture(){
+      const confirmMutations = Boolean(document.getElementById('confirm-mutations').checked);
+      const presetImportPreview = Boolean(document.getElementById('preset-import-preview').checked);
+      if (confirmMutations && presetImportPreview) return 'strict';
+      if (confirmMutations && !presetImportPreview) return 'balanced';
+      if (!confirmMutations && !presetImportPreview) return 'lab';
+      return 'custom';
+    }
+
+    function updateSafetyPostureBadge(){
+      const posture = deriveActiveSafetyPosture();
+      const badge = document.getElementById('safety-posture-badge');
+      if (!badge) return posture;
+      badge.textContent = posture;
+      badge.className = `posture-badge ${posture}`;
+      return posture;
+    }
+
+    function profileDefaults(profile){
+      const normalized = normalizeSafetyProfile(profile);
+      return SAFETY_PROFILES[normalized];
+    }
+
+    function applyUIPrefsToControls(){
+      const prefs = readUIPrefs();
+      const profile = normalizeSafetyProfile(prefs.safetyProfile);
+      const defaults = profileDefaults(profile);
+      const confirmMutations = document.getElementById('confirm-mutations');
+      const presetImportPreview = document.getElementById('preset-import-preview');
+      const safetyProfile = document.getElementById('safety-profile');
+      if (safetyProfile) safetyProfile.value = profile;
+      const confirmValue = typeof prefs.confirmMutations === 'boolean' ? prefs.confirmMutations : defaults.confirmMutations;
+      const previewValue = typeof prefs.presetImportPreview === 'boolean' ? prefs.presetImportPreview : defaults.presetImportPreview;
+      confirmMutations.checked = Boolean(confirmValue);
+      presetImportPreview.checked = Boolean(previewValue);
+      updateSafetyPostureBadge();
+    }
+
+    function persistUIPrefsFromControls(forcedProfile){
+      const confirmMutations = document.getElementById('confirm-mutations');
+      const presetImportPreview = document.getElementById('preset-import-preview');
+      const safetyProfile = document.getElementById('safety-profile');
+      const selectedProfile = normalizeSafetyProfile(
+        forcedProfile || (safetyProfile ? safetyProfile.value : DEFAULT_SAFETY_PROFILE),
+      );
+      writeUIPrefs({
+        confirmMutations: Boolean(confirmMutations && confirmMutations.checked),
+        presetImportPreview: Boolean(presetImportPreview && presetImportPreview.checked),
+        safetyProfile: selectedProfile,
+      });
+      updateSafetyPostureBadge();
+    }
+
+    function applySafetyProfile(profile, includeStatus=true){
+      const normalized = normalizeSafetyProfile(profile);
+      const defaults = profileDefaults(normalized);
+      const confirmMutations = document.getElementById('confirm-mutations');
+      const presetImportPreview = document.getElementById('preset-import-preview');
+      const safetyProfile = document.getElementById('safety-profile');
+      confirmMutations.checked = Boolean(defaults.confirmMutations);
+      presetImportPreview.checked = Boolean(defaults.presetImportPreview);
+      if (safetyProfile) safetyProfile.value = normalized;
+      persistUIPrefsFromControls(normalized);
+      if (includeStatus) {
+        setStatus(
+          'preset-status',
+          `Applied safety profile: ${normalized} (confirm=${defaults.confirmMutations ? 'on' : 'off'}, preview=${defaults.presetImportPreview ? 'on' : 'off'})`,
+          'ok',
+        );
+      }
+    }
+
+    function resetOperatorPrefs(){
+      applySafetyProfile(DEFAULT_SAFETY_PROFILE, false);
+      setStatus('preset-status', 'Operator preferences reset to defaults', 'ok');
     }
 
     function refreshPresetSelect(selected=''){
@@ -799,9 +1039,30 @@ def render_canvas_workflows_html() -> str:
       if (selected && presets[selected]) select.value = selected;
     }
 
+    function normalizeSnapshot(snapshot){
+      const fallback = defaultTemplate('reset');
+      if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) {
+        return fallback;
+      }
+      const normalized = { ...fallback };
+      if (typeof snapshot.canvasContext === 'string') normalized.canvasContext = snapshot.canvasContext;
+      if (typeof snapshot.canvasSession === 'string') normalized.canvasSession = snapshot.canvasSession;
+      if (typeof snapshot.canvasTitle === 'string') normalized.canvasTitle = snapshot.canvasTitle;
+      if (typeof snapshot.canvasSections === 'string') normalized.canvasSections = snapshot.canvasSections;
+      if (typeof snapshot.workflowContext === 'string') normalized.workflowContext = snapshot.workflowContext;
+      if (typeof snapshot.workflowId === 'string') normalized.workflowId = snapshot.workflowId;
+      if (typeof snapshot.workflowObjective === 'string') normalized.workflowObjective = snapshot.workflowObjective;
+      if (typeof snapshot.workflowSteps === 'string') normalized.workflowSteps = snapshot.workflowSteps;
+      return normalized;
+    }
+
+    function validPresetName(name){
+      return /^[a-z0-9._-]{1,48}$/.test(name);
+    }
+
     function savePreset(){
       const name = document.getElementById('preset-name').value.trim().toLowerCase();
-      if (!name || !/^[a-z0-9._-]{1,48}$/.test(name)) {
+      if (!name || !validPresetName(name)) {
         setStatus('preset-status', 'Invalid preset name. Use 1-48 chars: a-z 0-9 . _ -', 'bad');
         return;
       }
@@ -841,9 +1102,151 @@ def render_canvas_workflows_html() -> str:
       setStatus('preset-status', `Preset deleted: ${name}`, 'ok');
     }
 
+    function exportPresetBundle(){
+      const presets = readPresets();
+      const bundle = {
+        kind: PRESET_BUNDLE_KIND,
+        version: PRESET_BUNDLE_VERSION,
+        exported_at: new Date().toISOString(),
+        presets,
+      };
+      const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const stamp = new Date().toISOString().replaceAll(':', '').replaceAll('.', '').replaceAll('-', '');
+      const fileName = `novaadapt-presets-${stamp}.json`;
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      setStatus('preset-status', `Preset bundle exported: ${Object.keys(presets).length} preset(s)`, 'ok');
+    }
+
+    function buildPresetDiffSummary(existing, imported){
+      const added = [];
+      const replaced = [];
+      for (const name of Object.keys(imported).sort()) {
+        const nextSnapshot = imported[name];
+        const previous = existing[name];
+        if (!previous || typeof previous !== 'object' || Array.isArray(previous)) {
+          added.push(name);
+          continue;
+        }
+        const changedFields = SNAPSHOT_FIELDS.filter((field) => String(previous[field] ?? '') !== String(nextSnapshot[field] ?? ''));
+        replaced.push({
+          name,
+          changed_fields: changedFields,
+          changed_field_count: changedFields.length,
+        });
+      }
+      return {
+        generated_at: new Date().toISOString(),
+        added_presets: added,
+        replaced_presets: replaced,
+      };
+    }
+
+    function setImportDiffPreview(payload){
+      const target = document.getElementById('preset-import-diff');
+      if (!target) return;
+      target.textContent = stringify(payload || {});
+    }
+
+    function importPresetBundleFromText(rawText){
+      let parsed = null;
+      try {
+        parsed = JSON.parse(rawText || '{}');
+      } catch (_err) {
+        setStatus('preset-status', 'Import failed: invalid JSON payload', 'bad');
+        return;
+      }
+
+      let rawPresets = {};
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        if (parsed.kind === PRESET_BUNDLE_KIND && parsed.presets && typeof parsed.presets === 'object' && !Array.isArray(parsed.presets)) {
+          rawPresets = parsed.presets;
+        } else if (parsed.presets && typeof parsed.presets === 'object' && !Array.isArray(parsed.presets)) {
+          rawPresets = parsed.presets;
+        } else {
+          rawPresets = parsed;
+        }
+      }
+
+      const imported = {};
+      for (const [nameRaw, snapshot] of Object.entries(rawPresets)) {
+        const name = String(nameRaw || '').trim().toLowerCase();
+        if (!validPresetName(name)) continue;
+        imported[name] = normalizeSnapshot(snapshot);
+      }
+      const importedNames = Object.keys(imported).sort();
+      if (!importedNames.length) {
+        setStatus('preset-status', 'Import failed: no valid presets found', 'warn');
+        setImportDiffPreview({});
+        return;
+      }
+
+      const existing = readPresets();
+      const replaced = importedNames.filter((name) => Object.prototype.hasOwnProperty.call(existing, name));
+      const previewSummary = buildPresetDiffSummary(existing, imported);
+      setImportDiffPreview(previewSummary);
+
+      const addedCount = importedNames.length - replaced.length;
+      const previewEnabled = document.getElementById('preset-import-preview').checked;
+      if (previewEnabled && replaced.length > 0) {
+        const proceed = window.confirm(
+          `Dry-run preview: ${addedCount} new preset(s), ${replaced.length} replacement(s).\nApply this import?`,
+        );
+        if (!proceed) {
+          setStatus('preset-status', 'Import preview generated; apply canceled', 'warn');
+          return;
+        }
+      } else if (replaced.length > 0) {
+        const proceed = window.confirm(
+          `Import will replace ${replaced.length} existing preset(s). Continue?`,
+        );
+        if (!proceed) {
+          setStatus('preset-status', 'Import canceled', 'warn');
+          return;
+        }
+      }
+
+      writePresets({ ...existing, ...imported });
+      refreshPresetSelect(importedNames[0]);
+      document.getElementById('preset-name').value = importedNames[0];
+      setStatus(
+        'preset-status',
+        `Preset bundle imported: ${importedNames.length} preset(s)${replaced.length ? `, replaced ${replaced.length}` : ''}`,
+        'ok',
+      );
+    }
+
+    async function handlePresetImportFile(event){
+      const input = event && event.target ? event.target : document.getElementById('preset-import-file');
+      const file = input && input.files && input.files[0] ? input.files[0] : null;
+      if (!file) return;
+      try {
+        const raw = await file.text();
+        importPresetBundleFromText(raw);
+      } catch (_err) {
+        setStatus('preset-status', 'Import failed: unable to read file', 'bad');
+      } finally {
+        input.value = '';
+      }
+    }
+
+    function setTemplatePolicyHint(kind){
+      const target = document.getElementById('template-policy-hint');
+      if (!target) return;
+      const normalized = typeof kind === 'string' ? kind : 'reset';
+      target.textContent = TEMPLATE_POLICY_HINTS[normalized] || TEMPLATE_POLICY_HINTS.reset;
+    }
+
     function applyTemplate(kind){
       const snapshot = defaultTemplate(kind);
       applySnapshot(snapshot);
+      setTemplatePolicyHint(kind);
       setStatus('preset-status', `Template loaded: ${kind}`, 'ok');
     }
 
@@ -982,13 +1385,25 @@ def render_canvas_workflows_html() -> str:
     document.getElementById('preset-save-btn').addEventListener('click', savePreset);
     document.getElementById('preset-load-btn').addEventListener('click', loadPreset);
     document.getElementById('preset-delete-btn').addEventListener('click', deletePreset);
+    document.getElementById('preset-export-btn').addEventListener('click', exportPresetBundle);
+    document.getElementById('preset-import-btn').addEventListener('click', () => {
+      document.getElementById('preset-import-file').click();
+    });
+    document.getElementById('preset-import-file').addEventListener('change', handlePresetImportFile);
     document.getElementById('template-aetherion-btn').addEventListener('click', () => applyTemplate('aetherion'));
     document.getElementById('template-patrol-btn').addEventListener('click', () => applyTemplate('patrol'));
     document.getElementById('template-reset-btn').addEventListener('click', () => applyTemplate('reset'));
+    document.getElementById('confirm-mutations').addEventListener('change', persistUIPrefsFromControls);
+    document.getElementById('preset-import-preview').addEventListener('change', persistUIPrefsFromControls);
+    document.getElementById('safety-profile-apply-btn').addEventListener('click', () => {
+      applySafetyProfile(document.getElementById('safety-profile').value, true);
+    });
+    document.getElementById('prefs-reset-btn').addEventListener('click', resetOperatorPrefs);
 
     const back = document.getElementById('back-dashboard');
     if (token) back.href = `/dashboard?token=${encodeURIComponent(token)}`;
 
+    applyUIPrefsToControls();
     applyTemplate('reset');
     refreshPresetSelect();
     runCanvas('status');

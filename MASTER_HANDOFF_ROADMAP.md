@@ -116,11 +116,20 @@ This file is the continuation map for future Codex sessions working from NovaAda
   - OpenAPI includes `/dashboard/canvas-workflows`
   - covered in `tests/test_server.py` (`test_canvas_workflows_dashboard_flag_and_auth`)
 - Canvas/workflow inspector UI now includes operator safety/persistence tooling:
-  - local preset save/load/delete using browser localStorage
-  - template loaders (`Aetherion Monitor`, `Patrol Cycle`, `Minimal Safe`)
+  - local preset save/load/delete/export/import using browser localStorage + JSON bundle download/upload
+  - import accepts either full bundle objects (`kind`/`version`/`presets`) or raw preset maps, with preset-name validation and replace confirmation
+  - optional dry-run import diff preview is now shown before replacement applies, with added/replaced preset summaries and changed-field counts
+  - template loaders (`Aetherion Monitor`, `Patrol Cycle`, `Minimal Safe`) now surface per-template policy hints in the UI
+  - operator safety toggles (`confirm-mutations`, `preset-import-preview`) are now persisted via localStorage UI prefs
+  - safety lock profile selector (`strict`/`balanced`/`lab`) now applies recommended operator defaults in one click
+  - active safety posture badge now reflects live mutation posture (`strict`/`balanced`/`lab`/`custom`) at a glance
+  - one-line legend tooltip now explains recommended posture contexts for `strict`, `balanced`, `lab`, and `custom`
+  - explicit reset control now restores operator safety preferences to defaults (`confirm-mutations=true`, `preset-import-preview=true`)
   - confirmation gate toggle for mutating actions (render/start/advance/resume), enabled by default
-  - coverage assertion added in `tests/test_server.py` for preset/safety controls in rendered HTML
-- Latest verification run: `PYTHONPATH=core:shared python3 -m unittest discover -s tests` → `341 tests OK`.
+  - coverage assertions updated in `tests/test_server.py` for preset/safety/export/import/diff-preview/profile/posture/legend/localStorage controls in rendered HTML
+- Latest verification runs:
+  - `PYTHONPATH=core:shared python3 -m unittest tests.test_server` → `26 tests OK`
+  - `PYTHONPATH=core:shared python3 -m unittest discover -s tests` → `341 tests OK`
 
 ## 2) Hard Invariants
 
@@ -138,7 +147,7 @@ This file is the continuation map for future Codex sessions working from NovaAda
 
 ### P1
 
-2. Add operator export/import of preset bundles and per-template policy hints in the canvas/workflow dashboard.
+2. Auto-sync `safety-profile` select to `custom` immediately when operators manually toggle safety checkboxes away from profile defaults.
 
 ## 4) Continuation Checklist
 
