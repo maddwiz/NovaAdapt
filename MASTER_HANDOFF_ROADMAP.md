@@ -53,7 +53,12 @@ This file is the continuation map for future Codex sessions working from NovaAda
   - `core/novaadapt_core/voice/wake.py` (`KeywordWakeDetector`, factory)
   - `core/novaadapt_core/voice/talk_mode.py` (`TalkModeSession`)
   - coverage added in `tests/test_voice.py`
-- Latest verification run: `PYTHONPATH=core:shared python3 -m unittest discover -s tests` → `299 tests OK`.
+- Voice providers expanded with optional production adapters:
+  - `CommandSTTBackend` + `CommandTTSBackend` for local/external engine wiring via env-configured command templates
+  - `OpenAISTTBackend` + `OpenAITTSBackend` (HTTP adapters, API-key gated, still optional)
+  - factories now support `static`, `command`, and `openai` backend modes for both STT and TTS
+  - extended tests in `tests/test_voice.py` for command/openai paths
+- Latest verification run: `PYTHONPATH=core:shared python3 -m unittest discover -s tests` → `312 tests OK`.
 
 ## 2) Hard Invariants
 
@@ -71,7 +76,7 @@ This file is the continuation map for future Codex sessions working from NovaAda
 
 ### P1
 
-2. Add production STT/TTS backends (Whisper/ElevenLabs/etc.) behind current optional voice interfaces.
+2. Wire optional voice backends into CLI/server surface behind feature flags (do not auto-enable).
 3. Add canvas/workflow modules behind flags, keeping default footprint minimal.
 
 ## 4) Continuation Checklist
