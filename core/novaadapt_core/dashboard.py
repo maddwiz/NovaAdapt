@@ -803,6 +803,7 @@ def render_canvas_workflows_html() -> str:
             Include UTC timestamp
           </label>
         </div>
+        <div class=\"hint\">Shortcut: `Ctrl/Cmd+Shift+C` copies the inline safety summary when not typing in inputs.</div>
         <div class=\"hint\">Badge reflects live toggles and can read `strict`, `balanced`, `lab`, or `custom`.</div>
         <div class=\"stack\">
           <button id=\"prefs-reset-btn\">Reset Operator Preferences</button>
@@ -1181,6 +1182,27 @@ def render_canvas_workflows_html() -> str:
       } else {
         setStatus('preset-status', 'Copy failed: clipboard unavailable', 'warn');
       }
+    }
+
+    function shortcutInEditableTarget(event){
+      const target = event && event.target;
+      if (!target || !(target instanceof Element)) return false;
+      if (target.closest('textarea')) return true;
+      if (target.closest('select')) return true;
+      if (target.closest('input')) return true;
+      if (target.closest('[contenteditable="true"]')) return true;
+      return false;
+    }
+
+    function handleCopyShortcut(event){
+      const key = String(event && event.key ? event.key : '').toLowerCase();
+      const modifier = Boolean(event && (event.ctrlKey || event.metaKey));
+      const withShift = Boolean(event && event.shiftKey);
+      const withAlt = Boolean(event && event.altKey);
+      if (!modifier || !withShift || withAlt || key !== 'c') return;
+      if (shortcutInEditableTarget(event)) return;
+      event.preventDefault();
+      void copySafetySummary();
     }
 
     function flashCopiedButtonState(){
@@ -1582,6 +1604,7 @@ def render_canvas_workflows_html() -> str:
     document.getElementById('safety-summary-copy-btn').addEventListener('click', copySafetySummary);
     document.getElementById('safety-summary-include-ts').addEventListener('change', persistUIPrefsFromControls);
     document.getElementById('prefs-reset-btn').addEventListener('click', resetOperatorPrefs);
+    window.addEventListener('keydown', handleCopyShortcut);
 
     const back = document.getElementById('back-dashboard');
     if (token) back.href = `/dashboard?token=${encodeURIComponent(token)}`;
