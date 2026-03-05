@@ -1088,6 +1088,14 @@ def render_canvas_workflows_html() -> str:
       persistUIPrefsFromControls();
     }
 
+    function mutationSafetySummary(){
+      const posture = deriveActiveSafetyPosture();
+      const safetyProfile = normalizeSafetyProfile(document.getElementById('safety-profile').value);
+      const confirmMutations = Boolean(document.getElementById('confirm-mutations').checked);
+      const presetImportPreview = Boolean(document.getElementById('preset-import-preview').checked);
+      return `Safety posture=${posture}, profile=${safetyProfile}, confirm=${confirmMutations ? 'on' : 'off'}, import_preview=${presetImportPreview ? 'on' : 'off'}`;
+    }
+
     function resetOperatorPrefs(){
       applySafetyProfile(DEFAULT_SAFETY_PROFILE, false);
       setStatus('preset-status', 'Operator preferences reset to defaults', 'ok');
@@ -1322,7 +1330,8 @@ def render_canvas_workflows_html() -> str:
       const required = document.getElementById('confirm-mutations').checked;
       if (!required) return true;
       const preview = stringify(payload).slice(0, 500);
-      return window.confirm(`Confirm ${actionLabel}?\n\n${preview}`);
+      const summary = mutationSafetySummary();
+      return window.confirm(`Confirm ${actionLabel}?\n\n${summary}\n\n${preview}`);
     }
 
     async function getJSON(path){

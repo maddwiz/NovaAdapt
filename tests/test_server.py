@@ -1597,6 +1597,8 @@ class ServerTests(unittest.TestCase):
                     self.assertIn("custom (derived)", html_with_query)
                     self.assertIn("onSafetyToggleChanged", html_with_query)
                     self.assertIn("Custom posture is derived from manual toggle changes", html_with_query)
+                    self.assertIn("mutationSafetySummary", html_with_query)
+                    self.assertIn("Safety posture=", html_with_query)
                     self.assertIn("strict=production/shared operators", html_with_query)
                     self.assertIn("Lab posture active", html_with_query)
                     self.assertIn("Custom posture active", html_with_query)
