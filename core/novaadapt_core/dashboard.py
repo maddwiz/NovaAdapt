@@ -55,8 +55,9 @@ def render_dashboard_html() -> str:
     .ok { color: var(--ok); }
     .warn { color: var(--warn); }
     .bad { color: var(--bad); }
-    .toolbar { margin: 14px 0; display: flex; gap: 8px; }
+    .toolbar { margin: 14px 0; display: flex; gap: 8px; flex-wrap: wrap; }
     .operator-panel { margin-bottom: 12px; }
+    .governance-panel { margin-bottom: 12px; }
     .control-grid {
       display: grid;
       gap: 10px;
@@ -92,6 +93,14 @@ def render_dashboard_html() -> str:
       flex-wrap: wrap;
       margin-top: 12px;
     }
+    .control-status {
+      min-height: 18px;
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .control-status.ok { color: var(--ok); }
+    .control-status.bad { color: var(--bad); }
     .obs-grid {
       display: grid;
       gap: 12px;
@@ -230,6 +239,7 @@ def render_dashboard_html() -> str:
     <div class=\"toolbar\">
       <button id=\"refresh\">Refresh</button>
       <button id=\"auto\">Auto: Off</button>
+      <button id=\"live\">Live: Off</button>
     </div>
     <div class=\"action-status\" id=\"action-status\"></div>
 
@@ -317,6 +327,38 @@ def render_dashboard_html() -> str:
       </div>
     </div>
 
+    <div class=\"card governance-panel\">
+      <div class=\"section-title\">Runtime Governance</div>
+      <div class=\"control-grid\">
+        <div class=\"control-field\">
+          <label for=\"governance-paused\">Paused</label>
+          <select id=\"governance-paused\">
+            <option value=\"false\">running</option>
+            <option value=\"true\">paused</option>
+          </select>
+        </div>
+        <div class=\"control-field\">
+          <label for=\"governance-pause-reason\">Pause Reason</label>
+          <input id=\"governance-pause-reason\" placeholder=\"ops freeze\" />
+        </div>
+        <div class=\"control-field\">
+          <label for=\"governance-budget-limit\">Budget Limit USD</label>
+          <input id=\"governance-budget-limit\" type=\"number\" min=\"0\" step=\"0.01\" placeholder=\"unlimited\" />
+        </div>
+        <div class=\"control-field\">
+          <label for=\"governance-max-runs\">Max Active Runs</label>
+          <input id=\"governance-max-runs\" type=\"number\" min=\"1\" placeholder=\"unlimited\" />
+        </div>
+      </div>
+      <div class=\"control-actions\">
+        <button id=\"apply-governance\">Apply Governance</button>
+        <button id=\"toggle-pause\">Pause Runtime</button>
+        <button id=\"reset-usage\">Reset Usage</button>
+        <button id=\"cancel-all-jobs\" class=\"warn\">Cancel All Jobs</button>
+      </div>
+      <div class=\"control-status\" id=\"governance-status\"></div>
+    </div>
+
     <div class=\"obs-grid\" id=\"observability\"></div>
 
     <div class=\"tables\">
@@ -377,9 +419,18 @@ def render_dashboard_html() -> str:
   </div>
 
   <script>
-    const state = { auto: false, timer: null };
+    const state = {
+      auto: false,
+      timer: null,
+      live: false,
+      eventSource: null,
+      lastAuditId: 0,
+      refreshScheduled: null,
+      refreshInFlight: false,
+    };
     const authToken = new URLSearchParams(window.location.search).get('token');
     const actionStatus = document.getElementById('action-status');
+    const governanceStatus = document.getElementById('governance-status');
     const jobsTbody = document.getElementById('jobs');
     const plansTbody = document.getElementById('plans');
     const artifactsEl = document.getElementById('artifacts');
@@ -387,6 +438,11 @@ def render_dashboard_html() -> str:
     const operatorObjective = document.getElementById('operator-objective');
     const runAsyncButton = document.getElementById('run-async');
     const createPlanButton = document.getElementById('create-plan');
+    const liveButton = document.getElementById('live');
+    const applyGovernanceButton = document.getElementById('apply-governance');
+    const togglePauseButton = document.getElementById('toggle-pause');
+    const resetUsageButton = document.getElementById('reset-usage');
+    const cancelAllJobsButton = document.getElementById('cancel-all-jobs');
 
     function metricColor(v, ok=0){
       if (Number(v) <= ok) return 'ok';
@@ -410,6 +466,11 @@ def render_dashboard_html() -> str:
     function setActionStatus(message, ok=true){
       actionStatus.textContent = String(message || '');
       actionStatus.className = `action-status ${ok ? 'ok' : 'bad'}`;
+    }
+
+    function setGovernanceStatus(message, ok=true){
+      governanceStatus.textContent = String(message || '');
+      governanceStatus.className = `control-status ${ok ? 'ok' : 'bad'}`;
     }
 
     function escapeHTML(value){
@@ -441,6 +502,16 @@ def render_dashboard_html() -> str:
     function readFloat(id, fallback){
       const value = Number.parseFloat(document.getElementById(id).value);
       return Number.isFinite(value) ? value : fallback;
+    }
+
+    function syncControlValue(id, value){
+      const element = document.getElementById(id);
+      if (!element) return;
+      if (document.activeElement === element) return;
+      const normalized = value == null ? '' : String(value);
+      if (element.value !== normalized) {
+        element.value = normalized;
+      }
     }
 
     function operatorControlPayload(includeObjective=true){
@@ -476,6 +547,24 @@ def render_dashboard_html() -> str:
         ...operatorControlPayload(false),
         execute: true,
       };
+    }
+
+    function governancePayload(options={}){
+      const pausedValue = document.getElementById('governance-paused').value === 'true';
+      const pauseReason = document.getElementById('governance-pause-reason').value.trim();
+      const budgetRaw = document.getElementById('governance-budget-limit').value.trim();
+      const maxRunsRaw = document.getElementById('governance-max-runs').value.trim();
+      const payload = {};
+      if (options.includePaused !== false) payload.paused = pausedValue;
+      if (options.includePauseReason !== false) payload.pause_reason = pauseReason;
+      if (options.includeBudget !== false) {
+        payload.budget_limit_usd = budgetRaw === '' ? null : Math.max(0, Number.parseFloat(budgetRaw) || 0);
+      }
+      if (options.includeMaxRuns !== false) {
+        payload.max_active_runs = maxRunsRaw === '' ? null : Math.max(1, Number.parseInt(maxRunsRaw, 10) || 1);
+      }
+      if (options.resetUsage) payload.reset_usage = true;
+      return payload;
     }
 
     function countResultsByStatus(results){
@@ -728,6 +817,95 @@ def render_dashboard_html() -> str:
       }).join('');
     }
 
+    function syncGovernanceInputs(governance){
+      const payload = governance && typeof governance === 'object' ? governance : {};
+      const paused = Boolean(payload.paused);
+      syncControlValue('governance-paused', paused ? 'true' : 'false');
+      syncControlValue('governance-pause-reason', payload.pause_reason || '');
+      syncControlValue(
+        'governance-budget-limit',
+        payload.budget_limit_usd == null ? '' : Number(payload.budget_limit_usd).toString()
+      );
+      syncControlValue(
+        'governance-max-runs',
+        payload.max_active_runs == null ? '' : Number(payload.max_active_runs).toString()
+      );
+      togglePauseButton.textContent = paused ? 'Resume Runtime' : 'Pause Runtime';
+    }
+
+    function updateLiveButton(){
+      liveButton.textContent = `Live: ${state.live ? 'On' : 'Off'}`;
+    }
+
+    function scheduleRefresh(delayMs=150){
+      if (state.refreshScheduled) clearTimeout(state.refreshScheduled);
+      state.refreshScheduled = setTimeout(() => {
+        state.refreshScheduled = null;
+        refresh();
+      }, Math.max(0, Number(delayMs || 0)));
+    }
+
+    function closeLiveStream(){
+      if (state.eventSource) {
+        state.eventSource.close();
+        state.eventSource = null;
+      }
+    }
+
+    function connectLiveStream(){
+      closeLiveStream();
+      if (!state.live) return;
+      if (!authToken) {
+        state.live = false;
+        updateLiveButton();
+        setActionStatus('Live stream requires the dashboard token in the URL query', false);
+        return;
+      }
+      const streamUrl = withToken(`/events/stream?timeout=300&interval=0.25&since_id=${encodeURIComponent(state.lastAuditId)}`);
+      try {
+        const source = new EventSource(streamUrl);
+        state.eventSource = source;
+        source.addEventListener('audit', (event) => {
+          try {
+            const payload = JSON.parse(event.data || '{}');
+            if (payload && payload.id != null) {
+              state.lastAuditId = Math.max(state.lastAuditId, Number(payload.id || 0));
+            }
+            setActionStatus(`Live event • ${payload.category || 'audit'}:${payload.action || 'update'}`, true);
+          } catch {
+            setActionStatus('Live event received', true);
+          }
+          scheduleRefresh(100);
+        });
+        source.addEventListener('timeout', () => {
+          if (!state.live) return;
+          closeLiveStream();
+          setTimeout(connectLiveStream, 250);
+        });
+        source.onerror = () => {
+          if (!state.live) return;
+          closeLiveStream();
+          setTimeout(connectLiveStream, 1000);
+        };
+      } catch (err) {
+        state.live = false;
+        updateLiveButton();
+        setActionStatus(String(err), false);
+      }
+    }
+
+    function toggleLiveStream(){
+      state.live = !state.live;
+      updateLiveButton();
+      if (state.live) {
+        setActionStatus('Live stream enabled', true);
+        connectLiveStream();
+      } else {
+        closeLiveStream();
+        setActionStatus('Live stream disabled', true);
+      }
+    }
+
     async function fetchJSON(path){
       const r = await fetch(withToken(path), {
         credentials: 'same-origin',
@@ -787,6 +965,61 @@ def render_dashboard_html() -> str:
       }
     }
 
+    async function handleGovernanceAction(kind){
+      const buttonMap = {
+        apply: applyGovernanceButton,
+        togglePause: togglePauseButton,
+        resetUsage: resetUsageButton,
+        cancelAll: cancelAllJobsButton,
+      };
+      const button = buttonMap[kind];
+      if (!button) return;
+      button.disabled = true;
+      try {
+        if (kind === 'apply') {
+          const payload = governancePayload();
+          const out = await postJSON('/runtime/governance', payload);
+          syncGovernanceInputs(out);
+          setGovernanceStatus(`Governance updated • paused=${Boolean(out.paused)}`, true);
+        } else if (kind === 'togglePause') {
+          const shouldPause = document.getElementById('governance-paused').value !== 'true';
+          const payload = governancePayload({
+            includeBudget: false,
+            includeMaxRuns: false,
+          });
+          payload.paused = shouldPause;
+          payload.pause_reason = shouldPause
+            ? (payload.pause_reason || 'Operator paused runtime')
+            : '';
+          const out = await postJSON('/runtime/governance', payload);
+          syncGovernanceInputs(out);
+          setGovernanceStatus(shouldPause ? 'Runtime paused' : 'Runtime resumed', true);
+        } else if (kind === 'resetUsage') {
+          const out = await postJSON('/runtime/governance', {
+            reset_usage: true,
+          });
+          syncGovernanceInputs(out);
+          setGovernanceStatus('Runtime usage counters reset', true);
+        } else if (kind === 'cancelAll') {
+          const pause = document.getElementById('governance-paused').value === 'true';
+          const pauseReason = document.getElementById('governance-pause-reason').value.trim() || 'Runtime paused during cancel-all';
+          const out = await postJSON('/runtime/jobs/cancel_all', {
+            pause,
+            pause_reason: pauseReason,
+          });
+          if (out.governance) {
+            syncGovernanceInputs(out.governance);
+          }
+          setGovernanceStatus(`Cancel-all requested • canceled=${out.canceled ?? out.ok ?? true}`, true);
+        }
+        await refresh();
+      } catch (err) {
+        setGovernanceStatus(String(err), false);
+      } finally {
+        button.disabled = false;
+      }
+    }
+
     async function handleTableAction(event){
       const button = event.target.closest('button[data-action]');
       if (!button) return;
@@ -823,6 +1056,8 @@ def render_dashboard_html() -> str:
     }
 
     async function refresh(){
+      if (state.refreshInFlight) return;
+      state.refreshInFlight = true;
       try {
         const data = await fetchJSON('/dashboard/data?jobs_limit=25&plans_limit=25&events_limit=25');
         const health = data.health || {};
@@ -834,6 +1069,7 @@ def render_dashboard_html() -> str:
         const modelsCount = Number(data.models_count || 0);
         const control = data.control || {};
         const controlArtifacts = data.control_artifacts || control.artifacts || [];
+        const governance = data.governance || {};
         const browser = control.browser || {};
         const mobile = control.mobile || {};
         const homeassistant = control.homeassistant || {};
@@ -841,6 +1077,10 @@ def render_dashboard_html() -> str:
         const pendingPlans = plans.filter(item => item.status === 'pending').length;
         const runningJobs = jobs.filter(item => item.status === 'running').length;
         const failedAudits = events.filter(item => item.status === 'error' || item.status === 'failed').length;
+        const auditIds = events.map(item => Number(item?.id || 0)).filter(value => Number.isFinite(value));
+        if (auditIds.length) {
+          state.lastAuditId = Math.max(state.lastAuditId, ...auditIds);
+        }
         const mobilePlatforms = [];
         if (mobile.android) mobilePlatforms.push(`android:${mobile.android.ok ? 'ready' : 'degraded'}`);
         if (mobile.ios) mobilePlatforms.push(`ios:${mobile.ios.ok ? 'ready' : 'degraded'}`);
@@ -954,6 +1194,7 @@ def render_dashboard_html() -> str:
         `).join('');
         renderObservability(observability);
         renderArtifacts(controlArtifacts);
+        syncGovernanceInputs(governance);
       } catch (err) {
         document.getElementById('summary').innerHTML = `
           <div class=\"card\">
@@ -966,21 +1207,29 @@ def render_dashboard_html() -> str:
         document.getElementById('events').innerHTML = '';
         observabilityEl.innerHTML = '';
         artifactsEl.innerHTML = '';
+      } finally {
+        state.refreshInFlight = false;
       }
     }
 
     document.getElementById('refresh').addEventListener('click', refresh);
     runAsyncButton.addEventListener('click', () => handleOperatorAction('run'));
     createPlanButton.addEventListener('click', () => handleOperatorAction('plan'));
+    applyGovernanceButton.addEventListener('click', () => handleGovernanceAction('apply'));
+    togglePauseButton.addEventListener('click', () => handleGovernanceAction('togglePause'));
+    resetUsageButton.addEventListener('click', () => handleGovernanceAction('resetUsage'));
+    cancelAllJobsButton.addEventListener('click', () => handleGovernanceAction('cancelAll'));
     document.getElementById('auto').addEventListener('click', () => {
       state.auto = !state.auto;
       document.getElementById('auto').textContent = `Auto: ${state.auto ? 'On' : 'Off'}`;
       if (state.timer) clearInterval(state.timer);
       if (state.auto) state.timer = setInterval(refresh, 3000);
     });
+    liveButton.addEventListener('click', toggleLiveStream);
     jobsTbody.addEventListener('click', handleTableAction);
     plansTbody.addEventListener('click', handleTableAction);
 
+    updateLiveButton();
     refresh();
   </script>
 </body>
