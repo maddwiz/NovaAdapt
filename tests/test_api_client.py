@@ -47,6 +47,11 @@ class _Handler(BaseHTTPRequestHandler):
                     "events": [{"id": 1, "category": "run", "action": "run_async"}],
                     "metrics": {"novaadapt_core_requests_total": 1},
                     "governance": {"paused": False, "llm_calls_total": 3, "jobs": {"active": 1}},
+                    "observability": {
+                        "runtime": {"totals": {"runs_total": 2}},
+                        "repairs": {"attempted": 1},
+                        "collaboration": {"decompose_runs": 1},
+                    },
                 },
             )
             return
@@ -973,6 +978,7 @@ class APIClientTests(unittest.TestCase):
         dashboard_payload = client.dashboard_data()
         self.assertEqual(dashboard_payload["models_count"], 1)
         self.assertIn("governance", dashboard_payload)
+        self.assertIn("observability", dashboard_payload)
         self.assertEqual(client.models()[0]["name"], "local")
         self.assertEqual(client.plugins()[0]["name"], "novabridge")
         self.assertTrue(client.plugin_health("novabridge")["ok"])

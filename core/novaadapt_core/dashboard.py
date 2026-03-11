@@ -92,6 +92,40 @@ def render_dashboard_html() -> str:
       flex-wrap: wrap;
       margin-top: 12px;
     }
+    .obs-grid {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      margin-bottom: 12px;
+    }
+    .obs-list {
+      display: grid;
+      gap: 6px;
+    }
+    .obs-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      font-size: 13px;
+    }
+    .obs-row .mono {
+      color: var(--muted);
+      min-width: 92px;
+    }
+    .obs-pills {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      margin-top: 8px;
+    }
+    .obs-pill {
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 4px 8px;
+      font-size: 12px;
+      color: var(--muted);
+      background: #0f141b;
+    }
     button {
       border: 1px solid var(--border);
       background: #21262d;
@@ -283,6 +317,8 @@ def render_dashboard_html() -> str:
       </div>
     </div>
 
+    <div class=\"obs-grid\" id=\"observability\"></div>
+
     <div class=\"tables\">
       <div>
         <div class=\"section-title\">Async Jobs</div>
@@ -347,6 +383,7 @@ def render_dashboard_html() -> str:
     const jobsTbody = document.getElementById('jobs');
     const plansTbody = document.getElementById('plans');
     const artifactsEl = document.getElementById('artifacts');
+    const observabilityEl = document.getElementById('observability');
     const operatorObjective = document.getElementById('operator-objective');
     const runAsyncButton = document.getElementById('run-async');
     const createPlanButton = document.getElementById('create-plan');
@@ -389,6 +426,11 @@ def render_dashboard_html() -> str:
         .split(',')
         .map(item => item.trim())
         .filter(Boolean);
+    }
+
+    function formatMoney(value){
+      const amount = Number(value || 0);
+      return `$${amount.toFixed(4)}`;
     }
 
     function readInteger(id, fallback){
@@ -547,6 +589,116 @@ def render_dashboard_html() -> str:
       return parts.join(' • ');
     }
 
+    function renderObservability(observability){
+      const payload = observability && typeof observability === 'object' ? observability : {};
+      const runtime = payload.runtime && typeof payload.runtime === 'object' ? payload.runtime : {};
+      const repairs = payload.repairs && typeof payload.repairs === 'object' ? payload.repairs : {};
+      const collaboration = payload.collaboration && typeof payload.collaboration === 'object' ? payload.collaboration : {};
+      const events = payload.events && typeof payload.events === 'object' ? payload.events : {};
+      const runtimeTotals = runtime.totals && typeof runtime.totals === 'object' ? runtime.totals : {};
+      const runtimeRecent = runtime.recent && typeof runtime.recent === 'object' ? runtime.recent : {};
+      const perModel = Array.isArray(runtime.per_model) ? runtime.per_model : [];
+      const runtimeTimeline = Array.isArray(runtime.timeline) ? runtime.timeline : [];
+      const repairTimeline = Array.isArray(repairs.timeline) ? repairs.timeline : [];
+      const collaborationTimeline = Array.isArray(collaboration.timeline) ? collaboration.timeline : [];
+      const repairDomains = Array.isArray(repairs.domains) ? repairs.domains : [];
+      const eventCategories = Array.isArray(events.categories) ? events.categories : [];
+      const failureCategories = Array.isArray(events.failure_categories) ? events.failure_categories : [];
+
+      function rows(items, formatter){
+        return `<div class="obs-list">${items.map(item => formatter(item)).join('')}</div>`;
+      }
+
+      function timelineRows(items, formatter){
+        if (!items.length) return '<div class="detail">No recent timeline data</div>';
+        return rows(items, formatter);
+      }
+
+      observabilityEl.innerHTML = `
+        <div class="card">
+          <div class="section-title">Runtime Trends</div>
+          ${rows([
+            ['Runs total', runtimeTotals.runs_total ?? 0],
+            ['LLM calls', runtimeTotals.llm_calls_total ?? 0],
+            ['Spend', formatMoney(runtimeTotals.spend_estimate_usd ?? 0)],
+            ['Active runs', runtimeTotals.active_runs ?? 0],
+            ['Recent runs', runtimeRecent.runs ?? 0],
+            ['Recent failures', runtimeRecent.failed_runs ?? 0],
+          ], ([label, value]) => `<div class="obs-row"><span>${escapeHTML(label)}</span><strong>${escapeHTML(value)}</strong></div>`)}
+          <div class="detail">${escapeHTML(runtimeTotals.paused ? `Paused: ${runtimeTotals.pause_reason || 'operator pause'}` : `Last strategy: ${runtimeTotals.last_strategy || 'n/a'}`)}</div>
+          <div class="detail">Per-model usage</div>
+          ${perModel.length ? rows(perModel.slice(0, 5), item => `
+            <div class="obs-row">
+              <span>${escapeHTML(item.name || 'model')}</span>
+              <span class="mono">${escapeHTML(`${item.calls || 0} calls • ${formatMoney(item.estimated_cost_usd || 0)}`)}</span>
+            </div>
+          `) : '<div class="detail">No per-model usage yet</div>'}
+          <div class="detail">Recent runtime timeline</div>
+          ${timelineRows(runtimeTimeline, item => `
+            <div class="obs-row">
+              <span>${escapeHTML(item.bucket || 'unknown')}</span>
+              <span class="mono">${escapeHTML(`${item.runs || 0} runs • ${item.llm_calls || 0} calls • ${formatMoney(item.estimated_cost_usd || 0)}`)}</span>
+            </div>
+          `)}
+        </div>
+        <div class="card">
+          <div class="section-title">Repair Activity</div>
+          ${rows([
+            ['Attempts', repairs.attempted ?? 0],
+            ['Healed', repairs.healed ?? 0],
+            ['Failed', repairs.failed ?? 0],
+            ['Repaired actions', repairs.repaired_actions ?? 0],
+            ['Failed actions', repairs.failed_actions ?? 0],
+          ], ([label, value]) => `<div class="obs-row"><span>${escapeHTML(label)}</span><strong>${escapeHTML(value)}</strong></div>`)}
+          <div class="obs-pills">
+            ${(repairDomains.length ? repairDomains : [{ label: 'none', count: 0 }]).map(item => `<span class="obs-pill">${escapeHTML(`${item.label}: ${item.count}`)}</span>`).join('')}
+          </div>
+          <div class="detail">Repair timeline</div>
+          ${timelineRows(repairTimeline, item => `
+            <div class="obs-row">
+              <span>${escapeHTML(item.bucket || 'unknown')}</span>
+              <span class="mono">${escapeHTML(`${item.attempted || 0} attempts • ${item.healed || 0} healed • ${item.failed || 0} failed`)}</span>
+            </div>
+          `)}
+        </div>
+        <div class="card">
+          <div class="section-title">Collaboration</div>
+          ${rows([
+            ['Decompose runs', collaboration.decompose_runs ?? 0],
+            ['Vote runs', collaboration.vote_runs ?? 0],
+            ['Transcript events', collaboration.transcript_events ?? 0],
+            ['Review events', collaboration.review_events ?? 0],
+            ['Parallel batches', collaboration.parallel_batches ?? 0],
+            ['Subtasks', collaboration.subtasks_total ?? 0],
+          ], ([label, value]) => `<div class="obs-row"><span>${escapeHTML(label)}</span><strong>${escapeHTML(value)}</strong></div>`)}
+          <div class="detail">Collaboration timeline</div>
+          ${timelineRows(collaborationTimeline, item => `
+            <div class="obs-row">
+              <span>${escapeHTML(item.bucket || 'unknown')}</span>
+              <span class="mono">${escapeHTML(`${item.decompose_runs || 0} dec • ${item.vote_runs || 0} vote • ${item.transcript_events || 0} events`)}</span>
+            </div>
+          `)}
+        </div>
+        <div class="card">
+          <div class="section-title">Failure Hotspots</div>
+          <div class="detail">Event categories</div>
+          ${eventCategories.length ? rows(eventCategories, item => `
+            <div class="obs-row">
+              <span>${escapeHTML(item.label || 'unknown')}</span>
+              <span class="mono">${escapeHTML(item.count || 0)}</span>
+            </div>
+          `) : '<div class="detail">No event categories yet</div>'}
+          <div class="detail">Failure categories</div>
+          ${failureCategories.length ? rows(failureCategories, item => `
+            <div class="obs-row">
+              <span>${escapeHTML(item.label || 'unknown')}</span>
+              <span class="mono">${escapeHTML(item.count || 0)}</span>
+            </div>
+          `) : '<div class="detail">No failing categories yet</div>'}
+        </div>
+      `;
+    }
+
     function renderArtifacts(items){
       const artifacts = Array.isArray(items) ? items : [];
       if (!artifacts.length) {
@@ -678,6 +830,7 @@ def render_dashboard_html() -> str:
         const plans = data.plans || [];
         const events = data.events || [];
         const metrics = data.metrics || {};
+        const observability = data.observability || {};
         const modelsCount = Number(data.models_count || 0);
         const control = data.control || {};
         const controlArtifacts = data.control_artifacts || control.artifacts || [];
@@ -799,6 +952,7 @@ def render_dashboard_html() -> str:
             <td>${escapeHTML(event.created_at || '')}</td>
           </tr>
         `).join('');
+        renderObservability(observability);
         renderArtifacts(controlArtifacts);
       } catch (err) {
         document.getElementById('summary').innerHTML = `
@@ -810,6 +964,7 @@ def render_dashboard_html() -> str:
         jobsTbody.innerHTML = '';
         plansTbody.innerHTML = '';
         document.getElementById('events').innerHTML = '';
+        observabilityEl.innerHTML = '';
         artifactsEl.innerHTML = '';
       }
     }

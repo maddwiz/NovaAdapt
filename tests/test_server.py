@@ -230,6 +230,7 @@ class ServerTests(unittest.TestCase):
                 self.assertIn("cancel-job", dashboard_html)
                 self.assertIn("Run Async", dashboard_html)
                 self.assertIn("Auto Repair Attempts", dashboard_html)
+                self.assertIn("Runtime Trends", dashboard_html)
 
                 with self.assertRaises(error.HTTPError) as err:
                     _get_text(f"http://{host}:{port}/dashboard/canvas-workflows")
@@ -246,6 +247,10 @@ class ServerTests(unittest.TestCase):
                 self.assertIn("control", dashboard_data)
                 self.assertIn("mobile", dashboard_data["control"])
                 self.assertIn("homeassistant", dashboard_data["control"])
+                self.assertIn("observability", dashboard_data)
+                self.assertIn("runtime", dashboard_data["observability"])
+                self.assertIn("repairs", dashboard_data["observability"])
+                self.assertIn("collaboration", dashboard_data["observability"])
 
                 runtime_governance, _ = _get_json_with_headers(f"http://{host}:{port}/runtime/governance")
                 self.assertIn("paused", runtime_governance)
@@ -1514,6 +1519,7 @@ class ServerTests(unittest.TestCase):
                 self.assertIn("NovaAdapt Core Dashboard", dashboard_html)
                 self.assertIn("Approve Async", dashboard_html)
                 self.assertIn("Run Async", dashboard_html)
+                self.assertIn("Runtime Trends", dashboard_html)
 
                 dashboard_with_query = _get_text(f"http://{host}:{port}/dashboard?token=secret")
                 self.assertIn("NovaAdapt Core Dashboard", dashboard_with_query)
@@ -1522,6 +1528,7 @@ class ServerTests(unittest.TestCase):
                 self.assertTrue(dashboard_data["health"]["ok"])
                 self.assertIn("metrics", dashboard_data)
                 self.assertIn("events", dashboard_data)
+                self.assertIn("observability", dashboard_data)
 
                 with self.assertRaises(error.HTTPError) as err:
                     _get_json(f"http://{host}:{port}/events")
