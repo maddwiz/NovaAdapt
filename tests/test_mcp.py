@@ -465,8 +465,21 @@ class _StubService:
     def homeassistant_status(self):
         return {"ok": True, "transport": "homeassistant-http"}
 
+    def homeassistant_discover(self, *, domain="", entity_id_prefix="", limit=250):
+        return {
+            "ok": True,
+            "count": 1,
+            "domain": domain,
+            "entity_id_prefix": entity_id_prefix,
+            "limit": limit,
+            "entities": [{"entity_id": "light.office"}],
+        }
+
     def homeassistant_action(self, payload):
         return {"status": "preview", "action": payload.get("action", {})}
+
+    def mqtt_status(self):
+        return {"ok": True, "transport": "mqtt-direct"}
 
     def browser_status(self):
         return {"ok": True, "transport": "browser", "capabilities": ["navigate", "click_selector"]}
@@ -567,7 +580,10 @@ class MCPServerTests(unittest.TestCase):
         self.assertIn("novaadapt_mobile_status", names)
         self.assertIn("novaadapt_mobile_action", names)
         self.assertIn("novaadapt_homeassistant_status", names)
+        self.assertIn("novaadapt_homeassistant_discover", names)
         self.assertIn("novaadapt_homeassistant_action", names)
+        self.assertIn("novaadapt_mqtt_status", names)
+        self.assertIn("novaadapt_mqtt_publish", names)
         self.assertIn("novaadapt_browser_status", names)
         self.assertIn("novaadapt_browser_pages", names)
         self.assertIn("novaadapt_browser_action", names)
@@ -1607,6 +1623,20 @@ class MCPServerTests(unittest.TestCase):
         homeassistant_status_payload = homeassistant_status_resp["result"]["content"][0]["json"]
         self.assertTrue(homeassistant_status_payload["ok"])
 
+        homeassistant_discover_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 9341,
+                "method": "tools/call",
+                "params": {
+                    "name": "novaadapt_homeassistant_discover",
+                    "arguments": {"domain": "light", "limit": 5},
+                },
+            }
+        )
+        homeassistant_discover_payload = homeassistant_discover_resp["result"]["content"][0]["json"]
+        self.assertEqual(homeassistant_discover_payload["count"], 1)
+
         homeassistant_action_resp = server.handle_request(
             {
                 "jsonrpc": "2.0",
@@ -1620,6 +1650,34 @@ class MCPServerTests(unittest.TestCase):
         )
         homeassistant_action_payload = homeassistant_action_resp["result"]["content"][0]["json"]
         self.assertEqual(homeassistant_action_payload["action"]["type"], "ha_service")
+
+        mqtt_status_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 9351,
+                "method": "tools/call",
+                "params": {
+                    "name": "novaadapt_mqtt_status",
+                    "arguments": {},
+                },
+            }
+        )
+        mqtt_status_payload = mqtt_status_resp["result"]["content"][0]["json"]
+        self.assertTrue(mqtt_status_payload["ok"])
+
+        mqtt_publish_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 9352,
+                "method": "tools/call",
+                "params": {
+                    "name": "novaadapt_mqtt_publish",
+                    "arguments": {"topic": "novaadapt/test", "payload": "ping"},
+                },
+            }
+        )
+        mqtt_publish_payload = mqtt_publish_resp["result"]["content"][0]["json"]
+        self.assertEqual(mqtt_publish_payload["action"]["type"], "mqtt_publish")
 
         browser_status_resp = server.handle_request(
             {

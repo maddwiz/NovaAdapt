@@ -926,6 +926,18 @@ class NovaAdaptMCPServer:
                 input_schema={"type": "object", "properties": {}},
             ),
             MCPTool(
+                name="novaadapt_homeassistant_discover",
+                description="Discover Home Assistant entities with optional domain or prefix filters",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "domain": {"type": "string"},
+                        "entity_id_prefix": {"type": "string"},
+                        "limit": {"type": "integer"},
+                    },
+                },
+            ),
+            MCPTool(
                 name="novaadapt_homeassistant_action",
                 description="Preview or execute a Home Assistant or MQTT action",
                 input_schema={
@@ -936,6 +948,27 @@ class NovaAdaptMCPServer:
                         "allow_dangerous": {"type": "boolean"},
                     },
                     "required": ["action"],
+                },
+            ),
+            MCPTool(
+                name="novaadapt_mqtt_status",
+                description="Get direct MQTT broker connectivity status",
+                input_schema={"type": "object", "properties": {}},
+            ),
+            MCPTool(
+                name="novaadapt_mqtt_publish",
+                description="Preview or publish a direct MQTT broker message",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "topic": {"type": "string"},
+                        "payload": {"type": "string"},
+                        "qos": {"type": "integer"},
+                        "retain": {"type": "boolean"},
+                        "execute": {"type": "boolean"},
+                        "allow_dangerous": {"type": "boolean"},
+                    },
+                    "required": ["topic", "payload"],
                 },
             ),
             MCPTool(
@@ -1734,6 +1767,12 @@ class NovaAdaptMCPServer:
             return self.service.mobile_action(payload)
         if tool_name == "novaadapt_homeassistant_status":
             return self.service.homeassistant_status()
+        if tool_name == "novaadapt_homeassistant_discover":
+            return self.service.homeassistant_discover(
+                domain=str(arguments.get("domain") or ""),
+                entity_id_prefix=str(arguments.get("entity_id_prefix") or ""),
+                limit=max(1, int(arguments.get("limit", 250) or 250)),
+            )
         if tool_name == "novaadapt_homeassistant_action":
             action = arguments.get("action")
             if not isinstance(action, dict):
@@ -1741,6 +1780,27 @@ class NovaAdaptMCPServer:
             return self.service.homeassistant_action(
                 {
                     "action": action,
+                    "execute": bool(arguments.get("execute", False)),
+                    "allow_dangerous": bool(arguments.get("allow_dangerous", False)),
+                }
+            )
+        if tool_name == "novaadapt_mqtt_status":
+            return self.service.mqtt_status()
+        if tool_name == "novaadapt_mqtt_publish":
+            topic = str(arguments.get("topic") or "").strip()
+            payload_text = str(arguments.get("payload") or "")
+            if not topic:
+                raise ValueError("'topic' is required")
+            return self.service.homeassistant_action(
+                {
+                    "action": {
+                        "type": "mqtt_publish",
+                        "topic": topic,
+                        "payload": payload_text,
+                        "qos": int(arguments.get("qos", 0) or 0),
+                        "retain": bool(arguments.get("retain", False)),
+                        "transport": "mqtt-direct",
+                    },
                     "execute": bool(arguments.get("execute", False)),
                     "allow_dangerous": bool(arguments.get("allow_dangerous", False)),
                 }

@@ -817,6 +817,15 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     homeassistant_status_cmd.add_argument("--config", type=Path, default=_default_config_path())
 
+    homeassistant_discover_cmd = sub.add_parser(
+        "homeassistant-discover",
+        help="Discover Home Assistant entities",
+    )
+    homeassistant_discover_cmd.add_argument("--config", type=Path, default=_default_config_path())
+    homeassistant_discover_cmd.add_argument("--domain", default="")
+    homeassistant_discover_cmd.add_argument("--entity-id-prefix", default="")
+    homeassistant_discover_cmd.add_argument("--limit", type=int, default=250)
+
     homeassistant_action_cmd = sub.add_parser(
         "homeassistant-action",
         help="Preview or execute a Home Assistant action payload",
@@ -825,6 +834,24 @@ def _build_parser() -> argparse.ArgumentParser:
     homeassistant_action_cmd.add_argument("--action-json", required=True)
     homeassistant_action_cmd.add_argument("--execute", action="store_true")
     homeassistant_action_cmd.add_argument("--allow-dangerous", action="store_true")
+
+    mqtt_status_cmd = sub.add_parser(
+        "mqtt-status",
+        help="Get direct MQTT broker readiness",
+    )
+    mqtt_status_cmd.add_argument("--config", type=Path, default=_default_config_path())
+
+    mqtt_publish_cmd = sub.add_parser(
+        "mqtt-publish",
+        help="Preview or publish a direct MQTT broker message",
+    )
+    mqtt_publish_cmd.add_argument("--config", type=Path, default=_default_config_path())
+    mqtt_publish_cmd.add_argument("--topic", required=True)
+    mqtt_publish_cmd.add_argument("--payload", required=True)
+    mqtt_publish_cmd.add_argument("--qos", type=int, default=0)
+    mqtt_publish_cmd.add_argument("--retain", action="store_true")
+    mqtt_publish_cmd.add_argument("--execute", action="store_true")
+    mqtt_publish_cmd.add_argument("--allow-dangerous", action="store_true")
 
     native_daemon_cmd = sub.add_parser(
         "native-daemon",
@@ -2093,6 +2120,20 @@ def main() -> None:
             print(json.dumps(service.homeassistant_status(), indent=2))
             return
 
+        if args.command == "homeassistant-discover":
+            service = NovaAdaptService(default_config=args.config)
+            print(
+                json.dumps(
+                    service.homeassistant_discover(
+                        domain=str(args.domain or ""),
+                        entity_id_prefix=str(args.entity_id_prefix or ""),
+                        limit=max(1, int(args.limit)),
+                    ),
+                    indent=2,
+                )
+            )
+            return
+
         if args.command == "homeassistant-action":
             service = NovaAdaptService(default_config=args.config)
             action = _parse_optional_json_object(args.action_json, "--action-json")
@@ -2103,6 +2144,34 @@ def main() -> None:
                     service.homeassistant_action(
                         {
                             "action": action,
+                            "execute": bool(args.execute),
+                            "allow_dangerous": bool(args.allow_dangerous),
+                        }
+                    ),
+                    indent=2,
+                )
+            )
+            return
+
+        if args.command == "mqtt-status":
+            service = NovaAdaptService(default_config=args.config)
+            print(json.dumps(service.mqtt_status(), indent=2))
+            return
+
+        if args.command == "mqtt-publish":
+            service = NovaAdaptService(default_config=args.config)
+            print(
+                json.dumps(
+                    service.homeassistant_action(
+                        {
+                            "action": {
+                                "type": "mqtt_publish",
+                                "topic": str(args.topic or ""),
+                                "payload": str(args.payload or ""),
+                                "qos": int(args.qos),
+                                "retain": bool(args.retain),
+                                "transport": "mqtt-direct",
+                            },
                             "execute": bool(args.execute),
                             "allow_dangerous": bool(args.allow_dangerous),
                         }

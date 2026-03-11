@@ -203,7 +203,9 @@ class AdaptCLITests(unittest.TestCase):
         service.mobile_status.return_value = {"ok": True, "android": {"ok": True}}
         service.mobile_action.return_value = {"status": "preview", "platform": "ios"}
         service.homeassistant_status.return_value = {"ok": True, "transport": "homeassistant-http"}
+        service.homeassistant_discover.return_value = {"ok": True, "count": 1, "entities": [{"entity_id": "light.office"}]}
         service.homeassistant_action.return_value = {"status": "preview", "action": {"type": "ha_service"}}
+        service.mqtt_status.return_value = {"ok": True, "transport": "mqtt-direct"}
         with tempfile.TemporaryDirectory() as tmp:
             screenshot = io.BytesIO(b"fake-png")
             screenshot_path = f"{tmp}/shot.png"
@@ -228,17 +230,29 @@ class AdaptCLITests(unittest.TestCase):
                     screenshot_path,
                 )
                 homeassistant_status_payload = self._run_cli("homeassistant-status")
+                homeassistant_discover_payload = self._run_cli("homeassistant-discover", "--domain", "light")
                 homeassistant_action_payload = self._run_cli(
                     "homeassistant-action",
                     "--action-json",
                     '{"type":"ha_service","domain":"light","service":"turn_on","entity_id":"light.office"}',
+                )
+                mqtt_status_payload = self._run_cli("mqtt-status")
+                mqtt_publish_payload = self._run_cli(
+                    "mqtt-publish",
+                    "--topic",
+                    "novaadapt/test",
+                    "--payload",
+                    "ping",
                 )
 
         self.assertEqual(vision_payload["status"], "preview")
         self.assertTrue(mobile_status_payload["ok"])
         self.assertEqual(mobile_action_payload["platform"], "ios")
         self.assertTrue(homeassistant_status_payload["ok"])
+        self.assertEqual(homeassistant_discover_payload["count"], 1)
         self.assertEqual(homeassistant_action_payload["status"], "preview")
+        self.assertTrue(mqtt_status_payload["ok"])
+        self.assertEqual(mqtt_publish_payload["status"], "preview")
         service.vision_execute.assert_called_once()
         vision_args = service.vision_execute.call_args.args[0]
         self.assertTrue(vision_args["screenshot_base64"])
@@ -248,7 +262,12 @@ class AdaptCLITests(unittest.TestCase):
         self.assertEqual(mobile_args["platform"], "ios")
         self.assertTrue(mobile_args["screenshot_base64"])
         service.homeassistant_status.assert_called_once_with()
-        service.homeassistant_action.assert_called_once()
+        service.homeassistant_discover.assert_called_once_with(domain="light", entity_id_prefix="", limit=250)
+        self.assertEqual(service.homeassistant_action.call_count, 2)
+        mqtt_args = service.homeassistant_action.call_args_list[1].args[0]
+        self.assertEqual(mqtt_args["action"]["type"], "mqtt_publish")
+        self.assertEqual(mqtt_args["action"]["transport"], "mqtt-direct")
+        service.mqtt_status.assert_called_once_with()
 
     def test_voice_transcribe_and_synthesize_commands(self):
         service = mock.Mock()
