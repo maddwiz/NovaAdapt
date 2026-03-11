@@ -460,6 +460,62 @@ class AdaptCLITests(unittest.TestCase):
             context="cli",
         )
 
+    def test_benchmark_publish_command(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            primary_path = f"{tmp}/primary.json"
+            baseline_path = f"{tmp}/baseline.json"
+            out_dir = f"{tmp}/publication"
+            with open(primary_path, "w", encoding="utf-8") as handle:
+                json.dump(
+                    {
+                        "summary": {
+                            "total": 10,
+                            "passed": 9,
+                            "failed": 1,
+                            "success_rate": 0.9,
+                            "first_try_success_rate": 0.9,
+                            "avg_action_count": 4.2,
+                            "blocked_count": 1,
+                        }
+                    },
+                    handle,
+                )
+            with open(baseline_path, "w", encoding="utf-8") as handle:
+                json.dump(
+                    {
+                        "summary": {
+                            "total": 10,
+                            "passed": 7,
+                            "failed": 3,
+                            "success_rate": 0.7,
+                            "first_try_success_rate": 0.7,
+                            "avg_action_count": 5.0,
+                            "blocked_count": 2,
+                        }
+                    },
+                    handle,
+                )
+
+            payload = self._run_cli(
+                "benchmark-publish",
+                "--primary",
+                primary_path,
+                "--baseline",
+                f"OtherAgent={baseline_path}",
+                "--out-dir",
+                out_dir,
+                "--md-title",
+                "CLI Bench Publish",
+                "--notes",
+                "cli smoke",
+            )
+
+            self.assertTrue(payload["comparison_json"].endswith("benchmark.compare.json"))
+            self.assertTrue(payload["comparison_markdown"].endswith("benchmark.compare.md"))
+            self.assertTrue(payload["readme"].endswith("README.md"))
+            with io.open(f"{out_dir}/README.md", encoding="utf-8") as handle:
+                self.assertIn("CLI Bench Publish", handle.read())
+
     def test_run_rejects_invalid_mesh_json(self):
         service = mock.Mock()
         with mock.patch("novaadapt_core.cli.NovaAdaptService", return_value=service):

@@ -42,8 +42,8 @@ Implemented now:
 - `bridge` relay service in Go for secure remote forwarding into core API.
   - Includes realtime WebSocket control channel (`/ws`) for events + command relay.
 - `view` static realtime console UI for bridge operations (`view/realtime_console.html`).
-- `view` realtime console now includes xterm.js terminal session streaming, typed websocket browser controls (`browser_*`), bridge session token tooling, runtime device-allowlist controls, and PWA install support for Android.
-- `mobile/android` Android-ready operator PWA packaging metadata (`mobile/android/README.md`, `mobile/android/release_manifest.json`).
+- `view` realtime console now includes xterm.js terminal session streaming, typed websocket browser controls (`browser_*`), bridge session token tooling, runtime device-allowlist controls, bootstrap query params, persisted non-sensitive connection defaults, and PWA install support for Android.
+- `mobile/android` Android-ready operator packaging for both the PWA path and a native Android shell source project (`mobile/android/NovaAdaptOperatorApp`).
 - `desktop` Tauri operator shell (`desktop/tauri-shell`) for objective queueing, plan approval/rejection/failed-step retry/undo, job cancellation, and event visibility (production-ready).
 - `mobile` iOS SwiftUI companion source (`mobile/ios/NovaAdaptCompanion`) with objective/plan/job controls, websocket feed, remote terminal controls, bridge session issue/revoke flows, and bridge allowlist/device-id controls (production-ready).
 - `wearables` Halo/Omi + XREAL X1 adapters (`wearables/halo_bridge.py`, `wearables/xreal_bridge.py`) with bridge session leasing + optional async wait flow.
@@ -603,6 +603,12 @@ PYTHONPATH=core:shared python3 -m novaadapt_core.cli benchmark-compare \
 
 Benchmark publication workflow: `/Users/desmondpottle/Documents/New project/NovaAdapt/docs/benchmarks.md`.
 
+Publication bundle shortcut:
+
+```bash
+./scripts/publish_benchmarks.sh
+```
+
 ## Observability
 
 Install optional tracing deps:
@@ -769,6 +775,7 @@ Release outputs now include:
 
 - `dist/novaadapt-runtime-<version>.tar.gz`
 - `dist/novaadapt-android-pwa-<version>.zip`
+- `dist/novaadapt-android-native-shell-<version>.zip`
 - `dist/novaadapt-wearables-<version>.tar.gz`
 - python wheel / sdist
 - bridge binary
@@ -792,6 +799,7 @@ Operator-ready demo entrypoints live under `/Users/desmondpottle/Documents/New p
 - `demo_iot_swarm.sh`
 
 Each script defaults to preview mode and can be escalated to live execution with explicit env flags.
+Capture walkthroughs live in `/Users/desmondpottle/Documents/New project/NovaAdapt/docs/demo_runbooks.md`.
 
 ## Python API Client
 

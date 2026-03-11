@@ -147,7 +147,11 @@ Existing desktop and iOS clients continue to work, but now expose:
 
 ### Android
 
-Android support is packaged as an installable PWA bundle built from `view/`.
+Android support is now available in two forms:
+
+- installable operator PWA built from `view/`
+- native Android shell source project at `mobile/android/NovaAdaptOperatorApp`
+
 See `mobile/android/README.md`.
 
 ### Wearables
@@ -191,3 +195,4 @@ Demo entrypoints for operator verification:
 - `/Users/desmondpottle/Documents/New project/NovaAdapt/scripts/demo_vision_desktop.sh`
 - `/Users/desmondpottle/Documents/New project/NovaAdapt/scripts/demo_mobile_banking.sh`
 - `/Users/desmondpottle/Documents/New project/NovaAdapt/scripts/demo_iot_swarm.sh`
+- `/Users/desmondpottle/Documents/New project/NovaAdapt/scripts/publish_benchmarks.sh`

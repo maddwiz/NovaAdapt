@@ -1,0 +1,22 @@
+{
+  "artifact": "novaadapt-android-native-shell",
+  "surface": "operator_native_shell",
+  "entrypoint": "mobile/android/NovaAdaptOperatorApp",
+  "supported_platforms": ["android"],
+  "features": [
+    "bundled_operator_console",
+    "native_settings_store",
+    "auto_connect_bootstrap",
+    "bridge_websocket",
+    "terminal_control",
+    "browser_control",
+    "vision_control",
+    "mobile_control",
+    "iot_control",
+    "template_marketplace"
+  ],
+  "notes": [
+    "Source-distributable Android Studio project",
+    "Packages the repo view console as Android assets"
+  ]
+}

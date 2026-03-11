@@ -71,6 +71,35 @@ with ZipFile(output, "w", compression=ZIP_DEFLATED) as archive:
                 archive.write(path, path.relative_to(root))
 PY
 
+echo "[release] packaging Android native shell source bundle"
+"$BUILD_VENV/bin/python" - "$ROOT_DIR" "$DIST_DIR" "$VERSION" <<'PY'
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+from zipfile import ZIP_DEFLATED, ZipFile
+
+root = Path(sys.argv[1])
+dist = Path(sys.argv[2])
+version = sys.argv[3]
+output = dist / f"novaadapt-android-native-shell-{version}.zip"
+include_paths = [
+    root / "mobile" / "android" / "README.md",
+    root / "mobile" / "android" / "release_manifest.json",
+    root / "mobile" / "android" / "NovaAdaptOperatorApp",
+    root / "view",
+]
+
+with ZipFile(output, "w", compression=ZIP_DEFLATED) as archive:
+    for source in include_paths:
+        if source.is_file():
+            archive.write(source, source.relative_to(root))
+            continue
+        for path in sorted(source.rglob("*")):
+            if path.is_file():
+                archive.write(path, path.relative_to(root))
+PY
+
 echo "[release] packaging wearable bridge bundle"
 tar -C "$ROOT_DIR" -czf "$DIST_DIR/novaadapt-wearables-${VERSION}.tar.gz" \
   wearables \

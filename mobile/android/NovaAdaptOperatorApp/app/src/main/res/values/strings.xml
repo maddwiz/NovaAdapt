@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">NovaAdapt Operator</string>
+    <string name="title_settings">Bridge Settings</string>
+    <string name="hint_ws_url">WebSocket URL (ws://host:9797/ws)</string>
+    <string name="hint_bridge_http_url">Bridge HTTP URL (http://host:9797)</string>
+    <string name="hint_token">Session or static token</string>
+    <string name="hint_admin_token">Admin token for session/device routes</string>
+    <string name="hint_device_id">Trusted device ID</string>
+    <string name="label_auto_connect">Auto-connect on load</string>
+    <string name="action_save">Save</string>
+    <string name="action_reset">Reset Defaults</string>
+    <string name="action_reload">Reload Console</string>
+    <string name="action_reconnect">Reconnect Console</string>
+    <string name="settings_summary">These values are injected into the bundled NovaAdapt realtime console on launch. The shell loads the local operator UI from the repo view bundle and connects to your remote bridge/core stack.</string>
+</resources>

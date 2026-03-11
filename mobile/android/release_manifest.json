@@ -15,6 +15,7 @@
   ],
   "notes": [
     "Installable via browser PWA flow",
-    "Requires hosted view bundle over a reachable origin"
+    "Requires hosted view bundle over a reachable origin",
+    "See mobile/android/NovaAdaptOperatorApp/release_manifest.json for the native Android shell source bundle"
   ]
 }

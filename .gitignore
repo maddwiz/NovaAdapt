@@ -10,6 +10,7 @@ config/models.local.json
 bridge/bin/
 deploy/.env
 dist/
+results/publication/
 desktop/tauri-shell/node_modules/
 desktop/tauri-shell/src-tauri/target/
 desktop/tauri-shell/src-tauri/gen/

@@ -37,6 +37,24 @@ Recommended bridge URL in the UI:
 
 - `ws://127.0.0.1:9797/ws`
 
+Bootstrap query params supported by `realtime_console.html`:
+
+- `ws_url`
+- `bridge_http_url`
+- `token`
+- `admin_token`
+- `device_id`
+- `auto_connect=1`
+
+The console now persists non-sensitive connection defaults locally in browser storage:
+
+- websocket URL
+- bridge HTTP URL
+- device ID
+- session scope / TTL defaults
+- cursor + poll settings
+- allowlist device ID
+
 If using query auth mode:
 
 - token: scoped bridge session token (or static bridge token)

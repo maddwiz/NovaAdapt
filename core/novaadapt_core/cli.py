@@ -14,6 +14,7 @@ from .benchmark import (
     load_benchmark_report,
     run_benchmark,
     write_benchmark_comparison_markdown,
+    write_benchmark_publication_bundle,
 )
 from .agent_gateway import DeliveryManager, GatewayJobQueue, GatewayRouter, GatewayWorker, NovaAgentDaemon
 from .agent_gateway.connectors import build_gateway_connectors
@@ -1226,6 +1227,44 @@ def _build_parser() -> argparse.ArgumentParser:
         "--md-title",
         default="NovaAdapt Benchmark Comparison",
         help="Markdown report title used with --out-md",
+    )
+
+    bench_publish_cmd = sub.add_parser(
+        "benchmark-publish",
+        help="Build a publication bundle from benchmark reports (compare JSON, markdown, and copied raw inputs)",
+    )
+    bench_publish_cmd.add_argument(
+        "--primary",
+        type=Path,
+        required=True,
+        help="Primary report JSON path (typically NovaAdapt)",
+    )
+    bench_publish_cmd.add_argument(
+        "--primary-name",
+        default="NovaAdapt",
+        help="Display name for primary report",
+    )
+    bench_publish_cmd.add_argument(
+        "--baseline",
+        action="append",
+        default=[],
+        help="Baseline pair formatted as NAME=PATH. Repeat for multiple baselines.",
+    )
+    bench_publish_cmd.add_argument(
+        "--out-dir",
+        type=Path,
+        required=True,
+        help="Directory to write publication assets into",
+    )
+    bench_publish_cmd.add_argument(
+        "--md-title",
+        default="NovaAdapt Reliability Benchmark",
+        help="Publication markdown title",
+    )
+    bench_publish_cmd.add_argument(
+        "--notes",
+        default="",
+        help="Optional operator notes added to the publication README",
     )
 
     backup_cmd = sub.add_parser("backup", help="Create timestamped SQLite backups for local NovaAdapt state")
@@ -2640,6 +2679,38 @@ def main() -> None:
                     args.out_md,
                     title=str(args.md_title).strip() or "NovaAdapt Benchmark Comparison",
                 )
+            print(json.dumps(result, indent=2))
+            return
+
+        if args.command == "benchmark-publish":
+            primary_report = load_benchmark_report(args.primary)
+            baselines: dict[str, dict[str, object]] = {}
+            source_paths: dict[str, Path] = {
+                str(args.primary_name).strip() or "NovaAdapt": args.primary,
+            }
+            for raw in args.baseline:
+                text = str(raw or "").strip()
+                if not text:
+                    continue
+                if "=" not in text:
+                    raise ValueError("--baseline must be NAME=PATH")
+                name, path_text = text.split("=", 1)
+                baseline_name = name.strip()
+                baseline_path = path_text.strip()
+                if not baseline_name or not baseline_path:
+                    raise ValueError("--baseline must be NAME=PATH")
+                baseline_report_path = Path(baseline_path)
+                baselines[baseline_name] = load_benchmark_report(baseline_report_path)
+                source_paths[baseline_name] = baseline_report_path
+            result = write_benchmark_publication_bundle(
+                primary_name=str(args.primary_name).strip() or "NovaAdapt",
+                primary_report=primary_report,
+                baselines=baselines,
+                output_dir=args.out_dir,
+                title=str(args.md_title).strip() or "NovaAdapt Reliability Benchmark",
+                source_paths=source_paths,
+                notes=str(args.notes or "").strip(),
+            )
             print(json.dumps(result, indent=2))
             return
 

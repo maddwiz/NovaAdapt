@@ -23,4 +23,24 @@ else
   echo "[clients] xcrun unavailable; skipping iOS Swift typecheck"
 fi
 
+ANDROID_ROOT="$ROOT_DIR/mobile/android/NovaAdaptOperatorApp"
+if [[ -d "$ANDROID_ROOT" ]]; then
+  echo "[clients] verifying Android shell project files"
+  test -f "$ANDROID_ROOT/settings.gradle"
+  test -f "$ANDROID_ROOT/build.gradle"
+  test -f "$ANDROID_ROOT/app/build.gradle"
+  test -f "$ANDROID_ROOT/app/src/main/java/com/novaadapt/operator/MainActivity.java"
+  test -f "$ANDROID_ROOT/app/src/main/java/com/novaadapt/operator/SettingsActivity.java"
+  test -f "$ANDROID_ROOT/app/src/main/java/com/novaadapt/operator/BridgeConfigStore.java"
+  if command -v xmllint >/dev/null 2>&1; then
+    echo "[clients] validating Android XML resources"
+    find "$ANDROID_ROOT/app/src/main" -type f \( -name '*.xml' -o -name '*.manifest' \) -print0 | \
+      while IFS= read -r -d '' file; do
+        xmllint --noout "$file"
+      done
+  else
+    echo "[clients] xmllint unavailable; skipping Android XML validation"
+  fi
+fi
+
 echo "[clients] checks completed"

@@ -1,6 +1,9 @@
 # NovaAdapt Android Operator Surface
 
-NovaAdapt ships an Android-ready operator surface as an installable PWA bundle built from `/Users/desmondpottle/Documents/New project/NovaAdapt/view`.
+NovaAdapt now ships two Android operator paths:
+
+- installable PWA bundle built from `/Users/desmondpottle/Documents/New project/NovaAdapt/view`
+- native Android shell sources in `/Users/desmondpottle/Documents/New project/NovaAdapt/mobile/android/NovaAdaptOperatorApp`
 
 ## What You Get
 
@@ -14,7 +17,7 @@ The Android PWA includes:
 - template marketplace actions
 - session token issuance / revoke controls
 
-## Install
+## PWA Install
 
 From a release bundle:
 
@@ -32,6 +35,17 @@ python3 -m http.server 8088
 
 Then open `http://<host>:8088/realtime_console.html` from Android and install it as an app.
 
+## Native Shell Import
+
+Open `/Users/desmondpottle/Documents/New project/NovaAdapt/mobile/android/NovaAdaptOperatorApp` in Android Studio.
+
+The native shell:
+
+- packages the repo operator console as Android assets
+- stores bridge credentials and device identity in Android `SharedPreferences`
+- bootstraps the console with prefilled bridge/websocket settings
+- can auto-connect immediately on launch for dedicated operator devices
+
 ## Runtime Requirements
 
 - reachable NovaAdapt bridge
@@ -40,11 +54,5 @@ Then open `http://<host>:8088/realtime_console.html` from Android and install it
 
 ## Current Tradeoffs
 
-This is a packaged PWA, not a native Android shell.
-That means:
-
-- no Play Store wrapper in this repo
-- browser-provided notification/background limits still apply
-- terminal and audit feeds run through the bridge websocket / polling model
-
-For the current handoff scope, this closes Android operator parity without forking a second mobile client stack.
+The PWA remains the fastest zero-build install path.
+The native shell is the source-distributable path for operators who want Android Studio packaging and a dedicated app wrapper around the same control plane.

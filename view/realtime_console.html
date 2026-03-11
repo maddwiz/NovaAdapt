@@ -841,6 +841,28 @@
     const artifactOutputEl = $("artifact-output");
     const artifactPreviewMetaEl = $("artifact-preview-meta");
     const artifactPreviewImageEl = $("artifact-preview-image");
+    const bootstrapStorageKey = "novaadapt.realtime_console.bootstrap.v1";
+    const persistedBootstrapFields = [
+      "ws-url",
+      "bridge-http-url",
+      "device-id",
+      "session-scopes",
+      "session-ttl",
+      "since-id",
+      "poll-timeout",
+      "allowlist-device-id",
+    ];
+    const bootstrapQueryMap = {
+      ws_url: "ws-url",
+      bridge_http_url: "bridge-http-url",
+      token: "token",
+      admin_token: "admin-token",
+      device_id: "device-id",
+      session_scopes: "session-scopes",
+      session_ttl: "session-ttl",
+      since_id: "since-id",
+      poll_timeout: "poll-timeout",
+    };
 
     function nowTime() {
       return new Date().toISOString().replace("T", " ").replace("Z", "");
@@ -938,6 +960,79 @@
       }
       artifactPreviewImageEl.hidden = true;
       artifactPreviewImageEl.removeAttribute("src");
+    }
+
+    function loadPersistedBootstrap() {
+      try {
+        const raw = window.localStorage.getItem(bootstrapStorageKey);
+        if (!raw) {
+          return {};
+        }
+        const parsed = JSON.parse(raw);
+        return parsed && typeof parsed === "object" ? parsed : {};
+      } catch {
+        return {};
+      }
+    }
+
+    function persistBootstrap() {
+      try {
+        const payload = {};
+        persistedBootstrapFields.forEach((id) => {
+          const el = $(id);
+          if (!el) {
+            return;
+          }
+          const value = String(el.value || "").trim();
+          if (value) {
+            payload[id] = value;
+          }
+        });
+        window.localStorage.setItem(bootstrapStorageKey, JSON.stringify(payload));
+      } catch {
+        // Ignore storage failures for static operator environments.
+      }
+    }
+
+    function bindBootstrapPersistence() {
+      persistedBootstrapFields.forEach((id) => {
+        const el = $(id);
+        if (!el) {
+          return;
+        }
+        el.addEventListener("change", persistBootstrap);
+        el.addEventListener("blur", persistBootstrap);
+      });
+    }
+
+    function applyBootstrapConfig() {
+      const stored = loadPersistedBootstrap();
+      Object.entries(stored).forEach(([id, value]) => {
+        const el = $(id);
+        if (el && !String(el.value || "").trim()) {
+          el.value = String(value || "");
+        }
+      });
+
+      const params = new URLSearchParams(window.location.search);
+      Object.entries(bootstrapQueryMap).forEach(([queryKey, id]) => {
+        const value = params.get(queryKey);
+        if (value !== null) {
+          const el = $(id);
+          if (el) {
+            el.value = value;
+          }
+        }
+      });
+
+      if (!$("bridge-http-url").value.trim()) {
+        const guessed = guessBridgeHTTPURLFromWS($("ws-url").value.trim());
+        if (guessed) {
+          $("bridge-http-url").value = guessed;
+        }
+      }
+      persistBootstrap();
+      return ["1", "true", "yes", "on"].includes(String(params.get("auto_connect") || "").toLowerCase());
     }
 
     function isWSOpen() {
@@ -2720,6 +2815,8 @@
       });
     }
 
+    const autoConnect = applyBootstrapConfig();
+    bindBootstrapPersistence();
     initTerminal();
     setControlStatus("Control-anything idle");
     setControlOutput("No control-anything activity yet.");
@@ -2733,6 +2830,15 @@
     setArtifactOutput("No control artifact activity yet.");
     setArtifactPreview("No control preview loaded.");
     appendLog("ready", "Console loaded");
+    if (autoConnect) {
+      setTimeout(() => {
+        try {
+          connect();
+        } catch (err) {
+          appendLog("auto_connect_error", String(err));
+        }
+      }, 150);
+    }
   </script>
 </body>
 </html>
