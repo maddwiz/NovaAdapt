@@ -22,6 +22,7 @@ class JobRecord:
     result: dict[str, Any] | None = None
     error: str | None = None
     cancel_requested: bool = False
+    metadata: dict[str, Any] | None = None
 
 
 class JobManager:
@@ -46,14 +47,22 @@ class JobManager:
                     result=row.get("result"),
                     error=row.get("error"),
                     cancel_requested=bool(row.get("cancel_requested")),
+                    metadata=row.get("metadata") if isinstance(row.get("metadata"), dict) else None,
                 )
 
-    def submit(self, fn: Callable[..., dict[str, Any]], *args: Any, **kwargs: Any) -> str:
+    def submit(
+        self,
+        fn: Callable[..., dict[str, Any]],
+        *args: Any,
+        job_meta: dict[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> str:
         job_id = uuid.uuid4().hex
         record = JobRecord(
             id=job_id,
             status="queued",
             created_at=_now_iso(),
+            metadata=dict(job_meta) if isinstance(job_meta, dict) else None,
         )
         with self._lock:
             self._jobs[job_id] = record
@@ -79,6 +88,7 @@ class JobManager:
                         result=persisted.get("result"),
                         error=persisted.get("error"),
                         cancel_requested=bool(persisted.get("cancel_requested")),
+                        metadata=persisted.get("metadata") if isinstance(persisted.get("metadata"), dict) else None,
                     )
                     self._jobs[job_id] = record
 
@@ -239,6 +249,9 @@ class JobManager:
 
 
 def _serialize(record: JobRecord) -> dict[str, Any]:
+    metadata = dict(record.metadata) if isinstance(record.metadata, dict) else None
+    kind = str(metadata.get("kind") or "").strip() if isinstance(metadata, dict) else ""
+    objective = str(metadata.get("objective") or "").strip() if isinstance(metadata, dict) else ""
     return {
         "id": record.id,
         "status": record.status,
@@ -248,6 +261,9 @@ def _serialize(record: JobRecord) -> dict[str, Any]:
         "result": record.result,
         "error": record.error,
         "cancel_requested": record.cancel_requested,
+        "metadata": metadata,
+        "kind": kind or "run",
+        "objective": objective,
     }
 
 

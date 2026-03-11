@@ -76,23 +76,39 @@ class JobStore:
                             """,
                         ),
                     ),
+                    SQLiteMigration(
+                        migration_id="job_store_0003_add_metadata",
+                        statements=(
+                            """
+                            ALTER TABLE async_jobs ADD COLUMN metadata_json TEXT
+                            """,
+                        ),
+                    ),
                 ),
             )
+            columns = {
+                row[1]
+                for row in conn.execute("PRAGMA table_info(async_jobs)").fetchall()
+            }
+            if "metadata_json" not in columns:
+                conn.execute("ALTER TABLE async_jobs ADD COLUMN metadata_json TEXT")
+            conn.commit()
 
     def upsert(self, record: dict[str, Any]) -> None:
         with self._connection() as conn:
             conn.execute(
                 """
                 INSERT INTO async_jobs(
-                    id, status, created_at, started_at, finished_at, result_json, error, cancel_requested
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    id, status, created_at, started_at, finished_at, result_json, error, cancel_requested, metadata_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     status=excluded.status,
                     started_at=excluded.started_at,
                     finished_at=excluded.finished_at,
                     result_json=excluded.result_json,
                     error=excluded.error,
-                    cancel_requested=excluded.cancel_requested
+                    cancel_requested=excluded.cancel_requested,
+                    metadata_json=excluded.metadata_json
                 """,
                 (
                     record["id"],
@@ -103,6 +119,7 @@ class JobStore:
                     json.dumps(record.get("result")) if record.get("result") is not None else None,
                     record.get("error"),
                     1 if record.get("cancel_requested") else 0,
+                    json.dumps(record.get("metadata")) if record.get("metadata") is not None else None,
                 ),
             )
             conn.commit()
@@ -111,7 +128,7 @@ class JobStore:
         with self._connection() as conn:
             row = conn.execute(
                 """
-                SELECT id, status, created_at, started_at, finished_at, result_json, error, cancel_requested
+                SELECT id, status, created_at, started_at, finished_at, result_json, error, cancel_requested, metadata_json
                 FROM async_jobs
                 WHERE id = ?
                 """,
@@ -125,7 +142,7 @@ class JobStore:
         with self._connection() as conn:
             rows = conn.execute(
                 """
-                SELECT id, status, created_at, started_at, finished_at, result_json, error, cancel_requested
+                SELECT id, status, created_at, started_at, finished_at, result_json, error, cancel_requested, metadata_json
                 FROM async_jobs
                 ORDER BY created_at DESC
                 LIMIT ?
@@ -155,6 +172,13 @@ class JobStore:
     @staticmethod
     def _row_to_dict(row: tuple[Any, ...]) -> dict[str, Any]:
         result_json = row[5]
+        metadata_json = row[8] if len(row) > 8 else None
+        metadata = json.loads(metadata_json) if metadata_json else None
+        kind = ""
+        objective = ""
+        if isinstance(metadata, dict):
+            kind = str(metadata.get("kind") or "").strip()
+            objective = str(metadata.get("objective") or "").strip()
         return {
             "id": row[0],
             "status": row[1],
@@ -164,4 +188,7 @@ class JobStore:
             "result": json.loads(result_json) if result_json else None,
             "error": row[6],
             "cancel_requested": bool(row[7]),
+            "metadata": metadata,
+            "kind": kind or "run",
+            "objective": objective,
         }

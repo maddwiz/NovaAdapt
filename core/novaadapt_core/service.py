@@ -2873,8 +2873,10 @@ class NovaAdaptService:
                 "model_id": plan_preview.get("model_id"),
                 "actions": plan_preview.get("actions", []),
                 "votes": plan_preview.get("votes", {}),
+                "vote_summary": plan_preview.get("vote_summary", {}),
                 "model_errors": plan_preview.get("model_errors", {}),
                 "attempted_models": plan_preview.get("attempted_models", []),
+                "collaboration": plan_preview.get("collaboration", {}),
                 "status": "pending",
             }
         )
@@ -3082,10 +3084,10 @@ class NovaAdaptService:
                     execution_results=execution_results,
                     action_log_ids=action_log_ids,
                     status="executed",
+                    repair_summary=repair_summary,
                 )
                 if approved is None:
                     raise ValueError("Plan not found")
-                approved["repair"] = repair_summary
                 self._persist_plan_memory(
                     plan_id=plan_id,
                     objective=str(plan.get("objective", "")),
@@ -3110,11 +3112,10 @@ class NovaAdaptService:
                 action_log_ids=action_log_ids,
                 progress_completed=len(execution_results),
                 progress_total=len(actions),
+                repair_summary=repair_summary,
             )
             if failed is None:
                 raise ValueError("Plan not found")
-            if repair_summary:
-                failed["repair"] = repair_summary
             self._persist_plan_memory(
                 plan_id=plan_id,
                 objective=str(plan.get("objective", "")),
@@ -3136,11 +3137,10 @@ class NovaAdaptService:
             execution_results=execution_results,
             action_log_ids=action_log_ids,
             status="executed",
+            repair_summary=repair_summary,
         )
         if approved is None:
             raise ValueError("Plan not found")
-        if repair_summary:
-            approved["repair"] = repair_summary
         self._persist_plan_memory(
             plan_id=plan_id,
             objective=str(plan.get("objective", "")),

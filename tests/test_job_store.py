@@ -20,12 +20,15 @@ class JobStoreTests(unittest.TestCase):
                 "result": None,
                 "error": None,
                 "cancel_requested": False,
+                "metadata": {"kind": "run", "objective": "click ok"},
             }
             store.upsert(record)
 
             fetched = store.get("job-1")
             self.assertIsNotNone(fetched)
             self.assertEqual(fetched["status"], "queued")
+            self.assertEqual(fetched["kind"], "run")
+            self.assertEqual(fetched["objective"], "click ok")
 
             record["status"] = "succeeded"
             record["result"] = {"ok": True}
@@ -53,6 +56,7 @@ class JobStoreTests(unittest.TestCase):
                     "result": {"ok": True},
                     "error": None,
                     "cancel_requested": False,
+                    "metadata": {"kind": "run"},
                 }
             )
             store.upsert(
@@ -65,6 +69,7 @@ class JobStoreTests(unittest.TestCase):
                     "result": None,
                     "error": None,
                     "cancel_requested": False,
+                    "metadata": {"kind": "run"},
                 }
             )
 

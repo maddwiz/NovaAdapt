@@ -218,6 +218,41 @@ class _RunRepairRouter(_StubRouter):
         )
 
 
+class _CollaborationRouter(_StubRouter):
+    def chat(
+        self,
+        messages,
+        model_name=None,
+        strategy="single",
+        candidate_models=None,
+        fallback_models=None,
+    ):
+        return RouterResult(
+            model_name=model_name or "local",
+            model_id="qwen",
+            content='{"actions":[{"type":"click","target":"OK"}]}',
+            strategy=strategy,
+            votes={"planner": "click OK"},
+            errors={},
+            attempted_models=[model_name or "local"],
+            vote_summary={
+                "subtasks_total": 2,
+                "subtasks_succeeded": 2,
+                "subtasks_failed": 0,
+                "reviewed_subtasks": 1,
+                "parallel_batches": 1,
+            },
+            collaboration={
+                "mode": "decompose",
+                "transcript": [
+                    {"type": "subtask_started", "subtask_id": "s1", "model": "local"},
+                    {"type": "subtask_review", "subtask_id": "s1", "reviewer_model": "local", "approved": True},
+                    {"type": "synthesis", "model": "local"},
+                ],
+            },
+        )
+
+
 class _StubDirectShellWithProbe(_StubDirectShell):
     def probe(self):
         return {"ok": True, "transport": "stub"}
@@ -1636,6 +1671,24 @@ class ServiceTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 service.approve_plan(created_2["id"], {"execute": True})
 
+    def test_create_plan_persists_collaboration_metadata(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            service = NovaAdaptService(
+                default_config=Path("unused.json"),
+                db_path=Path(tmp) / "actions.db",
+                plans_db_path=Path(tmp) / "plans.db",
+                router_loader=lambda _path: _CollaborationRouter(),
+                directshell_factory=_StubDirectShell,
+            )
+
+            created = service.create_plan({"objective": "coordinate agents", "strategy": "decompose"})
+            fetched = service.get_plan(created["id"])
+
+            self.assertIsNotNone(fetched)
+            self.assertEqual(fetched["vote_summary"]["subtasks_total"], 2)
+            self.assertEqual(fetched["collaboration"]["mode"], "decompose")
+            self.assertEqual(len(fetched["collaboration"]["transcript"]), 3)
+
     def test_approve_plan_retries_transient_failures(self):
         with tempfile.TemporaryDirectory() as tmp:
             flaky = _FlakyDirectShell(fail_count=1)
@@ -1788,6 +1841,9 @@ class ServiceTests(unittest.TestCase):
             self.assertEqual(len(repaired["action_log_ids"]), 2)
             self.assertEqual(len(recorder.executed_actions), 1)
             self.assertEqual(recorder.executed_actions[0]["type"], "note")
+            persisted = service.get_plan(plan["id"])
+            self.assertIsNotNone(persisted)
+            self.assertTrue(persisted["repair"]["healed"])
             self.assertTrue(any("Repair only the failed or blocked parts of this plan." in text for text in repair_router.objectives))
 
     def test_approve_plan_respects_cancel_requested_callback(self):

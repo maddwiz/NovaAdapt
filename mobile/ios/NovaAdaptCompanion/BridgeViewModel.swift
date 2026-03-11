@@ -9,12 +9,23 @@ struct PlanSummary: Identifiable {
     let progressCompleted: Int
     let progressTotal: Int
     let hasUndoActions: Bool
+    let executionError: String
+    let repairedCount: Int
+    let repairSummary: String
+    let collaborationSummary: String
+    let transcriptPreview: [String]
 }
 
 struct JobSummary: Identifiable {
     let id: String
     let status: String
     let kind: String
+    let objective: String
+    let error: String
+    let resultSummary: String
+    let repairSummary: String
+    let collaborationSummary: String
+    let transcriptPreview: [String]
 }
 
 struct AuditEventSummary: Identifiable {
@@ -1455,6 +1466,10 @@ final class BridgeViewModel: ObservableObject {
         let parsed = items.map { item -> PlanSummary in
             let id = string(item["id"])
             let actionLogIDs = (item["action_log_ids"] as? [Any]) ?? []
+            let executionResults = (item["execution_results"] as? [[String: Any]]) ?? []
+            let repairedCount = executionResults.filter {
+                string($0["status"]).lowercased() == "repaired"
+            }.count
             return PlanSummary(
                 id: id.isEmpty ? UUID().uuidString : id,
                 objective: string(item["objective"]),
@@ -1463,7 +1478,16 @@ final class BridgeViewModel: ObservableObject {
                 actionCount: int(item["actions"], fallback: 0, treatArrayAsCount: true),
                 progressCompleted: int(item["progress_completed"], fallback: 0, treatArrayAsCount: false),
                 progressTotal: int(item["progress_total"], fallback: 0, treatArrayAsCount: false),
-                hasUndoActions: !actionLogIDs.isEmpty
+                hasUndoActions: !actionLogIDs.isEmpty,
+                executionError: string(item["execution_error"]),
+                repairedCount: repairedCount,
+                repairSummary: summarizeRepair(item["repair"], executionResults: executionResults),
+                collaborationSummary: summarizeCollaboration(
+                    voteSummary: item["vote_summary"],
+                    collaboration: item["collaboration"],
+                    fallbackStrategy: string(item["strategy"], fallback: "single")
+                ),
+                transcriptPreview: transcriptPreviewLines(item["collaboration"])
             )
         }
         return parsed.sorted { lhs, rhs in
@@ -1475,16 +1499,173 @@ final class BridgeViewModel: ObservableObject {
         guard let items = value as? [[String: Any]] else {
             return []
         }
-        let parsed = items.map { item in
-            JobSummary(
+        let parsed = items.map { item -> JobSummary in
+            let result = item["result"] as? [String: Any]
+            let metadata = item["metadata"] as? [String: Any]
+            let kind = string(item["kind"], fallback: string(metadata?["kind"], fallback: "run"))
+            return JobSummary(
                 id: string(item["id"], fallback: UUID().uuidString),
                 status: string(item["status"], fallback: "unknown"),
-                kind: string(item["kind"], fallback: "run")
+                kind: kind.isEmpty ? "run" : kind,
+                objective: string(item["objective"], fallback: string(metadata?["objective"])),
+                error: string(item["error"]),
+                resultSummary: summarizeJobResult(result),
+                repairSummary: summarizeRepair(result?["repair"], executionResults: (result?["results"] as? [[String: Any]]) ?? []),
+                collaborationSummary: summarizeCollaboration(
+                    voteSummary: result?["vote_summary"],
+                    collaboration: result?["collaboration"],
+                    fallbackStrategy: string(result?["strategy"], fallback: kind)
+                ),
+                transcriptPreview: transcriptPreviewLines(result?["collaboration"])
             )
         }
         return parsed.sorted { lhs, rhs in
             jobRank(lhs.status) < jobRank(rhs.status)
         }
+    }
+
+    private func summarizeRepair(_ value: Any?, executionResults: [[String: Any]]) -> String {
+        let repairedCount = executionResults.filter {
+            string($0["status"]).lowercased() == "repaired"
+        }.count
+        guard let repair = value as? [String: Any] else {
+            return repairedCount > 0 ? "\(repairedCount) repaired action\(repairedCount == 1 ? "" : "s")" : ""
+        }
+        let healed = bool(repair["healed"])
+        let attempts = toInt(repair["attempts"]) ?? 0
+        let unresolved = ((repair["failed_indexes"] as? [Any]) ?? []).count
+        let lastError = string(repair["last_error"])
+        var parts: [String] = []
+        if healed {
+            parts.append("auto-repair healed")
+        } else if attempts > 0 {
+            parts.append("auto-repair attempted")
+        }
+        if repairedCount > 0 {
+            parts.append("\(repairedCount) repaired")
+        }
+        if attempts > 0 {
+            parts.append("\(attempts) attempt\(attempts == 1 ? "" : "s")")
+        }
+        if unresolved > 0 && !healed {
+            parts.append("\(unresolved) unresolved")
+        }
+        if !lastError.isEmpty && !healed {
+            parts.append(lastError)
+        }
+        return parts.joined(separator: " • ")
+    }
+
+    private func summarizeCollaboration(voteSummary: Any?, collaboration: Any?, fallbackStrategy: String) -> String {
+        let vote = voteSummary as? [String: Any] ?? [:]
+        let collab = collaboration as? [String: Any] ?? [:]
+        let mode = string(collab["mode"], fallback: fallbackStrategy).lowercased()
+        if toInt(vote["subtasks_total"]) != nil || mode == "decompose" {
+            let total = toInt(vote["subtasks_total"]) ?? 0
+            let succeeded = toInt(vote["subtasks_succeeded"]) ?? 0
+            let reviewed = toInt(vote["reviewed_subtasks"]) ?? 0
+            let batches = toInt(vote["parallel_batches"]) ?? 0
+            var parts = ["decompose"]
+            if total > 0 {
+                parts.append("\(succeeded)/\(total) subtasks")
+            }
+            if reviewed > 0 {
+                parts.append("\(reviewed) reviewed")
+            }
+            if batches > 0 {
+                parts.append("\(batches) batches")
+            }
+            let reason = string(vote["reason"])
+            if !reason.isEmpty {
+                parts.append(reason.replacingOccurrences(of: "_", with: " "))
+            }
+            return parts.joined(separator: " • ")
+        }
+        if toInt(vote["winner_votes"]) != nil || mode == "vote" {
+            let winnerVotes = toInt(vote["winner_votes"]) ?? 0
+            let totalVotes = toInt(vote["total_votes"]) ?? 0
+            var parts = ["vote"]
+            if totalVotes > 0 {
+                parts.append("\(winnerVotes)/\(totalVotes) votes")
+            }
+            if bool(vote["quorum_met"]) {
+                parts.append("quorum")
+            }
+            return parts.joined(separator: " • ")
+        }
+        return ""
+    }
+
+    private func transcriptPreviewLines(_ value: Any?, limit: Int = 3) -> [String] {
+        guard
+            let collaboration = value as? [String: Any],
+            let transcript = collaboration["transcript"] as? [[String: Any]]
+        else {
+            return []
+        }
+        return transcript.compactMap { item in
+            let type = string(item["type"]).lowercased()
+            switch type {
+            case "subtask_started":
+                let subtaskID = string(item["subtask_id"], fallback: "subtask")
+                let model = string(item["model"])
+                return "started \(subtaskID)\(model.isEmpty ? "" : " with \(model)")"
+            case "subtask_output":
+                let subtaskID = string(item["subtask_id"], fallback: "subtask")
+                let model = string(item["model"])
+                let attempt = toInt(item["attempt"]) ?? 1
+                return "output \(subtaskID) • \(model) • attempt \(attempt)"
+            case "subtask_review":
+                let subtaskID = string(item["subtask_id"], fallback: "subtask")
+                let reviewer = string(item["reviewer_model"], fallback: "reviewer")
+                let approved = bool(item["approved"])
+                return "\(reviewer) \(approved ? "approved" : "rejected") \(subtaskID)"
+            case "subtask_failed":
+                let subtaskID = string(item["subtask_id"], fallback: "subtask")
+                let error = string(item["error"], fallback: "failed")
+                return "\(subtaskID) failed • \(error)"
+            case "synthesis":
+                let model = string(item["model"], fallback: "model")
+                return "synthesis by \(model)"
+            default:
+                return nil
+            }
+        }
+        .prefix(limit)
+        .map { $0 }
+    }
+
+    private func summarizeJobResult(_ value: [String: Any]?) -> String {
+        guard let payload = value else {
+            return ""
+        }
+        let model = string(payload["model"])
+        let strategy = string(payload["strategy"])
+        let results = (payload["results"] as? [[String: Any]]) ?? []
+        var statusCounts: [String: Int] = [:]
+        for item in results {
+            let status = string(item["status"], fallback: "unknown").lowercased()
+            statusCounts[status, default: 0] += 1
+        }
+        var parts: [String] = []
+        if !strategy.isEmpty {
+            parts.append(strategy)
+        }
+        if !model.isEmpty {
+            parts.append(model)
+        }
+        if !results.isEmpty {
+            let ok = statusCounts["ok"] ?? 0
+            let preview = statusCounts["preview"] ?? 0
+            let repaired = statusCounts["repaired"] ?? 0
+            let failed = (statusCounts["failed"] ?? 0) + (statusCounts["blocked"] ?? 0)
+            parts.append("\(results.count) actions")
+            if ok > 0 { parts.append("\(ok) ok") }
+            if preview > 0 { parts.append("\(preview) preview") }
+            if repaired > 0 { parts.append("\(repaired) repaired") }
+            if failed > 0 { parts.append("\(failed) failed") }
+        }
+        return parts.joined(separator: " • ")
     }
 
     private func parseEvents(_ value: Any?) -> [AuditEventSummary] {

@@ -28,6 +28,26 @@ class JobManagerTests(unittest.TestCase):
         self.assertEqual(record["result"], {"value": 42})
         jobs.shutdown()
 
+    def test_submit_persists_job_metadata(self):
+        jobs = JobManager(max_workers=1)
+
+        def work():
+            return {"ok": True}
+
+        job_id = jobs.submit(work, job_meta={"kind": "plan_approval", "objective": "approve plan"})
+        record = None
+        for _ in range(50):
+            record = jobs.get(job_id)
+            if record and record["status"] in {"succeeded", "failed"}:
+                break
+            time.sleep(0.01)
+
+        self.assertIsNotNone(record)
+        self.assertEqual(record["kind"], "plan_approval")
+        self.assertEqual(record["objective"], "approve plan")
+        self.assertEqual(record["metadata"]["kind"], "plan_approval")
+        jobs.shutdown()
+
     def test_failed_job(self):
         jobs = JobManager(max_workers=1)
 
@@ -84,7 +104,7 @@ class JobManagerTests(unittest.TestCase):
             def work():
                 return {"ok": True}
 
-            job_id = jobs.submit(work)
+            job_id = jobs.submit(work, job_meta={"kind": "run", "objective": "persist me"})
             for _ in range(50):
                 record = jobs.get(job_id)
                 if record and record["status"] in {"succeeded", "failed"}:
@@ -98,6 +118,7 @@ class JobManagerTests(unittest.TestCase):
             self.assertIsNotNone(persisted)
             self.assertEqual(persisted["status"], "succeeded")
             self.assertEqual(persisted["result"], {"ok": True})
+            self.assertEqual(persisted["objective"], "persist me")
             self.assertGreaterEqual(len(jobs2.list(limit=10)), 1)
             jobs2.shutdown()
 

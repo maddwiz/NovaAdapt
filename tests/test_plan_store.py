@@ -20,8 +20,10 @@ class PlanStoreTests(unittest.TestCase):
                     "model_id": "qwen",
                     "actions": [{"type": "click", "target": "OK"}],
                     "votes": {},
+                    "vote_summary": {"winner_votes": 2, "total_votes": 3},
                     "model_errors": {},
                     "attempted_models": ["local"],
+                    "collaboration": {"mode": "vote", "transcript": [{"type": "synthesis", "model": "local"}]},
                 }
             )
             self.assertEqual(created["status"], "pending")
@@ -36,6 +38,8 @@ class PlanStoreTests(unittest.TestCase):
             self.assertEqual(fetched["model"], "local")
             self.assertEqual(fetched["progress_completed"], 0)
             self.assertEqual(fetched["progress_total"], 1)
+            self.assertEqual(fetched["vote_summary"]["winner_votes"], 2)
+            self.assertEqual(fetched["collaboration"]["mode"], "vote")
 
             executing = store.mark_executing(created["id"], total_actions=1)
             self.assertIsNotNone(executing)
@@ -57,12 +61,14 @@ class PlanStoreTests(unittest.TestCase):
                 execution_results=[{"status": "ok"}],
                 action_log_ids=[1],
                 status="executed",
+                repair_summary={"healed": True, "attempts": 1},
             )
             self.assertIsNotNone(approved)
             self.assertEqual(approved["status"], "executed")
             self.assertEqual(approved["execution_results"][0]["status"], "ok")
             self.assertEqual(approved["action_log_ids"][0], 1)
             self.assertIsNone(approved["execution_error"])
+            self.assertTrue(approved["repair"]["healed"])
 
             created_2 = store.create({"objective": "do not run", "actions": []})
             rejected = store.reject(created_2["id"], reason="unsafe")
@@ -71,10 +77,17 @@ class PlanStoreTests(unittest.TestCase):
             self.assertEqual(rejected["reject_reason"], "unsafe")
 
             created_3 = store.create({"objective": "fails", "actions": [{"type": "click", "target": "X"}]})
-            failed = store.fail_execution(created_3["id"], error="boom", progress_completed=0, progress_total=1)
+            failed = store.fail_execution(
+                created_3["id"],
+                error="boom",
+                progress_completed=0,
+                progress_total=1,
+                repair_summary={"healed": False, "attempts": 1, "failed_indexes": [1]},
+            )
             self.assertIsNotNone(failed)
             self.assertEqual(failed["status"], "failed")
             self.assertEqual(failed["execution_error"], "boom")
+            self.assertEqual(failed["repair"]["failed_indexes"], [1])
 
     def test_prune_older_than_only_removes_terminal_rows(self):
         with tempfile.TemporaryDirectory() as tmp:

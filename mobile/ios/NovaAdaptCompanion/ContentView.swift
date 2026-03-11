@@ -313,6 +313,30 @@ struct ContentView: View {
                             Text("status: \(plan.status) • strategy: \(plan.strategy) • actions: \(plan.actionCount) • progress: \(plan.progressCompleted)/\(plan.progressTotal)")
                                 .font(.caption)
                                 .foregroundStyle(Color.novaMuted)
+                            if !plan.executionError.isEmpty {
+                                Text("error: \(plan.executionError)")
+                                    .font(.caption)
+                                    .foregroundStyle(Color.novaDanger)
+                            }
+                            if !plan.repairSummary.isEmpty {
+                                Text("repair: \(plan.repairSummary)")
+                                    .font(.caption)
+                                    .foregroundStyle(Color.novaGood)
+                            }
+                            if !plan.collaborationSummary.isEmpty {
+                                Text("collab: \(plan.collaborationSummary)")
+                                    .font(.caption)
+                                    .foregroundStyle(Color.novaBrand)
+                            }
+                            if !plan.transcriptPreview.isEmpty {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    ForEach(Array(plan.transcriptPreview.enumerated()), id: \.offset) { _, line in
+                                        Text("• \(line)")
+                                            .font(.caption2)
+                                            .foregroundStyle(Color.novaMuted)
+                                    }
+                                }
+                            }
                             HStack {
                                 if plan.status.lowercased() == "pending" {
                                     Button("Approve + Execute") { pendingConfirmation = .approvePlan(plan.id) }
@@ -359,6 +383,40 @@ struct ContentView: View {
                                 Text("status: \(job.status)")
                                     .font(.caption)
                                     .foregroundStyle(Color.novaMuted)
+                                if !job.objective.isEmpty {
+                                    Text(job.objective)
+                                        .font(.caption)
+                                        .foregroundStyle(Color.novaInk)
+                                }
+                                if !job.resultSummary.isEmpty {
+                                    Text(job.resultSummary)
+                                        .font(.caption)
+                                        .foregroundStyle(Color.novaMuted)
+                                }
+                                if !job.error.isEmpty {
+                                    Text("error: \(job.error)")
+                                        .font(.caption)
+                                        .foregroundStyle(Color.novaDanger)
+                                }
+                                if !job.repairSummary.isEmpty {
+                                    Text("repair: \(job.repairSummary)")
+                                        .font(.caption)
+                                        .foregroundStyle(Color.novaGood)
+                                }
+                                if !job.collaborationSummary.isEmpty {
+                                    Text("collab: \(job.collaborationSummary)")
+                                        .font(.caption)
+                                        .foregroundStyle(Color.novaBrand)
+                                }
+                                if !job.transcriptPreview.isEmpty {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        ForEach(Array(job.transcriptPreview.enumerated()), id: \.offset) { _, line in
+                                            Text("• \(line)")
+                                                .font(.caption2)
+                                                .foregroundStyle(Color.novaMuted)
+                                        }
+                                    }
+                                }
                             }
                             Spacer()
                             if job.status.lowercased() == "running" || job.status.lowercased() == "queued" {

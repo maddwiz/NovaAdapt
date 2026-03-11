@@ -356,6 +356,123 @@ function sortPlans(plans) {
   });
 }
 
+function countResultsByStatus(results) {
+  const counts = {};
+  for (const item of Array.isArray(results) ? results : []) {
+    const status = String(item?.status || "unknown").toLowerCase();
+    counts[status] = (counts[status] || 0) + 1;
+  }
+  return counts;
+}
+
+function summarizeRepair(repair, results) {
+  const counts = countResultsByStatus(results);
+  const repairedCount = Number(counts.repaired || 0);
+  if (!repair || typeof repair !== "object") {
+    return repairedCount > 0 ? `${repairedCount} repaired action${repairedCount === 1 ? "" : "s"}` : "";
+  }
+  const attempts = Number(repair.attempts || 0);
+  const unresolved = Array.isArray(repair.failed_indexes) ? repair.failed_indexes.length : 0;
+  const healed = Boolean(repair.healed);
+  const parts = [];
+  if (healed) {
+    parts.push("auto-repair healed");
+  } else if (attempts > 0) {
+    parts.push("auto-repair attempted");
+  }
+  if (repairedCount > 0) parts.push(`${repairedCount} repaired`);
+  if (attempts > 0) parts.push(`${attempts} attempt${attempts === 1 ? "" : "s"}`);
+  if (unresolved > 0 && !healed) parts.push(`${unresolved} unresolved`);
+  if (repair.last_error && !healed) parts.push(String(repair.last_error));
+  return parts.join(" • ");
+}
+
+function summarizeCollaboration(voteSummary, collaboration, fallbackStrategy) {
+  const vote = voteSummary && typeof voteSummary === "object" ? voteSummary : {};
+  const collab = collaboration && typeof collaboration === "object" ? collaboration : {};
+  const mode = String(collab.mode || fallbackStrategy || "").toLowerCase();
+  if (vote.subtasks_total !== undefined || mode === "decompose") {
+    const total = Number(vote.subtasks_total || 0);
+    const succeeded = Number(vote.subtasks_succeeded || 0);
+    const reviewed = Number(vote.reviewed_subtasks || 0);
+    const batches = Number(vote.parallel_batches || 0);
+    const parts = ["decompose"];
+    if (total > 0) parts.push(`${succeeded}/${total} subtasks`);
+    if (reviewed > 0) parts.push(`${reviewed} reviewed`);
+    if (batches > 0) parts.push(`${batches} batches`);
+    if (vote.reason) parts.push(String(vote.reason).replaceAll("_", " "));
+    return parts.join(" • ");
+  }
+  if (vote.winner_votes !== undefined || mode === "vote") {
+    const winnerVotes = Number(vote.winner_votes || 0);
+    const totalVotes = Number(vote.total_votes || 0);
+    const parts = ["vote"];
+    if (totalVotes > 0) parts.push(`${winnerVotes}/${totalVotes} votes`);
+    if (vote.quorum_met) parts.push("quorum");
+    return parts.join(" • ");
+  }
+  return "";
+}
+
+function transcriptPreviewLines(collaboration, limit = 3) {
+  const collab = collaboration && typeof collaboration === "object" ? collaboration : {};
+  const transcript = Array.isArray(collab.transcript) ? collab.transcript : [];
+  return transcript
+    .map((item) => {
+      const type = String(item?.type || "").toLowerCase();
+      if (type === "subtask_started") {
+        const subtaskId = String(item?.subtask_id || "subtask");
+        const model = String(item?.model || "");
+        return `started ${subtaskId}${model ? ` with ${model}` : ""}`;
+      }
+      if (type === "subtask_output") {
+        const subtaskId = String(item?.subtask_id || "subtask");
+        const model = String(item?.model || "model");
+        const attempt = Number(item?.attempt || 1);
+        return `output ${subtaskId} • ${model} • attempt ${attempt}`;
+      }
+      if (type === "subtask_review") {
+        const reviewer = String(item?.reviewer_model || "reviewer");
+        const subtaskId = String(item?.subtask_id || "subtask");
+        return `${reviewer} ${item?.approved ? "approved" : "rejected"} ${subtaskId}`;
+      }
+      if (type === "subtask_failed") {
+        const subtaskId = String(item?.subtask_id || "subtask");
+        const error = String(item?.error || "failed");
+        return `${subtaskId} failed • ${error}`;
+      }
+      if (type === "synthesis") {
+        return `synthesis by ${String(item?.model || "model")}`;
+      }
+      return "";
+    })
+    .filter(Boolean)
+    .slice(0, limit);
+}
+
+function summarizeJobResult(result, fallbackKind = "run") {
+  const payload = result && typeof result === "object" ? result : null;
+  if (!payload) return "";
+  const counts = countResultsByStatus(payload.results);
+  const parts = [];
+  const strategy = String(payload.strategy || "");
+  const model = String(payload.model || "");
+  if (strategy) parts.push(strategy);
+  if (model) parts.push(model);
+  const total = Array.isArray(payload.results) ? payload.results.length : 0;
+  if (total > 0) {
+    parts.push(`${total} actions`);
+    if (counts.ok) parts.push(`${counts.ok} ok`);
+    if (counts.preview) parts.push(`${counts.preview} preview`);
+    if (counts.repaired) parts.push(`${counts.repaired} repaired`);
+    const failed = Number(counts.failed || 0) + Number(counts.blocked || 0);
+    if (failed > 0) parts.push(`${failed} failed`);
+  } else if (fallbackKind) {
+    parts.push(String(fallbackKind));
+  }
+  return parts.join(" • ");
+}
+
 function renderPlans(plans) {
   const items = sortPlans(Array.isArray(plans) ? plans : []);
   const pending = items.filter((item) => String(item.status || "").toLowerCase() === "pending");
@@ -370,6 +487,9 @@ function renderPlans(plans) {
   for (const plan of items.slice(0, 20)) {
     const status = String(plan.status || "").toLowerCase();
     const actionLogCount = Array.isArray(plan.action_log_ids) ? plan.action_log_ids.length : 0;
+    const repairSummary = summarizeRepair(plan.repair, plan.execution_results);
+    const collaborationSummary = summarizeCollaboration(plan.vote_summary, plan.collaboration, plan.strategy);
+    const transcriptLines = transcriptPreviewLines(plan.collaboration);
     const card = document.createElement("article");
     card.className = "plan";
     card.innerHTML = `
@@ -384,6 +504,9 @@ function renderPlans(plans) {
         • Progress: ${Number(plan.progress_completed || 0)}/${Number(plan.progress_total || 0)}
       </p>
       ${plan.execution_error ? `<p class="plan-meta">Error: ${escapeHTML(plan.execution_error)}</p>` : ""}
+      ${repairSummary ? `<p class="plan-meta">Repair: ${escapeHTML(repairSummary)}</p>` : ""}
+      ${collaborationSummary ? `<p class="plan-meta">Collab: ${escapeHTML(collaborationSummary)}</p>` : ""}
+      ${transcriptLines.length ? `<div class="plan-meta">${transcriptLines.map((line) => `• ${escapeHTML(line)}`).join("<br />")}</div>` : ""}
       <div class="row"></div>
     `;
 
@@ -464,14 +587,28 @@ function renderJobs(jobs) {
 
   for (const job of sorted.slice(0, 20)) {
     const status = String(job.status || "unknown").toLowerCase();
+    const metadata = job.metadata && typeof job.metadata === "object" ? job.metadata : {};
+    const kind = String(job.kind || metadata.kind || "run");
+    const objective = String(job.objective || metadata.objective || "");
+    const result = job.result && typeof job.result === "object" ? job.result : null;
+    const resultSummary = summarizeJobResult(result, kind);
+    const repairSummary = summarizeRepair(result?.repair, result?.results);
+    const collaborationSummary = summarizeCollaboration(result?.vote_summary, result?.collaboration, result?.strategy || kind);
+    const transcriptLines = transcriptPreviewLines(result?.collaboration);
     const card = document.createElement("article");
     card.className = "plan";
     card.innerHTML = `
       <div class="plan-head">
-        <strong>${escapeHTML(job.kind || "run")}</strong>
+        <strong>${escapeHTML(kind)}</strong>
         <span class="plan-id">${escapeHTML(job.id || "")}</span>
       </div>
       <p class="plan-meta"><span class="status">${escapeHTML(status)}</span></p>
+      ${objective ? `<p class="plan-meta">${escapeHTML(objective)}</p>` : ""}
+      ${resultSummary ? `<p class="plan-meta">${escapeHTML(resultSummary)}</p>` : ""}
+      ${job.error ? `<p class="plan-meta">Error: ${escapeHTML(job.error)}</p>` : ""}
+      ${repairSummary ? `<p class="plan-meta">Repair: ${escapeHTML(repairSummary)}</p>` : ""}
+      ${collaborationSummary ? `<p class="plan-meta">Collab: ${escapeHTML(collaborationSummary)}</p>` : ""}
+      ${transcriptLines.length ? `<div class="plan-meta">${transcriptLines.map((line) => `• ${escapeHTML(line)}`).join("<br />")}</div>` : ""}
       <div class="row"></div>
     `;
     const row = card.querySelector(".row");

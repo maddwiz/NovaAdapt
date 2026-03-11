@@ -7,6 +7,16 @@ from .jobs import JobManager
 from .service import NovaAdaptService
 
 
+def _submit_job(job_manager: JobManager, fn, *args, job_meta: dict[str, object] | None = None):
+    if isinstance(job_meta, dict):
+        try:
+            return job_manager.submit(fn, *args, job_meta=job_meta)
+        except TypeError as exc:
+            if "job_meta" not in str(exc):
+                raise
+    return job_manager.submit(fn, *args)
+
+
 def post_run(
     handler,
     service: NovaAdaptService,
@@ -45,7 +55,16 @@ def post_run_async(
         operation=lambda: (
             202,
             {
-                "job_id": job_manager.submit(service.run, payload),
+                "job_id": _submit_job(
+                    job_manager,
+                    service.run,
+                    payload,
+                    job_meta={
+                        "kind": "run",
+                        "objective": str(payload.get("objective") or "").strip(),
+                        "strategy": str(payload.get("strategy") or "single").strip() or "single",
+                    },
+                ),
                 "status": "queued",
             },
         ),
@@ -118,7 +137,17 @@ def post_swarm_run(
         for idx, objective in enumerate(selected, start=1):
             run_payload = dict(shared_payload)
             run_payload["objective"] = objective
-            job_id = job_manager.submit(service.run, run_payload)
+            job_id = _submit_job(
+                job_manager,
+                service.run,
+                run_payload,
+                job_meta={
+                    "kind": "swarm_run",
+                    "objective": objective,
+                    "strategy": str(shared_payload.get("strategy") or "single").strip() or "single",
+                    "index": idx,
+                },
+            )
             jobs.append({"index": idx, "objective": objective, "job_id": job_id})
         return (
             202,
