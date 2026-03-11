@@ -335,8 +335,14 @@ def _build_handler(
         def _get_mobile_status(self, _query: dict[str, list[str]]) -> int:
             return control_routes.get_mobile_status(self, service)
 
+        def _get_homeassistant_entities(self, query: dict[str, list[str]]) -> int:
+            return control_routes.get_homeassistant_entities(self, service, _single, query)
+
         def _get_homeassistant_status(self, _query: dict[str, list[str]]) -> int:
             return control_routes.get_homeassistant_status(self, service)
+
+        def _get_mqtt_status(self, _query: dict[str, list[str]]) -> int:
+            return control_routes.get_mqtt_status(self, service)
 
         def _get_control_artifacts(self, query: dict[str, list[str]]) -> int:
             return control_routes.get_control_artifacts(self, service, _single, query)
@@ -582,6 +588,9 @@ def _build_handler(
 
         def _post_homeassistant_action(self, path: str, payload: dict[str, object]) -> int:
             return control_routes.post_homeassistant_action(self, service, path, payload)
+
+        def _post_mqtt_publish(self, path: str, payload: dict[str, object]) -> int:
+            return control_routes.post_mqtt_publish(self, service, path, payload)
 
         def _post_browser_typed_action(
             self,

@@ -137,6 +137,40 @@ class _StubBrowserExecutor:
         return BrowserExecutionResult(status="ok", output="browser session closed")
 
 
+class _StubHomeAssistantExecutor:
+    def status(self):
+        return {
+            "ok": True,
+            "transport": "homeassistant-http",
+            "base_url": "http://stub-homeassistant.local",
+            "mqtt_direct": {
+                "ok": True,
+                "configured": True,
+                "transport": "mqtt-direct",
+                "broker_url": "mqtt://stub-broker.local:1883",
+            },
+        }
+
+    def discover(self, *, domain="", entity_id_prefix="", limit=250):
+        _ = (entity_id_prefix, limit)
+        entities = [{"entity_id": "light.office", "state": "on", "attributes": {}}]
+        if domain and domain != "light":
+            entities = []
+        return {"ok": True, "count": len(entities), "entities": entities}
+
+    def execute_action(self, action, *, dry_run=True):
+        return type(
+            "_Result",
+            (),
+            {
+                "status": "preview" if dry_run else "ok",
+                "output": "simulated",
+                "action": dict(action),
+                "data": {"transport": "mqtt-direct" if action.get("type") == "mqtt_publish" else "homeassistant-http"},
+            },
+        )()
+
+
 class ServerTests(unittest.TestCase):
     def test_http_endpoints(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -147,6 +181,7 @@ class ServerTests(unittest.TestCase):
                 router_loader=lambda _path: _StubRouter(),
                 directshell_factory=_StubDirectShell,
                 browser_executor_factory=_StubBrowserExecutor,
+                homeassistant_executor_factory=_StubHomeAssistantExecutor,
             )
             server = create_server(
                 "127.0.0.1",
@@ -215,6 +250,13 @@ class ServerTests(unittest.TestCase):
 
                 homeassistant_status, _ = _get_json_with_headers(f"http://{host}:{port}/iot/homeassistant/status")
                 self.assertIn("ok", homeassistant_status)
+                self.assertIn("mqtt_direct", homeassistant_status)
+
+                mqtt_status, _ = _get_json_with_headers(f"http://{host}:{port}/iot/mqtt/status")
+                self.assertIn("ok", mqtt_status)
+
+                entities, _ = _get_json_with_headers(f"http://{host}:{port}/iot/homeassistant/entities?limit=5")
+                self.assertIn("ok", entities)
 
                 openapi, _ = _get_json_with_headers(f"http://{host}:{port}/openapi.json")
                 self.assertEqual(openapi["openapi"], "3.1.0")
@@ -235,8 +277,11 @@ class ServerTests(unittest.TestCase):
                 self.assertIn("/mobile/status", openapi["paths"])
                 self.assertIn("/execute/vision", openapi["paths"])
                 self.assertIn("/mobile/action", openapi["paths"])
+                self.assertIn("/iot/homeassistant/entities", openapi["paths"])
                 self.assertIn("/iot/homeassistant/status", openapi["paths"])
                 self.assertIn("/iot/homeassistant/action", openapi["paths"])
+                self.assertIn("/iot/mqtt/status", openapi["paths"])
+                self.assertIn("/iot/mqtt/publish", openapi["paths"])
                 self.assertIn("/plugins", openapi["paths"])
                 self.assertIn("/plugins/{name}/health", openapi["paths"])
                 self.assertIn("/plugins/{name}/call", openapi["paths"])

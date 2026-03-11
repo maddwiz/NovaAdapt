@@ -451,6 +451,31 @@ class NovaAdaptService:
     def homeassistant_status(self) -> dict[str, Any]:
         return self._homeassistant().status()
 
+    def mqtt_status(self) -> dict[str, Any]:
+        status = self._homeassistant().status()
+        mqtt_status = status.get("mqtt_direct") if isinstance(status, dict) else None
+        if isinstance(mqtt_status, dict):
+            return mqtt_status
+        return {
+            "ok": False,
+            "configured": False,
+            "transport": "mqtt-direct",
+            "error": "MQTT status unavailable",
+        }
+
+    def homeassistant_discover(
+        self,
+        *,
+        domain: str = "",
+        entity_id_prefix: str = "",
+        limit: int = 250,
+    ) -> dict[str, Any]:
+        return self._homeassistant().discover(
+            domain=domain,
+            entity_id_prefix=entity_id_prefix,
+            limit=max(1, int(limit)),
+        )
+
     def homeassistant_action(self, payload: dict[str, Any]) -> dict[str, Any]:
         raw_action = payload.get("action")
         if isinstance(raw_action, dict):
@@ -470,11 +495,14 @@ class NovaAdaptService:
         }
         if runtime_result.get("data") is not None:
             out["data"] = runtime_result.get("data")
+        runtime_transport = ""
+        if isinstance(runtime_result.get("data"), dict):
+            runtime_transport = str(runtime_result["data"].get("transport") or "").strip()
         artifact = self._store_control_artifact(
             control_type="iot",
             result=out,
             goal=str(payload.get("goal") or payload.get("objective") or ""),
-            transport="homeassistant",
+            transport=runtime_transport or "homeassistant",
             metadata={
                 "executor": "homeassistant",
             },

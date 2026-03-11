@@ -143,6 +143,10 @@ def get_dashboard_data(
     except Exception as exc:
         control["homeassistant"] = {"ok": False, "error": str(exc)}
     try:
+        control["mqtt"] = service.mqtt_status()
+    except Exception as exc:
+        control["mqtt"] = {"ok": False, "error": str(exc)}
+    try:
         control["artifacts"] = service.list_control_artifacts(limit=max(1, control_limit))
     except Exception as exc:
         control["artifacts"] = []

@@ -873,6 +873,12 @@ def build_openapi_spec() -> dict:
                     "responses": {"200": {"description": "Mobile status"}},
                 }
             },
+            "/iot/homeassistant/entities": {
+                "get": {
+                    "summary": "Discover Home Assistant entities with optional domain or prefix filters",
+                    "responses": {"200": {"description": "Entity discovery results"}},
+                }
+            },
             "/control/artifacts": {
                 "get": {
                     "summary": "List recent persisted control artifacts for vision, mobile, and IoT actions",
@@ -897,10 +903,22 @@ def build_openapi_spec() -> dict:
                     "responses": {"200": {"description": "Home Assistant status"}},
                 }
             },
+            "/iot/mqtt/status": {
+                "get": {
+                    "summary": "Get direct MQTT broker connectivity status",
+                    "responses": {"200": {"description": "MQTT status"}},
+                }
+            },
             "/iot/homeassistant/action": {
                 "post": {
                     "summary": "Preview or execute a Home Assistant or MQTT action",
                     "responses": {"200": {"description": "IoT action result"}},
+                }
+            },
+            "/iot/mqtt/publish": {
+                "post": {
+                    "summary": "Preview or publish a direct MQTT broker message",
+                    "responses": {"200": {"description": "MQTT publish result"}},
                 }
             },
             "/browser/status": {

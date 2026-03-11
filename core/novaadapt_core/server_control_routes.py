@@ -75,8 +75,25 @@ def get_mobile_status(handler, service: NovaAdaptService) -> int:
     return 200
 
 
+def get_homeassistant_entities(handler, service: NovaAdaptService, single, query: dict[str, list[str]]) -> int:
+    handler._send_json(
+        200,
+        service.homeassistant_discover(
+            domain=str(single(query, "domain") or ""),
+            entity_id_prefix=str(single(query, "entity_id_prefix") or ""),
+            limit=int(single(query, "limit") or 250),
+        ),
+    )
+    return 200
+
+
 def get_homeassistant_status(handler, service: NovaAdaptService) -> int:
     handler._send_json(200, service.homeassistant_status())
+    return 200
+
+
+def get_mqtt_status(handler, service: NovaAdaptService) -> int:
+    handler._send_json(200, service.mqtt_status())
     return 200
 
 
@@ -91,6 +108,29 @@ def post_homeassistant_action(handler, service: NovaAdaptService, path: str, pay
         category="iot",
         action="execute",
         entity_type="homeassistant",
+    )
+
+
+def post_mqtt_publish(handler, service: NovaAdaptService, path: str, payload: dict[str, object]) -> int:
+    normalized: dict[str, object] = {
+        "action": {
+            "type": "mqtt_publish",
+            "topic": payload.get("topic"),
+            "payload": payload.get("payload"),
+            "qos": payload.get("qos"),
+            "retain": coerce_bool(payload.get("retain"), default=False),
+            "transport": payload.get("transport") or "mqtt-direct",
+        },
+        "execute": coerce_bool(payload.get("execute"), default=False),
+        "allow_dangerous": coerce_bool(payload.get("allow_dangerous"), default=False),
+    }
+    return handler._respond_idempotent(
+        path=path,
+        payload=normalized,
+        operation=lambda: (200, service.homeassistant_action(normalized)),
+        category="iot",
+        action="mqtt_publish",
+        entity_type="mqtt",
     )
 
 

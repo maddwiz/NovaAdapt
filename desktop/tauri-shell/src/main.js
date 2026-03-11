@@ -490,6 +490,7 @@ function renderSummary(data) {
   const plans = Array.isArray(data?.plans) ? data.plans : [];
   const jobs = Array.isArray(data?.jobs) ? data.jobs : [];
   const events = Array.isArray(data?.events) ? data.events : [];
+  const control = data?.control || {};
 
   const out = {
     health: data?.health,
@@ -498,6 +499,7 @@ function renderSummary(data) {
     active_jobs: jobs.filter((item) => ["queued", "running"].includes(String(item.status || "").toLowerCase()))
       .length,
     events_loaded: events.length,
+    mqtt_status: control.mqtt || {},
     metrics: data?.metrics || {},
   };
   summaryEl.textContent = JSON.stringify(out, null, 2);

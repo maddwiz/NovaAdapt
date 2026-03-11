@@ -1152,6 +1152,29 @@ class NovaAdaptAPIClient:
             return payload
         raise APIClientError("Expected object payload from /iot/homeassistant/status")
 
+    def homeassistant_entities(
+        self,
+        *,
+        domain: str = "",
+        entity_id_prefix: str = "",
+        limit: int = 250,
+    ) -> dict[str, Any]:
+        query = f"limit={max(1, int(limit))}"
+        if domain:
+            query = f"{query}&domain={quote(str(domain), safe='')}"
+        if entity_id_prefix:
+            query = f"{query}&entity_id_prefix={quote(str(entity_id_prefix), safe='')}"
+        payload = self._get_json(f"/iot/homeassistant/entities?{query}")
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /iot/homeassistant/entities")
+
+    def mqtt_status(self) -> dict[str, Any]:
+        payload = self._get_json("/iot/mqtt/status")
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /iot/mqtt/status")
+
     def homeassistant_action(
         self,
         action: dict[str, Any],
@@ -1168,6 +1191,33 @@ class NovaAdaptAPIClient:
         if isinstance(payload, dict):
             return payload
         raise APIClientError("Expected object payload from /iot/homeassistant/action")
+
+    def mqtt_publish(
+        self,
+        topic: str,
+        payload_text: str,
+        *,
+        qos: int = 0,
+        retain: bool = False,
+        execute: bool = False,
+        idempotency_key: str | None = None,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        payload = self._post_json(
+            "/iot/mqtt/publish",
+            {
+                "topic": str(topic or ""),
+                "payload": str(payload_text or ""),
+                "qos": int(qos),
+                "retain": bool(retain),
+                "execute": bool(execute),
+                **kwargs,
+            },
+            idempotency_key=idempotency_key,
+        )
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /iot/mqtt/publish")
 
     def browser_status(self) -> dict[str, Any]:
         payload = self._get_json("/browser/status")

@@ -364,6 +364,7 @@ def render_dashboard_html() -> str:
         const browser = control.browser || {};
         const mobile = control.mobile || {};
         const homeassistant = control.homeassistant || {};
+        const mqtt = control.mqtt || {};
         const pendingPlans = plans.filter(item => item.status === 'pending').length;
         const runningJobs = jobs.filter(item => item.status === 'running').length;
         const failedAudits = events.filter(item => item.status === 'error' || item.status === 'failed').length;
@@ -377,6 +378,7 @@ def render_dashboard_html() -> str:
           { label: 'Browser Runtime', value: browser.ok ? 'Ready' : 'Degraded', cls: browser.ok ? 'ok' : 'warn' },
           { label: 'Mobile Runtime', value: mobilePlatforms.join(' | ') || (mobile.ok ? 'Ready' : 'Degraded'), cls: mobile.ok ? 'ok' : 'warn' },
           { label: 'IoT Runtime', value: homeassistant.ok ? 'Ready' : 'Degraded', cls: homeassistant.ok ? 'ok' : 'warn' },
+          { label: 'MQTT Runtime', value: mqtt.ok ? 'Ready' : (mqtt.configured ? 'Degraded' : 'Not Configured'), cls: mqtt.ok ? 'ok' : (mqtt.configured ? 'warn' : '') },
           { label: 'Running Jobs', value: runningJobs, cls: runningJobs > 0 ? 'warn' : 'ok' },
           { label: 'Pending Plans', value: pendingPlans, cls: pendingPlans > 0 ? 'warn' : 'ok' },
           { label: 'Failed Audits', value: failedAudits, cls: metricColor(failedAudits, 0) },

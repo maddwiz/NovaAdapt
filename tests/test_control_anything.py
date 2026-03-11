@@ -75,9 +75,38 @@ class _StubHomeAssistantExecutor:
             "ok": True,
             "transport": "homeassistant-http",
             "base_url": "http://stub-homeassistant.local",
+            "mqtt_direct": {
+                "ok": True,
+                "configured": True,
+                "transport": "mqtt-direct",
+                "broker_url": "mqtt://stub-broker.local:1883",
+            },
         }
 
+    def discover(self, *, domain="", entity_id_prefix="", limit=250):
+        entities = [
+            {"entity_id": "light.office", "state": "on", "attributes": {"friendly_name": "Office"}},
+            {"entity_id": "vacuum.downstairs", "state": "docked", "attributes": {"friendly_name": "Downstairs"}},
+        ]
+        if domain:
+            entities = [item for item in entities if item["entity_id"].startswith(f"{domain}.")]
+        if entity_id_prefix:
+            prefix = str(entity_id_prefix).lower()
+            entities = [item for item in entities if item["entity_id"].lower().startswith(prefix)]
+        return {"ok": True, "count": min(len(entities), limit), "entities": entities[:limit]}
+
     def execute_action(self, action, *, dry_run=True):
+        if str(action.get("type") or "").strip().lower() == "mqtt_publish":
+            return HomeAssistantExecutionResult(
+                status="preview" if dry_run else "ok",
+                output=("Preview " if dry_run else "Executed ") + "mqtt_publish",
+                action=dict(action),
+                data={
+                    "dry_run": bool(dry_run),
+                    "transport": "mqtt-direct" if str(action.get("transport") or "").strip().lower() in {"mqtt", "mqtt-direct"} else "homeassistant-http",
+                    "topic": action.get("topic"),
+                },
+            )
         return HomeAssistantExecutionResult(
             status="preview" if dry_run else "ok",
             output=("Preview " if dry_run else "Executed ") + str(action.get("type") or "ha_service"),
@@ -170,6 +199,11 @@ class ControlServiceTests(unittest.TestCase):
         status = service.homeassistant_status()
         self.assertTrue(status["ok"])
         self.assertEqual(status["transport"], "homeassistant-http")
+        self.assertTrue(service.mqtt_status()["ok"])
+
+        discovery = service.homeassistant_discover(domain="light")
+        self.assertEqual(discovery["count"], 1)
+        self.assertEqual(discovery["entities"][0]["entity_id"], "light.office")
 
         out = service.homeassistant_action(
             {
@@ -186,6 +220,20 @@ class ControlServiceTests(unittest.TestCase):
         self.assertEqual(out["status"], "preview")
         self.assertTrue(out["dangerous"])
         self.assertEqual(out["action"]["entity_id"], "light.office")
+
+        mqtt_out = service.homeassistant_action(
+            {
+                "action": {
+                    "type": "mqtt_publish",
+                    "topic": "novaadapt/test",
+                    "payload": "ping",
+                    "transport": "mqtt-direct",
+                },
+                "execute": False,
+            }
+        )
+        self.assertEqual(mqtt_out["status"], "preview")
+        self.assertEqual(mqtt_out["data"]["transport"], "mqtt-direct")
 
 
 class ControlAPIClientTests(unittest.TestCase):
@@ -234,6 +282,12 @@ class ControlAPIClientTests(unittest.TestCase):
                 ha_status = client.homeassistant_status()
                 self.assertTrue(ha_status["ok"])
 
+                mqtt_status = client.mqtt_status()
+                self.assertTrue(mqtt_status["ok"])
+
+                entities = client.homeassistant_entities(domain="light")
+                self.assertEqual(entities["count"], 1)
+
                 ha_action = client.homeassistant_action(
                     {
                         "type": "ha_service",
@@ -244,6 +298,10 @@ class ControlAPIClientTests(unittest.TestCase):
                 )
                 self.assertEqual(ha_action["status"], "preview")
                 self.assertTrue(ha_action["dangerous"])
+
+                mqtt_action = client.mqtt_publish("novaadapt/test", "ping")
+                self.assertEqual(mqtt_action["status"], "preview")
+                self.assertEqual(mqtt_action["data"]["transport"], "mqtt-direct")
 
                 artifacts = client.control_artifacts(limit=5)
                 self.assertTrue(artifacts)
@@ -262,6 +320,7 @@ class ControlAPIClientTests(unittest.TestCase):
                 self.assertIn("browser", dashboard["control"])
                 self.assertIn("mobile", dashboard["control"])
                 self.assertIn("homeassistant", dashboard["control"])
+                self.assertIn("mqtt", dashboard["control"])
                 self.assertIn("control_artifacts", dashboard)
                 self.assertTrue(dashboard["control_artifacts"])
             finally:
