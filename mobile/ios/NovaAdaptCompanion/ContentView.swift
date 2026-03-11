@@ -22,6 +22,7 @@ struct ContentView: View {
                         terminalCard
                         eventsCard
                         controlArtifactsCard
+                        runtimeGovernanceCard
                         iotControlCard
                         websocketCard
                     }
@@ -538,6 +539,135 @@ struct ContentView: View {
         }
     }
 
+    private var runtimeGovernanceCard: some View {
+        sectionCard(title: "Runtime Governance") {
+            itemCard {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text(bridge.governancePaused ? "Paused" : "Active")
+                            .font(.headline)
+                            .foregroundStyle(bridge.governancePaused ? Color.novaDanger : Color.novaGood)
+                        Spacer()
+                        Text("active runs \(bridge.governanceActiveRuns)")
+                            .font(.caption.monospaced())
+                            .foregroundStyle(Color.novaMuted)
+                    }
+
+                    if !bridge.governancePauseReason.isEmpty {
+                        Text(bridge.governancePauseReason)
+                            .font(.caption)
+                            .foregroundStyle(Color.novaMuted)
+                    }
+
+                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                        governanceMetric(title: "Spend", value: currencyString(bridge.governanceSpendEstimateUSD))
+                        governanceMetric(title: "LLM Calls", value: "\(bridge.governanceLLMCallsTotal)")
+                        governanceMetric(title: "Runs", value: "\(bridge.governanceRunsTotal)")
+                        governanceMetric(title: "Jobs", value: "\(bridge.governanceJobActive) active")
+                    }
+
+                    HStack(spacing: 8) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Budget Limit (USD)")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(Color.novaMuted)
+                            TextField("optional", text: $bridge.governanceBudgetLimit)
+                                .keyboardType(.decimalPad)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled(true)
+                                .textFieldStyle(.roundedBorder)
+                        }
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Max Active Runs")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(Color.novaMuted)
+                            TextField("optional", text: $bridge.governanceMaxActiveRuns)
+                                .keyboardType(.numberPad)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled(true)
+                                .textFieldStyle(.roundedBorder)
+                        }
+                    }
+
+                    HStack {
+                        Button("Refresh") { bridge.refreshRuntimeGovernance() }
+                            .buttonStyle(.bordered)
+                        Button("Apply") { bridge.applyRuntimeGovernance() }
+                            .buttonStyle(.borderedProminent)
+                            .tint(.novaBrand)
+                    }
+
+                    HStack {
+                        Button("Pause") { pendingConfirmation = .pauseRuntime }
+                            .buttonStyle(.bordered)
+                            .tint(.novaDanger)
+                        Button("Resume") { pendingConfirmation = .resumeRuntime }
+                            .buttonStyle(.bordered)
+                            .tint(.novaGood)
+                        Button("Reset Usage") { pendingConfirmation = .resetRuntimeUsage }
+                            .buttonStyle(.bordered)
+                    }
+
+                    HStack {
+                        Text("queued \(bridge.governanceJobQueued) • running \(bridge.governanceJobRunning)")
+                            .font(.caption.monospaced())
+                            .foregroundStyle(Color.novaMuted)
+                        Spacer()
+                        if bridge.governanceJobMaxWorkers > 0 {
+                            Text("workers \(bridge.governanceJobMaxWorkers)")
+                                .font(.caption.monospaced())
+                                .foregroundStyle(Color.novaMuted)
+                        }
+                    }
+
+                    Button("Cancel All Jobs") { pendingConfirmation = .cancelAllJobs }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.novaDanger)
+
+                    if !bridge.governanceLastObjectivePreview.isEmpty {
+                        Text("Last objective: \(bridge.governanceLastObjectivePreview)")
+                            .font(.caption)
+                            .foregroundStyle(Color.novaMuted)
+                    }
+
+                    Text("Strategy: \(bridge.governanceLastStrategy.isEmpty ? "single" : bridge.governanceLastStrategy) • Last run: \(bridge.governanceLastRunAt.isEmpty ? "-" : bridge.governanceLastRunAt)")
+                        .font(.caption)
+                        .foregroundStyle(Color.novaMuted)
+
+                    Text("Updated: \(bridge.governanceUpdatedAt.isEmpty ? "-" : bridge.governanceUpdatedAt)")
+                        .font(.caption)
+                        .foregroundStyle(Color.novaMuted)
+
+                    if !bridge.governancePerModel.isEmpty {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Model Usage")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(Color.novaMuted)
+                            ForEach(Array(bridge.governancePerModel.prefix(6))) { item in
+                                HStack(alignment: .top) {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(item.label)
+                                            .font(.subheadline.weight(.semibold))
+                                            .foregroundStyle(.white)
+                                        if !item.modelID.isEmpty {
+                                            Text(item.modelID)
+                                                .font(.caption.monospaced())
+                                                .foregroundStyle(Color.novaMuted)
+                                        }
+                                    }
+                                    Spacer()
+                                    Text("\(item.calls) calls • \(currencyString(item.estimatedCostUSD))")
+                                        .font(.caption.monospaced())
+                                        .foregroundStyle(Color.novaMuted)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     private var iotControlCard: some View {
         sectionCard(title: "IoT Control") {
             TextField("Entity domain (light, switch, vacuum)", text: $bridge.iotDomainFilter)
@@ -709,6 +839,29 @@ struct ContentView: View {
                     .stroke(Color.novaLine.opacity(0.85), lineWidth: 1)
             )
     }
+
+    private func governanceMetric(title: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Color.novaMuted)
+            Text(value)
+                .font(.headline)
+                .foregroundStyle(.white)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(10)
+        .background(Color.black.opacity(0.14))
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(Color.novaLine.opacity(0.8), lineWidth: 1)
+        )
+    }
+
+    private func currencyString(_ value: Double) -> String {
+        String(format: "$%.4f", value)
+    }
 }
 
 private enum PendingConfirmation {
@@ -718,6 +871,10 @@ private enum PendingConfirmation {
     case rejectPlan(String)
     case retryFailed(String)
     case cancelJob(String)
+    case pauseRuntime
+    case resumeRuntime
+    case resetRuntimeUsage
+    case cancelAllJobs
     case executeIoT(String, String, String)
     case publishMQTT
 }
@@ -738,6 +895,14 @@ private extension ContentView {
             return "Retry failed plan steps?"
         case .cancelJob:
             return "Cancel this running job?"
+        case .pauseRuntime:
+            return "Pause the runtime?"
+        case .resumeRuntime:
+            return "Resume the runtime?"
+        case .resetRuntimeUsage:
+            return "Reset runtime usage counters?"
+        case .cancelAllJobs:
+            return "Cancel all jobs and pause runtime?"
         case .executeIoT:
             return "Execute IoT action?"
         case .publishMQTT:
@@ -760,6 +925,14 @@ private extension ContentView {
             return "Only failed steps for plan \(id) will be queued for retry."
         case .cancelJob(let id):
             return "Job \(id) will be canceled."
+        case .pauseRuntime:
+            return "New runs will be blocked until the runtime is resumed."
+        case .resumeRuntime:
+            return "Queued controls and new runs can proceed again."
+        case .resetRuntimeUsage:
+            return "Spend estimates and per-model counters will be cleared."
+        case .cancelAllJobs:
+            return "All queued and running jobs will be canceled or marked for cancellation, and runtime will be paused."
         case let .executeIoT(entityID, domain, service):
             return "\(domain).\(service) will run for \(entityID)."
         case .publishMQTT:
@@ -783,6 +956,14 @@ private extension ContentView {
             bridge.retryFailedPlan(id)
         case .cancelJob(let id):
             bridge.cancelJob(id)
+        case .pauseRuntime:
+            bridge.pauseRuntime()
+        case .resumeRuntime:
+            bridge.resumeRuntime()
+        case .resetRuntimeUsage:
+            bridge.resetRuntimeUsage()
+        case .cancelAllJobs:
+            bridge.cancelAllJobs()
         case let .executeIoT(entityID, domain, service):
             bridge.executeHomeAssistantService(entityID: entityID, domain: domain, service: service)
         case .publishMQTT:

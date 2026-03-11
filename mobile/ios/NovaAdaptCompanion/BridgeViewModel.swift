@@ -59,6 +59,14 @@ struct MQTTMessageSummary: Identifiable {
     let receivedAt: String
 }
 
+struct RuntimeGovernanceModelSummary: Identifiable {
+    let id: String
+    let label: String
+    let modelID: String
+    let calls: Int
+    let estimatedCostUSD: Double
+}
+
 struct TerminalSessionSummary: Identifiable {
     let id: String
     let open: Bool
@@ -134,6 +142,27 @@ final class BridgeViewModel: ObservableObject {
     }
     @Published var mqttMessages: [MQTTMessageSummary] = []
     @Published var mqttStatusSummary: String = "MQTT idle"
+    @Published var governancePaused: Bool = false
+    @Published var governancePauseReason: String = ""
+    @Published var governanceBudgetLimit: String = "" {
+        didSet { persistSettings() }
+    }
+    @Published var governanceMaxActiveRuns: String = "" {
+        didSet { persistSettings() }
+    }
+    @Published var governanceActiveRuns: Int = 0
+    @Published var governanceRunsTotal: Int = 0
+    @Published var governanceLLMCallsTotal: Int = 0
+    @Published var governanceSpendEstimateUSD: Double = 0
+    @Published var governanceUpdatedAt: String = ""
+    @Published var governanceLastRunAt: String = ""
+    @Published var governanceLastObjectivePreview: String = ""
+    @Published var governanceLastStrategy: String = ""
+    @Published var governanceJobActive: Int = 0
+    @Published var governanceJobQueued: Int = 0
+    @Published var governanceJobRunning: Int = 0
+    @Published var governanceJobMaxWorkers: Int = 0
+    @Published var governancePerModel: [RuntimeGovernanceModelSummary] = []
     @Published var wsEvents: [String] = []
     @Published var status: String = "Idle"
 
@@ -178,6 +207,8 @@ final class BridgeViewModel: ObservableObject {
         static let mqttTopic = "novaadapt.mobile.mqttTopic"
         static let mqttPayload = "novaadapt.mobile.mqttPayload"
         static let mqttRetain = "novaadapt.mobile.mqttRetain"
+        static let governanceBudgetLimit = "novaadapt.mobile.governanceBudgetLimit"
+        static let governanceMaxActiveRuns = "novaadapt.mobile.governanceMaxActiveRuns"
         static let terminalCommand = "novaadapt.mobile.terminalCommand"
         static let terminalCWD = "novaadapt.mobile.terminalCWD"
         static let terminalShell = "novaadapt.mobile.terminalShell"
@@ -263,6 +294,7 @@ final class BridgeViewModel: ObservableObject {
                 self.jobs = self.parseJobs(payload["jobs"])
                 self.events = self.parseEvents(payload["events"])
                 self.controlArtifacts = self.parseControlArtifacts(payload["control_artifacts"])
+                self.applyRuntimeGovernancePayload(payload["governance"])
             }
         }
     }
@@ -371,6 +403,94 @@ final class BridgeViewModel: ObservableObject {
             await runAction(label: "Refreshing MQTT status") {
                 let payload = try await self.requestJSON(method: "GET", path: "/iot/mqtt/status", body: nil)
                 self.mqttStatusSummary = self.formatMQTTStatus(payload)
+            }
+        }
+    }
+
+    func refreshRuntimeGovernance() {
+        Task {
+            await runAction(label: "Refreshing runtime governance") {
+                let payload = try await self.requestJSON(method: "GET", path: "/runtime/governance", body: nil)
+                self.applyRuntimeGovernancePayload(payload)
+            }
+        }
+    }
+
+    func applyRuntimeGovernance() {
+        Task {
+            await runAction(label: "Applying runtime governance") {
+                let payload = try await self.requestJSON(
+                    method: "POST",
+                    path: "/runtime/governance",
+                    body: self.buildRuntimeGovernanceUpdatePayload()
+                )
+                self.applyRuntimeGovernancePayload(payload)
+                try await self.refreshDashboardAsync()
+            }
+        }
+    }
+
+    func pauseRuntime() {
+        Task {
+            await runAction(label: "Pausing runtime") {
+                let payload = try await self.requestJSON(
+                    method: "POST",
+                    path: "/runtime/governance",
+                    body: [
+                        "paused": true,
+                        "pause_reason": "Paused from NovaAdapt iOS companion",
+                    ]
+                )
+                self.applyRuntimeGovernancePayload(payload)
+                try await self.refreshDashboardAsync()
+            }
+        }
+    }
+
+    func resumeRuntime() {
+        Task {
+            await runAction(label: "Resuming runtime") {
+                let payload = try await self.requestJSON(
+                    method: "POST",
+                    path: "/runtime/governance",
+                    body: [
+                        "paused": false,
+                        "pause_reason": "",
+                    ]
+                )
+                self.applyRuntimeGovernancePayload(payload)
+                try await self.refreshDashboardAsync()
+            }
+        }
+    }
+
+    func resetRuntimeUsage() {
+        Task {
+            await runAction(label: "Resetting runtime usage") {
+                let payload = try await self.requestJSON(
+                    method: "POST",
+                    path: "/runtime/governance",
+                    body: ["reset_usage": true]
+                )
+                self.applyRuntimeGovernancePayload(payload)
+                try await self.refreshDashboardAsync()
+            }
+        }
+    }
+
+    func cancelAllJobs() {
+        Task {
+            await runAction(label: "Canceling all jobs") {
+                let payload = try await self.requestJSON(
+                    method: "POST",
+                    path: "/runtime/jobs/cancel_all",
+                    body: [
+                        "pause": true,
+                        "pause_reason": "Cancel all from NovaAdapt iOS companion",
+                    ]
+                )
+                self.applyRuntimeGovernancePayload(payload["governance"])
+                try await self.refreshDashboardAsync()
             }
         }
     }
@@ -844,6 +964,12 @@ final class BridgeViewModel: ObservableObject {
             mqttPayload = value
         }
         mqttRetain = defaults.bool(forKey: DefaultsKey.mqttRetain)
+        if let value = defaults.string(forKey: DefaultsKey.governanceBudgetLimit) {
+            governanceBudgetLimit = value
+        }
+        if let value = defaults.string(forKey: DefaultsKey.governanceMaxActiveRuns) {
+            governanceMaxActiveRuns = value
+        }
         if let value = defaults.string(forKey: DefaultsKey.terminalCommand) {
             terminalCommand = value
         }
@@ -884,6 +1010,8 @@ final class BridgeViewModel: ObservableObject {
         defaults.set(mqttTopic, forKey: DefaultsKey.mqttTopic)
         defaults.set(mqttPayload, forKey: DefaultsKey.mqttPayload)
         defaults.set(mqttRetain, forKey: DefaultsKey.mqttRetain)
+        defaults.set(governanceBudgetLimit, forKey: DefaultsKey.governanceBudgetLimit)
+        defaults.set(governanceMaxActiveRuns, forKey: DefaultsKey.governanceMaxActiveRuns)
         defaults.set(terminalCommand, forKey: DefaultsKey.terminalCommand)
         defaults.set(terminalCWD, forKey: DefaultsKey.terminalCWD)
         defaults.set(terminalShell, forKey: DefaultsKey.terminalShell)
@@ -919,6 +1047,7 @@ final class BridgeViewModel: ObservableObject {
         jobs = parseJobs(payload["jobs"])
         events = parseEvents(payload["events"])
         controlArtifacts = parseControlArtifacts(payload["control_artifacts"])
+        applyRuntimeGovernancePayload(payload["governance"])
     }
 
     private func refreshIoTEntitiesAsync() async throws {
@@ -945,6 +1074,50 @@ final class BridgeViewModel: ObservableObject {
     private func refreshMQTTStatusAsync() async throws {
         let payload = try await requestJSON(method: "GET", path: "/iot/mqtt/status", body: nil)
         mqttStatusSummary = formatMQTTStatus(payload)
+    }
+
+    private func buildRuntimeGovernanceUpdatePayload() -> [String: Any] {
+        var payload: [String: Any] = [:]
+        let budget = governanceBudgetLimit.trimmingCharacters(in: .whitespacesAndNewlines)
+        if budget.isEmpty {
+            payload["budget_limit_usd"] = NSNull()
+        } else if let value = Double(budget) {
+            payload["budget_limit_usd"] = value
+        }
+
+        let maxRuns = governanceMaxActiveRuns.trimmingCharacters(in: .whitespacesAndNewlines)
+        if maxRuns.isEmpty {
+            payload["max_active_runs"] = NSNull()
+        } else if let value = Int(maxRuns) {
+            payload["max_active_runs"] = max(1, value)
+        }
+        return payload
+    }
+
+    private func applyRuntimeGovernancePayload(_ value: Any?) {
+        guard let payload = value as? [String: Any] else {
+            return
+        }
+
+        governancePaused = bool(payload["paused"])
+        governancePauseReason = string(payload["pause_reason"])
+        governanceBudgetLimit = string(payload["budget_limit_usd"])
+        governanceMaxActiveRuns = string(payload["max_active_runs"])
+        governanceActiveRuns = toInt(payload["active_runs"]) ?? 0
+        governanceRunsTotal = toInt(payload["runs_total"]) ?? 0
+        governanceLLMCallsTotal = toInt(payload["llm_calls_total"]) ?? 0
+        governanceSpendEstimateUSD = toDouble(payload["spend_estimate_usd"]) ?? 0
+        governanceUpdatedAt = string(payload["updated_at"])
+        governanceLastRunAt = string(payload["last_run_at"])
+        governanceLastObjectivePreview = string(payload["last_objective_preview"])
+        governanceLastStrategy = string(payload["last_strategy"], fallback: "single")
+
+        let jobs = payload["jobs"] as? [String: Any] ?? [:]
+        governanceJobActive = toInt(jobs["active"]) ?? 0
+        governanceJobQueued = toInt(jobs["queued"]) ?? 0
+        governanceJobRunning = toInt(jobs["running"]) ?? 0
+        governanceJobMaxWorkers = toInt(jobs["max_workers"]) ?? 0
+        governancePerModel = parseRuntimeGovernanceModels(payload["per_model"])
     }
 
     private func startTerminalPolling() {
@@ -1394,6 +1567,32 @@ final class BridgeViewModel: ObservableObject {
         }
     }
 
+    private func parseRuntimeGovernanceModels(_ value: Any?) -> [RuntimeGovernanceModelSummary] {
+        guard let items = value as? [String: Any] else {
+            return []
+        }
+        return items.compactMap { key, raw in
+            guard let payload = raw as? [String: Any] else {
+                return nil
+            }
+            let label = key.trimmingCharacters(in: .whitespacesAndNewlines)
+            let modelID = string(payload["model_id"])
+            return RuntimeGovernanceModelSummary(
+                id: label.isEmpty ? UUID().uuidString : label,
+                label: label.isEmpty ? "model" : label,
+                modelID: modelID,
+                calls: toInt(payload["calls"]) ?? 0,
+                estimatedCostUSD: toDouble(payload["estimated_cost_usd"]) ?? 0
+            )
+        }
+        .sorted { lhs, rhs in
+            if lhs.calls != rhs.calls {
+                return lhs.calls > rhs.calls
+            }
+            return lhs.label.localizedCaseInsensitiveCompare(rhs.label) == .orderedAscending
+        }
+    }
+
     func controlArtifactPreviewURL(for artifact: ControlArtifactSummary) -> URL? {
         let rawPath = artifact.previewPath.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !rawPath.isEmpty else {
@@ -1470,6 +1669,16 @@ final class BridgeViewModel: ObservableObject {
         }
         if let text = value as? String {
             return Int(text)
+        }
+        return nil
+    }
+
+    private func toDouble(_ value: Any?) -> Double? {
+        if let number = value as? NSNumber {
+            return number.doubleValue
+        }
+        if let text = value as? String {
+            return Double(text)
         }
         return nil
     }

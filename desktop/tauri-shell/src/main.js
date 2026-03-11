@@ -28,6 +28,16 @@ const jobCountEl = document.querySelector("#jobCount");
 const eventCountEl = document.querySelector("#eventCount");
 const artifactCountEl = document.querySelector("#artifactCount");
 const connectionStatusEl = document.querySelector("#connectionStatus");
+const governanceStatusEl = document.querySelector("#governanceStatus");
+const budgetLimitInput = document.querySelector("#budgetLimitInput");
+const maxActiveRunsInput = document.querySelector("#maxActiveRunsInput");
+const refreshGovernanceBtn = document.querySelector("#refreshGovernanceBtn");
+const applyGovernanceBtn = document.querySelector("#applyGovernanceBtn");
+const pauseRuntimeBtn = document.querySelector("#pauseRuntimeBtn");
+const resumeRuntimeBtn = document.querySelector("#resumeRuntimeBtn");
+const resetUsageBtn = document.querySelector("#resetUsageBtn");
+const cancelAllJobsBtn = document.querySelector("#cancelAllJobsBtn");
+const governanceOutputEl = document.querySelector("#governanceOutput");
 const iotStatusEl = document.querySelector("#iotStatus");
 const entityDomainInput = document.querySelector("#entityDomainInput");
 const entityPrefixInput = document.querySelector("#entityPrefixInput");
@@ -87,6 +97,8 @@ function saveConfig() {
   localStorage.setItem("novaadapt.desktop.candidates", (candidatesInput?.value || "").trim());
   localStorage.setItem("novaadapt.desktop.execute", executeToggle?.checked ? "1" : "0");
   localStorage.setItem("novaadapt.desktop.autoRefresh", autoRefreshInput?.checked ? "1" : "0");
+  localStorage.setItem("novaadapt.desktop.budgetLimit", (budgetLimitInput?.value || "").trim());
+  localStorage.setItem("novaadapt.desktop.maxActiveRuns", (maxActiveRunsInput?.value || "").trim());
   localStorage.setItem("novaadapt.desktop.iotDomain", (entityDomainInput?.value || "").trim());
   localStorage.setItem("novaadapt.desktop.iotPrefix", (entityPrefixInput?.value || "").trim());
   localStorage.setItem("novaadapt.desktop.mqttTopic", (mqttTopicInput?.value || "").trim());
@@ -109,6 +121,8 @@ function loadConfig() {
   candidatesInput.value = localStorage.getItem("novaadapt.desktop.candidates") || "";
   executeToggle.checked = (localStorage.getItem("novaadapt.desktop.execute") || "0") === "1";
   autoRefreshInput.checked = (localStorage.getItem("novaadapt.desktop.autoRefresh") || "1") !== "0";
+  budgetLimitInput.value = localStorage.getItem("novaadapt.desktop.budgetLimit") || "";
+  maxActiveRunsInput.value = localStorage.getItem("novaadapt.desktop.maxActiveRuns") || "";
   entityDomainInput.value = localStorage.getItem("novaadapt.desktop.iotDomain") || "";
   entityPrefixInput.value = localStorage.getItem("novaadapt.desktop.iotPrefix") || "";
   mqttTopicInput.value = localStorage.getItem("novaadapt.desktop.mqttTopic") || "";
@@ -270,6 +284,13 @@ function setConnectionStatus(message, kind = "neutral") {
   connectionStatusEl.className = `badge ${kind}`;
 }
 
+function setGovernanceStatus(message, kind = "neutral") {
+  if (!governanceStatusEl) return;
+  const text = String(message || "").trim() || "Unknown";
+  governanceStatusEl.textContent = text;
+  governanceStatusEl.className = `badge ${kind}`;
+}
+
 function setIoTStatus(message, kind = "neutral") {
   if (!iotStatusEl) return;
   const text = String(message || "").trim() || "Idle";
@@ -283,6 +304,12 @@ function setBusy(value) {
   testConnectionBtn.disabled = busy;
   runAsyncBtn.disabled = busy;
   createPlanBtn.disabled = busy;
+  if (refreshGovernanceBtn) refreshGovernanceBtn.disabled = busy;
+  if (applyGovernanceBtn) applyGovernanceBtn.disabled = busy;
+  if (pauseRuntimeBtn) pauseRuntimeBtn.disabled = busy;
+  if (resumeRuntimeBtn) resumeRuntimeBtn.disabled = busy;
+  if (resetUsageBtn) resetUsageBtn.disabled = busy;
+  if (cancelAllJobsBtn) cancelAllJobsBtn.disabled = busy;
   if (refreshEntitiesBtn) refreshEntitiesBtn.disabled = busy;
   if (refreshMqttStatusBtn) refreshMqttStatusBtn.disabled = busy;
   if (mqttPublishBtn) mqttPublishBtn.disabled = busy;
@@ -519,6 +546,98 @@ function renderControlArtifacts(items) {
   }
 }
 
+function renderGovernance(governance) {
+  const data = governance && typeof governance === "object" ? governance : {};
+  const paused = Boolean(data.paused);
+  setGovernanceStatus(paused ? "Paused" : "Active", paused ? "error" : "ok");
+  if (budgetLimitInput && !document.activeElement?.isSameNode(budgetLimitInput)) {
+    const budget = data.budget_limit_usd;
+    budgetLimitInput.value = budget === null || budget === undefined ? "" : String(budget);
+  }
+  if (maxActiveRunsInput && !document.activeElement?.isSameNode(maxActiveRunsInput)) {
+    const maxActiveRuns = data.max_active_runs;
+    maxActiveRunsInput.value = maxActiveRuns === null || maxActiveRuns === undefined ? "" : String(maxActiveRuns);
+  }
+  if (!governanceOutputEl) return;
+  governanceOutputEl.textContent = JSON.stringify(
+    {
+      paused,
+      pause_reason: data.pause_reason || "",
+      active_runs: data.active_runs || 0,
+      jobs: data.jobs || {},
+      llm_calls_total: data.llm_calls_total || 0,
+      runs_total: data.runs_total || 0,
+      spend_estimate_usd: data.spend_estimate_usd || 0,
+      budget_limit_usd: data.budget_limit_usd,
+      max_active_runs: data.max_active_runs,
+      per_model: data.per_model || {},
+      last_strategy: data.last_strategy || "",
+      last_objective_preview: data.last_objective_preview || "",
+      last_run_at: data.last_run_at || "",
+      updated_at: data.updated_at || "",
+    },
+    null,
+    2,
+  );
+}
+
+async function refreshGovernance() {
+  saveConfig();
+  const result = await coreRequest("GET", "/runtime/governance");
+  renderGovernance(result);
+  return result;
+}
+
+async function applyGovernanceLimits() {
+  saveConfig();
+  const payload = {};
+  const budgetRaw = String(budgetLimitInput?.value || "").trim();
+  const maxRaw = String(maxActiveRunsInput?.value || "").trim();
+  payload.budget_limit_usd = budgetRaw ? Number(budgetRaw) : null;
+  payload.max_active_runs = maxRaw ? Number(maxRaw) : null;
+  const result = await coreRequest("POST", "/runtime/governance", payload);
+  renderGovernance(result);
+  return result;
+}
+
+async function pauseRuntime() {
+  const reason = window.prompt("Pause reason", "Operator pause") || "Operator pause";
+  const result = await coreRequest("POST", "/runtime/governance", {
+    paused: true,
+    pause_reason: reason,
+  });
+  renderGovernance(result);
+  return result;
+}
+
+async function resumeRuntime() {
+  const result = await coreRequest("POST", "/runtime/governance", {
+    paused: false,
+    pause_reason: "",
+  });
+  renderGovernance(result);
+  return result;
+}
+
+async function resetGovernanceUsage() {
+  const result = await coreRequest("POST", "/runtime/governance", { reset_usage: true });
+  renderGovernance(result);
+  return result;
+}
+
+async function cancelAllJobs() {
+  const confirmed = window.confirm("Cancel all queued/running jobs and pause the runtime first?");
+  if (!confirmed) return null;
+  const result = await coreRequest("POST", "/runtime/jobs/cancel_all", {
+    pause: true,
+    pause_reason: "Operator cancel all",
+  });
+  if (result?.governance) {
+    renderGovernance(result.governance);
+  }
+  return result;
+}
+
 function quickActionsForEntity(entity) {
   const entityId = String(entity?.entity_id || "");
   const domain = entityId.split(".", 1)[0] || "";
@@ -694,6 +813,7 @@ function renderSummary(data) {
     pending_plans: plans.filter((item) => String(item.status || "").toLowerCase() === "pending").length,
     active_jobs: jobs.filter((item) => ["queued", "running"].includes(String(item.status || "").toLowerCase()))
       .length,
+    governance: data?.governance || {},
     events_loaded: events.length,
     mqtt_status: control.mqtt || {},
     metrics: data?.metrics || {},
@@ -706,6 +826,7 @@ function render(data) {
   renderJobs(data?.jobs || []);
   renderEvents(data?.events || []);
   renderControlArtifacts(data?.control_artifacts || data?.control?.artifacts || []);
+  renderGovernance(data?.governance || {});
   renderSummary(data || {});
 }
 
@@ -792,6 +913,8 @@ objectiveInput.addEventListener("change", saveConfig);
 strategySelect.addEventListener("change", saveConfig);
 candidatesInput.addEventListener("change", saveConfig);
 executeToggle.addEventListener("change", saveConfig);
+budgetLimitInput?.addEventListener("change", saveConfig);
+maxActiveRunsInput?.addEventListener("change", saveConfig);
 entityDomainInput?.addEventListener("change", saveConfig);
 entityPrefixInput?.addEventListener("change", saveConfig);
 mqttTopicInput?.addEventListener("change", saveConfig);
@@ -803,6 +926,24 @@ autoRefreshInput.addEventListener("change", () => {
 });
 refreshEntitiesBtn?.addEventListener("click", () => {
   runAction("Refreshing IoT entities", () => refreshIoTEntities(), false).catch(() => {});
+});
+refreshGovernanceBtn?.addEventListener("click", () => {
+  runAction("Refreshing runtime governance", () => refreshGovernance(), false).catch(() => {});
+});
+applyGovernanceBtn?.addEventListener("click", () => {
+  runAction("Applying runtime limits", () => applyGovernanceLimits(), false).catch(() => {});
+});
+pauseRuntimeBtn?.addEventListener("click", () => {
+  runAction("Pausing runtime", () => pauseRuntime(), false).catch(() => {});
+});
+resumeRuntimeBtn?.addEventListener("click", () => {
+  runAction("Resuming runtime", () => resumeRuntime(), false).catch(() => {});
+});
+resetUsageBtn?.addEventListener("click", () => {
+  runAction("Resetting governance usage", () => resetGovernanceUsage(), false).catch(() => {});
+});
+cancelAllJobsBtn?.addEventListener("click", () => {
+  runAction("Canceling all jobs", () => cancelAllJobs(), true).catch(() => {});
 });
 refreshMqttStatusBtn?.addEventListener("click", () => {
   runAction("Refreshing MQTT status", () => refreshMQTTStatus(), false).catch(() => {});
@@ -817,6 +958,7 @@ mqttSubscribeBtn?.addEventListener("click", () => {
 loadConfig();
 setActionStatus("Idle", "neutral");
 setConnectionStatus("Not connected", "neutral");
+setGovernanceStatus("Unknown", "neutral");
 setIoTStatus("Idle", "neutral");
 renderMQTTOutput(null);
 refresh()
@@ -825,6 +967,7 @@ refresh()
     summaryEl.textContent = String(err?.message || err);
   })
   .finally(() => {
+    refreshGovernance().catch(() => {});
     refreshMQTTStatus().catch(() => {});
     startAutoRefresh();
   });
