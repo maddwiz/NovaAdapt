@@ -69,6 +69,20 @@ const mqttRetainInput = document.querySelector("#mqttRetainInput");
 const mqttPublishBtn = document.querySelector("#mqttPublishBtn");
 const mqttSubscribeBtn = document.querySelector("#mqttSubscribeBtn");
 const mqttOutputEl = document.querySelector("#mqttOutput");
+const controlStatusEl = document.querySelector("#controlStatus");
+const visionGoalInput = document.querySelector("#visionGoalInput");
+const visionAppNameInput = document.querySelector("#visionAppNameInput");
+const controlAllowDangerousInput = document.querySelector("#controlAllowDangerousInput");
+const refreshMobileStatusBtn = document.querySelector("#refreshMobileStatusBtn");
+const previewVisionBtn = document.querySelector("#previewVisionBtn");
+const executeVisionBtn = document.querySelector("#executeVisionBtn");
+const mobileGoalInput = document.querySelector("#mobileGoalInput");
+const mobilePlatformSelect = document.querySelector("#mobilePlatformSelect");
+const mobilePreferAppiumInput = document.querySelector("#mobilePreferAppiumInput");
+const mobileActionInput = document.querySelector("#mobileActionInput");
+const previewMobileBtn = document.querySelector("#previewMobileBtn");
+const executeMobileBtn = document.querySelector("#executeMobileBtn");
+const controlOutputEl = document.querySelector("#controlOutput");
 const templateStatusEl = document.querySelector("#templateStatus");
 const templateTagInput = document.querySelector("#templateTagInput");
 const templateManifestInput = document.querySelector("#templateManifestInput");
@@ -154,6 +168,13 @@ function saveConfig() {
   localStorage.setItem("novaadapt.desktop.mqttTopic", (mqttTopicInput?.value || "").trim());
   localStorage.setItem("novaadapt.desktop.mqttPayload", mqttPayloadInput?.value || "");
   localStorage.setItem("novaadapt.desktop.mqttRetain", mqttRetainInput?.checked ? "1" : "0");
+  localStorage.setItem("novaadapt.desktop.visionGoal", visionGoalInput?.value || "");
+  localStorage.setItem("novaadapt.desktop.visionAppName", (visionAppNameInput?.value || "").trim());
+  localStorage.setItem("novaadapt.desktop.controlAllowDangerous", controlAllowDangerousInput?.checked ? "1" : "0");
+  localStorage.setItem("novaadapt.desktop.mobileGoal", (mobileGoalInput?.value || "").trim());
+  localStorage.setItem("novaadapt.desktop.mobilePlatform", mobilePlatformSelect?.value || "android");
+  localStorage.setItem("novaadapt.desktop.mobilePreferAppium", mobilePreferAppiumInput?.checked ? "1" : "0");
+  localStorage.setItem("novaadapt.desktop.mobileAction", mobileActionInput?.value || "");
   localStorage.setItem("novaadapt.desktop.templateTag", (templateTagInput?.value || "").trim());
   localStorage.setItem("novaadapt.desktop.templateManifest", templateManifestInput?.value || "");
 }
@@ -189,6 +210,13 @@ function loadConfig() {
   mqttTopicInput.value = localStorage.getItem("novaadapt.desktop.mqttTopic") || "";
   mqttPayloadInput.value = localStorage.getItem("novaadapt.desktop.mqttPayload") || "";
   mqttRetainInput.checked = (localStorage.getItem("novaadapt.desktop.mqttRetain") || "0") === "1";
+  visionGoalInput.value = localStorage.getItem("novaadapt.desktop.visionGoal") || "";
+  visionAppNameInput.value = localStorage.getItem("novaadapt.desktop.visionAppName") || "";
+  controlAllowDangerousInput.checked = (localStorage.getItem("novaadapt.desktop.controlAllowDangerous") || "0") === "1";
+  mobileGoalInput.value = localStorage.getItem("novaadapt.desktop.mobileGoal") || "";
+  mobilePlatformSelect.value = localStorage.getItem("novaadapt.desktop.mobilePlatform") || "android";
+  mobilePreferAppiumInput.checked = (localStorage.getItem("novaadapt.desktop.mobilePreferAppium") || "0") === "1";
+  mobileActionInput.value = localStorage.getItem("novaadapt.desktop.mobileAction") || "{\"type\":\"open_app\",\"package\":\"com.android.settings\"}";
   templateTagInput.value = localStorage.getItem("novaadapt.desktop.templateTag") || "";
   templateManifestInput.value = localStorage.getItem("novaadapt.desktop.templateManifest") || "";
 }
@@ -401,6 +429,13 @@ function setIoTStatus(message, kind = "neutral") {
   iotStatusEl.className = `badge ${kind}`;
 }
 
+function setControlStatus(message, kind = "neutral") {
+  if (!controlStatusEl) return;
+  const text = String(message || "").trim() || "Idle";
+  controlStatusEl.textContent = text;
+  controlStatusEl.className = `badge ${kind}`;
+}
+
 function setTemplateStatus(message, kind = "neutral") {
   if (!templateStatusEl) return;
   const text = String(message || "").trim() || "Idle";
@@ -430,6 +465,11 @@ function setBusy(value) {
   if (refreshMqttStatusBtn) refreshMqttStatusBtn.disabled = busy;
   if (mqttPublishBtn) mqttPublishBtn.disabled = busy;
   if (mqttSubscribeBtn) mqttSubscribeBtn.disabled = busy;
+  if (refreshMobileStatusBtn) refreshMobileStatusBtn.disabled = busy;
+  if (previewVisionBtn) previewVisionBtn.disabled = busy;
+  if (executeVisionBtn) executeVisionBtn.disabled = busy;
+  if (previewMobileBtn) previewMobileBtn.disabled = busy;
+  if (executeMobileBtn) executeMobileBtn.disabled = busy;
   for (const btn of document.querySelectorAll("[data-mutate='1']")) {
     btn.disabled = busy;
   }
@@ -958,6 +998,19 @@ function renderMQTTOutput(payload, fallback = "No MQTT activity yet.") {
   mqttOutputEl.textContent = JSON.stringify(payload, null, 2);
 }
 
+function renderControlOutput(payload, fallback = "No control-anything activity yet.") {
+  if (!controlOutputEl) return;
+  if (payload === null || payload === undefined || payload === "") {
+    controlOutputEl.textContent = fallback;
+    return;
+  }
+  if (typeof payload === "string") {
+    controlOutputEl.textContent = payload;
+    return;
+  }
+  controlOutputEl.textContent = JSON.stringify(payload, null, 2);
+}
+
 function renderTemplateOutput(payload, fallback = "No template activity yet.") {
   if (!templateOutputEl) return;
   if (payload === null || payload === undefined || payload === "") {
@@ -1092,6 +1145,119 @@ async function subscribeMQTTSnapshot() {
   });
   renderMQTTOutput(result, "No MQTT messages received.");
   setIoTStatus(`Subscribed ${topic}`, "ok");
+  return result;
+}
+
+function buildVisionPayload(execute) {
+  const goal = String(visionGoalInput?.value || "").trim();
+  if (!goal) throw new Error("Vision goal is required");
+  const payload = {
+    goal,
+    execute: Boolean(execute),
+    strategy: String(strategySelect?.value || "single").trim() || "single",
+    allow_dangerous: Boolean(controlAllowDangerousInput?.checked),
+  };
+  const appName = String(visionAppNameInput?.value || "").trim();
+  if (appName) payload.app_name = appName;
+  const candidates = parseCandidates(candidatesInput?.value || "");
+  if (candidates.length > 0) payload.candidates = candidates;
+  return payload;
+}
+
+function formatMobileRuntimeStatus(payload) {
+  const status = payload && typeof payload === "object" ? payload : {};
+  const android = status.android && typeof status.android === "object" ? status.android : {};
+  const ios = status.ios && typeof status.ios === "object" ? status.ios : {};
+  const androidText = android.ok ? "android ready" : `android ${android.error || "degraded"}`;
+  const iosTransport = String(ios.transport || (ios.ok ? "vision" : "unavailable"));
+  const iosText = ios.ok ? `ios ${iosTransport}` : `ios ${ios.error || "degraded"}`;
+  return `${androidText} • ${iosText}`;
+}
+
+async function refreshMobileStatus() {
+  saveConfig();
+  const result = await coreRequest("GET", "/mobile/status");
+  setControlStatus(result?.ok ? formatMobileRuntimeStatus(result) : "Mobile runtime unavailable", result?.ok ? "ok" : "error");
+  renderControlOutput(result, "Mobile runtime status unavailable.");
+  return result;
+}
+
+async function previewVisionAction() {
+  saveConfig();
+  const result = await coreRequest("POST", "/execute/vision", buildVisionPayload(false));
+  renderControlOutput(result, "Vision preview complete.");
+  setControlStatus(
+    `Vision ${String(result?.status || "preview")}`,
+    result?.status === "failed" || result?.status === "blocked" ? "error" : "ok",
+  );
+  return result;
+}
+
+async function executeVisionAction() {
+  const goal = String(visionGoalInput?.value || "").trim();
+  const confirmed = window.confirm(`Execute vision-grounded desktop action for: ${goal || "this goal"}?`);
+  if (!confirmed) return null;
+  saveConfig();
+  const result = await coreRequest("POST", "/execute/vision", buildVisionPayload(true));
+  renderControlOutput(result, "Vision execution complete.");
+  setControlStatus(`Vision ${String(result?.status || "unknown")}`, result?.status === "ok" ? "ok" : "error");
+  return result;
+}
+
+function parseMobileActionJSON() {
+  const raw = String(mobileActionInput?.value || "").trim();
+  if (!raw) throw new Error("Mobile action JSON is required");
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    throw new Error(`Mobile action JSON is invalid: ${String(error?.message || error)}`);
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("Mobile action JSON must be an object");
+  }
+  return parsed;
+}
+
+function buildMobilePayload(execute) {
+  const platform = String(mobilePlatformSelect?.value || "android").trim().toLowerCase() || "android";
+  const payload = {
+    platform,
+    action: parseMobileActionJSON(),
+    execute: Boolean(execute),
+    allow_dangerous: Boolean(controlAllowDangerousInput?.checked),
+    strategy: String(strategySelect?.value || "single").trim() || "single",
+  };
+  const goal = String(mobileGoalInput?.value || "").trim();
+  if (goal) payload.goal = goal;
+  const candidates = parseCandidates(candidatesInput?.value || "");
+  if (candidates.length > 0) payload.candidates = candidates;
+  if (platform === "ios" && mobilePreferAppiumInput?.checked) {
+    payload.prefer_appium = true;
+  }
+  return payload;
+}
+
+async function previewMobileAction() {
+  saveConfig();
+  const result = await coreRequest("POST", "/mobile/action", buildMobilePayload(false));
+  renderControlOutput(result, "Mobile preview complete.");
+  setControlStatus(
+    `Mobile ${String(result?.platform || "")} ${String(result?.status || "preview")}`.trim(),
+    result?.status === "failed" || result?.status === "blocked" ? "error" : "ok",
+  );
+  return result;
+}
+
+async function executeMobileAction() {
+  const platform = String(mobilePlatformSelect?.value || "android").trim().toLowerCase() || "android";
+  const goal = String(mobileGoalInput?.value || "").trim();
+  const confirmed = window.confirm(`Execute ${platform} mobile action${goal ? ` for \"${goal}\"` : ""}?`);
+  if (!confirmed) return null;
+  saveConfig();
+  const result = await coreRequest("POST", "/mobile/action", buildMobilePayload(true));
+  renderControlOutput(result, "Mobile execution complete.");
+  setControlStatus(`Mobile ${String(result?.platform || platform)} ${String(result?.status || "unknown")}`, result?.status === "ok" ? "ok" : "error");
   return result;
 }
 
@@ -1680,6 +1846,13 @@ entityPrefixInput?.addEventListener("change", saveConfig);
 mqttTopicInput?.addEventListener("change", saveConfig);
 mqttPayloadInput?.addEventListener("change", saveConfig);
 mqttRetainInput?.addEventListener("change", saveConfig);
+visionGoalInput?.addEventListener("change", saveConfig);
+visionAppNameInput?.addEventListener("change", saveConfig);
+controlAllowDangerousInput?.addEventListener("change", saveConfig);
+mobileGoalInput?.addEventListener("change", saveConfig);
+mobilePlatformSelect?.addEventListener("change", saveConfig);
+mobilePreferAppiumInput?.addEventListener("change", saveConfig);
+mobileActionInput?.addEventListener("change", saveConfig);
 templateTagInput?.addEventListener("change", saveConfig);
 templateManifestInput?.addEventListener("change", saveConfig);
 autoRefreshInput.addEventListener("change", () => {
@@ -1740,6 +1913,21 @@ mqttPublishBtn?.addEventListener("click", () => {
 mqttSubscribeBtn?.addEventListener("click", () => {
   runAction("Subscribing to MQTT snapshot", () => subscribeMQTTSnapshot(), false).catch(() => {});
 });
+refreshMobileStatusBtn?.addEventListener("click", () => {
+  runAction("Refreshing mobile runtime", () => refreshMobileStatus(), false).catch(() => {});
+});
+previewVisionBtn?.addEventListener("click", () => {
+  runAction("Previewing vision control", () => previewVisionAction(), false).catch(() => {});
+});
+executeVisionBtn?.addEventListener("click", () => {
+  runAction("Executing vision control", () => executeVisionAction(), true).catch(() => {});
+});
+previewMobileBtn?.addEventListener("click", () => {
+  runAction("Previewing mobile control", () => previewMobileAction(), false).catch(() => {});
+});
+executeMobileBtn?.addEventListener("click", () => {
+  runAction("Executing mobile control", () => executeMobileAction(), true).catch(() => {});
+});
 refreshTemplatesBtn?.addEventListener("click", () => {
   runAction("Refreshing templates", () => refreshTemplates(), false).catch(() => {});
 });
@@ -1758,8 +1946,10 @@ setLiveStatus(liveState.enabled ? "Live waiting for first event" : "Live idle", 
 setTerminalStatus("Idle", "neutral");
 setGovernanceStatus("Unknown", "neutral");
 setIoTStatus("Idle", "neutral");
+setControlStatus("Idle", "neutral");
 setTemplateStatus("Idle", "neutral");
 renderMQTTOutput(null);
+renderControlOutput(null);
 renderTemplateOutput(null);
 renderTerminalOutput(null);
 refresh()
@@ -1771,6 +1961,7 @@ refresh()
     refreshTerminalSessions().catch(() => {});
     refreshGovernance().catch(() => {});
     refreshMQTTStatus().catch(() => {});
+    refreshMobileStatus().catch(() => {});
     refreshTemplates().catch(() => {});
     startAutoRefresh();
     syncLivePolling();

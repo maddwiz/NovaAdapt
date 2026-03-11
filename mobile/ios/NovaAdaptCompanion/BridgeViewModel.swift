@@ -183,6 +183,30 @@ final class BridgeViewModel: ObservableObject {
     }
     @Published var mqttMessages: [MQTTMessageSummary] = []
     @Published var mqttStatusSummary: String = "MQTT idle"
+    @Published var visionGoal: String = "" {
+        didSet { persistSettings() }
+    }
+    @Published var visionAppName: String = "" {
+        didSet { persistSettings() }
+    }
+    @Published var controlAllowDangerous: Bool = false {
+        didSet { persistSettings() }
+    }
+    @Published var mobileGoal: String = "" {
+        didSet { persistSettings() }
+    }
+    @Published var mobilePlatform: String = "android" {
+        didSet { persistSettings() }
+    }
+    @Published var mobilePreferAppium: Bool = false {
+        didSet { persistSettings() }
+    }
+    @Published var mobileActionJSON: String = "{\"type\":\"open_app\",\"package\":\"com.android.settings\"}" {
+        didSet { persistSettings() }
+    }
+    @Published var mobileStatusSummary: String = "Mobile runtime idle"
+    @Published var controlStatus: String = "Control-anything idle"
+    @Published var controlOutput: String = "No control-anything activity yet."
     @Published var governancePaused: Bool = false
     @Published var governancePauseReason: String = ""
     @Published var governanceBudgetLimit: String = "" {
@@ -283,6 +307,13 @@ final class BridgeViewModel: ObservableObject {
         static let mqttTopic = "novaadapt.mobile.mqttTopic"
         static let mqttPayload = "novaadapt.mobile.mqttPayload"
         static let mqttRetain = "novaadapt.mobile.mqttRetain"
+        static let visionGoal = "novaadapt.mobile.visionGoal"
+        static let visionAppName = "novaadapt.mobile.visionAppName"
+        static let controlAllowDangerous = "novaadapt.mobile.controlAllowDangerous"
+        static let mobileGoal = "novaadapt.mobile.mobileGoal"
+        static let mobilePlatform = "novaadapt.mobile.mobilePlatform"
+        static let mobilePreferAppium = "novaadapt.mobile.mobilePreferAppium"
+        static let mobileActionJSON = "novaadapt.mobile.mobileActionJSON"
         static let governanceBudgetLimit = "novaadapt.mobile.governanceBudgetLimit"
         static let governanceMaxActiveRuns = "novaadapt.mobile.governanceMaxActiveRuns"
         static let templateTagFilter = "novaadapt.mobile.templateTagFilter"
@@ -780,6 +811,83 @@ final class BridgeViewModel: ObservableObject {
         }
     }
 
+    func refreshMobileRuntime() {
+        Task {
+            await runAction(label: "Refreshing mobile runtime") {
+                let payload = try await self.requestJSON(method: "GET", path: "/mobile/status", body: nil)
+                self.mobileStatusSummary = self.formatMobileRuntimeStatus(payload)
+                self.controlStatus = self.mobileStatusSummary
+                self.controlOutput = self.prettyJSONString(payload) ?? self.controlOutput
+            }
+        }
+    }
+
+    func previewVisionControl() {
+        Task {
+            let goal = visionGoal.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !goal.isEmpty else {
+                status = "Vision goal is empty"
+                return
+            }
+            await runAction(label: "Previewing vision control") {
+                let payload = try await self.requestJSON(
+                    method: "POST",
+                    path: "/execute/vision",
+                    body: try self.buildVisionControlPayload(execute: false)
+                )
+                self.applyControlPayload(payload, fallbackStatus: "Vision preview complete")
+                try await self.refreshDashboardAsync()
+            }
+        }
+    }
+
+    func executeVisionControl() {
+        Task {
+            let goal = visionGoal.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !goal.isEmpty else {
+                status = "Vision goal is empty"
+                return
+            }
+            await runAction(label: "Executing vision control") {
+                let payload = try await self.requestJSON(
+                    method: "POST",
+                    path: "/execute/vision",
+                    body: try self.buildVisionControlPayload(execute: true)
+                )
+                self.applyControlPayload(payload, fallbackStatus: "Vision execution complete")
+                try await self.refreshDashboardAsync()
+            }
+        }
+    }
+
+    func previewMobileControl() {
+        Task {
+            await runAction(label: "Previewing mobile control") {
+                let payload = try await self.requestJSON(
+                    method: "POST",
+                    path: "/mobile/action",
+                    body: try self.buildMobileControlPayload(execute: false)
+                )
+                self.applyControlPayload(payload, fallbackStatus: "Mobile preview complete")
+                try await self.refreshDashboardAsync()
+            }
+        }
+    }
+
+    func executeMobileControl() {
+        Task {
+            await runAction(label: "Executing mobile control") {
+                let payload = try await self.requestJSON(
+                    method: "POST",
+                    path: "/mobile/action",
+                    body: try self.buildMobileControlPayload(execute: true)
+                )
+                self.applyControlPayload(payload, fallbackStatus: "Mobile execution complete")
+                try await self.refreshDashboardAsync()
+            }
+        }
+    }
+
     func refreshAllowedDevices() {
         Task {
             let adminBearer = adminOrPrimaryToken()
@@ -1191,6 +1299,23 @@ final class BridgeViewModel: ObservableObject {
             mqttPayload = value
         }
         mqttRetain = defaults.bool(forKey: DefaultsKey.mqttRetain)
+        if let value = defaults.string(forKey: DefaultsKey.visionGoal) {
+            visionGoal = value
+        }
+        if let value = defaults.string(forKey: DefaultsKey.visionAppName) {
+            visionAppName = value
+        }
+        controlAllowDangerous = defaults.bool(forKey: DefaultsKey.controlAllowDangerous)
+        if let value = defaults.string(forKey: DefaultsKey.mobileGoal) {
+            mobileGoal = value
+        }
+        if let value = defaults.string(forKey: DefaultsKey.mobilePlatform), !value.isEmpty {
+            mobilePlatform = value
+        }
+        mobilePreferAppium = defaults.bool(forKey: DefaultsKey.mobilePreferAppium)
+        if let value = defaults.string(forKey: DefaultsKey.mobileActionJSON), !value.isEmpty {
+            mobileActionJSON = value
+        }
         if let value = defaults.string(forKey: DefaultsKey.governanceBudgetLimit) {
             governanceBudgetLimit = value
         }
@@ -1249,6 +1374,13 @@ final class BridgeViewModel: ObservableObject {
         defaults.set(mqttTopic, forKey: DefaultsKey.mqttTopic)
         defaults.set(mqttPayload, forKey: DefaultsKey.mqttPayload)
         defaults.set(mqttRetain, forKey: DefaultsKey.mqttRetain)
+        defaults.set(visionGoal, forKey: DefaultsKey.visionGoal)
+        defaults.set(visionAppName, forKey: DefaultsKey.visionAppName)
+        defaults.set(controlAllowDangerous, forKey: DefaultsKey.controlAllowDangerous)
+        defaults.set(mobileGoal, forKey: DefaultsKey.mobileGoal)
+        defaults.set(mobilePlatform, forKey: DefaultsKey.mobilePlatform)
+        defaults.set(mobilePreferAppium, forKey: DefaultsKey.mobilePreferAppium)
+        defaults.set(mobileActionJSON, forKey: DefaultsKey.mobileActionJSON)
         defaults.set(governanceBudgetLimit, forKey: DefaultsKey.governanceBudgetLimit)
         defaults.set(governanceMaxActiveRuns, forKey: DefaultsKey.governanceMaxActiveRuns)
         defaults.set(templateTagFilter, forKey: DefaultsKey.templateTagFilter)
@@ -1537,6 +1669,30 @@ final class BridgeViewModel: ObservableObject {
         mqttStatusSummary = formatMQTTStatus(payload)
     }
 
+    private func applyControlPayload(_ payload: [String: Any], fallbackStatus: String) {
+        let platform = string(payload["platform"])
+        let statusText = string(payload["status"], fallback: fallbackStatus)
+        let outputText = string(payload["output"])
+        if platform.isEmpty {
+            controlStatus = statusText
+        } else {
+            controlStatus = "\(platform) \(statusText)"
+        }
+        controlOutput = prettyJSONString(payload) ?? outputText
+        if !outputText.isEmpty {
+            status = outputText
+        }
+    }
+
+    private func formatMobileRuntimeStatus(_ payload: [String: Any]) -> String {
+        let android = payload["android"] as? [String: Any] ?? [:]
+        let ios = payload["ios"] as? [String: Any] ?? [:]
+        let androidSummary = bool(android["ok"]) ? "android ready" : "android degraded"
+        let iosTransport = string(ios["transport"], fallback: bool(ios["ok"]) ? "vision" : "unavailable")
+        let iosSummary = bool(ios["ok"]) ? "ios \(iosTransport)" : "ios degraded"
+        return "\(androidSummary) • \(iosSummary)"
+    }
+
     private func buildRuntimeGovernanceUpdatePayload() -> [String: Any] {
         var payload: [String: Any] = [:]
         let budget = governanceBudgetLimit.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1811,6 +1967,70 @@ final class BridgeViewModel: ObservableObject {
             .filter { !$0.isEmpty }
         if !repairFallbacks.isEmpty {
             payload["repair_fallbacks"] = repairFallbacks
+        }
+        return payload
+    }
+
+    private func buildVisionControlPayload(execute: Bool) throws -> [String: Any] {
+        let goal = visionGoal.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !goal.isEmpty else {
+            throw NSError(domain: "NovaAdaptCompanion", code: -2, userInfo: [NSLocalizedDescriptionKey: "Vision goal is empty"])
+        }
+        var payload: [String: Any] = [
+            "goal": goal,
+            "execute": execute,
+            "strategy": strategy.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "single" : strategy,
+            "allow_dangerous": controlAllowDangerous,
+        ]
+        let appName = visionAppName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !appName.isEmpty {
+            payload["app_name"] = appName
+        }
+        let candidates = parseCSV(candidatesCSV)
+        if !candidates.isEmpty {
+            payload["candidates"] = candidates
+        }
+        return payload
+    }
+
+    private func buildMobileControlPayload(execute: Bool) throws -> [String: Any] {
+        let normalizedPlatform = mobilePlatform.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let platform = normalizedPlatform.isEmpty ? "android" : normalizedPlatform
+        guard platform == "android" || platform == "ios" else {
+            throw NSError(domain: "NovaAdaptCompanion", code: -2, userInfo: [NSLocalizedDescriptionKey: "Mobile platform must be android or ios"])
+        }
+        var payload: [String: Any] = [
+            "platform": platform,
+            "action": try parseMobileActionJSONObject(),
+            "execute": execute,
+            "allow_dangerous": controlAllowDangerous,
+            "strategy": strategy.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "single" : strategy,
+        ]
+        let goal = mobileGoal.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !goal.isEmpty {
+            payload["goal"] = goal
+        }
+        let candidates = parseCSV(candidatesCSV)
+        if !candidates.isEmpty {
+            payload["candidates"] = candidates
+        }
+        if platform == "ios", mobilePreferAppium {
+            payload["prefer_appium"] = true
+        }
+        return payload
+    }
+
+    private func parseMobileActionJSONObject() throws -> [String: Any] {
+        let raw = mobileActionJSON.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !raw.isEmpty else {
+            throw NSError(domain: "NovaAdaptCompanion", code: -2, userInfo: [NSLocalizedDescriptionKey: "Mobile action JSON is empty"])
+        }
+        guard let data = raw.data(using: .utf8) else {
+            throw NSError(domain: "NovaAdaptCompanion", code: -2, userInfo: [NSLocalizedDescriptionKey: "Mobile action JSON encoding failed"])
+        }
+        let object = try JSONSerialization.jsonObject(with: data)
+        guard let payload = object as? [String: Any] else {
+            throw NSError(domain: "NovaAdaptCompanion", code: -2, userInfo: [NSLocalizedDescriptionKey: "Mobile action JSON must be an object"])
         }
         return payload
     }

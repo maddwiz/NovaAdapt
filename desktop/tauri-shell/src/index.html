@@ -250,6 +250,58 @@
 
       <section class="card">
         <div class="section-head">
+          <h2>Control Anything</h2>
+          <span id="controlStatus" class="badge neutral">Idle</span>
+        </div>
+        <div class="grid compact">
+          <label>
+            <span>Vision Goal</span>
+            <textarea id="visionGoalInput" rows="3" placeholder="Click the visible Continue button and save the current file"></textarea>
+          </label>
+          <label>
+            <span>Vision App Name</span>
+            <input id="visionAppNameInput" type="text" placeholder="Photoshop" />
+          </label>
+          <label class="toggle checkbox-inline">
+            <input id="controlAllowDangerousInput" type="checkbox" />
+            <span>Allow dangerous vision/mobile actions</span>
+          </label>
+          <div class="row row-end">
+            <button id="refreshMobileStatusBtn" class="secondary">Mobile Status</button>
+            <button id="previewVisionBtn" class="secondary">Preview Vision</button>
+            <button id="executeVisionBtn" class="primary">Execute Vision</button>
+          </div>
+        </div>
+        <div class="grid compact">
+          <label>
+            <span>Mobile Goal</span>
+            <input id="mobileGoalInput" type="text" placeholder="Open Settings and enable Wi-Fi" />
+          </label>
+          <label>
+            <span>Platform</span>
+            <select id="mobilePlatformSelect">
+              <option value="android">android</option>
+              <option value="ios">ios</option>
+            </select>
+          </label>
+          <label class="toggle checkbox-inline">
+            <input id="mobilePreferAppiumInput" type="checkbox" />
+            <span>Prefer Appium when iOS is selected</span>
+          </label>
+        </div>
+        <label>
+          <span>Mobile Action JSON</span>
+          <textarea id="mobileActionInput" rows="6" placeholder='{"type":"open_app","package":"com.android.settings"}'>{"type":"open_app","package":"com.android.settings"}</textarea>
+        </label>
+        <div class="row">
+          <button id="previewMobileBtn" class="secondary">Preview Mobile</button>
+          <button id="executeMobileBtn" class="primary">Execute Mobile</button>
+        </div>
+        <pre id="controlOutput" class="summary">No control-anything activity yet.</pre>
+      </section>
+
+      <section class="card">
+        <div class="section-head">
           <h2>Agent Marketplace</h2>
           <span id="templateStatus" class="badge neutral">Idle</span>
         </div>

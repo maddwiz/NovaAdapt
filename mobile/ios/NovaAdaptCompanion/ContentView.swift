@@ -17,6 +17,7 @@ struct ContentView: View {
                         statusCard
                         connectionCard
                         objectiveCard
+                        controlAnythingCard
                         plansCard
                         jobsCard
                         terminalCard
@@ -42,6 +43,7 @@ struct ContentView: View {
             .preferredColorScheme(.dark)
             .onAppear {
                 bridge.refreshDashboard()
+                bridge.refreshMobileRuntime()
                 bridge.refreshMQTTStatus()
                 bridge.refreshTemplates()
                 bridge.ensureLiveEventStream()
@@ -338,6 +340,86 @@ struct ContentView: View {
                     .tint(.novaBrand)
                 Button("Create Plan") { bridge.createPlan() }
                     .buttonStyle(.bordered)
+            }
+        }
+    }
+
+    private var controlAnythingCard: some View {
+        sectionCard(title: "Control Anything") {
+            Text(bridge.controlStatus)
+                .font(.caption)
+                .foregroundStyle(Color.novaMuted)
+
+            TextField("Vision goal", text: $bridge.visionGoal)
+                .textFieldStyle(.roundedBorder)
+
+            TextField("Vision app name (optional)", text: $bridge.visionAppName)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled(true)
+                .textFieldStyle(.roundedBorder)
+
+            Toggle("Allow dangerous vision/mobile actions", isOn: $bridge.controlAllowDangerous)
+                .foregroundStyle(Color.novaInk)
+                .tint(.novaHot)
+
+            HStack {
+                Button("Mobile Status") { bridge.refreshMobileRuntime() }
+                    .buttonStyle(.bordered)
+                Button("Preview Vision") { bridge.previewVisionControl() }
+                    .buttonStyle(.bordered)
+                Button("Execute Vision") { pendingConfirmation = .executeVision }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.novaBrand)
+            }
+
+            Picker("Mobile Platform", selection: $bridge.mobilePlatform) {
+                Text("android").tag("android")
+                Text("ios").tag("ios")
+            }
+            .pickerStyle(.segmented)
+
+            TextField("Mobile goal (optional)", text: $bridge.mobileGoal)
+                .textFieldStyle(.roundedBorder)
+
+            Toggle("Prefer Appium when iOS is selected", isOn: $bridge.mobilePreferAppium)
+                .foregroundStyle(Color.novaInk)
+                .tint(.novaHot)
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Mobile Action JSON")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color.novaMuted)
+                TextEditor(text: $bridge.mobileActionJSON)
+                    .scrollContentBackground(.hidden)
+                    .frame(minHeight: 120)
+                    .padding(8)
+                    .background(Color.black.opacity(0.18))
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .stroke(Color.novaLine.opacity(0.85), lineWidth: 1)
+                    )
+                    .foregroundStyle(Color.novaInk)
+            }
+
+            HStack {
+                Button("Preview Mobile") { bridge.previewMobileControl() }
+                    .buttonStyle(.bordered)
+                Button("Execute Mobile") { pendingConfirmation = .executeMobile }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.novaHot)
+            }
+
+            itemCard {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(bridge.mobileStatusSummary)
+                        .font(.caption)
+                        .foregroundStyle(Color.novaMuted)
+                    Text(bridge.controlOutput)
+                        .font(.caption.monospaced())
+                        .foregroundStyle(Color.novaInk)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
             }
         }
     }
@@ -1122,6 +1204,8 @@ private enum PendingConfirmation {
     case cancelAllJobs
     case executeIoT(String, String, String)
     case publishMQTT
+    case executeVision
+    case executeMobile
 }
 
 private extension ContentView {
@@ -1152,6 +1236,10 @@ private extension ContentView {
             return "Execute IoT action?"
         case .publishMQTT:
             return "Publish MQTT message?"
+        case .executeVision:
+            return "Execute vision action?"
+        case .executeMobile:
+            return "Execute mobile action?"
         }
     }
 
@@ -1182,6 +1270,10 @@ private extension ContentView {
             return "\(domain).\(service) will run for \(entityID)."
         case .publishMQTT:
             return "The current MQTT topic and payload will be published immediately."
+        case .executeVision:
+            return "NovaAdapt will ground the current vision goal into a desktop action and execute it immediately."
+        case .executeMobile:
+            return "The current mobile action JSON will be executed on the selected platform immediately."
         }
     }
 
@@ -1213,6 +1305,10 @@ private extension ContentView {
             bridge.executeHomeAssistantService(entityID: entityID, domain: domain, service: service)
         case .publishMQTT:
             bridge.publishMQTTMessage()
+        case .executeVision:
+            bridge.executeVisionControl()
+        case .executeMobile:
+            bridge.executeMobileControl()
         }
     }
 
