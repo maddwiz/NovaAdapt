@@ -12,8 +12,15 @@ Outputs to `dist/`:
 - runtime bundle tarball
 - Android operator PWA zip
 - Android native shell source zip
+- Android native shell binary zip when release APK/AAB outputs are present
 - wearable adapter bundle tarball
 - `SHA256SUMS`
+
+Android build/publish automation:
+
+- `scripts/build_android_shell.sh all` builds debug + signed release Android outputs locally
+- `.github/workflows/android-shell.yml` builds the debug APK in CI
+- `.github/workflows/android-play.yml` publishes the signed release AAB to Google Play on manual dispatch when secrets are configured
 
 Migration and operator references:
 

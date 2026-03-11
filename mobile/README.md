@@ -13,6 +13,13 @@ Release track: production-ready.
 
 The native shell is source-distributable and intended for operators who want a dedicated Android wrapper around the bundled NovaAdapt console without maintaining a second UI stack.
 
+Build/sign path:
+
+```bash
+cd /Users/desmondpottle/Documents/New project/NovaAdapt
+./scripts/build_android_shell.sh all
+```
+
 ## iOS Companion
 
 `mobile/ios/NovaAdaptCompanion` contains a SwiftUI source module for:

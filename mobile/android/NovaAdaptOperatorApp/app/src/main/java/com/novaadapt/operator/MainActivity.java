@@ -2,6 +2,7 @@ package com.novaadapt.operator;
 
 import android.annotation.SuppressLint;
 import android.content.Intent;
+import android.content.pm.ApplicationInfo;
 import android.os.Build;
 import android.os.Bundle;
 import android.view.Menu;
@@ -45,7 +46,7 @@ public class MainActivity extends AppCompatActivity {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             settings.setSafeBrowsingEnabled(true);
         }
-        WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG);
+        WebView.setWebContentsDebuggingEnabled(isDebuggableBuild());
         webView.setWebChromeClient(new WebChromeClient());
         webView.setWebViewClient(new WebViewClient() {
             @Override
@@ -104,5 +105,9 @@ public class MainActivity extends AppCompatActivity {
         if (forceReload || !url.equals(lastLoadedUrl)) {
             webView.loadUrl(url);
         }
+    }
+
+    private boolean isDebuggableBuild() {
+        return (getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0;
     }
 }

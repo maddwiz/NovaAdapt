@@ -43,7 +43,7 @@ Implemented now:
   - Includes realtime WebSocket control channel (`/ws`) for events + command relay.
 - `view` static realtime console UI for bridge operations (`view/realtime_console.html`).
 - `view` realtime console now includes xterm.js terminal session streaming, typed websocket browser controls (`browser_*`), bridge session token tooling, runtime device-allowlist controls, bootstrap query params, persisted non-sensitive connection defaults, and PWA install support for Android.
-- `mobile/android` Android-ready operator packaging for both the PWA path and a native Android shell source project (`mobile/android/NovaAdaptOperatorApp`).
+- `mobile/android` Android-ready operator packaging for both the PWA path and a native Android shell project (`mobile/android/NovaAdaptOperatorApp`) with Gradle wrapper, local build/sign script, and CI/Play workflows.
 - `desktop` Tauri operator shell (`desktop/tauri-shell`) for objective queueing, plan approval/rejection/failed-step retry/undo, job cancellation, and event visibility (production-ready).
 - `mobile` iOS SwiftUI companion source (`mobile/ios/NovaAdaptCompanion`) with objective/plan/job controls, websocket feed, remote terminal controls, bridge session issue/revoke flows, and bridge allowlist/device-id controls (production-ready).
 - `wearables` Halo/Omi + XREAL X1 adapters (`wearables/halo_bridge.py`, `wearables/xreal_bridge.py`) with bridge session leasing + optional async wait flow.
@@ -56,7 +56,7 @@ Release posture:
 Planned next:
 
 - Harden wearable integrations into signed release artifacts across supported hardware variants.
-- Expand native clients with additional platform parity beyond the Android operator PWA (native Android shell + deeper wearable UX).
+- Expand native clients with deeper wearable UX and additional mobile parity beyond the Android shell/iOS companion.
 - Publish benchmark baselines and recorded demos against the production-track operator stack.
 
 ## Monorepo Layout
@@ -574,6 +574,7 @@ make test-clients  # Desktop/iOS client source checks
 make smoke-browser # Real Playwright browser smoke (skips unless browser runtime installed)
 make build-bridge
 make release-artifacts      # Build dist artifacts (bridge + python + runtime + Android PWA + wearables bundles)
+./scripts/build_android_shell.sh all  # Build Android debug APK + signed release APK/AAB
 make rotate-tokens-dry-run  # Preview token rotation updates
 ```
 

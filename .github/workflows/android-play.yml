@@ -1,0 +1,92 @@
+name: android-play
+
+on:
+  workflow_dispatch:
+    inputs:
+      track:
+        description: Google Play track
+        required: true
+        default: internal
+      status:
+        description: Release status
+        required: true
+        default: completed
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      NOVAADAPT_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.NOVAADAPT_ANDROID_KEYSTORE_PASSWORD }}
+      NOVAADAPT_ANDROID_KEY_ALIAS: ${{ secrets.NOVAADAPT_ANDROID_KEY_ALIAS }}
+      NOVAADAPT_ANDROID_KEY_PASSWORD: ${{ secrets.NOVAADAPT_ANDROID_KEY_PASSWORD }}
+      NOVAADAPT_GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.NOVAADAPT_GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+      NOVAADAPT_ANDROID_KEYSTORE_BASE64: ${{ secrets.NOVAADAPT_ANDROID_KEYSTORE_BASE64 }}
+    defaults:
+      run:
+        working-directory: mobile/android/NovaAdaptOperatorApp
+    steps:
+      - name: Validate required secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in \
+            NOVAADAPT_ANDROID_KEYSTORE_BASE64 \
+            NOVAADAPT_ANDROID_KEYSTORE_PASSWORD \
+            NOVAADAPT_ANDROID_KEY_ALIAS \
+            NOVAADAPT_ANDROID_KEY_PASSWORD \
+            NOVAADAPT_GOOGLE_PLAY_SERVICE_ACCOUNT_JSON
+          do
+            if [ -z "${!name:-}" ]; then
+              echo "Missing required secret: $name" >&2
+              exit 1
+            fi
+          done
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android packages
+        run: |
+          sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
+
+      - name: Decode Android upload keystore
+        shell: bash
+        run: |
+          set -euo pipefail
+          export NOVAADAPT_ANDROID_KEYSTORE_PATH="$RUNNER_TEMP/novaadapt-upload.jks"
+          echo "$NOVAADAPT_ANDROID_KEYSTORE_BASE64" | base64 --decode > "$NOVAADAPT_ANDROID_KEYSTORE_PATH"
+          echo "NOVAADAPT_ANDROID_KEYSTORE_PATH=$NOVAADAPT_ANDROID_KEYSTORE_PATH" >> "$GITHUB_ENV"
+
+      - name: Build signed release bundle
+        env:
+          NOVAADAPT_ANDROID_KEYSTORE_PATH: ${{ env.NOVAADAPT_ANDROID_KEYSTORE_PATH }}
+        run: |
+          chmod +x ./gradlew
+          ./gradlew clean bundleRelease --console=plain
+
+      - name: Upload signed AAB
+        uses: actions/upload-artifact@v4
+        with:
+          name: novaadapt-operator-release-aab
+          path: mobile/android/NovaAdaptOperatorApp/app/build/outputs/bundle/release/*.aab
+          if-no-files-found: error
+
+      - name: Publish to Google Play
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.NOVAADAPT_GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: com.novaadapt.operator
+          releaseFiles: mobile/android/NovaAdaptOperatorApp/app/build/outputs/bundle/release/app-release.aab
+          track: ${{ inputs.track }}
+          status: ${{ inputs.status }}

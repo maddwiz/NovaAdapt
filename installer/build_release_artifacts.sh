@@ -100,6 +100,32 @@ with ZipFile(output, "w", compression=ZIP_DEFLATED) as archive:
                 archive.write(path, path.relative_to(root))
 PY
 
+echo "[release] packaging Android native binaries when available"
+"$BUILD_VENV/bin/python" - "$ROOT_DIR" "$DIST_DIR" "$VERSION" <<'PY'
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+from zipfile import ZIP_DEFLATED, ZipFile
+
+root = Path(sys.argv[1])
+dist = Path(sys.argv[2])
+version = sys.argv[3]
+output = dist / f"novaadapt-android-native-binaries-{version}.zip"
+release_paths = [
+    root / "mobile" / "android" / "NovaAdaptOperatorApp" / "app" / "build" / "outputs" / "apk" / "release" / "app-release.apk",
+    root / "mobile" / "android" / "NovaAdaptOperatorApp" / "app" / "build" / "outputs" / "bundle" / "release" / "app-release.aab",
+]
+existing = [path for path in release_paths if path.is_file()]
+if not existing:
+    print("[release] Android native binaries not present; skipping binary bundle")
+    raise SystemExit(0)
+
+with ZipFile(output, "w", compression=ZIP_DEFLATED) as archive:
+    for path in existing:
+        archive.write(path, path.relative_to(root))
+PY
+
 echo "[release] packaging wearable bridge bundle"
 tar -C "$ROOT_DIR" -czf "$DIST_DIR/novaadapt-wearables-${VERSION}.tar.gz" \
   wearables \

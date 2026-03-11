@@ -153,6 +153,7 @@ Android support is now available in two forms:
 - native Android shell source project at `mobile/android/NovaAdaptOperatorApp`
 
 See `mobile/android/README.md`.
+For a local build/sign path, run `./scripts/build_android_shell.sh all`.
 
 ### Wearables
 
@@ -187,6 +188,7 @@ If a release introduces a regression:
 ```bash
 make test
 make smoke
+./scripts/build_android_shell.sh debug
 PYTHONPATH=core:shared python3 -m unittest tests.test_native_grpc tests.test_native_http tests.test_native_daemon -v
 ```
 

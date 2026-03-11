@@ -46,6 +46,15 @@ The native shell:
 - bootstraps the console with prefilled bridge/websocket settings
 - can auto-connect immediately on launch for dedicated operator devices
 
+Command-line build path:
+
+```bash
+cd /Users/desmondpottle/Documents/New project/NovaAdapt
+./scripts/build_android_shell.sh all
+```
+
+That will build the debug APK and, if needed, generate a local upload keystore plus signed release outputs.
+
 ## Runtime Requirements
 
 - reachable NovaAdapt bridge
@@ -55,4 +64,4 @@ The native shell:
 ## Current Tradeoffs
 
 The PWA remains the fastest zero-build install path.
-The native shell is the source-distributable path for operators who want Android Studio packaging and a dedicated app wrapper around the same control plane.
+The native shell is the dedicated app-wrapper path for operators who want Android Studio or CI packaging around the same control plane.
