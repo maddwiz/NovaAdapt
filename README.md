@@ -18,6 +18,7 @@ Implemented now:
   - OpenAI-compatible endpoint support (Ollama, OpenAI, Anthropic-compatible proxies, vLLM, Together, Fireworks, etc.).
   - Optional LiteLLM execution path when `litellm` is installed.
   - Multi-model voting strategy (`single` or `vote`).
+  - Decompose strategy with planner/worker collaboration, dependency handoffs, and reviewer loops.
   - Deterministic vote winner selection with optional quorum (`min_vote_agreement`).
   - Health probes and resilient fallback for single-model mode.
   - API client SDK for core/bridge (`NovaAdaptAPIClient`).
@@ -34,6 +35,7 @@ Implemented now:
   - Exposes first-class Playwright browser automation routes/runtime (`/browser/*`) with domain allow/block policy hooks.
   - Exposes local-first agent template export/import/share/launch flows with a built-in gallery and shareable manifests.
   - Records operator feedback (`/feedback`) into memory for self-improvement loops.
+  - Supports automatic plan self-healing by generating and executing replacement actions for failed steps.
   - Exposes HTTP API with optional bearer auth and async jobs.
 - `bridge` relay service in Go for secure remote forwarding into core API.
   - Includes realtime WebSocket control channel (`/ws`) for events + command relay.
@@ -367,6 +369,8 @@ API endpoints:
 - `GET /plans/{id}/stream` (SSE status updates)
 - `POST /plans` (create pending plan)
 - `POST /plans/{id}/approve` (execute on approval by default)
+  Supports `action_retry_attempts`, `action_retry_backoff_seconds`, and optional self-healing controls:
+  `auto_repair_attempts`, `repair_strategy`, `repair_model`, `repair_candidates`, `repair_fallbacks`.
 - `POST /plans/{id}/approve_async` (queue approval/execution as async job)
 - `POST /plans/{id}/retry_failed_async` (queue retry of only failed/blocked actions as async job)
 - `POST /plans/{id}/retry_failed` (retry only failed/blocked actions from a previously failed execution)
@@ -961,6 +965,18 @@ Vote mode reliability controls (in model config):
 
 Set `min_vote_agreement` to `2` or `3` when you want stricter consensus before actions execute.
 
+Decompose mode collaboration controls (also in model config):
+
+```json
+"routing": {
+  "decompose_max_subtasks": 4,
+  "decompose_parallel_workers": 4,
+  "decompose_review_retries": 1
+}
+```
+
+Planner outputs can now assign subtask roles, dependencies, and reviewer models so collaborator agents can hand work off cleanly instead of running as isolated prompts.
+
 Single mode also supports fallback chain routing:
 
 ```bash
@@ -970,6 +986,13 @@ novaadapt run \
   --strategy single \
   --model local-qwen \
   --fallbacks openai-gpt,custom-vllm
+
+novaadapt plan-approve \
+  --id PLAN_ID \
+  --allow-dangerous \
+  --action-retry-attempts 2 \
+  --auto-repair-attempts 1 \
+  --repair-strategy decompose
 ```
 
 ## DirectShell Transport Modes

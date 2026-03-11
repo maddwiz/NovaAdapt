@@ -34,6 +34,7 @@ class RouterResult:
     vote_summary: dict[str, object] = field(default_factory=dict)
     usage: dict[str, dict[str, object]] = field(default_factory=dict)
     estimated_cost_usd: float = 0.0
+    collaboration: dict[str, object] = field(default_factory=dict)
 
 
 class ModelRouter:
@@ -52,6 +53,8 @@ class ModelRouter:
         default_vote_candidates: int = 3,
         min_vote_agreement: int = 1,
         decompose_max_subtasks: int = 4,
+        decompose_parallel_workers: int = 4,
+        decompose_review_retries: int = 1,
         transport: Callable[[ModelEndpoint, list[dict[str, str]], float, int, int], str] | None = None,
     ) -> None:
         if not endpoints:
@@ -68,6 +71,8 @@ class ModelRouter:
         self.default_vote_candidates = max(1, int(default_vote_candidates))
         self.min_vote_agreement = max(1, int(min_vote_agreement))
         self.decompose_max_subtasks = max(1, int(decompose_max_subtasks))
+        self.decompose_parallel_workers = max(1, int(decompose_parallel_workers))
+        self.decompose_review_retries = max(0, int(decompose_review_retries))
         self._transport = transport
 
     @classmethod
@@ -98,6 +103,8 @@ class ModelRouter:
             default_vote_candidates=int(routing.get("default_vote_candidates", 3)),
             min_vote_agreement=int(routing.get("min_vote_agreement", 1)),
             decompose_max_subtasks=int(routing.get("decompose_max_subtasks", 4)),
+            decompose_parallel_workers=int(routing.get("decompose_parallel_workers", 4)),
+            decompose_review_retries=int(routing.get("decompose_review_retries", 1)),
         )
 
     def list_models(self) -> list[ModelEndpoint]:
@@ -303,7 +310,9 @@ class ModelRouter:
                 "content": (
                     "Build a concise JSON plan for decomposed execution. "
                     "Return JSON only using schema: "
-                    "{\"subtasks\":[{\"id\":\"s1\",\"objective\":\"...\",\"model\":\"optional-model-name\"}]}"
+                    "{\"subtasks\":[{\"id\":\"s1\",\"objective\":\"...\",\"model\":\"optional-model-name\","
+                    "\"agent\":\"optional-agent-role\",\"depends_on\":[\"optional-subtask-id\"],"
+                    "\"review_with\":\"optional-reviewer-model\"}]}"
                 ),
             },
             {
@@ -319,6 +328,13 @@ class ModelRouter:
         attempted_models: list[str] = [planner_name]
         errors: dict[str, str] = {}
         usage: dict[str, dict[str, object]] = self._usage_for_attempts([planner_name])
+        collaboration: dict[str, object] = {
+            "mode": "decompose",
+            "planner_model": planner_name,
+            "transcript": [],
+            "agents": [],
+            "parallel_batches": [],
+        }
 
         def _fallback(reason: str, planner_error: str, *, subtasks_total: int, subtasks_succeeded: int) -> RouterResult:
             errors["decompose.planner"] = planner_error
@@ -348,6 +364,7 @@ class ModelRouter:
                 },
                 usage=self._merge_usage(usage, fallback.usage),
                 estimated_cost_usd=self._usage_total(self._merge_usage(usage, fallback.usage)),
+                collaboration=collaboration,
             )
 
         try:
@@ -364,51 +381,84 @@ class ModelRouter:
                 subtasks_succeeded=0,
             )
 
+        collaboration["subtasks"] = [dict(item) for item in subtasks]
+        agent_roles = []
+        for item in subtasks:
+            role = str(item.get("agent") or item.get("model") or "agent").strip()
+            if role and role not in agent_roles:
+                agent_roles.append(role)
+        collaboration["agents"] = agent_roles
+
         subtask_outputs: list[dict[str, str]] = []
         subtask_votes: dict[str, str] = {}
-        for index, subtask in enumerate(subtasks, start=1):
-            subtask_id = str(subtask.get("id", f"s{index}")) or f"s{index}"
-            subtask_objective = str(subtask.get("objective", "")).strip()
-            if not subtask_objective:
-                errors[f"decompose.{subtask_id}"] = "missing objective"
-                continue
+        completed_outputs: dict[str, dict[str, str]] = {}
+        pending: list[dict[str, object]] = [dict(item) for item in subtasks]
+        processed: set[str] = set()
 
-            requested_model = str(subtask.get("model", "")).strip()
-            chosen_model = requested_model if requested_model in execution_pool else execution_pool[0]
-            sub_messages = [
-                {
-                    "role": "system",
-                    "content": "You are solving one subtask in a decomposed workflow. Return concise actionable output.",
-                },
-                {
-                    "role": "user",
-                    "content": (
-                        f"Primary objective:\n{objective}\n\n"
-                        f"Subtask {subtask_id}:\n{subtask_objective}"
-                    ),
-                },
-            ]
-            try:
-                sub_result = self._chat_single(
-                    messages=sub_messages,
-                    model_name=chosen_model,
-                    fallback_models=fallback_models,
+        while pending:
+            ready = []
+            for item in pending:
+                deps = [str(dep).strip() for dep in item.get("depends_on", []) if str(dep).strip()]
+                if all(dep in completed_outputs for dep in deps):
+                    ready.append(item)
+            if not ready:
+                unresolved = [str(item.get("id") or "").strip() for item in pending]
+                return _fallback(
+                    "invalid_plan",
+                    f"planner returned unresolved dependency cycle: {', '.join(unresolved)}",
+                    subtasks_total=len(subtasks),
+                    subtasks_succeeded=len(subtask_outputs),
                 )
-                attempted_models.extend(sub_result.attempted_models)
-                usage = self._merge_usage(usage, sub_result.usage)
-                for key, value in sub_result.errors.items():
-                    errors[f"decompose.{subtask_id}.{key}"] = value
-                subtask_votes[subtask_id] = sub_result.content
-                subtask_outputs.append(
-                    {
-                        "id": subtask_id,
-                        "objective": subtask_objective,
-                        "model": sub_result.model_name,
-                        "output": sub_result.content,
-                    }
-                )
-            except Exception as exc:
-                errors[f"decompose.{subtask_id}"] = str(exc)
+
+            batch = ready[: self.decompose_parallel_workers]
+            collaboration["parallel_batches"].append([str(item.get("id") or "") for item in batch])
+
+            with ThreadPoolExecutor(max_workers=min(self.decompose_parallel_workers, len(batch))) as executor:
+                futures = {
+                    executor.submit(
+                        self._execute_decompose_subtask,
+                        objective=objective,
+                        subtask=subtask,
+                        execution_pool=execution_pool,
+                        fallback_models=fallback_models,
+                        completed_outputs=completed_outputs,
+                    ): subtask
+                    for subtask in batch
+                }
+                for future in as_completed(futures):
+                    subtask = futures[future]
+                    subtask_id = str(subtask.get("id") or "").strip() or f"s{len(processed) + 1}"
+                    try:
+                        outcome = future.result()
+                        attempted_models.extend(outcome["attempted_models"])
+                        usage = self._merge_usage(usage, outcome["usage"])
+                        for key, value in outcome["errors"].items():
+                            errors[f"decompose.{subtask_id}.{key}"] = value
+                        subtask_votes[subtask_id] = outcome["output"]
+                        output_item = {
+                            "id": subtask_id,
+                            "objective": str(outcome["objective"]),
+                            "model": str(outcome["model"]),
+                            "agent": str(outcome.get("agent") or ""),
+                            "depends_on": list(outcome.get("depends_on", [])),
+                            "output": str(outcome["output"]),
+                        }
+                        subtask_outputs.append(output_item)
+                        completed_outputs[subtask_id] = output_item
+                        transcript = outcome.get("transcript")
+                        if isinstance(transcript, list):
+                            collaboration["transcript"].extend(transcript)
+                    except Exception as exc:
+                        errors[f"decompose.{subtask_id}"] = str(exc)
+                        collaboration["transcript"].append(
+                            {
+                                "type": "subtask_failed",
+                                "subtask_id": subtask_id,
+                                "error": str(exc),
+                            }
+                        )
+                    processed.add(subtask_id)
+            pending = [item for item in pending if str(item.get("id") or "").strip() not in processed]
 
         if not subtask_outputs:
             return _fallback(
@@ -441,6 +491,14 @@ class ModelRouter:
         usage = self._merge_usage(usage, synthesis.usage)
         for key, value in synthesis.errors.items():
             errors[f"decompose.synthesis.{key}"] = value
+        collaboration["transcript"].append(
+            {
+                "type": "synthesis",
+                "model": synthesis.model_name,
+                "subtasks_used": [item["id"] for item in subtask_outputs],
+            }
+        )
+        collaboration["synthesis_model"] = synthesis.model_name
 
         return RouterResult(
             model_name=synthesis.model_name,
@@ -455,10 +513,160 @@ class ModelRouter:
                 "subtasks_succeeded": len(subtask_outputs),
                 "subtasks_failed": max(0, len(subtasks) - len(subtask_outputs)),
                 "quorum_met": len(subtask_outputs) > 0,
+                "dependency_edges": sum(len(item.get("depends_on", [])) for item in subtasks),
+                "reviewed_subtasks": sum(1 for item in subtasks if str(item.get("review_with") or "").strip()),
+                "parallel_batches": len(collaboration["parallel_batches"]),
             },
             usage=usage,
             estimated_cost_usd=self._usage_total(usage),
+            collaboration=collaboration,
         )
+
+    def _execute_decompose_subtask(
+        self,
+        *,
+        objective: str,
+        subtask: dict[str, object],
+        execution_pool: list[str],
+        fallback_models: Iterable[str] | None,
+        completed_outputs: dict[str, dict[str, str]],
+    ) -> dict[str, object]:
+        subtask_id = str(subtask.get("id") or "").strip() or "subtask"
+        subtask_objective = str(subtask.get("objective") or "").strip()
+        if not subtask_objective:
+            raise ValueError("missing objective")
+        agent_role = str(subtask.get("agent") or subtask.get("model") or subtask_id).strip()
+        depends_on = [str(dep).strip() for dep in subtask.get("depends_on", []) if str(dep).strip()]
+        requested_model = str(subtask.get("model") or "").strip()
+        chosen_model = requested_model if requested_model in execution_pool else execution_pool[0]
+
+        dependency_payload = [
+            {
+                "id": dep,
+                "objective": str(completed_outputs[dep].get("objective") or ""),
+                "output": str(completed_outputs[dep].get("output") or ""),
+            }
+            for dep in depends_on
+            if dep in completed_outputs
+        ]
+        user_content = (
+            f"Primary objective:\n{objective}\n\n"
+            f"Subtask {subtask_id} ({agent_role}):\n{subtask_objective}"
+        )
+        if dependency_payload:
+            user_content += "\n\nDependency outputs (JSON):\n" + json.dumps(dependency_payload, ensure_ascii=True)
+
+        attempt = 0
+        attempted_models: list[str] = []
+        merged_usage: dict[str, dict[str, object]] = {}
+        merged_errors: dict[str, str] = {}
+        transcript: list[dict[str, object]] = [
+            {
+                "type": "subtask_started",
+                "subtask_id": subtask_id,
+                "agent": agent_role,
+                "model": chosen_model,
+                "depends_on": depends_on,
+            }
+        ]
+        reviewer_model = str(subtask.get("review_with") or "").strip()
+        reviewer_model = reviewer_model if reviewer_model in execution_pool else ""
+
+        feedback = ""
+        while True:
+            attempt += 1
+            sub_messages = [
+                {
+                    "role": "system",
+                    "content": (
+                        "You are solving one subtask in a decomposed workflow. "
+                        f"Your agent role is '{agent_role}'. Return concise actionable output."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        user_content
+                        + (
+                            "\n\nReviewer feedback to incorporate:\n" + feedback
+                            if feedback
+                            else ""
+                        )
+                    ),
+                },
+            ]
+            sub_result = self._chat_single(
+                messages=sub_messages,
+                model_name=chosen_model,
+                fallback_models=fallback_models,
+            )
+            attempted_models.extend(sub_result.attempted_models)
+            merged_usage = self._merge_usage(merged_usage, sub_result.usage)
+            merged_errors.update(sub_result.errors)
+            output = sub_result.content
+            review_payload: dict[str, object] | None = None
+            transcript.append(
+                {
+                    "type": "subtask_output",
+                    "subtask_id": subtask_id,
+                    "agent": agent_role,
+                    "model": sub_result.model_name,
+                    "attempt": attempt,
+                }
+            )
+
+            if reviewer_model:
+                review_result = self._chat_single(
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": (
+                                "Review a collaborator output. Return JSON only using schema: "
+                                "{\"approved\":true|false,\"feedback\":\"...\"}"
+                            ),
+                        },
+                        {
+                            "role": "user",
+                            "content": (
+                                f"Primary objective:\n{objective}\n\n"
+                                f"Subtask {subtask_id} ({agent_role}):\n{subtask_objective}\n\n"
+                                f"Candidate output:\n{output}"
+                            ),
+                        },
+                    ],
+                    model_name=reviewer_model,
+                    fallback_models=fallback_models,
+                )
+                attempted_models.extend(review_result.attempted_models)
+                merged_usage = self._merge_usage(merged_usage, review_result.usage)
+                merged_errors.update({f"review.{k}": v for k, v in review_result.errors.items()})
+                review_payload = self._parse_review(review_result.content)
+                transcript.append(
+                    {
+                        "type": "subtask_review",
+                        "subtask_id": subtask_id,
+                        "reviewer_model": review_result.model_name,
+                        "approved": bool(review_payload.get("approved", False)),
+                        "attempt": attempt,
+                    }
+                )
+                if not bool(review_payload.get("approved", False)) and attempt <= self.decompose_review_retries:
+                    feedback = str(review_payload.get("feedback") or "").strip() or "Tighten the answer."
+                    continue
+
+            return {
+                "id": subtask_id,
+                "objective": subtask_objective,
+                "model": sub_result.model_name,
+                "agent": agent_role,
+                "depends_on": depends_on,
+                "output": output,
+                "review": review_payload,
+                "attempted_models": self._dedupe_names(attempted_models),
+                "usage": merged_usage,
+                "errors": merged_errors,
+                "transcript": transcript,
+            }
 
     def _invoke(self, endpoint: ModelEndpoint, messages: list[dict[str, str]]) -> str:
         if self._transport is not None:
@@ -650,7 +858,7 @@ class ModelRouter:
         return json.dumps(messages, ensure_ascii=True)
 
     @staticmethod
-    def _parse_subtasks(raw: str, *, max_items: int) -> list[dict[str, str]]:
+    def _parse_subtasks(raw: str, *, max_items: int) -> list[dict[str, object]]:
         text = str(raw or "").strip()
         if not text:
             return []
@@ -670,23 +878,49 @@ class ModelRouter:
         items = parsed.get("subtasks") if isinstance(parsed, dict) else None
         if not isinstance(items, list):
             return []
-        out: list[dict[str, str]] = []
+        out: list[dict[str, object]] = []
         for index, item in enumerate(items, start=1):
             if not isinstance(item, dict):
                 continue
             objective = str(item.get("objective") or item.get("task") or item.get("prompt") or "").strip()
             if not objective:
                 continue
+            depends_on = []
+            raw_depends = item.get("depends_on")
+            if isinstance(raw_depends, list):
+                depends_on = [str(dep).strip() for dep in raw_depends if str(dep).strip()]
             out.append(
                 {
                     "id": str(item.get("id") or f"s{index}"),
                     "objective": objective,
                     "model": str(item.get("model") or "").strip(),
+                    "agent": str(item.get("agent") or "").strip(),
+                    "depends_on": depends_on,
+                    "review_with": str(item.get("review_with") or "").strip(),
                 }
             )
             if len(out) >= max(1, int(max_items)):
                 break
         return out
+
+    @staticmethod
+    def _parse_review(raw: str) -> dict[str, object]:
+        text = str(raw or "").strip()
+        if not text:
+            return {"approved": True, "feedback": ""}
+        try:
+            parsed = json.loads(text)
+        except json.JSONDecodeError:
+            lowered = text.lower()
+            if "not approved" in lowered or "revise" in lowered or "retry" in lowered:
+                return {"approved": False, "feedback": text}
+            return {"approved": True, "feedback": text}
+        if not isinstance(parsed, dict):
+            return {"approved": True, "feedback": text}
+        return {
+            "approved": bool(parsed.get("approved", False) if "approved" in parsed else parsed.get("ok", True)),
+            "feedback": str(parsed.get("feedback") or parsed.get("reason") or "").strip(),
+        }
 
     @staticmethod
     def _normalize(text: str) -> str:

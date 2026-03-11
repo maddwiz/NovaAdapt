@@ -2839,6 +2839,13 @@ class NovaAdaptService:
         action_retry_attempts = max(0, int(payload.get("action_retry_attempts", 0)))
         action_retry_backoff_seconds = max(0.0, float(payload.get("action_retry_backoff_seconds", 0.25)))
         retry_failed_only = coerce_bool(payload.get("retry_failed_only"), default=False)
+        auto_repair_attempts = max(0, int(payload.get("auto_repair_attempts", 0)))
+        repair_strategy = str(
+            payload.get("repair_strategy") or (plan.get("strategy") if str(plan.get("strategy") or "").strip() else "decompose")
+        ).strip() or "decompose"
+        repair_model = str(payload.get("repair_model") or plan.get("model") or "").strip() or None
+        repair_candidates = self._as_name_list(payload.get("repair_candidates")) or self._as_name_list(plan.get("attempted_models"))
+        repair_fallbacks = self._as_name_list(payload.get("repair_fallbacks"))
 
         if plan["status"] == "executed":
             if retry_failed_only:
@@ -2890,6 +2897,7 @@ class NovaAdaptService:
 
         execution_results: list[dict[str, Any]] = []
         action_log_ids: list[int] = list(preserved_action_log_ids)
+        repair_summary: dict[str, Any] | None = None
         try:
             for idx, action in enumerate(actions, start=1):
                 if callable(cancel_requested) and bool(cancel_requested()):
@@ -2979,6 +2987,47 @@ class NovaAdaptService:
             for item in execution_results
             if str(item.get("status", "")).lower() in {"failed", "blocked"}
         ]
+        if failed_actions and auto_repair_attempts > 0:
+            execution_results, action_log_ids, repair_summary = self._attempt_plan_self_heal(
+                objective=str(plan.get("objective", "")),
+                actions=actions,
+                execution_results=execution_results,
+                action_log_ids=action_log_ids,
+                allow_dangerous=allow_dangerous,
+                max_actions=max_actions,
+                repair_attempts=auto_repair_attempts,
+                repair_strategy=repair_strategy,
+                repair_model=repair_model,
+                repair_candidates=repair_candidates,
+                repair_fallbacks=repair_fallbacks,
+                cancel_requested=cancel_requested,
+            )
+            failed_actions = [
+                item
+                for item in execution_results
+                if str(item.get("status", "")).lower() in {"failed", "blocked"}
+            ]
+            if repair_summary and bool(repair_summary.get("healed")) and not failed_actions:
+                approved = self._plans().approve(
+                    plan_id=plan_id,
+                    execution_results=execution_results,
+                    action_log_ids=action_log_ids,
+                    status="executed",
+                )
+                if approved is None:
+                    raise ValueError("Plan not found")
+                approved["repair"] = repair_summary
+                self._persist_plan_memory(
+                    plan_id=plan_id,
+                    objective=str(plan.get("objective", "")),
+                    status="executed",
+                    actions=actions,
+                    execution_results=execution_results,
+                    execution_error="",
+                )
+                self._track_memory_events(["plan.executed", "plan.auto_repaired"])
+                return approved
+
         if failed_actions:
             failed = self._plans().fail_execution(
                 plan_id=plan_id,
@@ -2990,6 +3039,8 @@ class NovaAdaptService:
             )
             if failed is None:
                 raise ValueError("Plan not found")
+            if repair_summary:
+                failed["repair"] = repair_summary
             self._persist_plan_memory(
                 plan_id=plan_id,
                 objective=str(plan.get("objective", "")),
@@ -3009,6 +3060,8 @@ class NovaAdaptService:
         )
         if approved is None:
             raise ValueError("Plan not found")
+        if repair_summary:
+            approved["repair"] = repair_summary
         self._persist_plan_memory(
             plan_id=plan_id,
             objective=str(plan.get("objective", "")),
@@ -3019,6 +3072,182 @@ class NovaAdaptService:
         )
         self._track_memory_events(["plan.executed"])
         return approved
+
+    def _attempt_plan_self_heal(
+        self,
+        *,
+        objective: str,
+        actions: list[dict[str, Any]],
+        execution_results: list[dict[str, Any]],
+        action_log_ids: list[int],
+        allow_dangerous: bool,
+        max_actions: int,
+        repair_attempts: int,
+        repair_strategy: str,
+        repair_model: str | None,
+        repair_candidates: list[str] | None,
+        repair_fallbacks: list[str] | None,
+        cancel_requested: Callable[[], bool] | None = None,
+    ) -> tuple[list[dict[str, Any]], list[int], dict[str, Any]]:
+        repaired_results = [dict(item) for item in execution_results]
+        repaired_log_ids = list(action_log_ids)
+        summary: dict[str, Any] = {
+            "healed": False,
+            "attempts": [],
+            "failed_indexes": [
+                idx + 1
+                for idx, item in enumerate(repaired_results)
+                if str(item.get("status", "")).lower() in {"failed", "blocked"}
+            ],
+        }
+        failed_indexes = list(summary["failed_indexes"])
+        if not failed_indexes:
+            summary["healed"] = True
+            return repaired_results, repaired_log_ids, summary
+
+        for attempt in range(1, max(1, repair_attempts) + 1):
+            if callable(cancel_requested) and bool(cancel_requested()):
+                raise RuntimeError("execution canceled by operator")
+            failed_payload = [
+                {
+                    "index": idx,
+                    "action": dict(actions[idx - 1]) if idx - 1 < len(actions) else {},
+                    "result": dict(repaired_results[idx - 1]) if idx - 1 < len(repaired_results) else {},
+                }
+                for idx in failed_indexes
+            ]
+            repair_objective = self._build_plan_repair_objective(
+                objective=objective,
+                failed_items=failed_payload,
+            )
+            repair_run = self._run_repair_objective(
+                objective=repair_objective,
+                strategy=repair_strategy,
+                model_name=repair_model,
+                candidate_models=repair_candidates,
+                fallback_models=repair_fallbacks,
+                allow_dangerous=allow_dangerous,
+                max_actions=max_actions,
+            )
+            repair_results = [
+                dict(item) for item in repair_run.get("results", []) if isinstance(item, dict)
+            ]
+            repaired_log_ids.extend(
+                int(item)
+                for item in repair_run.get("action_log_ids", [])
+                if isinstance(item, int) or (isinstance(item, str) and str(item).isdigit())
+            )
+            attempt_summary = {
+                "attempt": attempt,
+                "objective": repair_objective,
+                "model": repair_run.get("model"),
+                "strategy": repair_run.get("strategy"),
+                "actions": [dict(item) for item in repair_run.get("actions", []) if isinstance(item, dict)],
+                "results": repair_results,
+                "failed_indexes": list(failed_indexes),
+            }
+            summary["attempts"].append(attempt_summary)
+            attempt_failed = any(
+                str(item.get("status", "")).lower() in {"failed", "blocked"} for item in repair_results
+            ) or not repair_results
+            if attempt_failed:
+                continue
+            replacement_summary = self._summarize_repair_results(repair_results)
+            for idx in failed_indexes:
+                original = dict(repaired_results[idx - 1]) if idx - 1 < len(repaired_results) else {}
+                original["status"] = "repaired"
+                original["output"] = replacement_summary
+                original["repair"] = {
+                    "healed": True,
+                    "attempt": attempt,
+                    "replacement_actions": attempt_summary["actions"],
+                    "replacement_results": repair_results,
+                }
+                repaired_results[idx - 1] = original
+            summary["healed"] = True
+            return repaired_results, repaired_log_ids, summary
+
+        for idx in failed_indexes:
+            if idx - 1 >= len(repaired_results):
+                continue
+            original = dict(repaired_results[idx - 1])
+            original["repair"] = {
+                "healed": False,
+                "attempts": [
+                    {
+                        "attempt": int(item.get("attempt", 0) or 0),
+                        "model": item.get("model"),
+                        "strategy": item.get("strategy"),
+                        "result_statuses": [
+                            str(result.get("status", "")) for result in item.get("results", []) if isinstance(result, dict)
+                        ],
+                    }
+                    for item in summary["attempts"]
+                    if isinstance(item, dict)
+                ],
+            }
+            repaired_results[idx - 1] = original
+        return repaired_results, repaired_log_ids, summary
+
+    def _build_plan_repair_objective(
+        self,
+        *,
+        objective: str,
+        failed_items: list[dict[str, Any]],
+    ) -> str:
+        return (
+            "Repair only the failed or blocked parts of this plan. "
+            "Do not repeat already successful steps.\n\n"
+            f"Original objective:\n{objective}\n\n"
+            "Failed plan items (JSON):\n"
+            f"{json.dumps(failed_items, ensure_ascii=True)}\n\n"
+            "Return only the replacement actions needed to complete the failed work."
+        )
+
+    def _run_repair_objective(
+        self,
+        *,
+        objective: str,
+        strategy: str,
+        model_name: str | None,
+        candidate_models: list[str] | None,
+        fallback_models: list[str] | None,
+        allow_dangerous: bool,
+        max_actions: int,
+    ) -> dict[str, Any]:
+        router = self.router_loader(self.default_config)
+        queue = UndoQueue(db_path=self.db_path)
+        agent = NovaAdaptAgent(
+            router=router,
+            directshell=self.directshell_factory(),
+            undo_queue=queue,
+            memory_backend=self.memory_backend,
+        )
+        result = agent.run_objective(
+            objective=objective,
+            strategy=str(strategy or "decompose").strip() or "decompose",
+            model_name=model_name,
+            candidate_models=list(candidate_models or []) or None,
+            fallback_models=list(fallback_models or []) or None,
+            dry_run=False,
+            record_history=True,
+            allow_dangerous=allow_dangerous,
+            max_actions=max(1, int(max_actions)),
+        )
+        self.runtime_governance.record_model_usage(
+            usage=result.get("model_usage") if isinstance(result, dict) else None,
+            strategy=strategy,
+            objective=objective,
+        )
+        return result
+
+    @staticmethod
+    def _summarize_repair_results(results: list[dict[str, Any]]) -> str:
+        for item in results:
+            output = str(item.get("output") or "").strip()
+            if output:
+                return output
+        return "Repaired via generated replacement actions."
 
     def reject_plan(self, plan_id: str, reason: str | None = None) -> dict[str, Any]:
         plan = self._plans().get(plan_id)

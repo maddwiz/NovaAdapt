@@ -154,6 +154,38 @@ class _MultiActionRouter(_StubRouter):
         )
 
 
+class _RepairRouter(_StubRouter):
+    def __init__(self):
+        self.objectives: list[str] = []
+
+    def chat(
+        self,
+        messages,
+        model_name=None,
+        strategy="single",
+        candidate_models=None,
+        fallback_models=None,
+    ):
+        objective_text = ""
+        for item in messages:
+            if str(item.get("role", "")) == "user":
+                objective_text = str(item.get("content", ""))
+        self.objectives.append(objective_text)
+        if "Repair only the failed or blocked parts of this plan." in objective_text:
+            content = '{"actions":[{"type":"note","target":"repair","value":"Use a safe archive flow instead."}]}'
+        else:
+            content = '{"actions":[{"type":"click","target":"OK"}]}'
+        return RouterResult(
+            model_name=model_name or "local",
+            model_id="qwen",
+            content=content,
+            strategy=strategy,
+            votes={},
+            errors={},
+            attempted_models=[model_name or "local"],
+        )
+
+
 class _StubDirectShellWithProbe(_StubDirectShell):
     def probe(self):
         return {"ok": True, "transport": "stub"}
@@ -1636,6 +1668,43 @@ class ServiceTests(unittest.TestCase):
             self.assertEqual(approved["status"], "executed")
             with self.assertRaises(ValueError):
                 service.approve_plan(created["id"], {"execute": True, "retry_failed_only": True})
+
+    def test_approve_plan_auto_repairs_blocked_actions(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            recorder = _RecordingDirectShell()
+            repair_router = _RepairRouter()
+            service = NovaAdaptService(
+                default_config=Path("unused.json"),
+                db_path=Path(tmp) / "actions.db",
+                plans_db_path=Path(tmp) / "plans.db",
+                router_loader=lambda _path: repair_router,
+                directshell_factory=lambda: recorder,
+            )
+
+            plan = service._plans().create(
+                {
+                    "objective": "Remove the temp file safely",
+                    "strategy": "single",
+                    "actions": [{"type": "delete", "target": "/tmp/something"}],
+                }
+            )
+            repaired = service.approve_plan(
+                plan["id"],
+                {
+                    "execute": True,
+                    "allow_dangerous": False,
+                    "auto_repair_attempts": 1,
+                    "repair_strategy": "single",
+                },
+            )
+
+            self.assertEqual(repaired["status"], "executed")
+            self.assertTrue(repaired["repair"]["healed"])
+            self.assertEqual(repaired["execution_results"][0]["status"], "repaired")
+            self.assertEqual(len(repaired["action_log_ids"]), 2)
+            self.assertEqual(len(recorder.executed_actions), 1)
+            self.assertEqual(recorder.executed_actions[0]["type"], "note")
+            self.assertTrue(any("Repair only the failed or blocked parts of this plan." in text for text in repair_router.objectives))
 
     def test_approve_plan_respects_cancel_requested_callback(self):
         with tempfile.TemporaryDirectory() as tmp:

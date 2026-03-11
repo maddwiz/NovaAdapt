@@ -283,6 +283,29 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Execute only previously failed/blocked actions for this plan",
     )
+    plan_approve_cmd.add_argument(
+        "--auto-repair-attempts",
+        type=int,
+        default=0,
+        help="Generate and execute replacement actions when plan execution still fails or blocks",
+    )
+    plan_approve_cmd.add_argument(
+        "--repair-strategy",
+        default="decompose",
+        choices=["single", "vote", "decompose"],
+        help="Model routing strategy for auto-repair attempts",
+    )
+    plan_approve_cmd.add_argument("--repair-model", default="", help="Optional model endpoint for auto-repair")
+    plan_approve_cmd.add_argument(
+        "--repair-candidates",
+        default="",
+        help="Comma-separated candidate models for auto-repair",
+    )
+    plan_approve_cmd.add_argument(
+        "--repair-fallbacks",
+        default="",
+        help="Comma-separated fallback models for auto-repair",
+    )
 
     plan_retry_failed_cmd = sub.add_parser(
         "plan-retry-failed",
@@ -313,6 +336,29 @@ def _build_parser() -> argparse.ArgumentParser:
         type=float,
         default=0.2,
         help="Base backoff delay between action retries",
+    )
+    plan_retry_failed_cmd.add_argument(
+        "--auto-repair-attempts",
+        type=int,
+        default=0,
+        help="Generate and execute replacement actions when retry execution still fails or blocks",
+    )
+    plan_retry_failed_cmd.add_argument(
+        "--repair-strategy",
+        default="decompose",
+        choices=["single", "vote", "decompose"],
+        help="Model routing strategy for auto-repair attempts",
+    )
+    plan_retry_failed_cmd.add_argument("--repair-model", default="", help="Optional model endpoint for auto-repair")
+    plan_retry_failed_cmd.add_argument(
+        "--repair-candidates",
+        default="",
+        help="Comma-separated candidate models for auto-repair",
+    )
+    plan_retry_failed_cmd.add_argument(
+        "--repair-fallbacks",
+        default="",
+        help="Comma-separated fallback models for auto-repair",
     )
 
     plan_reject_cmd = sub.add_parser("plan-reject", help="Reject a plan with optional reason")
@@ -1641,6 +1687,11 @@ def main() -> None:
                 "action_retry_attempts": max(0, int(args.action_retry_attempts)),
                 "action_retry_backoff_seconds": max(0.0, float(args.action_retry_backoff_seconds)),
                 "retry_failed_only": bool(args.retry_failed_only),
+                "auto_repair_attempts": max(0, int(args.auto_repair_attempts)),
+                "repair_strategy": str(args.repair_strategy or "decompose"),
+                "repair_model": str(args.repair_model or "").strip(),
+                "repair_candidates": args.repair_candidates,
+                "repair_fallbacks": args.repair_fallbacks,
             }
             print(json.dumps(service.approve_plan(args.id, payload), indent=2))
             return
@@ -1658,6 +1709,11 @@ def main() -> None:
                 "max_actions": max(1, args.max_actions),
                 "action_retry_attempts": max(0, int(args.action_retry_attempts)),
                 "action_retry_backoff_seconds": max(0.0, float(args.action_retry_backoff_seconds)),
+                "auto_repair_attempts": max(0, int(args.auto_repair_attempts)),
+                "repair_strategy": str(args.repair_strategy or "decompose"),
+                "repair_model": str(args.repair_model or "").strip(),
+                "repair_candidates": args.repair_candidates,
+                "repair_fallbacks": args.repair_fallbacks,
             }
             print(json.dumps(service.approve_plan(args.id, payload), indent=2))
             return

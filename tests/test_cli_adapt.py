@@ -189,6 +189,38 @@ class AdaptCLITests(unittest.TestCase):
         plan_payload = service.create_plan.call_args.args[0]
         self.assertEqual(plan_payload["strategy"], "decompose")
 
+    def test_plan_approve_command_passes_auto_repair_controls(self):
+        service = mock.Mock()
+        service.approve_plan.return_value = {"id": "plan-7", "status": "executed"}
+        with mock.patch("novaadapt_core.cli.NovaAdaptService", return_value=service):
+            payload = self._run_cli(
+                "plan-approve",
+                "--id",
+                "plan-7",
+                "--allow-dangerous",
+                "--auto-repair-attempts",
+                "2",
+                "--repair-strategy",
+                "vote",
+                "--repair-model",
+                "local",
+                "--repair-candidates",
+                "local,backup",
+                "--repair-fallbacks",
+                "backup",
+            )
+
+        self.assertEqual(payload["id"], "plan-7")
+        service.approve_plan.assert_called_once()
+        plan_id, approve_payload = service.approve_plan.call_args.args
+        self.assertEqual(plan_id, "plan-7")
+        self.assertTrue(approve_payload["allow_dangerous"])
+        self.assertEqual(approve_payload["auto_repair_attempts"], 2)
+        self.assertEqual(approve_payload["repair_strategy"], "vote")
+        self.assertEqual(approve_payload["repair_model"], "local")
+        self.assertEqual(approve_payload["repair_candidates"], "local,backup")
+        self.assertEqual(approve_payload["repair_fallbacks"], "backup")
+
     def test_voice_status_command(self):
         service = mock.Mock()
         service.voice_status.return_value = {"ok": True, "enabled": False}

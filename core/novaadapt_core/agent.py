@@ -155,6 +155,7 @@ class NovaAdaptAgent:
             "strategy": result.strategy,
             "votes": result.votes,
             "vote_summary": result.vote_summary,
+            "collaboration": result.collaboration,
             "model_errors": result.errors,
             "attempted_models": result.attempted_models,
             "model_usage": result.usage,
