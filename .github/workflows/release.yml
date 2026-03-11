@@ -40,6 +40,10 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install optional gRPC runtime dependency
+        run: |
+          python -m pip install grpcio
+
       - name: Setup Go
         uses: actions/setup-go@v5
         with:

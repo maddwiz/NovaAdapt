@@ -1,0 +1,27 @@
+{
+  "artifact": "novaadapt-wearables",
+  "adapter_families": [
+    {
+      "name": "halo",
+      "script": "wearables/halo_bridge.py",
+      "session_subject": "halo-bridge",
+      "intent_type": "wearable_voice"
+    },
+    {
+      "name": "xreal-x1",
+      "script": "wearables/xreal_bridge.py",
+      "session_subject": "xreal-bridge",
+      "intent_type": "wearable_voice"
+    }
+  ],
+  "required_scopes": ["read", "run", "plan", "approve", "reject", "undo", "cancel"],
+  "recommended_env": [
+    "NOVAADAPT_BRIDGE_URL",
+    "NOVAADAPT_BRIDGE_ADMIN_TOKEN",
+    "NOVAADAPT_BRIDGE_ENSURE_DEVICE_ALLOWLISTED"
+  ],
+  "notes": [
+    "Release bundle ships adapter scripts plus bridge protocol docs",
+    "Hardware-specific UX still depends on the device family"
+  ]
+}

@@ -22,6 +22,7 @@ from .directshell import DirectShellClient
 from .doctor import run_doctor
 from .mcp_server import NovaAdaptMCPServer
 from .native_daemon import NativeExecutionDaemon
+from .native_grpc import NativeExecutionGRPCServer
 from .native_http import NativeExecutionHTTPServer
 from .server import run_server
 from .service import NovaAdaptService
@@ -865,13 +866,13 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     directshell_check_cmd.add_argument(
         "--transport",
-        choices=["native", "subprocess", "http", "daemon", "browser"],
+        choices=["native", "subprocess", "http", "grpc", "daemon", "browser"],
         default=None,
         help="Optional DirectShell transport override for probe",
     )
     directshell_check_cmd.add_argument(
         "--native-fallback-transport",
-        choices=["subprocess", "http", "daemon", "browser"],
+        choices=["subprocess", "http", "grpc", "daemon", "browser"],
         default=None,
         help="Fallback transport used when native transport action execution fails",
     )
@@ -879,6 +880,11 @@ def _build_parser() -> argparse.ArgumentParser:
         "--http-token",
         default=None,
         help="Optional DirectShell HTTP token override",
+    )
+    directshell_check_cmd.add_argument(
+        "--grpc-token",
+        default=None,
+        help="Optional DirectShell gRPC token override",
     )
     directshell_check_cmd.add_argument(
         "--daemon-token",
@@ -1040,6 +1046,39 @@ def _build_parser() -> argparse.ArgumentParser:
         type=int,
         default=30,
         help="Per-connection timeout in seconds",
+    )
+
+    native_grpc_cmd = sub.add_parser(
+        "native-grpc",
+        help="Run built-in Native DirectShell-compatible gRPC endpoint",
+    )
+    native_grpc_cmd.add_argument(
+        "--host",
+        default=os.getenv("DIRECTSHELL_GRPC_HOST", "127.0.0.1"),
+        help="Bind host",
+    )
+    native_grpc_cmd.add_argument(
+        "--port",
+        type=int,
+        default=int(os.getenv("DIRECTSHELL_GRPC_PORT", "8767")),
+        help="Bind port",
+    )
+    native_grpc_cmd.add_argument(
+        "--grpc-token",
+        default=os.getenv("DIRECTSHELL_GRPC_TOKEN", ""),
+        help="Optional shared token required by gRPC requests",
+    )
+    native_grpc_cmd.add_argument(
+        "--timeout-seconds",
+        type=int,
+        default=30,
+        help="Request timeout in seconds",
+    )
+    native_grpc_cmd.add_argument(
+        "--max-workers",
+        type=int,
+        default=8,
+        help="Thread pool size for unary gRPC handlers",
     )
 
     gateway_daemon_cmd = sub.add_parser(
@@ -2315,6 +2354,7 @@ def main() -> None:
             client = DirectShellClient(
                 transport=args.transport,
                 http_token=args.http_token,
+                grpc_token=args.grpc_token,
                 daemon_token=args.daemon_token,
                 native_fallback_transport=args.native_fallback_transport,
                 timeout_seconds=max(1, int(args.timeout_seconds)),
@@ -2479,6 +2519,17 @@ def main() -> None:
                 timeout_seconds=max(1, int(args.timeout_seconds)),
             )
             daemon.serve_forever()
+            return
+
+        if args.command == "native-grpc":
+            grpc_server = NativeExecutionGRPCServer(
+                host=str(args.host or "127.0.0.1"),
+                port=max(0, int(args.port)),
+                grpc_token=str(args.grpc_token or "").strip() or None,
+                timeout_seconds=max(1, int(args.timeout_seconds)),
+                max_workers=max(1, int(args.max_workers)),
+            )
+            grpc_server.serve_forever()
             return
 
         if args.command == "gateway-daemon":

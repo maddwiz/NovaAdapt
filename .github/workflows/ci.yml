@@ -83,6 +83,10 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: Install optional gRPC runtime dependency
+        run: |
+          python -m pip install grpcio
+
       - name: Run Python tests
         run: |
           PYTHONPATH=core:shared python -m unittest discover -s tests -p 'test_*.py' -v
@@ -122,6 +126,10 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: Install optional gRPC runtime dependency
+        run: |
+          python -m pip install grpcio
+
       - name: Run native/runtime transport tests
         shell: bash
         run: |
@@ -139,6 +147,7 @@ jobs:
               'test_browser_executor.py',
               'test_directshell.py',
               'test_native_http.py',
+              'test_native_grpc.py',
               'test_native_daemon.py',
           ]
           for pattern in test_patterns:

@@ -21,10 +21,10 @@ class ExecutionResult:
 
 
 class DirectShellClient:
-    """Thin subprocess adapter.
+    """Execution transport adapter for NovaAdapt runtime control.
 
-    This keeps the integration explicit and deterministic while allowing dry-runs
-    during early MVP development.
+    The client supports the built-in native executor plus optional subprocess,
+    HTTP, gRPC, daemon, and browser transports while preserving dry-run behavior.
     """
 
     def __init__(
@@ -33,6 +33,8 @@ class DirectShellClient:
         transport: str | None = None,
         http_url: str | None = None,
         http_token: str | None = None,
+        grpc_target: str | None = None,
+        grpc_token: str | None = None,
         daemon_socket: str | None = None,
         daemon_host: str | None = None,
         daemon_port: int | None = None,
@@ -47,6 +49,9 @@ class DirectShellClient:
         self.http_url = http_url or os.getenv("DIRECTSHELL_HTTP_URL", "http://127.0.0.1:8765/execute")
         raw_http_token = os.getenv("DIRECTSHELL_HTTP_TOKEN", "") if http_token is None else str(http_token)
         self.http_token = raw_http_token.strip() or None
+        self.grpc_target = grpc_target or os.getenv("DIRECTSHELL_GRPC_TARGET", "127.0.0.1:8767")
+        raw_grpc_token = os.getenv("DIRECTSHELL_GRPC_TOKEN", "") if grpc_token is None else str(grpc_token)
+        self.grpc_token = raw_grpc_token.strip() or None
         self.daemon_socket = (
             os.getenv("DIRECTSHELL_DAEMON_SOCKET", "/tmp/directshell.sock")
             if daemon_socket is None
@@ -68,16 +73,16 @@ class DirectShellClient:
         self.timeout_seconds = timeout_seconds
         self.native_executor = native_executor or NativeDesktopExecutor(timeout_seconds=timeout_seconds)
         self.browser_executor = browser_executor or BrowserExecutor(timeout_seconds=timeout_seconds)
-        self._supported_transports = {"native", "subprocess", "http", "daemon", "browser"}
+        self._supported_transports = {"native", "subprocess", "http", "grpc", "daemon", "browser"}
         if self.transport not in self._supported_transports:
             raise RuntimeError(
                 f"Unsupported DirectShell transport '{self.transport}'. "
-                "Use 'native', 'subprocess', 'http', 'daemon', or 'browser'."
+                "Use 'native', 'subprocess', 'http', 'grpc', 'daemon', or 'browser'."
             )
         if self.native_fallback_transport and self.native_fallback_transport not in self._supported_transports:
             raise RuntimeError(
                 f"Unsupported DirectShell native fallback transport '{self.native_fallback_transport}'. "
-                "Use 'subprocess', 'http', 'daemon', or 'browser'."
+                "Use 'subprocess', 'http', 'grpc', 'daemon', or 'browser'."
             )
 
     def execute_action(self, action: dict[str, Any], dry_run: bool = True) -> ExecutionResult:
@@ -124,6 +129,8 @@ class DirectShellClient:
             return probe
         if transport == "http":
             return self._probe_http()
+        if transport == "grpc":
+            return self._probe_grpc()
         if transport == "daemon":
             return self._probe_daemon()
         if transport == "browser":
@@ -134,7 +141,7 @@ class DirectShellClient:
             "ok": False,
             "transport": transport,
             "error": "unsupported transport",
-            "supported_transports": ["native", "subprocess", "http", "daemon", "browser"],
+            "supported_transports": ["native", "subprocess", "http", "grpc", "daemon", "browser"],
         }
 
     def _probe_transport(self, transport: str) -> dict[str, Any]:
@@ -161,12 +168,14 @@ class DirectShellClient:
             return self._execute_subprocess(action)
         if transport == "http":
             return self._execute_http(action)
+        if transport == "grpc":
+            return self._execute_grpc(action)
         if transport == "daemon":
             return self._execute_daemon(action)
         if transport == "browser":
             return self._execute_browser(action)
         raise RuntimeError(
-            f"Unsupported DirectShell transport '{transport}'. Use 'native', 'subprocess', 'http', 'daemon', or 'browser'."
+            f"Unsupported DirectShell transport '{transport}'. Use 'native', 'subprocess', 'http', 'grpc', 'daemon', or 'browser'."
         )
 
     def _execute_native(self, action: dict[str, Any]) -> ExecutionResult:
@@ -360,6 +369,84 @@ class DirectShellClient:
                 "health_url": health_url,
                 "error": f"HTTP transport error: {exc.reason}",
             }
+
+    def _grpc_unary_call(self, method_path: str, payload: dict[str, Any]) -> dict[str, Any]:
+        try:
+            import grpc  # type: ignore
+        except ImportError as exc:
+            raise RuntimeError(
+                "gRPC transport requires 'grpcio'. Install with 'pip install -e \".[grpc]\"' or 'pip install grpcio'."
+            ) from exc
+
+        target = str(self.grpc_target or "").strip()
+        if not target:
+            raise RuntimeError("DIRECTSHELL_GRPC_TARGET is not configured")
+        metadata: list[tuple[str, str]] = []
+        if self.grpc_token:
+            metadata.append(("x-directshell-token", self.grpc_token))
+
+        def _serialize(obj: dict[str, Any]) -> bytes:
+            return json.dumps(obj, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+
+        def _deserialize(raw: bytes) -> dict[str, Any]:
+            if not raw:
+                return {}
+            parsed = json.loads(raw.decode("utf-8"))
+            if isinstance(parsed, dict):
+                return parsed
+            raise RuntimeError("gRPC response was not a JSON object")
+
+        try:
+            with grpc.insecure_channel(target) as channel:
+                rpc = channel.unary_unary(
+                    method_path,
+                    request_serializer=_serialize,
+                    response_deserializer=_deserialize,
+                )
+                response = rpc(payload, timeout=self.timeout_seconds, metadata=metadata)
+        except grpc.RpcError as exc:
+            code = exc.code()
+            code_name = getattr(code, "name", str(code))
+            detail = exc.details() or "unknown gRPC error"
+            raise RuntimeError(f"gRPC {code_name}: {detail}") from exc
+        if isinstance(response, dict):
+            return response
+        raise RuntimeError("gRPC response was not a JSON object")
+
+    def _execute_grpc(self, action: dict[str, Any]) -> ExecutionResult:
+        try:
+            parsed = self._grpc_unary_call(
+                "/novaadapt.runtime.NativeExecutor/Execute",
+                {"action": action},
+            )
+        except RuntimeError as exc:
+            return ExecutionResult(action=action, status="failed", output=str(exc))
+
+        return ExecutionResult(
+            action=action,
+            status=str(parsed.get("status", "ok")),
+            output=str(parsed.get("output", json.dumps(parsed, ensure_ascii=True))).strip(),
+        )
+
+    def _probe_grpc(self) -> dict[str, Any]:
+        try:
+            parsed = self._grpc_unary_call(
+                "/novaadapt.runtime.NativeExecutor/Health",
+                {"deep": True},
+            )
+        except RuntimeError as exc:
+            return {
+                "ok": False,
+                "transport": "grpc",
+                "target": str(self.grpc_target or ""),
+                "error": str(exc),
+            }
+
+        out = dict(parsed)
+        out.setdefault("transport", "grpc")
+        out.setdefault("target", str(self.grpc_target or ""))
+        out["ok"] = bool(out.get("ok", False))
+        return out
 
     def _execute_daemon(self, action: dict[str, Any]) -> ExecutionResult:
         body: dict[str, Any] = {"action": action}

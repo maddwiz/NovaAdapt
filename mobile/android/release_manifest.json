@@ -1,0 +1,20 @@
+{
+  "artifact": "novaadapt-android-pwa",
+  "surface": "operator_pwa",
+  "entrypoint": "view/realtime_console.html",
+  "supported_platforms": ["android"],
+  "features": [
+    "bridge_websocket",
+    "terminal_control",
+    "browser_control",
+    "vision_control",
+    "mobile_control",
+    "iot_control",
+    "artifact_preview",
+    "template_marketplace"
+  ],
+  "notes": [
+    "Installable via browser PWA flow",
+    "Requires hosted view bundle over a reachable origin"
+  ]
+}

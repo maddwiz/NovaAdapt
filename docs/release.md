@@ -10,7 +10,18 @@ Outputs to `dist/`:
 - bridge binary
 - python wheel/sdist
 - runtime bundle tarball
+- Android operator PWA zip
+- wearable adapter bundle tarball
 - `SHA256SUMS`
+
+Migration and operator references:
+
+- `/Users/desmondpottle/Documents/New project/NovaAdapt/docs/migration_guide.md`
+- `/Users/desmondpottle/Documents/New project/NovaAdapt/mobile/android/README.md`
+- `/Users/desmondpottle/Documents/New project/NovaAdapt/wearables/release_manifest.json`
+- `/Users/desmondpottle/Documents/New project/NovaAdapt/scripts/demo_vision_desktop.sh`
+- `/Users/desmondpottle/Documents/New project/NovaAdapt/scripts/demo_mobile_banking.sh`
+- `/Users/desmondpottle/Documents/New project/NovaAdapt/scripts/demo_iot_swarm.sh`
 
 ## Token Rotation
 

@@ -37,14 +37,17 @@ Implemented now:
   - Records operator feedback (`/feedback`) into memory for self-improvement loops.
   - Supports automatic plan self-healing by generating and executing replacement actions for failed steps.
   - Supports automatic raw-run self-healing plus NovaSpine consolidation/dream hooks after runs, repairs, and strong feedback.
+  - Exposes an optional built-in DirectShell-compatible gRPC runtime (`novaadapt native-grpc`) alongside native, HTTP, daemon, subprocess, and browser transports.
   - Exposes HTTP API with optional bearer auth and async jobs.
 - `bridge` relay service in Go for secure remote forwarding into core API.
   - Includes realtime WebSocket control channel (`/ws`) for events + command relay.
 - `view` static realtime console UI for bridge operations (`view/realtime_console.html`).
 - `view` realtime console now includes xterm.js terminal session streaming, typed websocket browser controls (`browser_*`), bridge session token tooling, runtime device-allowlist controls, and PWA install support for Android.
+- `mobile/android` Android-ready operator PWA packaging metadata (`mobile/android/README.md`, `mobile/android/release_manifest.json`).
 - `desktop` Tauri operator shell (`desktop/tauri-shell`) for objective queueing, plan approval/rejection/failed-step retry/undo, job cancellation, and event visibility (production-ready).
 - `mobile` iOS SwiftUI companion source (`mobile/ios/NovaAdaptCompanion`) with objective/plan/job controls, websocket feed, remote terminal controls, bridge session issue/revoke flows, and bridge allowlist/device-id controls (production-ready).
 - `wearables` Halo/Omi + XREAL X1 adapters (`wearables/halo_bridge.py`, `wearables/xreal_bridge.py`) with bridge session leasing + optional async wait flow.
+- `wearables/release_manifest.json` release metadata for supported wearable adapter families.
 
 Release posture:
 - Core API/CLI, bridge relay, runtime executors, browser executor, view console, desktop shell, and iOS companion are production-ready for operator deployment.
@@ -53,8 +56,8 @@ Release posture:
 Planned next:
 
 - Harden wearable integrations into signed release artifacts across supported hardware variants.
-- Expand the built-in execution runtime with a richer gRPC backend for deterministic control.
-- Expand native clients with additional platform parity (Android and wearable UX).
+- Expand native clients with additional platform parity beyond the Android operator PWA (native Android shell + deeper wearable UX).
+- Publish benchmark baselines and recorded demos against the production-track operator stack.
 
 ## Monorepo Layout
 
@@ -570,7 +573,7 @@ make test-go   # Go bridge tests only
 make test-clients  # Desktop/iOS client source checks
 make smoke-browser # Real Playwright browser smoke (skips unless browser runtime installed)
 make build-bridge
-make release-artifacts      # Build dist artifacts (bridge + python + runtime bundle)
+make release-artifacts      # Build dist artifacts (bridge + python + runtime + Android PWA + wearables bundles)
 make rotate-tokens-dry-run  # Preview token rotation updates
 ```
 
@@ -762,10 +765,33 @@ Build release artifacts (bridge binary, wheel/sdist, runtime bundle, checksums):
 ./installer/build_release_artifacts.sh v0.1.0
 ```
 
+Release outputs now include:
+
+- `dist/novaadapt-runtime-<version>.tar.gz`
+- `dist/novaadapt-android-pwa-<version>.zip`
+- `dist/novaadapt-wearables-<version>.tar.gz`
+- python wheel / sdist
+- bridge binary
+- `dist/SHA256SUMS`
+
+Migration guide:
+
+- `/Users/desmondpottle/Documents/New project/NovaAdapt/docs/migration_guide.md`
+
 GitHub release workflow behavior:
 
 - Push to any branch: runs release build/test as a dry artifact pipeline (no GitHub Release publish).
 - Push a tag or dispatch with `release_tag`: builds artifacts and publishes release assets.
+
+## Demo Scripts
+
+Operator-ready demo entrypoints live under `/Users/desmondpottle/Documents/New project/NovaAdapt/scripts`:
+
+- `demo_vision_desktop.sh`
+- `demo_mobile_banking.sh`
+- `demo_iot_swarm.sh`
+
+Each script defaults to preview mode and can be escalated to live execution with explicit env flags.
 
 ## Python API Client
 
@@ -1009,23 +1035,27 @@ novaadapt plan-approve \
 - `native` (default): built-in NovaAdapt desktop executor (no external DirectShell binary required).
 - `subprocess`: runs `directshell exec --json ...` using `DIRECTSHELL_BIN`.
 - `http`: sends `POST` to `DIRECTSHELL_HTTP_URL` with body `{"action": ...}`.
+- `grpc`: sends JSON-framed unary calls to `DIRECTSHELL_GRPC_TARGET`.
 - `http` can target external DirectShell HTTP runtime or NovaAdapt's built-in endpoint (`novaadapt native-http`).
+- `grpc` can target external DirectShell gRPC runtime or NovaAdapt's built-in endpoint (`novaadapt native-grpc`).
 - `daemon`: sends framed JSON RPC over daemon socket/TCP (`DIRECTSHELL_DAEMON_SOCKET` or `DIRECTSHELL_DAEMON_HOST`/`DIRECTSHELL_DAEMON_PORT`). Can target external DirectShell or NovaAdapt's built-in daemon (`novaadapt native-daemon`).
 
 Execution dependency:
 
 - NovaAdapt now includes a built-in native execution runtime for common desktop actions.
-- External DirectShell transports (`subprocess`, `http`, `daemon`) are optional for advanced or pre-existing deployments.
+- External or isolated transports (`subprocess`, `http`, `grpc`, `daemon`) are optional for advanced or pre-existing deployments.
 - Use `novaadapt directshell-check` to verify the configured transport before running with `--execute`.
 - Full runtime contract: `docs/directshell_runtime.md`
 
 Environment variables:
 
-- `DIRECTSHELL_TRANSPORT` = `native`, `subprocess`, `http`, or `daemon`
-- `DIRECTSHELL_NATIVE_FALLBACK_TRANSPORT` = `subprocess`, `http`, or `daemon` (optional; only used when primary transport is `native`)
+- `DIRECTSHELL_TRANSPORT` = `native`, `subprocess`, `http`, `grpc`, or `daemon`
+- `DIRECTSHELL_NATIVE_FALLBACK_TRANSPORT` = `subprocess`, `http`, `grpc`, or `daemon` (optional; only used when primary transport is `native`)
 - `DIRECTSHELL_BIN` (subprocess mode)
 - `DIRECTSHELL_HTTP_URL` (http mode, default `http://127.0.0.1:8765/execute`)
 - `DIRECTSHELL_HTTP_TOKEN` (optional shared token sent as `X-DirectShell-Token` header in http mode)
+- `DIRECTSHELL_GRPC_TARGET` (grpc mode, default `127.0.0.1:8767`)
+- `DIRECTSHELL_GRPC_TOKEN` (optional shared token sent as `x-directshell-token` metadata in grpc mode)
 - `DIRECTSHELL_DAEMON_SOCKET` (daemon Unix socket path, default `/tmp/directshell.sock`; set empty to force TCP)
 - `DIRECTSHELL_DAEMON_HOST` / `DIRECTSHELL_DAEMON_PORT` (daemon TCP endpoint, default `127.0.0.1:8766`)
 - `DIRECTSHELL_DAEMON_TOKEN` (optional shared token included in daemon payloads and enforceable by `novaadapt native-daemon`)
@@ -1036,6 +1066,7 @@ Readiness probe:
 novaadapt directshell-check
 novaadapt directshell-check --transport native --native-fallback-transport http
 novaadapt directshell-check --transport http --http-token YOUR_DS_TOKEN
+novaadapt directshell-check --transport grpc --grpc-token YOUR_DS_TOKEN
 novaadapt directshell-check --transport daemon --daemon-token YOUR_DS_TOKEN
 novaadapt directshell-check --transport daemon
 ```
@@ -1056,6 +1087,14 @@ Run built-in HTTP transport endpoint:
 novaadapt native-http --host 127.0.0.1 --port 8765
 # optional HTTP auth token
 novaadapt native-http --host 127.0.0.1 --port 8765 --http-token YOUR_DS_TOKEN
+```
+
+Run built-in gRPC transport endpoint:
+
+```bash
+novaadapt native-grpc --host 127.0.0.1 --port 8767
+# optional gRPC auth token
+novaadapt native-grpc --host 127.0.0.1 --port 8767 --grpc-token YOUR_DS_TOKEN
 ```
 
 Run local operator stack with isolated runtime process:
