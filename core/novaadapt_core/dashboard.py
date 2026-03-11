@@ -107,6 +107,61 @@ def render_dashboard_html() -> str:
       grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
       margin-bottom: 12px;
     }
+    .surface-grid {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(auto-fit, minmax(330px, 1fr));
+      margin-bottom: 12px;
+    }
+    .surface-list {
+      display: grid;
+      gap: 10px;
+      max-height: 360px;
+      overflow: auto;
+    }
+    .surface-item {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px;
+    }
+    .surface-item-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: baseline;
+      margin-bottom: 8px;
+    }
+    .surface-meta {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+      margin: 6px 0 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .surface-output {
+      margin-top: 10px;
+      border: 1px solid var(--border);
+      background: #0f141b;
+      color: var(--text);
+      border-radius: 10px;
+      padding: 10px;
+      min-height: 88px;
+      max-height: 260px;
+      overflow: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+    .surface-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 10px;
+    }
     .obs-list {
       display: grid;
       gap: 6px;
@@ -359,6 +414,75 @@ def render_dashboard_html() -> str:
       <div class=\"control-status\" id=\"governance-status\"></div>
     </div>
 
+    <div class=\"surface-grid\">
+      <div class=\"card\">
+        <div class=\"section-title\">Terminal Control</div>
+        <div class=\"control-grid\">
+          <div class=\"control-field\">
+            <label for=\"terminal-command\">Command</label>
+            <input id=\"terminal-command\" placeholder=\"npm test\" />
+          </div>
+          <div class=\"control-field\">
+            <label for=\"terminal-cwd\">Working Directory</label>
+            <input id=\"terminal-cwd\" placeholder=\"/workspace/project\" />
+          </div>
+          <div class=\"control-field\">
+            <label for=\"terminal-shell\">Shell Override</label>
+            <input id=\"terminal-shell\" placeholder=\"/bin/zsh\" />
+          </div>
+        </div>
+        <div class=\"control-actions\">
+          <button id=\"terminal-refresh\">Refresh Sessions</button>
+          <button id=\"terminal-start\">Start Session</button>
+          <button id=\"terminal-close\" class=\"warn\">Close Session</button>
+        </div>
+        <div class=\"control-status\" id=\"terminal-status\"></div>
+        <div id=\"terminal-sessions\" class=\"surface-list\"></div>
+        <div class=\"control-grid\" style=\"margin-top: 10px;\">
+          <div class=\"control-field full\">
+            <label for=\"terminal-input\">Terminal Input</label>
+            <textarea id=\"terminal-input\" placeholder=\"ls -la\"></textarea>
+          </div>
+        </div>
+        <div class=\"control-actions\">
+          <button id=\"terminal-send\">Send Input</button>
+          <button id=\"terminal-ctrlc\">Send Ctrl+C</button>
+        </div>
+        <pre id=\"terminal-output\" class=\"surface-output\">No terminal session attached.</pre>
+      </div>
+
+      <div class=\"card\">
+        <div class=\"section-title\">Agent Marketplace</div>
+        <div class=\"control-grid\">
+          <div class=\"control-field\">
+            <label for=\"template-tag\">Tag Filter</label>
+            <input id=\"template-tag\" placeholder=\"mobile, ops, iot\" />
+          </div>
+          <div class=\"control-field full\">
+            <label for=\"template-manifest\">Import Manifest JSON</label>
+            <textarea id=\"template-manifest\" placeholder='{"name":"My agent","objective":"..."}'></textarea>
+          </div>
+        </div>
+        <div class=\"control-actions\">
+          <button id=\"template-refresh\">Refresh Templates</button>
+          <button id=\"template-export\">Export Current Objective</button>
+          <button id=\"template-import\">Import Manifest</button>
+        </div>
+        <div class=\"control-status\" id=\"template-status\"></div>
+        <div class=\"surface-grid\" style=\"margin-top: 10px;\">
+          <div>
+            <div class=\"label\">Local Templates</div>
+            <div id=\"template-library\" class=\"surface-list\"></div>
+          </div>
+          <div>
+            <div class=\"label\">Gallery</div>
+            <div id=\"template-gallery\" class=\"surface-list\"></div>
+          </div>
+        </div>
+        <pre id=\"template-output\" class=\"surface-output\">No template activity yet.</pre>
+      </div>
+    </div>
+
     <div class=\"obs-grid\" id=\"observability\"></div>
 
     <div class=\"tables\">
@@ -427,14 +551,24 @@ def render_dashboard_html() -> str:
       lastAuditId: 0,
       refreshScheduled: null,
       refreshInFlight: false,
+      terminalSessionId: '',
+      terminalNextSeq: 0,
+      terminalPollTimer: null,
     };
     const authToken = new URLSearchParams(window.location.search).get('token');
     const actionStatus = document.getElementById('action-status');
     const governanceStatus = document.getElementById('governance-status');
+    const terminalStatus = document.getElementById('terminal-status');
+    const templateStatus = document.getElementById('template-status');
     const jobsTbody = document.getElementById('jobs');
     const plansTbody = document.getElementById('plans');
     const artifactsEl = document.getElementById('artifacts');
     const observabilityEl = document.getElementById('observability');
+    const terminalSessionsEl = document.getElementById('terminal-sessions');
+    const terminalOutputEl = document.getElementById('terminal-output');
+    const templateLibraryEl = document.getElementById('template-library');
+    const templateGalleryEl = document.getElementById('template-gallery');
+    const templateOutputEl = document.getElementById('template-output');
     const operatorObjective = document.getElementById('operator-objective');
     const runAsyncButton = document.getElementById('run-async');
     const createPlanButton = document.getElementById('create-plan');
@@ -443,6 +577,14 @@ def render_dashboard_html() -> str:
     const togglePauseButton = document.getElementById('toggle-pause');
     const resetUsageButton = document.getElementById('reset-usage');
     const cancelAllJobsButton = document.getElementById('cancel-all-jobs');
+    const terminalRefreshButton = document.getElementById('terminal-refresh');
+    const terminalStartButton = document.getElementById('terminal-start');
+    const terminalCloseButton = document.getElementById('terminal-close');
+    const terminalSendButton = document.getElementById('terminal-send');
+    const terminalCtrlCButton = document.getElementById('terminal-ctrlc');
+    const templateRefreshButton = document.getElementById('template-refresh');
+    const templateExportButton = document.getElementById('template-export');
+    const templateImportButton = document.getElementById('template-import');
 
     function metricColor(v, ok=0){
       if (Number(v) <= ok) return 'ok';
@@ -473,6 +615,16 @@ def render_dashboard_html() -> str:
       governanceStatus.className = `control-status ${ok ? 'ok' : 'bad'}`;
     }
 
+    function setTerminalStatus(message, ok=true){
+      terminalStatus.textContent = String(message || '');
+      terminalStatus.className = `control-status ${ok ? 'ok' : 'bad'}`;
+    }
+
+    function setTemplateStatus(message, ok=true){
+      templateStatus.textContent = String(message || '');
+      templateStatus.className = `control-status ${ok ? 'ok' : 'bad'}`;
+    }
+
     function escapeHTML(value){
       return String(value ?? '')
         .replaceAll('&', '&amp;')
@@ -492,6 +644,19 @@ def render_dashboard_html() -> str:
     function formatMoney(value){
       const amount = Number(value || 0);
       return `$${amount.toFixed(4)}`;
+    }
+
+    function renderSurfaceOutput(target, payload, fallback){
+      if (!target) return;
+      if (payload == null || payload === '') {
+        target.textContent = String(fallback || '');
+        return;
+      }
+      if (typeof payload === 'string') {
+        target.textContent = payload;
+        return;
+      }
+      target.textContent = JSON.stringify(payload, null, 2);
     }
 
     function readInteger(id, fallback){
@@ -817,6 +982,401 @@ def render_dashboard_html() -> str:
       }).join('');
     }
 
+    function terminalCommandPayload(){
+      const command = document.getElementById('terminal-command').value.trim();
+      const cwd = document.getElementById('terminal-cwd').value.trim();
+      const shell = document.getElementById('terminal-shell').value.trim();
+      return {
+        command: command || null,
+        cwd: cwd || null,
+        shell: shell || null,
+      };
+    }
+
+    function stopTerminalPolling(){
+      if (state.terminalPollTimer) {
+        clearTimeout(state.terminalPollTimer);
+        state.terminalPollTimer = null;
+      }
+    }
+
+    function attachTerminalSession(sessionId, options={}){
+      state.terminalSessionId = String(sessionId || '').trim();
+      state.terminalNextSeq = Number(options.nextSeq || 0);
+      stopTerminalPolling();
+      if (!state.terminalSessionId) {
+        renderSurfaceOutput(terminalOutputEl, null, 'No terminal session attached.');
+        setTerminalStatus('Idle', true);
+        return;
+      }
+      renderSurfaceOutput(terminalOutputEl, '', 'No terminal output yet.');
+      setTerminalStatus(`Attached ${options.command || state.terminalSessionId}`, true);
+      refreshTerminalOutput();
+    }
+
+    function renderTerminalSessions(items){
+      const sessions = Array.isArray(items) ? items : [];
+      if (!sessions.length) {
+        terminalSessionsEl.innerHTML = '<div class=\"surface-item\"><div class=\"surface-meta\">No terminal sessions available.</div></div>';
+        if (!state.terminalSessionId) {
+          renderSurfaceOutput(terminalOutputEl, null, 'No terminal session attached.');
+        }
+        return;
+      }
+      terminalSessionsEl.innerHTML = '';
+      for (const session of sessions) {
+        const card = document.createElement('div');
+        card.className = 'surface-item';
+        const sessionId = String(session?.id || '');
+        const command = Array.isArray(session?.command) ? session.command.join(' ') : '';
+        const open = Boolean(session?.open);
+        card.innerHTML = `
+          <div class=\"surface-item-head\">
+            <strong>${escapeHTML(command || sessionId || 'terminal')}</strong>
+            <span class=\"mono\">${escapeHTML(open ? 'open' : `exit ${session?.exit_code ?? '-'}`)}</span>
+          </div>
+          <div class=\"surface-meta\">${escapeHTML(String(session?.cwd || '(default cwd)'))}</div>
+          <div class=\"surface-meta\">pid ${escapeHTML(String(session?.pid ?? '-'))} • seq ${escapeHTML(String(session?.last_seq ?? 0))}</div>
+        `;
+        const actions = document.createElement('div');
+        actions.className = 'surface-actions';
+
+        const attachButton = document.createElement('button');
+        attachButton.className = state.terminalSessionId === sessionId ? 'mini' : 'mini';
+        attachButton.textContent = state.terminalSessionId === sessionId ? 'Attached' : 'Attach';
+        attachButton.disabled = state.terminalSessionId === sessionId;
+        attachButton.addEventListener('click', () => {
+          attachTerminalSession(sessionId, { nextSeq: 0, command });
+        });
+        actions.appendChild(attachButton);
+
+        const closeButton = document.createElement('button');
+        closeButton.className = 'mini warn';
+        closeButton.textContent = 'Close';
+        closeButton.addEventListener('click', async () => {
+          if (!confirm(`Close terminal session ${command || sessionId}?`)) return;
+          try {
+            await postJSON(`/terminal/sessions/${encodeURIComponent(sessionId)}/close`, {});
+            if (state.terminalSessionId === sessionId) attachTerminalSession('');
+            await refreshTerminalSessions();
+          } catch (err) {
+            setTerminalStatus(String(err), false);
+          }
+        });
+        actions.appendChild(closeButton);
+        card.appendChild(actions);
+        terminalSessionsEl.appendChild(card);
+      }
+    }
+
+    async function refreshTerminalSessions(){
+      const items = await fetchJSON('/terminal/sessions');
+      renderTerminalSessions(items);
+      const active = (Array.isArray(items) ? items : []).find(item => String(item?.id || '') === state.terminalSessionId);
+      if (!active && state.terminalSessionId) {
+        attachTerminalSession('');
+      }
+      return items;
+    }
+
+    async function refreshTerminalOutput(){
+      if (!state.terminalSessionId) return;
+      try {
+        const result = await fetchJSON(
+          `/terminal/sessions/${encodeURIComponent(state.terminalSessionId)}/output?since_seq=${Math.max(0, state.terminalNextSeq)}&limit=400`
+        );
+        const chunks = Array.isArray(result?.chunks) ? result.chunks : [];
+        if (chunks.length) {
+          let existing = terminalOutputEl.textContent || '';
+          if (existing === 'No terminal session attached.') existing = '';
+          if (existing === 'No terminal output yet.') existing = '';
+          for (const chunk of chunks) {
+            state.terminalNextSeq = Math.max(state.terminalNextSeq, Number(chunk?.seq || state.terminalNextSeq));
+            existing += String(chunk?.data || '');
+          }
+          renderSurfaceOutput(terminalOutputEl, existing, 'No terminal output yet.');
+          terminalOutputEl.scrollTop = terminalOutputEl.scrollHeight;
+        }
+        stopTerminalPolling();
+        if (result?.open) {
+          setTerminalStatus('Streaming', true);
+          state.terminalPollTimer = setTimeout(refreshTerminalOutput, 300);
+        } else {
+          setTerminalStatus(`Closed (${String(result?.exit_code ?? '-')})`, true);
+        }
+      } catch (err) {
+        stopTerminalPolling();
+        setTerminalStatus(String(err), false);
+      }
+    }
+
+    async function handleTerminalAction(kind){
+      const buttonMap = {
+        refresh: terminalRefreshButton,
+        start: terminalStartButton,
+        close: terminalCloseButton,
+        send: terminalSendButton,
+        ctrlc: terminalCtrlCButton,
+      };
+      const button = buttonMap[kind];
+      if (!button) return;
+      button.disabled = true;
+      try {
+        if (kind === 'refresh') {
+          await refreshTerminalSessions();
+          setTerminalStatus('Terminal sessions refreshed', true);
+        } else if (kind === 'start') {
+          const session = await postJSON('/terminal/sessions', terminalCommandPayload());
+          await refreshTerminalSessions();
+          attachTerminalSession(session?.id, {
+            nextSeq: 0,
+            command: Array.isArray(session?.command) ? session.command.join(' ') : '',
+          });
+        } else if (kind === 'close') {
+          if (!state.terminalSessionId) throw new Error('No terminal session attached');
+          await postJSON(`/terminal/sessions/${encodeURIComponent(state.terminalSessionId)}/close`, {});
+          attachTerminalSession('');
+          await refreshTerminalSessions();
+        } else if (kind === 'send') {
+          if (!state.terminalSessionId) throw new Error('No terminal session attached');
+          const input = document.getElementById('terminal-input').value;
+          if (!String(input || '').trim()) throw new Error('Terminal input is required');
+          await postJSON(`/terminal/sessions/${encodeURIComponent(state.terminalSessionId)}/input`, { input: `${input}\n` });
+          document.getElementById('terminal-input').value = '';
+          await refreshTerminalOutput();
+        } else if (kind === 'ctrlc') {
+          if (!state.terminalSessionId) throw new Error('No terminal session attached');
+          await postJSON(`/terminal/sessions/${encodeURIComponent(state.terminalSessionId)}/input`, { input: '\\u0003' });
+          await refreshTerminalOutput();
+        }
+      } catch (err) {
+        setTerminalStatus(String(err), false);
+      } finally {
+        button.disabled = false;
+      }
+    }
+
+    function templateTagQuery(){
+      const tag = document.getElementById('template-tag').value.trim();
+      return tag ? `?tag=${encodeURIComponent(tag)}` : '';
+    }
+
+    function summarizeTemplate(template){
+      const tags = Array.isArray(template?.tags) ? template.tags.filter(Boolean).join(', ') : '';
+      const strategy = String(template?.strategy || 'single');
+      const source = String(template?.source || 'local');
+      const memory = Array.isArray(template?.memory_snapshot) ? template.memory_snapshot.length : 0;
+      const parts = [`strategy ${strategy}`, `source ${source}`];
+      if (tags) parts.push(`tags ${tags}`);
+      if (memory > 0) parts.push(`memory ${memory}`);
+      return parts.join(' • ');
+    }
+
+    function renderTemplateCards(target, templates, actionsFactory, emptyMessage){
+      const items = Array.isArray(templates) ? templates : [];
+      if (!items.length) {
+        target.innerHTML = `<div class=\"surface-item\"><div class=\"surface-meta\">${escapeHTML(emptyMessage)}</div></div>`;
+        return;
+      }
+      target.innerHTML = '';
+      for (const template of items) {
+        const card = document.createElement('div');
+        card.className = 'surface-item';
+        const share = template?.share && typeof template.share === 'object' ? template.share : {};
+        card.innerHTML = `
+          <div class=\"surface-item-head\">
+            <strong>${escapeHTML(String(template?.name || template?.template_id || 'Template'))}</strong>
+            <span class=\"mono\">${escapeHTML(String(template?.updated_at || template?.created_at || template?.source || ''))}</span>
+          </div>
+          <div class=\"surface-meta\">${escapeHTML(String(template?.description || template?.objective || '(no description)'))}</div>
+          <div class=\"surface-meta\">${escapeHTML(summarizeTemplate(template))}</div>
+          <div class=\"surface-meta\">${escapeHTML(String(template?.objective || '(no objective)'))}</div>
+          ${share?.share_url ? `<div class=\"surface-meta mono\">${escapeHTML(String(share.share_url))}</div>` : ''}
+        `;
+        const actions = document.createElement('div');
+        actions.className = 'surface-actions';
+        for (const action of actionsFactory(template)) {
+          const button = document.createElement('button');
+          button.className = action.className || '';
+          button.textContent = action.label;
+          button.addEventListener('click', action.onClick);
+          actions.appendChild(button);
+        }
+        card.appendChild(actions);
+        target.appendChild(card);
+      }
+    }
+
+    function renderTemplateLibrary(payload){
+      renderTemplateCards(
+        templateLibraryEl,
+        payload?.templates || [],
+        (template) => [
+          {
+            label: 'Plan',
+            onClick: async () => {
+              try {
+                const out = await postJSON(`/agents/templates/${encodeURIComponent(template.template_id)}/launch`, {
+                  mode: 'plan',
+                  execute: false,
+                  context: 'dashboard',
+                });
+                renderSurfaceOutput(templateOutputEl, out, 'Template plan launch complete.');
+                setTemplateStatus(`Created plan from ${template.name}`, true);
+                await refresh();
+              } catch (err) {
+                setTemplateStatus(String(err), false);
+              }
+            },
+          },
+          {
+            label: 'Run',
+            onClick: async () => {
+              if (!confirm(`Launch ${template.name} as an immediate run?`)) return;
+              try {
+                const out = await postJSON(`/agents/templates/${encodeURIComponent(template.template_id)}/launch`, {
+                  mode: 'run',
+                  execute: true,
+                  context: 'dashboard',
+                });
+                renderSurfaceOutput(templateOutputEl, out, 'Template run launch complete.');
+                setTemplateStatus(`Queued run from ${template.name}`, true);
+                await refresh();
+              } catch (err) {
+                setTemplateStatus(String(err), false);
+              }
+            },
+          },
+          {
+            label: 'Share',
+            onClick: async () => {
+              try {
+                const out = await postJSON(`/agents/templates/${encodeURIComponent(template.template_id)}/share`, {
+                  shared: true,
+                  rotate: false,
+                });
+                renderSurfaceOutput(templateOutputEl, out, 'Template share metadata ready.');
+                setTemplateStatus(`Shared ${template.name}`, true);
+                await refreshTemplates();
+              } catch (err) {
+                setTemplateStatus(String(err), false);
+              }
+            },
+          },
+        ],
+        'No local templates yet.',
+      );
+    }
+
+    function renderTemplateGallery(payload){
+      renderTemplateCards(
+        templateGalleryEl,
+        payload?.templates || [],
+        (template) => [
+          {
+            label: 'Import',
+            onClick: async () => {
+              try {
+                const out = await postJSON('/agents/templates/import', {
+                  manifest: template,
+                  source: 'gallery',
+                });
+                document.getElementById('template-manifest').value = JSON.stringify(out?.manifest || template, null, 2);
+                renderSurfaceOutput(templateOutputEl, out, 'Gallery template imported.');
+                setTemplateStatus(`Imported ${template.name}`, true);
+                await refreshTemplates();
+              } catch (err) {
+                setTemplateStatus(String(err), false);
+              }
+            },
+          },
+          {
+            label: 'Use Objective',
+            onClick: () => {
+              operatorObjective.value = String(template?.objective || '');
+              document.getElementById('operator-strategy').value = String(template?.strategy || 'single');
+              document.getElementById('operator-candidates').value = Array.isArray(template?.candidates) ? template.candidates.join(', ') : '';
+              setTemplateStatus(`Loaded ${template.name} into the operator console`, true);
+            },
+          },
+        ],
+        'No gallery templates matched the current tag filter.',
+      );
+    }
+
+    async function refreshTemplates(){
+      const query = templateTagQuery();
+      const [library, gallery] = await Promise.all([
+        fetchJSON(`/agents/templates?limit=24${query ? `&${query.slice(1)}` : ''}`),
+        fetchJSON(`/agents/gallery${query}`),
+      ]);
+      renderTemplateLibrary(library);
+      renderTemplateGallery(gallery);
+      setTemplateStatus(
+        `Templates ${Number(library?.count || 0)} local • ${Number(gallery?.count || 0)} gallery`,
+        true,
+      );
+      return { library, gallery };
+    }
+
+    async function handleTemplateAction(kind){
+      const buttonMap = {
+        refresh: templateRefreshButton,
+        export: templateExportButton,
+        import: templateImportButton,
+      };
+      const button = buttonMap[kind];
+      if (!button) return;
+      button.disabled = true;
+      try {
+        if (kind === 'refresh') {
+          await refreshTemplates();
+        } else if (kind === 'export') {
+          const objective = operatorObjective.value.trim();
+          if (!objective) throw new Error('Objective is required before exporting a template');
+          const name = (prompt('Template name', objective.slice(0, 60)) || '').trim();
+          if (!name) return;
+          const description = (prompt('Template description', `Exported operator template for ${name}`) || '').trim();
+          const tags = (prompt('Template tags (CSV)', document.getElementById('template-tag').value.trim()) || '').trim();
+          const out = await postJSON('/agents/templates/export', {
+            name,
+            description,
+            objective,
+            strategy: document.getElementById('operator-strategy').value || 'single',
+            candidates: parseNameList(document.getElementById('operator-candidates').value),
+            tags: parseNameList(tags),
+            metadata: {
+              source: 'dashboard',
+              exported_at: new Date().toISOString(),
+            },
+            include_memory: true,
+            source: 'dashboard',
+          });
+          document.getElementById('template-manifest').value = JSON.stringify(out?.manifest || {}, null, 2);
+          renderSurfaceOutput(templateOutputEl, out, 'Template exported.');
+          setTemplateStatus(`Exported ${name}`, true);
+          await refreshTemplates();
+        } else if (kind === 'import') {
+          const raw = document.getElementById('template-manifest').value.trim();
+          if (!raw) throw new Error('Paste a template manifest JSON payload first');
+          let manifest = null;
+          try {
+            manifest = JSON.parse(raw);
+          } catch {
+            throw new Error('Template manifest must be valid JSON');
+          }
+          const out = await postJSON('/agents/templates/import', { manifest });
+          renderSurfaceOutput(templateOutputEl, out, 'Template imported.');
+          setTemplateStatus(`Imported ${out?.name || out?.template_id || 'template'}`, true);
+          await refreshTemplates();
+        }
+      } catch (err) {
+        setTemplateStatus(String(err), false);
+      } finally {
+        button.disabled = false;
+      }
+    }
+
     function syncGovernanceInputs(governance){
       const payload = governance && typeof governance === 'object' ? governance : {};
       const paused = Boolean(payload.paused);
@@ -1059,7 +1619,11 @@ def render_dashboard_html() -> str:
       if (state.refreshInFlight) return;
       state.refreshInFlight = true;
       try {
-        const data = await fetchJSON('/dashboard/data?jobs_limit=25&plans_limit=25&events_limit=25');
+        const [data, terminalResult, templateResult] = await Promise.all([
+          fetchJSON('/dashboard/data?jobs_limit=25&plans_limit=25&events_limit=25'),
+          refreshTerminalSessions().catch(err => ({ __error: String(err) })),
+          refreshTemplates().catch(err => ({ __error: String(err) })),
+        ]);
         const health = data.health || {};
         const jobs = data.jobs || [];
         const plans = data.plans || [];
@@ -1195,6 +1759,12 @@ def render_dashboard_html() -> str:
         renderObservability(observability);
         renderArtifacts(controlArtifacts);
         syncGovernanceInputs(governance);
+        if (terminalResult && terminalResult.__error) {
+          setTerminalStatus(terminalResult.__error, false);
+        }
+        if (templateResult && templateResult.__error) {
+          setTemplateStatus(templateResult.__error, false);
+        }
       } catch (err) {
         document.getElementById('summary').innerHTML = `
           <div class=\"card\">
@@ -1207,6 +1777,9 @@ def render_dashboard_html() -> str:
         document.getElementById('events').innerHTML = '';
         observabilityEl.innerHTML = '';
         artifactsEl.innerHTML = '';
+        terminalSessionsEl.innerHTML = '';
+        templateLibraryEl.innerHTML = '';
+        templateGalleryEl.innerHTML = '';
       } finally {
         state.refreshInFlight = false;
       }
@@ -1219,6 +1792,14 @@ def render_dashboard_html() -> str:
     togglePauseButton.addEventListener('click', () => handleGovernanceAction('togglePause'));
     resetUsageButton.addEventListener('click', () => handleGovernanceAction('resetUsage'));
     cancelAllJobsButton.addEventListener('click', () => handleGovernanceAction('cancelAll'));
+    terminalRefreshButton.addEventListener('click', () => handleTerminalAction('refresh'));
+    terminalStartButton.addEventListener('click', () => handleTerminalAction('start'));
+    terminalCloseButton.addEventListener('click', () => handleTerminalAction('close'));
+    terminalSendButton.addEventListener('click', () => handleTerminalAction('send'));
+    terminalCtrlCButton.addEventListener('click', () => handleTerminalAction('ctrlc'));
+    templateRefreshButton.addEventListener('click', () => handleTemplateAction('refresh'));
+    templateExportButton.addEventListener('click', () => handleTemplateAction('export'));
+    templateImportButton.addEventListener('click', () => handleTemplateAction('import'));
     document.getElementById('auto').addEventListener('click', () => {
       state.auto = !state.auto;
       document.getElementById('auto').textContent = `Auto: ${state.auto ? 'On' : 'Off'}`;
@@ -1230,7 +1811,17 @@ def render_dashboard_html() -> str:
     plansTbody.addEventListener('click', handleTableAction);
 
     updateLiveButton();
+    setTerminalStatus('Idle', true);
+    setTemplateStatus('Idle', true);
+    renderSurfaceOutput(terminalOutputEl, null, 'No terminal session attached.');
+    renderSurfaceOutput(templateOutputEl, null, 'No template activity yet.');
     refresh();
+    window.addEventListener('beforeunload', () => {
+      if (state.timer) clearInterval(state.timer);
+      if (state.refreshScheduled) clearTimeout(state.refreshScheduled);
+      stopTerminalPolling();
+      closeLiveStream();
+    });
   </script>
 </body>
 </html>
