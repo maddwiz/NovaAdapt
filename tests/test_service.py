@@ -11,6 +11,7 @@ from unittest import mock
 from novaadapt_core.adapt import AdaptBondCache, AdaptToggleStore
 from novaadapt_core.audit_store import AuditStore
 from novaadapt_core.browser_executor import BrowserExecutionResult
+from novaadapt_core.mobile_executor import MobileExecutionResult
 from novaadapt_core.channels import (
     ChannelRegistry,
     DiscordChannelAdapter,
@@ -718,6 +719,113 @@ class _StubBrowserExecutor:
         return BrowserExecutionResult(status="ok", output="browser session closed")
 
 
+class _BrowserRepairRouter(_StubRouter):
+    def __init__(self):
+        self.objectives: list[str] = []
+        self.system_prompts: list[str] = []
+
+    def chat(
+        self,
+        messages,
+        model_name=None,
+        strategy="single",
+        candidate_models=None,
+        fallback_models=None,
+    ):
+        objective_text = ""
+        system_text = []
+        for item in messages:
+            role = str(item.get("role", ""))
+            if role == "user":
+                objective_text = str(item.get("content", ""))
+            elif role == "system":
+                system_text.append(str(item.get("content", "")))
+        self.objectives.append(objective_text)
+        self.system_prompts.append("\n".join(system_text))
+        if "Repair only the failed or blocked parts of this plan." in objective_text:
+            content = '{"actions":[{"type":"click_selector","target":"#retry","executor":"browser"}]}'
+        else:
+            content = '{"actions":[{"type":"click","target":"OK"}]}'
+        return RouterResult(
+            model_name=model_name or "local",
+            model_id="qwen",
+            content=content,
+            strategy=strategy,
+            votes={},
+            errors={},
+            attempted_models=[model_name or "local"],
+        )
+
+
+class _FailingBrowserExecutor(_StubBrowserExecutor):
+    def execute_action(self, action):
+        self.actions.append(action)
+        if action.get("target") == "#broken":
+            return BrowserExecutionResult(status="failed", output="browser failure", data={"action": action})
+        return BrowserExecutionResult(status="ok", output="browser repaired", data={"action": action})
+
+
+class _StubMobileExecutor:
+    def __init__(self, *, fail_targets=None):
+        self.actions: list[dict[str, object]] = []
+        self.fail_targets = {str(item) for item in (fail_targets or [])}
+
+    def status(self):
+        return {"ok": True, "android": {"ok": True}, "ios": {"ok": True}}
+
+    def execute_action(self, action, *, dry_run=True):
+        normalized = dict(action)
+        self.actions.append({"action": normalized, "dry_run": dry_run})
+        if dry_run:
+            return MobileExecutionResult(status="preview", output="mobile preview", action=normalized)
+        if str(normalized.get("target") or "") in self.fail_targets:
+            return MobileExecutionResult(status="failed", output="mobile failure", action=normalized)
+        return MobileExecutionResult(
+            status="ok",
+            output="mobile simulated",
+            action=normalized,
+            data={"platform": normalized.get("platform")},
+        )
+
+
+class _IOSRepairRouter(_StubRouter):
+    def __init__(self):
+        self.objectives: list[str] = []
+        self.system_prompts: list[str] = []
+
+    def chat(
+        self,
+        messages,
+        model_name=None,
+        strategy="single",
+        candidate_models=None,
+        fallback_models=None,
+    ):
+        objective_text = ""
+        system_text = []
+        for item in messages:
+            role = str(item.get("role", ""))
+            if role == "user":
+                objective_text = str(item.get("content", ""))
+            elif role == "system":
+                system_text.append(str(item.get("content", "")))
+        self.objectives.append(objective_text)
+        self.system_prompts.append("\n".join(system_text))
+        if "Repair only the failed or blocked parts of this plan." in objective_text:
+            content = '{"actions":[{"type":"tap","target":"20,30","platform":"ios","executor":"mobile","x":20,"y":30}]}'
+        else:
+            content = '{"actions":[{"type":"click","target":"OK"}]}'
+        return RouterResult(
+            model_name=model_name or "local",
+            model_id="qwen",
+            content=content,
+            strategy=strategy,
+            votes={},
+            errors={},
+            attempted_models=[model_name or "local"],
+        )
+
+
 class ServiceTests(unittest.TestCase):
     def test_models_and_check(self):
         service = NovaAdaptService(
@@ -789,6 +897,27 @@ class ServiceTests(unittest.TestCase):
         service.close()
         service.close()
         self.assertEqual(browser.close_calls, 1)
+
+    def test_execute_routed_action_routes_ios_mobile_actions(self):
+        mobile = _StubMobileExecutor()
+        directshell = _RecordingDirectShell()
+        service = NovaAdaptService(
+            default_config=Path("unused.json"),
+            router_loader=lambda _path: _StubRouter(),
+            directshell_factory=lambda: directshell,
+            mobile_executor_factory=lambda: mobile,
+        )
+
+        result = service._execute_routed_action(
+            {"executor": "mobile", "platform": "ios", "type": "tap", "target": "10,20"},
+            execute=True,
+        )
+
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(len(mobile.actions), 1)
+        self.assertEqual(mobile.actions[0]["action"]["platform"], "ios")
+        self.assertEqual(mobile.actions[0]["action"]["type"], "tap")
+        self.assertEqual(directshell.executed_actions, [])
 
     def test_channel_send_and_inbound_ingest_memory(self):
         memory = _RecordingMemoryBackend()
@@ -1845,6 +1974,82 @@ class ServiceTests(unittest.TestCase):
             self.assertIsNotNone(persisted)
             self.assertTrue(persisted["repair"]["healed"])
             self.assertTrue(any("Repair only the failed or blocked parts of this plan." in text for text in repair_router.objectives))
+
+    def test_approve_plan_auto_repairs_browser_actions_with_browser_prompt(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            browser = _FailingBrowserExecutor()
+            repair_router = _BrowserRepairRouter()
+            service = NovaAdaptService(
+                default_config=Path("unused.json"),
+                db_path=Path(tmp) / "actions.db",
+                plans_db_path=Path(tmp) / "plans.db",
+                router_loader=lambda _path: repair_router,
+                directshell_factory=_RecordingDirectShell,
+                browser_executor_factory=lambda: browser,
+            )
+
+            plan = service._plans().create(
+                {
+                    "objective": "recover the broken browser flow",
+                    "strategy": "single",
+                    "actions": [{"type": "click_selector", "target": "#broken", "executor": "browser"}],
+                }
+            )
+            repaired = service.approve_plan(
+                plan["id"],
+                {
+                    "execute": True,
+                    "auto_repair_attempts": 1,
+                    "repair_strategy": "single",
+                },
+            )
+
+            self.assertEqual(repaired["status"], "executed")
+            self.assertTrue(repaired["repair"]["healed"])
+            self.assertEqual(repaired["repair"]["attempts"][0]["domain"], "browser")
+            self.assertEqual(len(browser.actions), 2)
+            self.assertEqual(browser.actions[1]["type"], "click_selector")
+            self.assertEqual(browser.actions[1]["executor"], "browser")
+            self.assertTrue(any("Repair domain: browser." in text for text in repair_router.objectives))
+            self.assertTrue(any("Use browser-native actions only" in text for text in repair_router.system_prompts))
+
+    def test_approve_plan_auto_repairs_ios_actions_with_mobile_prompt(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            mobile = _StubMobileExecutor(fail_targets={"10,20"})
+            repair_router = _IOSRepairRouter()
+            service = NovaAdaptService(
+                default_config=Path("unused.json"),
+                db_path=Path(tmp) / "actions.db",
+                plans_db_path=Path(tmp) / "plans.db",
+                router_loader=lambda _path: repair_router,
+                directshell_factory=_RecordingDirectShell,
+                mobile_executor_factory=lambda: mobile,
+            )
+
+            plan = service._plans().create(
+                {
+                    "objective": "recover the broken ios flow",
+                    "strategy": "single",
+                    "actions": [{"type": "tap", "target": "10,20", "platform": "ios", "executor": "mobile"}],
+                }
+            )
+            repaired = service.approve_plan(
+                plan["id"],
+                {
+                    "execute": True,
+                    "auto_repair_attempts": 1,
+                    "repair_strategy": "single",
+                },
+            )
+
+            self.assertEqual(repaired["status"], "executed")
+            self.assertTrue(repaired["repair"]["healed"])
+            self.assertEqual(repaired["repair"]["attempts"][0]["domain"], "mobile_ios")
+            self.assertEqual(len(mobile.actions), 2)
+            self.assertEqual(mobile.actions[1]["action"]["platform"], "ios")
+            self.assertEqual(mobile.actions[1]["action"]["target"], "20,30")
+            self.assertTrue(any("Repair domain: mobile_ios." in text for text in repair_router.objectives))
+            self.assertTrue(any("Use iOS mobile actions only" in text for text in repair_router.system_prompts))
 
     def test_approve_plan_respects_cancel_requested_callback(self):
         with tempfile.TemporaryDirectory() as tmp:

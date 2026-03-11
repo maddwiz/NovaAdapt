@@ -277,5 +277,10 @@ class NovaAdaptAgent:
                 normalized["value"] = str(value)
             if isinstance(undo, dict):
                 normalized["undo"] = undo
+            for key, raw_value in action.items():
+                if key in {"type", "target", "value", "undo"} or raw_value is None:
+                    continue
+                if isinstance(raw_value, (str, int, float, bool, list, dict)):
+                    normalized[key] = raw_value
             clean.append(normalized)
         return clean

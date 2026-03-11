@@ -3209,6 +3209,7 @@ class NovaAdaptService:
             )
             repair_run = self._run_repair_objective(
                 objective=repair_objective,
+                failed_items=failed_payload,
                 strategy=repair_strategy,
                 model_name=repair_model,
                 candidate_models=repair_candidates,
@@ -3230,6 +3231,7 @@ class NovaAdaptService:
             attempt_summary = {
                 "attempt": attempt,
                 "objective": repair_objective,
+                "domain": repair_run.get("repair_domain"),
                 "model": repair_run.get("model"),
                 "strategy": repair_run.get("strategy"),
                 "actions": [dict(item) for item in repair_run.get("actions", []) if isinstance(item, dict)],
@@ -3285,12 +3287,16 @@ class NovaAdaptService:
         objective: str,
         failed_items: list[dict[str, Any]],
     ) -> str:
+        repair_domain = self._infer_repair_domain(failed_items)
+        guidance = self._repair_domain_user_guidance(repair_domain)
         return (
             "Repair only the failed or blocked parts of this plan. "
             "Do not repeat already successful steps.\n\n"
             f"Original objective:\n{objective}\n\n"
             "Failed plan items (JSON):\n"
             f"{json.dumps(failed_items, ensure_ascii=True)}\n\n"
+            f"Repair domain: {repair_domain}.\n"
+            f"{guidance}\n\n"
             "Return only the replacement actions needed to complete the failed work."
         )
 
@@ -3298,6 +3304,7 @@ class NovaAdaptService:
         self,
         *,
         objective: str,
+        failed_items: list[dict[str, Any]],
         strategy: str,
         model_name: str | None,
         candidate_models: list[str] | None,
@@ -3309,32 +3316,231 @@ class NovaAdaptService:
         bond_verified: bool | None = None,
     ) -> dict[str, Any]:
         router = self.router_loader(Path(config_path or self.default_config))
-        queue = UndoQueue(db_path=self.db_path)
-        agent = NovaAdaptAgent(
-            router=router,
-            directshell=self.directshell_factory(),
-            undo_queue=queue,
-            memory_backend=self.memory_backend,
+        repair_domain = self._infer_repair_domain(failed_items)
+        messages = [{"role": "system", "content": self._repair_domain_system_prompt(repair_domain)}]
+        memory_context = self.memory_backend.augment(
+            query=objective,
+            top_k=5,
+            min_score=0.005,
+            format_name="xml",
         )
-        result = agent.run_objective(
-            objective=objective,
-            strategy=str(strategy or "decompose").strip() or "decompose",
+        if memory_context:
+            messages.append(
+                {
+                    "role": "system",
+                    "content": (
+                        "Relevant long-term memory context for this repair:\n"
+                        f"{memory_context}"
+                    ),
+                }
+            )
+        if isinstance(identity_profile, dict) and identity_profile:
+            messages.append(
+                {
+                    "role": "system",
+                    "content": (
+                        "Adapt identity profile context for repair:\n"
+                        f"{json.dumps(identity_profile, ensure_ascii=True)}"
+                    ),
+                }
+            )
+        if bond_verified is not None:
+            messages.append(
+                {
+                    "role": "system",
+                    "content": (
+                        "Soulbond verification status with active player: "
+                        f"{'verified' if bond_verified else 'unverified'}."
+                    ),
+                }
+            )
+        messages.append({"role": "user", "content": objective})
+
+        router_result = router.chat(
+            messages=messages,
             model_name=model_name,
+            strategy=str(strategy or "decompose").strip() or "decompose",
             candidate_models=list(candidate_models or []) or None,
             fallback_models=list(fallback_models or []) or None,
-            dry_run=False,
-            record_history=True,
-            allow_dangerous=allow_dangerous,
-            max_actions=max(1, int(max_actions)),
-            identity_profile=identity_profile,
-            bond_verified=bond_verified,
         )
+        queue = UndoQueue(db_path=self.db_path)
+        policy = ActionPolicy()
+        actions = NovaAdaptAgent._parse_actions(router_result.content, max_actions=max(1, int(max_actions)))
+        execution: list[dict[str, Any]] = []
+        action_log_ids: list[int] = []
+        for action in actions:
+            decision = policy.evaluate(action, allow_dangerous=allow_dangerous)
+            undo_action = action.get("undo") if isinstance(action.get("undo"), dict) else None
+            if not decision.allowed:
+                execution.append(
+                    {
+                        "status": "blocked",
+                        "output": decision.reason,
+                        "action": action,
+                        "dangerous": decision.dangerous,
+                    }
+                )
+                action_log_ids.append(
+                    queue.record(
+                        action=action,
+                        status="blocked",
+                        undo_action=undo_action,
+                    )
+                )
+                continue
+
+            routed = self._execute_routed_action(action, execute=True, config_path=config_path)
+            execution.append(
+                {
+                    "status": routed["status"],
+                    "output": routed["output"],
+                    "action": routed["action"],
+                    "dangerous": decision.dangerous,
+                    "data": routed.get("data"),
+                }
+            )
+            action_log_ids.append(
+                queue.record(
+                    action=routed["action"],
+                    status=routed["status"],
+                    undo_action=undo_action,
+                )
+            )
         self.runtime_governance.record_model_usage(
-            usage=result.get("model_usage") if isinstance(result, dict) else None,
-            strategy=strategy,
+            usage=router_result.usage,
+            strategy=router_result.strategy,
             objective=objective,
         )
-        return result
+        output = {
+            "model": router_result.model_name,
+            "model_id": router_result.model_id,
+            "strategy": router_result.strategy,
+            "votes": router_result.votes,
+            "vote_summary": router_result.vote_summary,
+            "collaboration": router_result.collaboration,
+            "model_errors": router_result.errors,
+            "attempted_models": router_result.attempted_models,
+            "model_usage": router_result.usage,
+            "estimated_cost_usd": router_result.estimated_cost_usd,
+            "actions": actions,
+            "results": execution,
+            "action_log_ids": action_log_ids,
+            "repair_domain": repair_domain,
+        }
+        if memory_context:
+            output["memory_context"] = memory_context
+        return output
+
+    @staticmethod
+    def _infer_action_domain(action: dict[str, Any]) -> str:
+        normalized_action = dict(action or {})
+        action_type = str(normalized_action.get("type") or "").strip().lower()
+        executor_name = str(normalized_action.get("executor") or "").strip().lower()
+        platform_name = str(normalized_action.get("platform") or "").strip().lower()
+
+        if platform_name == "ios" or action_type.startswith("ios_"):
+            return "mobile_ios"
+        if platform_name == "android" or action_type.startswith("android_"):
+            return "mobile_android"
+        if executor_name == "mobile":
+            return "mobile"
+        if executor_name == "vision" or action_type == "vision_goal":
+            return "vision"
+        if action_type in {"ha_service", "mqtt_publish", "mqtt_subscribe", "discover", "discover_entities", "list_entities"} or executor_name in {"homeassistant", "iot"}:
+            return "iot"
+        if action_type in set(BrowserExecutor.capabilities()) or executor_name == "browser":
+            return "browser"
+        return "desktop"
+
+    @classmethod
+    def _infer_repair_domain(cls, failed_items: list[dict[str, Any]]) -> str:
+        domains = []
+        for item in failed_items:
+            if not isinstance(item, dict):
+                continue
+            action = item.get("action")
+            if isinstance(action, dict):
+                domains.append(cls._infer_action_domain(action))
+        unique_domains = {item for item in domains if item}
+        if not unique_domains:
+            return "desktop"
+        if len(unique_domains) == 1:
+            return next(iter(unique_domains))
+        if unique_domains.issubset({"mobile", "mobile_android", "mobile_ios"}):
+            return "mobile"
+        return "mixed"
+
+    @staticmethod
+    def _repair_domain_user_guidance(domain: str) -> str:
+        guidance = {
+            "browser": (
+                "Use browser-native actions only and keep browser selectors or URLs in target. "
+                "Set executor='browser' for replacement steps."
+            ),
+            "mobile_android": (
+                "Use Android mobile actions only. Set platform='android' and keep coordinates or selectors in target."
+            ),
+            "mobile_ios": (
+                "Use iOS mobile actions only. Set platform='ios' and keep coordinates, selectors, bundle IDs, or URLs in target."
+            ),
+            "mobile": (
+                "Use mobile actions only and include platform='android' or platform='ios' on every replacement step."
+            ),
+            "iot": (
+                "Use IoT actions only. Prefer ha_service or mqtt_publish and keep entity IDs or topics in target."
+            ),
+            "vision": (
+                "Use vision or concrete desktop actions only. Prefer the smallest corrective step."
+            ),
+        }
+        return guidance.get(domain, "Use native desktop actions only and keep every action deterministic.")
+
+    @classmethod
+    def _repair_domain_system_prompt(cls, domain: str) -> str:
+        base = (
+            "You are NovaAdapt Repair Planner. "
+            "Repair only failed automation steps. "
+            "Return strict JSON only using schema: "
+            "{\"actions\":[{\"type\":str,\"target\":str,\"value\":str?,\"executor\":str?,\"platform\":str?,"
+            "\"selector\":str?,\"url\":str?,\"text\":str?,\"key\":str?,\"bundle_id\":str?,\"package\":str?,"
+            "\"x\":int?,\"y\":int?,\"to_x\":int?,\"to_y\":int?,\"direction\":str?,\"domain\":str?,"
+            "\"service\":str?,\"entity_id\":str?,\"topic\":str?,\"payload\":str?}]}. "
+            "Every action must include a non-empty target string. "
+            "Do not repeat already successful steps."
+        )
+        domain_prompts = {
+            "browser": (
+                "Use browser-native actions only: navigate, click_selector, fill, extract_text, screenshot, "
+                "wait_for_selector, evaluate_js, new_page, switch_page, close_page. "
+                "Set executor='browser'. Use target for the selector or URL."
+            ),
+            "mobile_android": (
+                "Use Android mobile actions only: open_app, open_url, tap, type, key, swipe, scroll, wait, screenshot, run_adb. "
+                "Set platform='android'. For taps use target as 'x,y' or a selector/text. For swipes include x, y, to_x, to_y."
+            ),
+            "mobile_ios": (
+                "Use iOS mobile actions only: open_app, open_url, tap, type, key, swipe, drag, scroll, wait, note. "
+                "Set platform='ios'. Use target for coordinates, element selectors, bundle IDs, or URLs."
+            ),
+            "mobile": (
+                "Use mobile actions only and include platform='android' or platform='ios' on every action. "
+                "Allowed actions: open_app, open_url, tap, type, key, swipe, drag, scroll, wait, screenshot, note."
+            ),
+            "iot": (
+                "Use IoT actions only: ha_service, mqtt_publish, mqtt_subscribe, discover_entities. "
+                "Keep entity IDs or topics in target and include domain/service/entity_id or payload when needed."
+            ),
+            "vision": (
+                "Use vision-driven or concrete desktop actions only: vision_goal, click, type, hotkey, key, wait, scroll, drag, open_app, open_url, note."
+            ),
+            "mixed": (
+                "The failed steps span multiple executors. Preserve the original executor per step and return the smallest corrective actions."
+            ),
+            "desktop": (
+                "Use native desktop actions only: open_app, open_url, type, hotkey, key, wait, click, scroll, drag, run_shell, note."
+            ),
+        }
+        return f"{base} {domain_prompts.get(domain, domain_prompts['desktop'])}"
 
     @staticmethod
     def _summarize_repair_results(results: list[dict[str, Any]]) -> str:
@@ -3531,10 +3737,22 @@ class NovaAdaptService:
                 }
             return result
 
-        if platform_name == "android" or executor_name == "mobile" or action_type.startswith("android_"):
+        if (
+            platform_name in {"android", "ios"}
+            or executor_name == "mobile"
+            or action_type.startswith("android_")
+            or action_type.startswith("ios_")
+        ):
             if action_type.startswith("android_"):
                 normalized_action["type"] = action_type.removeprefix("android_")
-            normalized_action["platform"] = "android"
+                normalized_action["platform"] = "android"
+            elif action_type.startswith("ios_"):
+                normalized_action["type"] = action_type.removeprefix("ios_")
+                normalized_action["platform"] = "ios"
+            elif platform_name in {"android", "ios"}:
+                normalized_action["platform"] = platform_name
+            else:
+                normalized_action.setdefault("platform", "android")
             result = self._mobile().execute_action(normalized_action, dry_run=not execute)
             return _result_payload(result.status, result.output, result.action, result.data)
 

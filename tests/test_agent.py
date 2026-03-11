@@ -114,6 +114,21 @@ class AgentSafetyTests(unittest.TestCase):
             out = agent.run_objective(objective="Any objective", dry_run=True)
             self.assertEqual(out["actions"][0]["type"], "note")
 
+    def test_parser_preserves_executor_specific_action_fields(self):
+        actions = NovaAdaptAgent._parse_actions(
+            (
+                '{"actions":[{"type":"tap","target":"120,220","platform":"ios","executor":"mobile","x":120,"y":220},'
+                '{"type":"ha_service","target":"light.kitchen","domain":"light","service":"turn_on","entity_id":"light.kitchen"}]}'
+            )
+        )
+
+        self.assertEqual(actions[0]["platform"], "ios")
+        self.assertEqual(actions[0]["executor"], "mobile")
+        self.assertEqual(actions[0]["x"], 120)
+        self.assertEqual(actions[1]["domain"], "light")
+        self.assertEqual(actions[1]["service"], "turn_on")
+        self.assertEqual(actions[1]["entity_id"], "light.kitchen")
+
     def test_memory_context_is_injected_and_run_is_persisted(self):
         with tempfile.TemporaryDirectory() as tmp:
             queue = UndoQueue(db_path=Path(tmp) / "actions.db")
