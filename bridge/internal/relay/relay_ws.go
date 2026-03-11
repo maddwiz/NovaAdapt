@@ -2,6 +2,7 @@ package relay
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -36,6 +37,7 @@ type wsClientMessage struct {
 	Query          string         `json:"query,omitempty"`
 	Body           map[string]any `json:"body,omitempty"`
 	IdempotencyKey string         `json:"idempotency_key,omitempty"`
+	AcceptBinary   bool           `json:"accept_binary,omitempty"`
 	SinceID        *int64         `json:"since_id,omitempty"`
 	SessionID      string         `json:"session_id,omitempty"`
 	SinceSeq       *int64         `json:"since_seq,omitempty"`
@@ -714,6 +716,47 @@ func (h *Handler) handleWSCommand(writer *wsJSONWriter, requestID string, msg ws
 	}
 
 	commandRequestID := normalizeRequestID("")
+	if msg.AcceptBinary {
+		if method != http.MethodGet {
+			return writer.write(
+				map[string]any{
+					"type":       "error",
+					"id":         msg.ID,
+					"error":      "binary command forwarding only supports GET",
+					"request_id": requestID,
+				},
+			)
+		}
+		coreResult, err := h.coreRawRequest(path, query, commandRequestID)
+		if err != nil {
+			return writer.write(
+				map[string]any{
+					"type":       "error",
+					"id":         msg.ID,
+					"error":      err.Error(),
+					"request_id": requestID,
+				},
+			)
+		}
+		return writer.write(
+			map[string]any{
+				"type":   "command_result",
+				"id":     msg.ID,
+				"status": coreResult.StatusCode,
+				"payload": map[string]any{
+					"content_type": coreResult.ContentType,
+					"body_base64":  base64.StdEncoding.EncodeToString(coreResult.Payload),
+					"size_bytes":   len(coreResult.Payload),
+					"request_id":   requestID,
+				},
+				"core_request":    commandRequestID,
+				"core_request_id": coreResult.CoreRequestID,
+				"idempotency_key": "",
+				"replayed":        false,
+				"request_id":      requestID,
+			},
+		)
+	}
 	coreResult, err := h.coreJSONRequest(
 		method,
 		path,
@@ -759,15 +802,15 @@ func (h *Handler) pollAuditEvents(
 		formatFloat(intervalSeconds),
 		max64(0, sinceID),
 	)
-	status, _, raw, err := h.coreRawRequest("/events/stream", query, requestID)
+	rawResult, err := h.coreRawRequest("/events/stream", query, requestID)
 	if err != nil {
 		return nil, sinceID, err
 	}
-	if status != http.StatusOK {
-		return nil, sinceID, fmt.Errorf("events stream failed with status %d: %s", status, string(raw))
+	if rawResult.StatusCode != http.StatusOK {
+		return nil, sinceID, fmt.Errorf("events stream failed with status %d: %s", rawResult.StatusCode, string(rawResult.Payload))
 	}
 
-	parsed := parseSSE(raw)
+	parsed := parseSSE(rawResult.Payload)
 	out := make([]wsSSEEvent, 0, len(parsed))
 	nextSinceID := sinceID
 	for _, item := range parsed {
@@ -855,18 +898,25 @@ func (h *Handler) coreJSONRequest(
 	return result, nil
 }
 
+type coreRawResult struct {
+	StatusCode    int
+	ContentType   string
+	Payload       []byte
+	CoreRequestID string
+}
+
 func (h *Handler) coreRawRequest(
 	corePath string,
 	rawQuery string,
 	requestID string,
-) (int, string, []byte, error) {
+) (coreRawResult, error) {
 	target, err := joinURL(h.cfg.CoreBaseURL, corePath, rawQuery)
 	if err != nil {
-		return http.StatusBadGateway, "application/json", nil, fmt.Errorf("failed to build core URL: %w", err)
+		return coreRawResult{StatusCode: http.StatusBadGateway, ContentType: "application/json"}, fmt.Errorf("failed to build core URL: %w", err)
 	}
 	req, err := http.NewRequest(http.MethodGet, target, nil)
 	if err != nil {
-		return http.StatusBadGateway, "application/json", nil, fmt.Errorf("failed to create core request: %w", err)
+		return coreRawResult{StatusCode: http.StatusBadGateway, ContentType: "application/json"}, fmt.Errorf("failed to create core request: %w", err)
 	}
 	req.Header.Set("X-Request-ID", requestID)
 	if strings.TrimSpace(h.cfg.CoreToken) != "" {
@@ -875,19 +925,24 @@ func (h *Handler) coreRawRequest(
 
 	resp, err := h.client.Do(req)
 	if err != nil {
-		return http.StatusBadGateway, "application/json", nil, fmt.Errorf("core API unreachable: %w", err)
+		return coreRawResult{StatusCode: http.StatusBadGateway, ContentType: "application/json"}, fmt.Errorf("core API unreachable: %w", err)
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return http.StatusBadGateway, "application/json", nil, fmt.Errorf("failed to read core response: %w", err)
+		return coreRawResult{StatusCode: http.StatusBadGateway, ContentType: "application/json"}, fmt.Errorf("failed to read core response: %w", err)
 	}
 	contentType := resp.Header.Get("Content-Type")
 	if contentType == "" {
 		contentType = "text/plain; charset=utf-8"
 	}
-	return resp.StatusCode, contentType, body, nil
+	return coreRawResult{
+		StatusCode:    resp.StatusCode,
+		ContentType:   contentType,
+		Payload:       body,
+		CoreRequestID: strings.TrimSpace(resp.Header.Get("X-Request-ID")),
+	}, nil
 }
 
 func parseSSE(raw []byte) []wsSSEEvent {

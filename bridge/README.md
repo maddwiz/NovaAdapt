@@ -31,13 +31,33 @@ Secure relay service for remote clients (phone/glasses) to reach NovaAdapt core.
   - `GET /plugins/{name}/health`
   - `GET /history`
   - `GET /memory/status`
+  - `GET /agents/templates`
+  - `GET /agents/gallery`
+  - `GET /agents/templates/{template_id}`
+  - `GET /agents/templates/shared/{share_token}`
+  - `GET /control/artifacts`
+  - `GET /control/artifacts/{artifact_id}`
+  - `GET /control/artifacts/{artifact_id}/preview`
   - `GET /jobs` and `GET /jobs/{id}`
   - `GET /jobs/{id}/stream` (SSE passthrough)
+  - `GET /mobile/status`
+  - `GET /iot/homeassistant/entities`
+  - `GET /iot/homeassistant/status`
+  - `GET /iot/mqtt/status`
   - `GET /plans/{id}/stream` (SSE passthrough)
   - `GET /terminal/sessions`
   - `GET /terminal/sessions/{id}`
   - `GET /terminal/sessions/{id}/output`
+  - `POST /agents/templates/export`
+  - `POST /agents/templates/import`
+  - `POST /agents/templates/{template_id}/share`
+  - `POST /agents/templates/{template_id}/launch`
+  - `POST /execute/vision`
+  - `POST /mobile/action`
   - `POST /jobs/{id}/cancel`
+  - `POST /iot/homeassistant/action`
+  - `POST /iot/mqtt/publish`
+  - `POST /iot/mqtt/subscribe`
   - `GET /plans` and `GET /plans/{id}`
   - `POST /plans`
   - `POST /plans/{id}/approve`
@@ -152,6 +172,24 @@ Client-to-server message types:
   "idempotency_key": "idem-approve-1"
 }
 ```
+
+Binary preview fetch over the same socket:
+
+```json
+{
+  "type": "command",
+  "id": "artifact-preview-1",
+  "method": "GET",
+  "path": "/control/artifacts/abc123/preview",
+  "accept_binary": true
+}
+```
+
+When `accept_binary` is set on a `GET` command, `command_result.payload` becomes:
+
+- `content_type`
+- `body_base64`
+- `size_bytes`
 
 Browser-compatible websocket auth:
 

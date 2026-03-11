@@ -108,6 +108,34 @@ func TestHealthDeepFailsOnCoreUnauthorized(t *testing.T) {
 	}
 }
 
+func TestIsForwardedPathIncludesControlAnythingAndTemplates(t *testing.T) {
+	paths := []string{
+		"/agents/templates",
+		"/agents/gallery",
+		"/agents/templates/template-1",
+		"/agents/templates/shared/share-token-1",
+		"/agents/templates/template-1/share",
+		"/agents/templates/template-1/launch",
+		"/control/artifacts",
+		"/control/artifacts/art-1",
+		"/control/artifacts/art-1/preview",
+		"/execute/vision",
+		"/mobile/status",
+		"/mobile/action",
+		"/iot/homeassistant/entities",
+		"/iot/homeassistant/status",
+		"/iot/homeassistant/action",
+		"/iot/mqtt/status",
+		"/iot/mqtt/publish",
+		"/iot/mqtt/subscribe",
+	}
+	for _, path := range paths {
+		if !isForwardedPath(path) {
+			t.Fatalf("expected forwarded path: %s", path)
+		}
+	}
+}
+
 func TestUnauthorized(t *testing.T) {
 	h, err := NewHandler(Config{CoreBaseURL: "http://example.com", BridgeToken: "secret"})
 	if err != nil {

@@ -197,6 +197,22 @@
       max-height: 220px;
     }
 
+    .artifact-preview {
+      margin-top: 10px;
+      width: 100%;
+      max-height: 320px;
+      object-fit: contain;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fffdf8;
+      padding: 8px;
+      display: block;
+    }
+
+    .artifact-preview[hidden] {
+      display: none;
+    }
+
     .hint {
       margin-top: 8px;
       color: var(--muted);
@@ -693,10 +709,13 @@
         <div class="controls">
           <button id="artifacts-refresh-btn">Refresh Artifacts</button>
           <button id="artifact-detail-btn">Load Detail</button>
+          <button id="artifact-preview-btn">Load Preview</button>
           <button id="artifact-use-latest-btn">Use Latest</button>
         </div>
         <div class="status" id="artifact-status">Artifacts idle</div>
         <div class="log mini" id="artifact-output"></div>
+        <div class="hint" id="artifact-preview-meta">No control preview loaded.</div>
+        <img class="artifact-preview" id="artifact-preview-image" alt="Control artifact preview" hidden />
       </section>
     </div>
 
@@ -820,6 +839,8 @@
     const templateOutputEl = $("template-output");
     const artifactStatusEl = $("artifact-status");
     const artifactOutputEl = $("artifact-output");
+    const artifactPreviewMetaEl = $("artifact-preview-meta");
+    const artifactPreviewImageEl = $("artifact-preview-image");
 
     function nowTime() {
       return new Date().toISOString().replace("T", " ").replace("Z", "");
@@ -906,6 +927,17 @@
       const text = typeof payload === "string" ? payload : JSON.stringify(payload, null, 2);
       artifactOutputEl.textContent = text;
       artifactOutputEl.scrollTop = artifactOutputEl.scrollHeight;
+    }
+
+    function setArtifactPreview(meta, bodyBase64 = "", contentType = "") {
+      artifactPreviewMetaEl.textContent = meta;
+      if (bodyBase64 && contentType) {
+        artifactPreviewImageEl.src = `data:${contentType};base64,${bodyBase64}`;
+        artifactPreviewImageEl.hidden = false;
+        return;
+      }
+      artifactPreviewImageEl.hidden = true;
+      artifactPreviewImageEl.removeAttribute("src");
     }
 
     function isWSOpen() {
@@ -1675,6 +1707,29 @@
       return response.payload ?? {};
     }
 
+    async function sendCoreBinaryRoute(path, { timeoutMs = 15000 } = {}) {
+      if (!isWSOpen()) {
+        throw new Error("websocket is not connected");
+      }
+      const response = await sendCommand(
+        {
+          type: "command",
+          id: `route-bin-${Date.now()}`,
+          method: "GET",
+          path,
+          accept_binary: true,
+        },
+        { log: true, silentResponse: true, timeoutMs }
+      );
+      if (response.status < 200 || response.status >= 300) {
+        const message = response?.payload?.error || `status ${response.status}`;
+        const err = new Error(message);
+        err.response = response;
+        throw err;
+      }
+      return response.payload ?? {};
+    }
+
     function controlSharedPayload() {
       const payload = {
         allow_dangerous: $("control-allow-dangerous").value === "true",
@@ -2353,10 +2408,47 @@
         setArtifactOutput(result);
         const summary = [result?.control_type, result?.status, result?.action_type].filter(Boolean).join(" ");
         setArtifactStatus(summary || `artifact ${artifactID}`, "ok");
+        if (result?.preview_available) {
+          await loadArtifactPreview(artifactID, { updateStatus: false });
+        } else {
+          setArtifactPreview("This artifact has no stored preview.");
+        }
         appendLog("artifact_detail", result);
       } catch (err) {
         appendLog("artifact_detail_error", String(err));
         setArtifactStatus(String(err), "bad");
+      }
+    }
+
+    async function loadArtifactPreview(artifactID = "", { updateStatus = true } = {}) {
+      try {
+        const targetID = String(artifactID || $("artifact-id").value || "").trim();
+        if (!targetID) {
+          throw new Error("artifact id is required");
+        }
+        const result = await sendCoreBinaryRoute(`/control/artifacts/${encodeURIComponent(targetID)}/preview`, {
+          timeoutMs: 20000,
+        });
+        const bodyBase64 = String(result?.body_base64 || "");
+        const contentType = String(result?.content_type || "image/png");
+        if (!bodyBase64) {
+          throw new Error("artifact preview payload was empty");
+        }
+        setArtifactPreview(`Loaded ${targetID} preview (${Number(result?.size_bytes || 0)} bytes).`, bodyBase64, contentType);
+        if (updateStatus) {
+          setArtifactStatus(`artifact preview ${targetID}`, "ok");
+        }
+        appendLog("artifact_preview", {
+          artifact_id: targetID,
+          content_type: contentType,
+          size_bytes: result?.size_bytes,
+        });
+      } catch (err) {
+        setArtifactPreview(`Preview unavailable: ${String(err)}`);
+        if (updateStatus) {
+          setArtifactStatus(String(err), "bad");
+        }
+        appendLog("artifact_preview_error", String(err));
       }
     }
 
@@ -2601,6 +2693,10 @@
       loadArtifactDetail();
     });
 
+    $("artifact-preview-btn").addEventListener("click", () => {
+      loadArtifactPreview();
+    });
+
     $("artifact-use-latest-btn").addEventListener("click", () => {
       useLatestArtifact();
     });
@@ -2635,6 +2731,7 @@
     setTemplateOutput("No marketplace activity yet.");
     setArtifactStatus("Artifacts idle");
     setArtifactOutput("No control artifact activity yet.");
+    setArtifactPreview("No control preview loaded.");
     appendLog("ready", "Console loaded");
   </script>
 </body>

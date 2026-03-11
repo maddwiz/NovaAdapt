@@ -1,6 +1,7 @@
 package relay
 
 import (
+	"encoding/base64"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -858,6 +859,96 @@ func TestWebSocketCommandAndEventStreaming(t *testing.T) {
 
 	if eventsRequests < 1 {
 		t.Fatalf("expected at least one events stream poll")
+	}
+}
+
+func TestWebSocketCommandBinaryPreview(t *testing.T) {
+	previewBytes := []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n', 'n', 'o', 'v', 'a'}
+	core := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer coresecret" {
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{"error":"unauthorized core"}`))
+			return
+		}
+		switch r.URL.Path {
+		case "/events/stream":
+			w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
+			_, _ = w.Write([]byte("event: timeout\ndata: {\"request_id\":\"rid\"}\n\n"))
+		case "/control/artifacts/art-1/preview":
+			if r.Method != http.MethodGet {
+				w.WriteHeader(http.StatusMethodNotAllowed)
+				_, _ = w.Write([]byte(`{"error":"method not allowed"}`))
+				return
+			}
+			w.Header().Set("X-Request-ID", "core-rid-preview")
+			w.Header().Set("Content-Type", "image/png")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write(previewBytes)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"error":"not found"}`))
+		}
+	}))
+	defer core.Close()
+
+	h, err := NewHandler(Config{
+		CoreBaseURL: core.URL,
+		BridgeToken: "bridge",
+		CoreToken:   "coresecret",
+		Timeout:     5 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("new handler: %v", err)
+	}
+
+	server := httptest.NewServer(h)
+	defer server.Close()
+
+	wsURL := "ws" + strings.TrimPrefix(server.URL, "http") + "/ws?since_id=0"
+	headers := http.Header{}
+	headers.Set("Authorization", "Bearer bridge")
+	conn, _, err := websocket.DefaultDialer.Dial(wsURL, headers)
+	if err != nil {
+		t.Fatalf("dial websocket: %v", err)
+	}
+	defer conn.Close()
+
+	_ = mustReadWSMessageByType(t, conn, "hello", 2*time.Second)
+
+	if err := conn.WriteJSON(
+		map[string]any{
+			"type":          "command",
+			"id":            "artifact-preview-1",
+			"method":        "GET",
+			"path":          "/control/artifacts/art-1/preview",
+			"accept_binary": true,
+		},
+	); err != nil {
+		t.Fatalf("write binary command: %v", err)
+	}
+
+	result := mustReadWSMessageByType(t, conn, "command_result", 2*time.Second)
+	if result["id"] != "artifact-preview-1" {
+		t.Fatalf("expected binary command_result id, got %#v", result)
+	}
+	if int(result["status"].(float64)) != http.StatusOK {
+		t.Fatalf("expected binary status 200, got %#v", result["status"])
+	}
+	payload, ok := result["payload"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected payload object, got %#v", result["payload"])
+	}
+	if payload["content_type"] != "image/png" {
+		t.Fatalf("expected image/png payload, got %#v", payload["content_type"])
+	}
+	if payload["body_base64"] != base64.StdEncoding.EncodeToString(previewBytes) {
+		t.Fatalf("unexpected body_base64 payload: %#v", payload["body_base64"])
+	}
+	if int(payload["size_bytes"].(float64)) != len(previewBytes) {
+		t.Fatalf("unexpected size_bytes payload: %#v", payload["size_bytes"])
+	}
+	if result["core_request_id"] != "core-rid-preview" {
+		t.Fatalf("expected preview core request id, got %#v", result["core_request_id"])
 	}
 }
 

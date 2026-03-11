@@ -42,36 +42,48 @@ const (
 )
 
 var allowedPaths = map[string]struct{}{
-	"/models":                    {},
-	"/openapi.json":              {},
-	"/dashboard":                 {},
-	"/dashboard/data":            {},
-	"/history":                   {},
-	"/run":                       {},
-	"/run_async":                 {},
-	"/swarm/run":                 {},
-	"/undo":                      {},
-	"/check":                     {},
-	"/jobs":                      {},
-	"/plans":                     {},
-	"/plugins":                   {},
-	"/feedback":                  {},
-	"/memory/status":             {},
-	"/memory/recall":             {},
-	"/memory/ingest":             {},
-	"/browser/status":            {},
-	"/browser/pages":             {},
-	"/browser/action":            {},
-	"/browser/navigate":          {},
-	"/browser/click":             {},
-	"/browser/fill":              {},
-	"/browser/extract_text":      {},
-	"/browser/screenshot":        {},
-	"/browser/wait_for_selector": {},
-	"/browser/evaluate_js":       {},
-	"/browser/close":             {},
-	"/terminal/sessions":         {},
-	"/events":                    {},
+	"/models":                     {},
+	"/openapi.json":               {},
+	"/dashboard":                  {},
+	"/dashboard/data":             {},
+	"/history":                    {},
+	"/run":                        {},
+	"/run_async":                  {},
+	"/swarm/run":                  {},
+	"/undo":                       {},
+	"/check":                      {},
+	"/jobs":                       {},
+	"/plans":                      {},
+	"/plugins":                    {},
+	"/feedback":                   {},
+	"/memory/status":              {},
+	"/memory/recall":              {},
+	"/memory/ingest":              {},
+	"/agents/templates":           {},
+	"/agents/gallery":             {},
+	"/control/artifacts":          {},
+	"/execute/vision":             {},
+	"/mobile/status":              {},
+	"/mobile/action":              {},
+	"/iot/homeassistant/entities": {},
+	"/iot/homeassistant/status":   {},
+	"/iot/homeassistant/action":   {},
+	"/iot/mqtt/status":            {},
+	"/iot/mqtt/publish":           {},
+	"/iot/mqtt/subscribe":         {},
+	"/browser/status":             {},
+	"/browser/pages":              {},
+	"/browser/action":             {},
+	"/browser/navigate":           {},
+	"/browser/click":              {},
+	"/browser/fill":               {},
+	"/browser/extract_text":       {},
+	"/browser/screenshot":         {},
+	"/browser/wait_for_selector":  {},
+	"/browser/evaluate_js":        {},
+	"/browser/close":              {},
+	"/terminal/sessions":          {},
+	"/events":                     {},
 }
 
 // Config controls bridge relay behavior.
@@ -648,6 +660,38 @@ func isForwardedPath(p string) bool {
 			return false
 		}
 		return parts[0] != "" && (parts[1] == "health" || parts[1] == "call")
+	}
+	if strings.HasPrefix(p, "/agents/templates/shared/") {
+		token := strings.TrimSpace(strings.TrimPrefix(p, "/agents/templates/shared/"))
+		return token != ""
+	}
+	if strings.HasPrefix(p, "/agents/templates/") {
+		rest := strings.TrimSpace(strings.TrimPrefix(p, "/agents/templates/"))
+		if rest == "" {
+			return false
+		}
+		parts := strings.Split(rest, "/")
+		if len(parts) == 1 {
+			return parts[0] != ""
+		}
+		if len(parts) == 2 {
+			return parts[0] != "" && (parts[1] == "share" || parts[1] == "launch")
+		}
+		return false
+	}
+	if strings.HasPrefix(p, "/control/artifacts/") {
+		rest := strings.TrimSpace(strings.TrimPrefix(p, "/control/artifacts/"))
+		if rest == "" {
+			return false
+		}
+		parts := strings.Split(rest, "/")
+		if len(parts) == 1 {
+			return parts[0] != ""
+		}
+		if len(parts) == 2 {
+			return parts[0] != "" && parts[1] == "preview"
+		}
+		return false
 	}
 	if strings.HasPrefix(p, "/terminal/sessions/") {
 		rest := strings.TrimSpace(strings.TrimPrefix(p, "/terminal/sessions/"))
