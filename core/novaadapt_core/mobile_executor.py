@@ -265,6 +265,392 @@ class AndroidMaestroExecutor:
         return MobileExecutionResult(status=status, output=output, action=action, data=data)
 
 
+class IOSAppiumExecutor:
+    def __init__(
+        self,
+        *,
+        base_url: str | None = None,
+        session_id: str | None = None,
+        desired_capabilities: dict[str, Any] | None = None,
+        timeout_seconds: int = 30,
+    ) -> None:
+        self.base_url = str(base_url or os.getenv("NOVAADAPT_IOS_APPIUM_URL", "")).rstrip("/")
+        self.session_id = str(session_id or os.getenv("NOVAADAPT_IOS_APPIUM_SESSION_ID", "")).strip() or None
+        raw_caps = (
+            desired_capabilities
+            if desired_capabilities is not None
+            else _parse_optional_json_object(os.getenv("NOVAADAPT_IOS_APPIUM_CAPABILITIES", ""))
+        )
+        self.desired_capabilities = raw_caps if isinstance(raw_caps, dict) else {}
+        self.timeout_seconds = max(1, int(timeout_seconds))
+
+    def status(self) -> dict[str, Any]:
+        out: dict[str, Any] = {
+            "ok": False,
+            "platform": "ios",
+            "transport": "appium",
+            "configured": bool(self.base_url),
+            "base_url": self.base_url,
+            "session_id": self.session_id,
+            "capabilities_configured": bool(self.desired_capabilities),
+        }
+        if not self.base_url:
+            out["error"] = "NOVAADAPT_IOS_APPIUM_URL is not configured"
+            return out
+        try:
+            payload = self._request_json("GET", "/status", None)
+        except Exception as exc:
+            out["reachable"] = False
+            out["error"] = str(exc)
+            return out
+        out["ok"] = True
+        out["reachable"] = True
+        out["status_payload"] = payload
+        return out
+
+    def available(self) -> bool:
+        return bool(self.base_url)
+
+    def execute_action(self, action: dict[str, Any], *, dry_run: bool = False) -> MobileExecutionResult:
+        normalized = dict(action)
+        normalized["platform"] = "ios"
+        if dry_run:
+            return MobileExecutionResult(
+                status="preview",
+                output=f"Preview only: {json.dumps(normalized, ensure_ascii=True)}",
+                action=normalized,
+            )
+
+        session_id = self._ensure_session()
+        action_type = str(normalized.get("type") or "").strip().lower()
+        if not action_type:
+            return MobileExecutionResult(status="failed", output="iOS action missing required field: type", action=normalized)
+
+        handlers = {
+            "open_url": self._open_url,
+            "open_app": self._open_app,
+            "launch_app": self._open_app,
+            "tap": self._tap,
+            "click": self._tap,
+            "type": self._type_text,
+            "input": self._type_text,
+            "key": self._press_key,
+            "swipe": self._swipe,
+            "drag": self._swipe,
+            "scroll": self._scroll,
+            "wait": self._wait,
+            "note": self._note,
+        }
+        handler = handlers.get(action_type)
+        if handler is None:
+            return MobileExecutionResult(
+                status="failed",
+                output=f"unsupported iOS Appium action type '{action_type}'",
+                action=normalized,
+                data={"session_id": session_id},
+            )
+        try:
+            return handler(session_id, normalized)
+        except Exception as exc:
+            return MobileExecutionResult(
+                status="failed",
+                output=f"iOS Appium execution error: {exc}",
+                action=normalized,
+                data={"session_id": session_id},
+            )
+
+    def _open_url(self, session_id: str, action: dict[str, Any]) -> MobileExecutionResult:
+        url = str(action.get("url") or action.get("target") or action.get("value") or "").strip()
+        if not url:
+            return MobileExecutionResult(status="failed", output="open_url requires url/target/value", action=action)
+        self._request_json("POST", f"/session/{session_id}/url", {"url": url})
+        return MobileExecutionResult(status="ok", output=f"opened {url}", action=action, data={"session_id": session_id})
+
+    def _open_app(self, session_id: str, action: dict[str, Any]) -> MobileExecutionResult:
+        bundle_id = str(action.get("bundle_id") or action.get("target") or action.get("value") or "").strip()
+        if not bundle_id:
+            return MobileExecutionResult(status="failed", output="open_app requires bundle_id/target/value", action=action)
+        self._request_json(
+            "POST",
+            f"/session/{session_id}/execute/sync",
+            {"script": "mobile: activateApp", "args": [{"bundleId": bundle_id}]},
+        )
+        return MobileExecutionResult(
+            status="ok",
+            output=f"activated {bundle_id}",
+            action=action,
+            data={"session_id": session_id, "bundle_id": bundle_id},
+        )
+
+    def _tap(self, session_id: str, action: dict[str, Any]) -> MobileExecutionResult:
+        coords = _mobile_coords(action)
+        if coords is not None:
+            self._pointer_action(
+                session_id,
+                [
+                    {"type": "pointerMove", "duration": 0, "x": coords[0], "y": coords[1]},
+                    {"type": "pointerDown", "button": 0},
+                    {"type": "pause", "duration": 50},
+                    {"type": "pointerUp", "button": 0},
+                ],
+            )
+            return MobileExecutionResult(
+                status="ok",
+                output=f"tapped {coords[0]},{coords[1]}",
+                action=action,
+                data={"session_id": session_id, "x": coords[0], "y": coords[1]},
+            )
+        element_id = self._find_element(session_id, action)
+        self._request_json("POST", f"/session/{session_id}/element/{element_id}/click", {})
+        return MobileExecutionResult(
+            status="ok",
+            output=f"clicked element {element_id}",
+            action=action,
+            data={"session_id": session_id, "element_id": element_id},
+        )
+
+    def _type_text(self, session_id: str, action: dict[str, Any]) -> MobileExecutionResult:
+        text = str(action.get("text") or action.get("value") or action.get("target") or "")
+        if text == "":
+            return MobileExecutionResult(status="failed", output="type requires text/value/target", action=action)
+        element_id = self._find_element(session_id, action, allow_missing=True)
+        if element_id:
+            self._request_json(
+                "POST",
+                f"/session/{session_id}/element/{element_id}/value",
+                {"text": text, "value": list(text)},
+            )
+        else:
+            active = self._request_json("GET", f"/session/{session_id}/element/active", None)
+            active_id = self._extract_element_id(active)
+            if not active_id:
+                raise RuntimeError("no active element available for typing")
+            self._request_json(
+                "POST",
+                f"/session/{session_id}/element/{active_id}/value",
+                {"text": text, "value": list(text)},
+            )
+            element_id = active_id
+        return MobileExecutionResult(
+            status="ok",
+            output=f"typed {len(text)} characters",
+            action=action,
+            data={"session_id": session_id, "element_id": element_id},
+        )
+
+    def _press_key(self, session_id: str, action: dict[str, Any]) -> MobileExecutionResult:
+        key = str(action.get("key") or action.get("target") or action.get("value") or "").strip()
+        if not key:
+            return MobileExecutionResult(status="failed", output="key requires key/target/value", action=action)
+        self._request_json(
+            "POST",
+            f"/session/{session_id}/execute/sync",
+            {"script": "mobile: pressButton", "args": [{"name": key}]},
+        )
+        return MobileExecutionResult(
+            status="ok",
+            output=f"pressed {key}",
+            action=action,
+            data={"session_id": session_id, "key": key},
+        )
+
+    def _swipe(self, session_id: str, action: dict[str, Any]) -> MobileExecutionResult:
+        start = _mobile_coords(action, prefix="")
+        end = _mobile_coords(action, prefix="to_")
+        if start is not None and end is not None:
+            duration_ms = max(50, int(action.get("duration_ms", 300) or 300))
+            self._pointer_action(
+                session_id,
+                [
+                    {"type": "pointerMove", "duration": 0, "x": start[0], "y": start[1]},
+                    {"type": "pointerDown", "button": 0},
+                    {"type": "pointerMove", "duration": duration_ms, "x": end[0], "y": end[1]},
+                    {"type": "pointerUp", "button": 0},
+                ],
+            )
+            return MobileExecutionResult(
+                status="ok",
+                output=f"swiped {start[0]},{start[1]} -> {end[0]},{end[1]}",
+                action=action,
+                data={"session_id": session_id},
+            )
+        direction = str(action.get("direction") or action.get("target") or "up").strip().lower()
+        self._request_json(
+            "POST",
+            f"/session/{session_id}/execute/sync",
+            {"script": "mobile: swipe", "args": [{"direction": direction}]},
+        )
+        return MobileExecutionResult(
+            status="ok",
+            output=f"swiped {direction}",
+            action=action,
+            data={"session_id": session_id, "direction": direction},
+        )
+
+    def _scroll(self, session_id: str, action: dict[str, Any]) -> MobileExecutionResult:
+        direction = str(action.get("direction") or action.get("target") or "down").strip().lower()
+        self._request_json(
+            "POST",
+            f"/session/{session_id}/execute/sync",
+            {"script": "mobile: scroll", "args": [{"direction": direction}]},
+        )
+        return MobileExecutionResult(
+            status="ok",
+            output=f"scrolled {direction}",
+            action=action,
+            data={"session_id": session_id, "direction": direction},
+        )
+
+    def _wait(self, session_id: str, action: dict[str, Any]) -> MobileExecutionResult:
+        seconds = _parse_wait_seconds(action)
+        time.sleep(seconds)
+        return MobileExecutionResult(
+            status="ok",
+            output=f"waited {seconds:.3f}s",
+            action=action,
+            data={"session_id": session_id, "seconds": seconds},
+        )
+
+    def _note(self, session_id: str, action: dict[str, Any]) -> MobileExecutionResult:
+        _ = session_id
+        target = str(action.get("target") or "").strip()
+        value = str(action.get("value") or "").strip()
+        return MobileExecutionResult(
+            status="ok",
+            output=("note: " + " ".join(part for part in (target, value) if part)).strip(),
+            action=action,
+        )
+
+    def _ensure_session(self) -> str:
+        if self.session_id:
+            return self.session_id
+        if not self.base_url:
+            raise RuntimeError("NOVAADAPT_IOS_APPIUM_URL is not configured")
+        if not self.desired_capabilities:
+            raise RuntimeError("set NOVAADAPT_IOS_APPIUM_SESSION_ID or NOVAADAPT_IOS_APPIUM_CAPABILITIES")
+        payload = self._request_json(
+            "POST",
+            "/session",
+            {
+                "capabilities": {
+                    "alwaysMatch": self.desired_capabilities,
+                    "firstMatch": [{}],
+                }
+            },
+        )
+        value = payload.get("value") if isinstance(payload, dict) else {}
+        session_id = ""
+        if isinstance(payload.get("sessionId"), str):
+            session_id = str(payload.get("sessionId"))
+        elif isinstance(value, dict) and isinstance(value.get("sessionId"), str):
+            session_id = str(value.get("sessionId"))
+        if not session_id:
+            raise RuntimeError("Appium did not return a session id")
+        self.session_id = session_id
+        return session_id
+
+    def _pointer_action(self, session_id: str, actions: list[dict[str, Any]]) -> None:
+        self._request_json(
+            "POST",
+            f"/session/{session_id}/actions",
+            {
+                "actions": [
+                    {
+                        "type": "pointer",
+                        "id": "finger1",
+                        "parameters": {"pointerType": "touch"},
+                        "actions": actions,
+                    }
+                ]
+            },
+        )
+
+    def _find_element(self, session_id: str, action: dict[str, Any], *, allow_missing: bool = False) -> str:
+        locator = str(action.get("selector") or action.get("element") or action.get("target") or "").strip()
+        if not locator:
+            if allow_missing:
+                return ""
+            raise RuntimeError("selector/target is required for element-based iOS actions")
+        using, value = self._locator_strategy(locator)
+        payload = self._request_json("POST", f"/session/{session_id}/element", {"using": using, "value": value})
+        element_id = self._extract_element_id(payload)
+        if element_id:
+            return element_id
+        if allow_missing:
+            return ""
+        raise RuntimeError(f"unable to resolve iOS element for selector '{locator}'")
+
+    @staticmethod
+    def _locator_strategy(locator: str) -> tuple[str, str]:
+        text = str(locator or "").strip()
+        lowered = text.lower()
+        if lowered.startswith("xpath="):
+            return "xpath", text.split("=", 1)[1]
+        if text.startswith("//"):
+            return "xpath", text
+        if lowered.startswith("predicate:"):
+            return "-ios predicate string", text.split(":", 1)[1].strip()
+        if lowered.startswith("class:"):
+            return "class name", text.split(":", 1)[1].strip()
+        if lowered.startswith("id="):
+            return "accessibility id", text.split("=", 1)[1]
+        if lowered.startswith("accessibility:"):
+            return "accessibility id", text.split(":", 1)[1].strip()
+        return "accessibility id", text
+
+    @staticmethod
+    def _extract_element_id(payload: Any) -> str:
+        if not isinstance(payload, dict):
+            return ""
+        value = payload.get("value")
+        if isinstance(value, dict):
+            if isinstance(value.get("element-6066-11e4-a52e-4f735466cecf"), str):
+                return str(value.get("element-6066-11e4-a52e-4f735466cecf"))
+            if isinstance(value.get("ELEMENT"), str):
+                return str(value.get("ELEMENT"))
+        if isinstance(payload.get("element-6066-11e4-a52e-4f735466cecf"), str):
+            return str(payload.get("element-6066-11e4-a52e-4f735466cecf"))
+        return ""
+
+    def _request_json(self, method: str, path: str, payload: dict[str, Any] | None) -> Any:
+        if not self.base_url:
+            raise RuntimeError("NOVAADAPT_IOS_APPIUM_URL is not configured")
+        headers = {"Accept": "application/json"}
+        raw: bytes | None = None
+        if payload is not None:
+            raw = json.dumps(payload, ensure_ascii=True).encode("utf-8")
+            headers["Content-Type"] = "application/json"
+        req = request.Request(f"{self.base_url}{path}", data=raw, headers=headers, method=method.upper())
+        try:
+            with request.urlopen(req, timeout=self.timeout_seconds) as response:
+                body = response.read().decode("utf-8")
+        except error.HTTPError as exc:
+            detail = ""
+            try:
+                detail = exc.read().decode("utf-8", errors="ignore")
+            finally:
+                try:
+                    exc.close()
+                except Exception:
+                    pass
+            raise RuntimeError(f"Appium HTTP {int(exc.code)}: {detail}") from None
+        except error.URLError as exc:
+            reason = exc.reason
+            close_fn = getattr(reason, "close", None)
+            if callable(close_fn):
+                try:
+                    close_fn()
+                except Exception:
+                    pass
+            raise RuntimeError(f"Appium transport error: {reason}") from None
+        if not body.strip():
+            return {}
+        try:
+            return json.loads(body)
+        except json.JSONDecodeError:
+            return {"raw": body.strip()}
+
+
 class IOSVisionExecutor:
     def __init__(self, vision_executor: VisionGroundingExecutor) -> None:
         self.vision_executor = vision_executor
@@ -322,28 +708,32 @@ class UnifiedMobileExecutor:
         *,
         android_executor: AndroidMaestroExecutor | None = None,
         ios_executor: IOSVisionExecutor | None = None,
+        ios_appium_executor: IOSAppiumExecutor | None = None,
     ) -> None:
         self.android_executor = android_executor or AndroidMaestroExecutor()
         self.ios_executor = ios_executor
+        self.ios_appium_executor = ios_appium_executor or IOSAppiumExecutor()
 
     def status(self) -> dict[str, Any]:
         return {
             "ok": True,
             "android": self.android_executor.status(),
-            "ios": {"ok": self.ios_executor is not None, "executor": "vision"},
+            "ios": {
+                "ok": self.ios_executor is not None or self.ios_appium_executor.available(),
+                "vision": {"ok": self.ios_executor is not None, "executor": "vision"},
+                "appium": self.ios_appium_executor.status(),
+            },
         }
 
     def execute_action(self, action: dict[str, Any], *, dry_run: bool = True) -> MobileExecutionResult:
         normalized = dict(action)
         normalized.setdefault("platform", "android")
         platform = str(normalized.get("platform") or "").strip().lower()
-        if platform != "android":
-            return MobileExecutionResult(
-                status="failed",
-                output="UnifiedMobileExecutor only executes Android actions directly; iOS uses IOSVisionExecutor",
-                action=normalized,
-            )
-        return self.android_executor.execute_action(normalized, dry_run=dry_run)
+        if platform == "android":
+            return self.android_executor.execute_action(normalized, dry_run=dry_run)
+        if platform == "ios":
+            return self.ios_appium_executor.execute_action(normalized, dry_run=dry_run)
+        return MobileExecutionResult(status="failed", output=f"unsupported mobile platform '{platform}'", action=normalized)
 
 
 _ANDROID_KEYCODE_ALIASES = {
@@ -415,3 +805,14 @@ def _decode_base64_image(raw: object) -> bytes | None:
         return base64.b64decode(text, validate=True)
     except Exception as exc:
         raise ValueError("invalid screenshot_base64 payload") from exc
+
+
+def _parse_optional_json_object(raw: object) -> dict[str, Any]:
+    text = str(raw or "").strip()
+    if not text:
+        return {}
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}

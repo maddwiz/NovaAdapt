@@ -21,7 +21,7 @@ from .directshell import DirectShellClient
 from .flags import coerce_bool
 from .homeassistant_executor import HomeAssistantExecutor
 from .memory import MemoryBackend, build_memory_backend
-from .mobile_executor import AndroidMaestroExecutor, IOSVisionExecutor, UnifiedMobileExecutor
+from .mobile_executor import AndroidMaestroExecutor, IOSAppiumExecutor, IOSVisionExecutor, UnifiedMobileExecutor
 from .novaprime import (
     NovaPrimeBackend,
     build_novaprime_client,
@@ -284,7 +284,33 @@ class NovaAdaptService:
         candidate_models = self._as_name_list(payload.get("candidates"))
         fallback_models = self._as_name_list(payload.get("fallbacks"))
 
-        if platform_name == "ios":
+        raw_action = payload.get("action")
+        has_direct_mobile_action = isinstance(raw_action, dict) or payload.get("type") is not None
+        prefer_appium = coerce_bool(payload.get("prefer_appium"), default=False)
+
+        if platform_name == "ios" and prefer_appium and has_direct_mobile_action and self._mobile().ios_appium_executor.available():
+            if isinstance(raw_action, dict):
+                action = dict(raw_action)
+            else:
+                action = {key: value for key, value in payload.items() if key not in {"action", "config"}}
+            action["platform"] = "ios"
+            policy = ActionPolicy()
+            decision = policy.evaluate(action, allow_dangerous=allow_dangerous)
+            runtime_result = self._mobile().execute_action(
+                action,
+                dry_run=not (execute and decision.allowed),
+            )
+            out = {
+                "platform": "ios",
+                "transport": "appium",
+                "status": "blocked" if execute and not decision.allowed else runtime_result.status,
+                "output": decision.reason if execute and not decision.allowed else runtime_result.output,
+                "action": runtime_result.action,
+                "dangerous": decision.dangerous,
+            }
+            if runtime_result.data is not None:
+                out["data"] = runtime_result.data
+        elif platform_name == "ios":
             grounded, routed_action = self._mobile().ios_executor.execute(
                 payload,
                 config_path=config_path,
@@ -3007,6 +3033,7 @@ class NovaAdaptService:
                 self._mobile_executor = UnifiedMobileExecutor(
                     android_executor=AndroidMaestroExecutor(),
                     ios_executor=IOSVisionExecutor(self._vision()),
+                    ios_appium_executor=IOSAppiumExecutor(),
                 )
         return self._mobile_executor
 

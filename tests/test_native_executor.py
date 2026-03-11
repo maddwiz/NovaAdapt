@@ -106,6 +106,25 @@ class NativeExecutorTests(unittest.TestCase):
         self.assertEqual(cmd, ["xdotool", "mousemove", "120", "340", "click", "--repeat", "2", "1"])
         self.assertFalse(shell)
 
+    def test_linux_scroll_uses_xdotool_wheel_buttons(self):
+        executor = _RecordingLinuxExecutor()
+        result = executor.execute_action({"type": "scroll", "direction": "down", "steps": 4})
+        self.assertEqual(result.status, "ok")
+        cmd, shell = executor.calls[-1]
+        self.assertEqual(cmd, ["xdotool", "click", "--repeat", "4", "5"])
+        self.assertFalse(shell)
+
+    def test_linux_drag_uses_xdotool_pointer_chain(self):
+        executor = _RecordingLinuxExecutor()
+        result = executor.execute_action({"type": "drag", "x1": 10, "y1": 20, "x2": 30, "y2": 40})
+        self.assertEqual(result.status, "ok")
+        cmd, shell = executor.calls[-1]
+        self.assertEqual(
+            cmd,
+            ["xdotool", "mousemove", "10", "20", "mousedown", "1", "mousemove", "--sync", "30", "40", "mouseup", "1"],
+        )
+        self.assertFalse(shell)
+
     def test_linux_scroll_uses_xdotool_wheel_button(self):
         executor = _RecordingLinuxExecutor()
         result = executor.execute_action({"type": "scroll", "direction": "down", "amount": 4})
@@ -197,6 +216,26 @@ class NativeExecutorTests(unittest.TestCase):
         cmd, shell = executor.calls[-1]
         self.assertFalse(shell)
         self.assertIn("$i -lt 2", cmd[-1])
+
+    def test_windows_scroll_uses_mouse_wheel_event(self):
+        executor = _RecordingWindowsExecutor()
+        result = executor.execute_action({"type": "scroll", "direction": "down", "steps": 2})
+        self.assertEqual(result.status, "ok")
+        cmd, shell = executor.calls[-1]
+        self.assertFalse(shell)
+        self.assertIn("mouse_event(0x0800", cmd[-1])
+        self.assertIn("$i -lt 2", cmd[-1])
+
+    def test_windows_drag_uses_user32_mouse_script(self):
+        executor = _RecordingWindowsExecutor()
+        result = executor.execute_action({"type": "drag", "target": "15,25", "to_target": "35,45"})
+        self.assertEqual(result.status, "ok")
+        cmd, shell = executor.calls[-1]
+        self.assertFalse(shell)
+        self.assertIn("SetCursorPos(15, 25)", cmd[-1])
+        self.assertIn("SetCursorPos(35, 45)", cmd[-1])
+        self.assertIn("mouse_event(0x0002", cmd[-1])
+        self.assertIn("mouse_event(0x0004", cmd[-1])
 
     def test_windows_scroll_uses_wheel_mouse_event(self):
         executor = _RecordingWindowsExecutor()
