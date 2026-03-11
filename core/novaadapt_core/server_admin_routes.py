@@ -127,6 +127,7 @@ def get_dashboard_data(
     jobs_limit = int(single(query, "jobs_limit") or 25)
     plans_limit = int(single(query, "plans_limit") or 25)
     events_limit = int(single(query, "events_limit") or 25)
+    control_limit = int(single(query, "control_limit") or 8)
     config = single(query, "config")
     control: dict[str, object] = {}
     try:
@@ -141,6 +142,11 @@ def get_dashboard_data(
         control["homeassistant"] = service.homeassistant_status()
     except Exception as exc:
         control["homeassistant"] = {"ok": False, "error": str(exc)}
+    try:
+        control["artifacts"] = service.list_control_artifacts(limit=max(1, control_limit))
+    except Exception as exc:
+        control["artifacts"] = []
+        control["artifacts_error"] = str(exc)
     handler._send_json(
         200,
         {
@@ -155,6 +161,7 @@ def get_dashboard_data(
             ),
             "models_count": len(service.models(config_path=to_path(config))),
             "control": control,
+            "control_artifacts": control.get("artifacts", []),
         },
     )
     return 200

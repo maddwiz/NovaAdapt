@@ -1131,6 +1131,21 @@ class NovaAdaptAPIClient:
             return payload
         raise APIClientError("Expected object payload from /mobile/status")
 
+    def control_artifacts(self, *, limit: int = 10, control_type: str | None = None) -> list[dict[str, Any]]:
+        query = f"limit={max(1, int(limit))}"
+        if control_type:
+            query = f"{query}&control_type={quote(str(control_type), safe='')}"
+        payload = self._get_json(f"/control/artifacts?{query}")
+        if isinstance(payload, list):
+            return payload
+        raise APIClientError("Expected list payload from /control/artifacts")
+
+    def control_artifact(self, artifact_id: str) -> dict[str, Any]:
+        payload = self._get_json(f"/control/artifacts/{quote(str(artifact_id or ''), safe='')}")
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /control/artifacts/{artifact_id}")
+
     def homeassistant_status(self) -> dict[str, Any]:
         payload = self._get_json("/iot/homeassistant/status")
         if isinstance(payload, dict):

@@ -17,6 +17,7 @@ from .agent import NovaAdaptAgent
 from .browser_executor import BrowserExecutor
 from .channels import ChannelRegistry, build_channel_registry
 from .canvas import CanvasRenderResult, CanvasRenderer, CanvasSessionStore, canvas_enabled
+from .control_artifacts import ControlArtifactStore
 from .directshell import DirectShellClient
 from .flags import coerce_bool
 from .homeassistant_executor import HomeAssistantExecutor
@@ -100,6 +101,7 @@ class NovaAdaptService:
         self._workflow_store: WorkflowStore | None = None
         self._workflow_checkpoints: WorkflowCheckpointStore | None = None
         self._workflow_engine: WorkflowEngine | None = None
+        self._control_artifact_store: ControlArtifactStore | None = None
 
     def close(self) -> None:
         browser = self._browser_executor
@@ -261,6 +263,22 @@ class NovaAdaptService:
         }
         if runtime_result.get("data") is not None:
             out["data"] = runtime_result.get("data")
+        artifact = self._store_control_artifact(
+            control_type="vision",
+            result=out,
+            goal=goal,
+            transport="vision-grounding",
+            preview_png=self._decode_base64_image(grounded.screenshot_base64),
+            model=grounded.model_name,
+            model_id=grounded.model_id,
+            metadata={
+                "app_name": app_name,
+                "context": context,
+                "vision": self._vision_metadata_without_screenshot(out.get("vision")),
+            },
+        )
+        if artifact is not None:
+            out["artifact"] = artifact
         self._ingest_control_memory(
             control_type="vision",
             payload={
@@ -310,6 +328,20 @@ class NovaAdaptService:
             }
             if runtime_result.data is not None:
                 out["data"] = runtime_result.data
+            artifact = self._store_control_artifact(
+                control_type="mobile",
+                result=out,
+                goal=str(payload.get("goal") or payload.get("objective") or ""),
+                platform="ios",
+                transport="appium",
+                preview_png=self._decode_base64_image(payload.get("screenshot_base64")),
+                metadata={
+                    "prefer_appium": True,
+                    "executor": "ios-appium",
+                },
+            )
+            if artifact is not None:
+                out["artifact"] = artifact
         elif platform_name == "ios":
             grounded, routed_action = self._mobile().ios_executor.execute(
                 payload,
@@ -344,6 +376,22 @@ class NovaAdaptService:
             }
             if runtime_result.get("data") is not None:
                 out["data"] = runtime_result.get("data")
+            artifact = self._store_control_artifact(
+                control_type="mobile",
+                result=out,
+                goal=str(payload.get("goal") or payload.get("objective") or ""),
+                platform="ios",
+                transport="vision",
+                preview_png=self._decode_base64_image(grounded.screenshot_base64),
+                model=grounded.model_name,
+                model_id=grounded.model_id,
+                metadata={
+                    "app_name": str(payload.get("app_name") or "iPhone").strip(),
+                    "vision": self._vision_metadata_without_screenshot(out.get("vision")),
+                },
+            )
+            if artifact is not None:
+                out["artifact"] = artifact
         else:
             raw_action = payload.get("action")
             if isinstance(raw_action, dict):
@@ -367,6 +415,19 @@ class NovaAdaptService:
             }
             if runtime_result.get("data") is not None:
                 out["data"] = runtime_result.get("data")
+            artifact = self._store_control_artifact(
+                control_type="mobile",
+                result=out,
+                goal=str(payload.get("goal") or payload.get("objective") or ""),
+                platform="android",
+                transport="android-maestro",
+                preview_png=self._decode_base64_image(payload.get("screenshot_base64")),
+                metadata={
+                    "executor": "android-maestro",
+                },
+            )
+            if artifact is not None:
+                out["artifact"] = artifact
 
         self._ingest_control_memory(
             control_type="mobile",
@@ -377,6 +438,15 @@ class NovaAdaptService:
 
     def mobile_status(self) -> dict[str, Any]:
         return self._mobile().status()
+
+    def list_control_artifacts(self, *, limit: int = 10, control_type: str | None = None) -> list[dict[str, Any]]:
+        return self._control_artifact_store_obj().list(limit=max(1, int(limit)), control_type=control_type)
+
+    def get_control_artifact(self, artifact_id: str) -> dict[str, Any] | None:
+        return self._control_artifact_store_obj().get(artifact_id)
+
+    def control_artifact_preview(self, artifact_id: str) -> tuple[bytes, str] | None:
+        return self._control_artifact_store_obj().read_preview(artifact_id)
 
     def homeassistant_status(self) -> dict[str, Any]:
         return self._homeassistant().status()
@@ -400,6 +470,17 @@ class NovaAdaptService:
         }
         if runtime_result.get("data") is not None:
             out["data"] = runtime_result.get("data")
+        artifact = self._store_control_artifact(
+            control_type="iot",
+            result=out,
+            goal=str(payload.get("goal") or payload.get("objective") or ""),
+            transport="homeassistant",
+            metadata={
+                "executor": "homeassistant",
+            },
+        )
+        if artifact is not None:
+            out["artifact"] = artifact
         self._ingest_control_memory(
             control_type="iot",
             payload=out,
@@ -2977,6 +3058,19 @@ class NovaAdaptService:
             )
         return self._workflow_engine
 
+    def _control_artifact_dir(self) -> Path:
+        if isinstance(self.db_path, Path):
+            return self.db_path.with_name("novaadapt_control_artifacts")
+        base_dir = self.default_config.parent if isinstance(self.default_config, Path) else Path(".")
+        return base_dir / ".novaadapt_control_artifacts"
+
+    def _control_artifact_store_obj(self) -> ControlArtifactStore:
+        if self._control_artifact_store is None:
+            root_dir = self._control_artifact_dir()
+            root_dir.mkdir(parents=True, exist_ok=True)
+            self._control_artifact_store = ControlArtifactStore(root_dir)
+        return self._control_artifact_store
+
     @staticmethod
     def _canvas_frame_payload(frame: CanvasRenderResult) -> dict[str, Any]:
         return {
@@ -3008,6 +3102,49 @@ class NovaAdaptService:
         if self._audit_store is None:
             self._audit_store = AuditStore(self.audit_db_path)
         return self._audit_store
+
+    def _store_control_artifact(
+        self,
+        *,
+        control_type: str,
+        result: dict[str, Any],
+        goal: str = "",
+        platform: str = "",
+        transport: str = "",
+        preview_png: bytes | None = None,
+        model: str | None = None,
+        model_id: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any] | None:
+        try:
+            action = result.get("action") if isinstance(result.get("action"), dict) else {}
+            return self._control_artifact_store_obj().create(
+                control_type=control_type,
+                status=str(result.get("status") or ""),
+                output=str(result.get("output") or ""),
+                action=action,
+                dangerous=bool(result.get("dangerous", False)),
+                goal=goal,
+                platform=platform or str(result.get("platform") or ""),
+                transport=transport,
+                model=model or str((result.get("vision") or {}).get("model") or ""),
+                model_id=model_id or str((result.get("vision") or {}).get("model_id") or ""),
+                preview_png=preview_png,
+                data=result.get("data") if isinstance(result.get("data"), dict) else None,
+                metadata=metadata,
+            )
+        except Exception:
+            return None
+
+    @staticmethod
+    def _vision_metadata_without_screenshot(value: object) -> dict[str, Any]:
+        if not isinstance(value, dict):
+            return {}
+        return {
+            str(key): item
+            for key, item in value.items()
+            if str(key) != "screenshot_base64"
+        }
 
     def _browser(self) -> BrowserExecutor:
         if self._browser_executor is None:

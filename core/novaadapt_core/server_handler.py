@@ -338,6 +338,15 @@ def _build_handler(
         def _get_homeassistant_status(self, _query: dict[str, list[str]]) -> int:
             return control_routes.get_homeassistant_status(self, service)
 
+        def _get_control_artifacts(self, query: dict[str, list[str]]) -> int:
+            return control_routes.get_control_artifacts(self, service, _single, query)
+
+        def _get_control_artifact_item(self, path: str, _query: dict[str, list[str]]) -> int:
+            return control_routes.get_control_artifact_item(self, service, path)
+
+        def _get_control_artifact_preview(self, path: str, _query: dict[str, list[str]]) -> int:
+            return control_routes.get_control_artifact_preview(self, service, path)
+
         def _get_plugin_health(self, path: str, _query: dict[str, list[str]]) -> int:
             return plugin_routes.get_plugin_health(self, service, path)
 
@@ -638,7 +647,11 @@ def _build_handler(
         def _check_auth(self, path: str, query: dict[str, list[str]] | None = None) -> bool:
             if path == "/health" or (path.startswith("/channels/") and path.endswith("/inbound")) or not api_token:
                 return True
-            if query is not None and path in {"/dashboard", "/dashboard/canvas-workflows", "/dashboard/data"}:
+            if query is not None and (
+                path in {"/dashboard", "/dashboard/canvas-workflows", "/dashboard/data"}
+                or path == "/control/artifacts"
+                or path.startswith("/control/artifacts/")
+            ):
                 query_token = _single(query, "token")
                 if query_token == api_token:
                     return True
@@ -708,6 +721,15 @@ def _build_handler(
             encoded = html.encode("utf-8")
             self.send_response(status_code)
             self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("X-Request-ID", self._request_id)
+            self.send_header("Content-Length", str(len(encoded)))
+            self.end_headers()
+            self.wfile.write(encoded)
+
+        def _send_bytes(self, status_code: int, payload: bytes, *, content_type: str) -> None:
+            encoded = payload if isinstance(payload, bytes) else bytes(payload)
+            self.send_response(status_code)
+            self.send_header("Content-Type", str(content_type or "application/octet-stream"))
             self.send_header("X-Request-ID", self._request_id)
             self.send_header("Content-Length", str(len(encoded)))
             self.end_headers()

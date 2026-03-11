@@ -25,6 +25,22 @@ struct AuditEventSummary: Identifiable {
     let createdAt: String
 }
 
+struct ControlArtifactSummary: Identifiable {
+    let id: String
+    let controlType: String
+    let status: String
+    let platform: String
+    let transport: String
+    let goal: String
+    let outputPreview: String
+    let actionType: String
+    let target: String
+    let model: String
+    let createdAt: String
+    let previewPath: String
+    let dangerous: Bool
+}
+
 struct TerminalSessionSummary: Identifiable {
     let id: String
     let open: Bool
@@ -81,6 +97,7 @@ final class BridgeViewModel: ObservableObject {
     @Published var plans: [PlanSummary] = []
     @Published var jobs: [JobSummary] = []
     @Published var events: [AuditEventSummary] = []
+    @Published var controlArtifacts: [ControlArtifactSummary] = []
     @Published var wsEvents: [String] = []
     @Published var status: String = "Idle"
 
@@ -204,6 +221,7 @@ final class BridgeViewModel: ObservableObject {
                 self.plans = self.parsePlans(payload["plans"])
                 self.jobs = self.parseJobs(payload["jobs"])
                 self.events = self.parseEvents(payload["events"])
+                self.controlArtifacts = self.parseControlArtifacts(payload["control_artifacts"])
             }
         }
     }
@@ -750,6 +768,7 @@ final class BridgeViewModel: ObservableObject {
         plans = parsePlans(payload["plans"])
         jobs = parseJobs(payload["jobs"])
         events = parseEvents(payload["events"])
+        controlArtifacts = parseControlArtifacts(payload["control_artifacts"])
     }
 
     private func startTerminalPolling() {
@@ -1132,6 +1151,51 @@ final class BridgeViewModel: ObservableObject {
                 createdAt: string(item["created_at"], fallback: "-")
             )
         }
+    }
+
+    private func parseControlArtifacts(_ value: Any?) -> [ControlArtifactSummary] {
+        guard let items = value as? [[String: Any]] else {
+            return []
+        }
+        return items.prefix(12).map { item in
+            let id = string(item["artifact_id"], fallback: UUID().uuidString)
+            let dangerous = (item["dangerous"] as? Bool)
+                ?? ((item["dangerous"] as? NSNumber)?.boolValue ?? false)
+            return ControlArtifactSummary(
+                id: id,
+                controlType: string(item["control_type"], fallback: "control"),
+                status: string(item["status"], fallback: "unknown"),
+                platform: string(item["platform"]),
+                transport: string(item["transport"]),
+                goal: string(item["goal"]),
+                outputPreview: string(item["output_preview"]),
+                actionType: string(item["action_type"]),
+                target: string(item["target"]),
+                model: string(item["model"]),
+                createdAt: string(item["created_at"], fallback: "-"),
+                previewPath: string(item["preview_path"]),
+                dangerous: dangerous
+            )
+        }
+    }
+
+    func controlArtifactPreviewURL(for artifact: ControlArtifactSummary) -> URL? {
+        let rawPath = artifact.previewPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !rawPath.isEmpty else {
+            return nil
+        }
+        guard let base = normalizedAPIBaseURL() else {
+            return nil
+        }
+        guard var components = URLComponents(url: base, resolvingAgainstBaseURL: false) else {
+            return nil
+        }
+        components.path = rawPath.hasPrefix("/") ? rawPath : "/" + rawPath
+        let bearer = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !bearer.isEmpty {
+            components.queryItems = (components.queryItems ?? []) + [URLQueryItem(name: "token", value: bearer)]
+        }
+        return components.url
     }
 
     private func parseTerminalSessions(_ rows: [[String: Any]]) -> [TerminalSessionSummary] {

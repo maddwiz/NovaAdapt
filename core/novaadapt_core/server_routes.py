@@ -51,6 +51,7 @@ def build_get_private_routes(handler: Any) -> dict[str, Any]:
         "/browser/pages": handler._get_browser_pages,
         "/mobile/status": handler._get_mobile_status,
         "/iot/homeassistant/status": handler._get_homeassistant_status,
+        "/control/artifacts": handler._get_control_artifacts,
     }
 
 
@@ -65,6 +66,8 @@ def build_get_dynamic_routes(handler: Any) -> tuple[tuple[str, str, Any], ...]:
         ("/plugins/", "/health", handler._get_plugin_health),
         ("/terminal/sessions/", "/output", handler._get_terminal_output),
         ("/terminal/sessions/", "", handler._get_terminal_session_item),
+        ("/control/artifacts/", "/preview", handler._get_control_artifact_preview),
+        ("/control/artifacts/", "", handler._get_control_artifact_item),
     )
 
 

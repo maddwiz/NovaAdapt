@@ -88,6 +88,41 @@ def render_dashboard_html() -> str:
       gap: 12px;
       grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
     }
+    .artifact-list {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      margin-top: 12px;
+    }
+    .artifact {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px;
+    }
+    .artifact-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: baseline;
+      margin-bottom: 8px;
+    }
+    .artifact-media {
+      width: 100%;
+      max-height: 200px;
+      object-fit: cover;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      margin-bottom: 8px;
+      background: #0b0f14;
+    }
+    .artifact-meta {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+      margin: 6px 0 0;
+      white-space: pre-wrap;
+    }
     table {
       width: 100%; border-collapse: collapse;
       background: var(--panel); border: 1px solid var(--border); border-radius: 12px; overflow: hidden;
@@ -170,6 +205,11 @@ def render_dashboard_html() -> str:
         </table>
       </div>
     </div>
+
+    <div>
+      <div class=\"section-title\">Control Artifacts</div>
+      <div id=\"artifacts\" class=\"artifact-list\"></div>
+    </div>
   </div>
 
   <script>
@@ -178,6 +218,7 @@ def render_dashboard_html() -> str:
     const actionStatus = document.getElementById('action-status');
     const jobsTbody = document.getElementById('jobs');
     const plansTbody = document.getElementById('plans');
+    const artifactsEl = document.getElementById('artifacts');
 
     function metricColor(v, ok=0){
       if (Number(v) <= ok) return 'ok';
@@ -210,6 +251,35 @@ def render_dashboard_html() -> str:
         .replaceAll('>', '&gt;')
         .replaceAll('"', '&quot;')
         .replaceAll("'", '&#39;');
+    }
+
+    function renderArtifacts(items){
+      const artifacts = Array.isArray(items) ? items : [];
+      if (!artifacts.length) {
+        artifactsEl.innerHTML = '<div class=\"card\"><div class=\"label\">Artifacts</div><div class=\"value\">No control artifacts yet</div></div>';
+        return;
+      }
+      artifactsEl.innerHTML = artifacts.slice(0, 8).map(item => {
+        const preview = item.preview_available && item.preview_path
+          ? `<img class=\"artifact-media\" src=\"${escapeHTML(withToken(item.preview_path))}\" alt=\"artifact preview\" loading=\"lazy\" />`
+          : '';
+        const heading = [item.control_type || 'control', item.platform || item.transport || item.action_type || 'preview']
+          .filter(Boolean)
+          .join(' / ');
+        return `
+          <div class=\"artifact\">
+            <div class=\"artifact-head\">
+              <strong>${escapeHTML(heading)}</strong>
+              <span class=\"mono\">${escapeHTML(item.status || 'unknown')}</span>
+            </div>
+            ${preview}
+            <p class=\"artifact-meta\">${escapeHTML(item.goal || item.output_preview || '(no goal)')}</p>
+            <p class=\"artifact-meta\">Action: ${escapeHTML(item.action_type || 'unknown')}${item.target ? ` • ${escapeHTML(item.target)}` : ''}</p>
+            <p class=\"artifact-meta\">Model: ${escapeHTML(item.model || 'n/a')}${item.model_id ? ` • ${escapeHTML(item.model_id)}` : ''}</p>
+            <p class=\"artifact-meta\">${escapeHTML(item.created_at || '')}${item.dangerous ? ' • dangerous' : ''}</p>
+          </div>
+        `;
+      }).join('');
     }
 
     async function fetchJSON(path){
@@ -290,6 +360,7 @@ def render_dashboard_html() -> str:
         const metrics = data.metrics || {};
         const modelsCount = Number(data.models_count || 0);
         const control = data.control || {};
+        const controlArtifacts = data.control_artifacts || control.artifacts || [];
         const browser = control.browser || {};
         const mobile = control.mobile || {};
         const homeassistant = control.homeassistant || {};
@@ -379,6 +450,7 @@ def render_dashboard_html() -> str:
             <td>${escapeHTML(event.created_at || '')}</td>
           </tr>
         `).join('');
+        renderArtifacts(controlArtifacts);
       } catch (err) {
         document.getElementById('summary').innerHTML = `
           <div class=\"card\">
@@ -389,6 +461,7 @@ def render_dashboard_html() -> str:
         jobsTbody.innerHTML = '';
         plansTbody.innerHTML = '';
         document.getElementById('events').innerHTML = '';
+        artifactsEl.innerHTML = '';
       }
     }
 

@@ -4,6 +4,7 @@ import tempfile
 import threading
 import unittest
 from pathlib import Path
+from urllib import request as urlrequest
 
 from novaadapt_core.directshell import ExecutionResult
 from novaadapt_core.homeassistant_executor import HomeAssistantExecutionResult
@@ -85,10 +86,12 @@ class _StubHomeAssistantExecutor:
         )
 
 
-def _build_service(directshell=None) -> NovaAdaptService:
+def _build_service(directshell=None, storage_root: Path | None = None) -> NovaAdaptService:
     runtime = directshell or _RecordingDirectShell()
+    root = storage_root or Path(tempfile.mkdtemp(prefix="novaadapt-control-tests-"))
     return NovaAdaptService(
-        default_config=Path("unused.json"),
+        default_config=root / "unused.json",
+        db_path=root / "state.sqlite3",
         router_loader=lambda _path: _VisionRouter(),
         directshell_factory=lambda: runtime,
         homeassistant_executor_factory=lambda: _StubHomeAssistantExecutor(),
@@ -113,6 +116,13 @@ class ControlServiceTests(unittest.TestCase):
         self.assertEqual(out["action"]["target"], "44,55")
         self.assertAlmostEqual(out["vision"]["confidence"], 0.91, places=2)
         self.assertEqual(directshell.calls[0]["action"]["target"], "44,55")
+        self.assertEqual(out["artifact"]["control_type"], "vision")
+        detail = service.get_control_artifact(out["artifact"]["artifact_id"])
+        self.assertIsNotNone(detail)
+        self.assertTrue(detail["preview_available"])
+        preview = service.control_artifact_preview(out["artifact"]["artifact_id"])
+        self.assertIsNotNone(preview)
+        self.assertEqual(preview[0], b"fake-png")
 
     def test_mobile_action_blocks_sensitive_android_payment(self):
         service = _build_service()
@@ -235,11 +245,25 @@ class ControlAPIClientTests(unittest.TestCase):
                 self.assertEqual(ha_action["status"], "preview")
                 self.assertTrue(ha_action["dangerous"])
 
+                artifacts = client.control_artifacts(limit=5)
+                self.assertTrue(artifacts)
+                artifact_id = vision["artifact"]["artifact_id"]
+                self.assertTrue(any(item["artifact_id"] == artifact_id for item in artifacts))
+                artifact = client.control_artifact(artifact_id)
+                self.assertEqual(artifact["status"], "preview")
+                self.assertTrue(artifact["preview_available"])
+                preview_url = f"http://{host}:{port}{vision['artifact']['preview_path']}"
+                with urlrequest.urlopen(preview_url) as response:
+                    self.assertEqual(response.status, 200)
+                    self.assertEqual(response.read(), b"fake-png")
+
                 dashboard = client.dashboard_data()
                 self.assertIn("control", dashboard)
                 self.assertIn("browser", dashboard["control"])
                 self.assertIn("mobile", dashboard["control"])
                 self.assertIn("homeassistant", dashboard["control"])
+                self.assertIn("control_artifacts", dashboard)
+                self.assertTrue(dashboard["control_artifacts"])
             finally:
                 server.shutdown()
                 server.server_close()

@@ -6,6 +6,40 @@ from .flags import coerce_bool
 from .service import NovaAdaptService
 
 
+def get_control_artifacts(handler, service: NovaAdaptService, single, query: dict[str, list[str]]) -> int:
+    limit = int(single(query, "limit") or 10)
+    control_type = single(query, "control_type")
+    handler._send_json(
+        200,
+        service.list_control_artifacts(limit=max(1, limit), control_type=control_type),
+    )
+    return 200
+
+
+def get_control_artifact_item(handler, service: NovaAdaptService, path: str) -> int:
+    artifact_id = path.removeprefix("/control/artifacts/").strip("/")
+    if not artifact_id:
+        handler._send_json(404, {"error": "Artifact not found"})
+        return 404
+    item = service.get_control_artifact(artifact_id)
+    if item is None:
+        handler._send_json(404, {"error": "Artifact not found"})
+        return 404
+    handler._send_json(200, item)
+    return 200
+
+
+def get_control_artifact_preview(handler, service: NovaAdaptService, path: str) -> int:
+    artifact_id = path.removeprefix("/control/artifacts/").removesuffix("/preview").strip("/")
+    preview = service.control_artifact_preview(artifact_id)
+    if preview is None:
+        handler._send_json(404, {"error": "Artifact preview not found"})
+        return 404
+    payload, content_type = preview
+    handler._send_bytes(200, payload, content_type=content_type)
+    return 200
+
+
 def post_execute_vision(handler, service: NovaAdaptService, path: str, payload: dict[str, object]) -> int:
     normalized = dict(payload)
     if payload.get("screenshot_base64") is not None:

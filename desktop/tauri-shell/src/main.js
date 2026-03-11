@@ -20,11 +20,13 @@ const createPlanBtn = document.querySelector("#createPlanBtn");
 const plansEl = document.querySelector("#plans");
 const jobsEl = document.querySelector("#jobs");
 const eventsEl = document.querySelector("#events");
+const controlArtifactsEl = document.querySelector("#controlArtifacts");
 const summaryEl = document.querySelector("#summary");
 const actionStatusEl = document.querySelector("#actionStatus");
 const planCountEl = document.querySelector("#planCount");
 const jobCountEl = document.querySelector("#jobCount");
 const eventCountEl = document.querySelector("#eventCount");
+const artifactCountEl = document.querySelector("#artifactCount");
 const connectionStatusEl = document.querySelector("#connectionStatus");
 
 let refreshTimer = null;
@@ -446,6 +448,44 @@ function renderEvents(events) {
   }
 }
 
+function artifactPreviewUrl(path) {
+  if (!path) return "";
+  const { baseUrl, token } = currentConfig();
+  const normalizedPath = String(path).startsWith("/") ? String(path) : `/${String(path)}`;
+  const prefix = baseUrl.replace(/\/$/, "");
+  if (!token) return `${prefix}${normalizedPath}`;
+  const sep = normalizedPath.includes("?") ? "&" : "?";
+  return `${prefix}${normalizedPath}${sep}token=${encodeURIComponent(token)}`;
+}
+
+function renderControlArtifacts(items) {
+  const artifacts = Array.isArray(items) ? items : [];
+  artifactCountEl.textContent = String(artifacts.length);
+  if (!artifacts.length) {
+    controlArtifactsEl.innerHTML = "<p>No control artifacts available.</p>";
+    return;
+  }
+  controlArtifactsEl.innerHTML = "";
+  for (const artifact of artifacts.slice(0, 8)) {
+    const card = document.createElement("article");
+    card.className = "event";
+    const preview = artifact.preview_available && artifact.preview_path
+      ? `<img class="artifact-preview" src="${escapeHTML(artifactPreviewUrl(artifact.preview_path))}" alt="artifact preview" loading="lazy" />`
+      : "";
+    card.innerHTML = `
+      ${preview}
+      <div class="event-head">
+        <strong>${escapeHTML([artifact.control_type || "control", artifact.platform || artifact.transport || artifact.action_type || "preview"].filter(Boolean).join(" / "))}</strong>
+        <span>${escapeHTML(formatTimestamp(artifact.created_at))}</span>
+      </div>
+      <p class="event-meta">Status: ${escapeHTML(artifact.status || "unknown")} • Goal: ${escapeHTML(artifact.goal || artifact.output_preview || "(no goal)")}</p>
+      <p class="event-meta">Action: ${escapeHTML(artifact.action_type || "unknown")}${artifact.target ? ` • ${escapeHTML(artifact.target)}` : ""}</p>
+      <p class="event-meta">Model: ${escapeHTML(artifact.model || "n/a")}${artifact.dangerous ? " • dangerous" : ""}</p>
+    `;
+    controlArtifactsEl.appendChild(card);
+  }
+}
+
 function renderSummary(data) {
   const plans = Array.isArray(data?.plans) ? data.plans : [];
   const jobs = Array.isArray(data?.jobs) ? data.jobs : [];
@@ -467,6 +507,7 @@ function render(data) {
   renderPlans(data?.plans || []);
   renderJobs(data?.jobs || []);
   renderEvents(data?.events || []);
+  renderControlArtifacts(data?.control_artifacts || data?.control?.artifacts || []);
   renderSummary(data || {});
 }
 

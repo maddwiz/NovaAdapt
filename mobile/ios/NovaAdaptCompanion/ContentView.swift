@@ -21,6 +21,7 @@ struct ContentView: View {
                         jobsCard
                         terminalCard
                         eventsCard
+                        controlArtifactsCard
                         websocketCard
                     }
                     .padding(16)
@@ -473,6 +474,61 @@ struct ContentView: View {
                             Text("status: \(event.status) • \(event.createdAt)")
                                 .font(.caption)
                                 .foregroundStyle(Color.novaMuted)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private var controlArtifactsCard: some View {
+        sectionCard(title: "Control Artifacts") {
+            if bridge.controlArtifacts.isEmpty {
+                Text("No control artifacts yet.")
+                    .font(.subheadline)
+                    .foregroundStyle(Color.novaMuted)
+            } else {
+                ForEach(Array(bridge.controlArtifacts.prefix(8))) { artifact in
+                    itemCard {
+                        VStack(alignment: .leading, spacing: 8) {
+                            if let url = bridge.controlArtifactPreviewURL(for: artifact) {
+                                AsyncImage(url: url) { phase in
+                                    switch phase {
+                                    case .empty:
+                                        ProgressView()
+                                            .frame(maxWidth: .infinity)
+                                            .padding(.vertical, 12)
+                                    case .success(let image):
+                                        image
+                                            .resizable()
+                                            .scaledToFit()
+                                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                    case .failure:
+                                        Text("Preview unavailable")
+                                            .font(.caption)
+                                            .foregroundStyle(Color.novaMuted)
+                                    @unknown default:
+                                        EmptyView()
+                                    }
+                                }
+                            }
+                            Text([artifact.controlType, artifact.platform.isEmpty ? artifact.transport : artifact.platform]
+                                .filter { !$0.isEmpty }
+                                .joined(separator: " / "))
+                                .font(.headline)
+                                .foregroundStyle(.white)
+                            Text("status: \(artifact.status) • \(artifact.createdAt)")
+                                .font(.caption)
+                                .foregroundStyle(Color.novaMuted)
+                            Text(artifact.goal.isEmpty ? artifact.outputPreview : artifact.goal)
+                                .font(.subheadline)
+                                .foregroundStyle(Color.novaInk)
+                            Text("action: \(artifact.actionType)\(artifact.target.isEmpty ? "" : " • \(artifact.target)")")
+                                .font(.caption)
+                                .foregroundStyle(Color.novaMuted)
+                            Text("model: \(artifact.model.isEmpty ? "n/a" : artifact.model)\(artifact.dangerous ? " • dangerous" : "")")
+                                .font(.caption)
+                                .foregroundStyle(artifact.dangerous ? Color.novaDanger : Color.novaMuted)
                         }
                     }
                 }

@@ -873,6 +873,24 @@ def build_openapi_spec() -> dict:
                     "responses": {"200": {"description": "Mobile status"}},
                 }
             },
+            "/control/artifacts": {
+                "get": {
+                    "summary": "List recent persisted control artifacts for vision, mobile, and IoT actions",
+                    "responses": {"200": {"description": "Control artifact summaries"}},
+                }
+            },
+            "/control/artifacts/{artifact_id}": {
+                "get": {
+                    "summary": "Get a persisted control artifact record",
+                    "responses": {"200": {"description": "Control artifact detail"}, "404": {"description": "Not found"}},
+                }
+            },
+            "/control/artifacts/{artifact_id}/preview": {
+                "get": {
+                    "summary": "Fetch the stored preview image for a control artifact when available",
+                    "responses": {"200": {"description": "Artifact preview image"}, "404": {"description": "Not found"}},
+                }
+            },
             "/iot/homeassistant/status": {
                 "get": {
                     "summary": "Get Home Assistant integration status",
