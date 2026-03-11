@@ -544,6 +544,65 @@
         <div class="status" id="control-status">Control-anything idle</div>
         <div class="log mini" id="control-output"></div>
       </section>
+
+      <section class="card">
+        <h2>IoT Control</h2>
+        <div class="row">
+          <div>
+            <label for="iot-domain-filter">Entity Domain</label>
+            <input id="iot-domain-filter" placeholder="light" />
+          </div>
+          <div>
+            <label for="iot-prefix-filter">Entity Prefix</label>
+            <input id="iot-prefix-filter" placeholder="light.office" />
+          </div>
+        </div>
+        <div class="controls">
+          <button id="iot-entities-btn">Refresh Entities</button>
+          <button id="iot-mqtt-status-btn">MQTT Status</button>
+        </div>
+        <div class="row single">
+          <div>
+            <label for="ha-action-json">Home Assistant Action JSON</label>
+            <textarea id="ha-action-json">{"type":"ha_service","domain":"light","service":"turn_on","entity_id":"light.office"}</textarea>
+          </div>
+        </div>
+        <div class="controls">
+          <button id="ha-preview-btn">Preview HA Action</button>
+          <button class="brand" id="ha-execute-btn">Execute HA Action</button>
+        </div>
+        <div class="status" id="iot-status">IoT idle</div>
+        <div class="log mini" id="iot-output"></div>
+      </section>
+
+      <section class="card">
+        <h2>MQTT</h2>
+        <div class="row">
+          <div>
+            <label for="mqtt-topic">Topic</label>
+            <input id="mqtt-topic" placeholder="novaadapt/test" />
+          </div>
+          <div>
+            <label for="mqtt-retain">Retain</label>
+            <select id="mqtt-retain">
+              <option value="false">false</option>
+              <option value="true">true</option>
+            </select>
+          </div>
+        </div>
+        <div class="row single">
+          <div>
+            <label for="mqtt-payload">Payload</label>
+            <textarea id="mqtt-payload">{"hello":"world"}</textarea>
+          </div>
+        </div>
+        <div class="controls">
+          <button class="brand" id="mqtt-publish-btn">Publish MQTT</button>
+          <button id="mqtt-subscribe-btn">Subscribe Snapshot</button>
+        </div>
+        <div class="status" id="mqtt-status">MQTT idle</div>
+        <div class="log mini" id="mqtt-output"></div>
+      </section>
     </div>
 
     <div class="split">
@@ -658,6 +717,10 @@
     const browserStatusEl = $("browser-status");
     const controlStatusEl = $("control-status");
     const controlOutputEl = $("control-output");
+    const iotStatusEl = $("iot-status");
+    const iotOutputEl = $("iot-output");
+    const mqttStatusEl = $("mqtt-status");
+    const mqttOutputEl = $("mqtt-output");
 
     function nowTime() {
       return new Date().toISOString().replace("T", " ").replace("Z", "");
@@ -689,6 +752,16 @@
       controlStatusEl.className = `status ${cls}`.trim();
     }
 
+    function setIoTStatus(text, cls = "") {
+      iotStatusEl.textContent = text;
+      iotStatusEl.className = `status ${cls}`.trim();
+    }
+
+    function setMQTTStatus(text, cls = "") {
+      mqttStatusEl.textContent = text;
+      mqttStatusEl.className = `status ${cls}`.trim();
+    }
+
     function setBrowserOutput(payload) {
       const outputEl = $("browser-output");
       const text = typeof payload === "string" ? payload : JSON.stringify(payload, null, 2);
@@ -700,6 +773,18 @@
       const text = typeof payload === "string" ? payload : JSON.stringify(payload, null, 2);
       controlOutputEl.textContent = text;
       controlOutputEl.scrollTop = controlOutputEl.scrollHeight;
+    }
+
+    function setIoTOutput(payload) {
+      const text = typeof payload === "string" ? payload : JSON.stringify(payload, null, 2);
+      iotOutputEl.textContent = text;
+      iotOutputEl.scrollTop = iotOutputEl.scrollHeight;
+    }
+
+    function setMQTTOutput(payload) {
+      const text = typeof payload === "string" ? payload : JSON.stringify(payload, null, 2);
+      mqttOutputEl.textContent = text;
+      mqttOutputEl.scrollTop = mqttOutputEl.scrollHeight;
     }
 
     function isWSOpen() {
@@ -1537,6 +1622,31 @@
       return `${androidText} • ${iosText}`;
     }
 
+    function parseRequiredJSONObject(raw, label) {
+      const trimmed = String(raw || "").trim();
+      if (!trimmed) {
+        throw new Error(`${label} is required`);
+      }
+      let parsed = null;
+      try {
+        parsed = JSON.parse(trimmed);
+      } catch (err) {
+        throw new Error(`invalid ${label}: ${String(err)}`);
+      }
+      if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") {
+        throw new Error(`${label} must be a JSON object`);
+      }
+      return parsed;
+    }
+
+    function buildHomeAssistantPayload(execute) {
+      return {
+        action: parseRequiredJSONObject($("ha-action-json").value, "home assistant action json"),
+        execute: Boolean(execute),
+        allow_dangerous: $("control-allow-dangerous").value === "true",
+      };
+    }
+
     function maybeAttachPageID(body) {
       const pageID = $("browser-page-id").value.trim();
       if (pageID) {
@@ -1722,6 +1832,117 @@
       }
     }
 
+    async function refreshIoTEntities() {
+      try {
+        const domain = $("iot-domain-filter").value.trim();
+        const prefix = $("iot-prefix-filter").value.trim();
+        const params = new URLSearchParams();
+        params.set("limit", "24");
+        if (domain) params.set("domain", domain);
+        if (prefix) params.set("entity_id_prefix", prefix);
+        const payload = await sendCoreRoute(`/iot/homeassistant/entities?${params.toString()}`, {
+          method: "GET",
+          timeoutMs: 15000,
+        });
+        setIoTOutput(payload);
+        setIoTStatus(`Loaded ${Number(payload?.count || 0)} entities`, "ok");
+        appendLog("iot_entities", payload);
+      } catch (err) {
+        appendLog("iot_entities_error", String(err));
+        setIoTStatus(String(err), "bad");
+      }
+    }
+
+    async function runHomeAssistantAction(execute) {
+      try {
+        const payload = buildHomeAssistantPayload(execute);
+        if (
+          execute &&
+          !window.confirm(`Execute Home Assistant action ${payload.action?.domain || ""}.${payload.action?.service || ""}?`)
+        ) {
+          return;
+        }
+        const result = await sendCoreRoute("/iot/homeassistant/action", {
+          method: "POST",
+          body: payload,
+          timeoutMs: 30000,
+        });
+        setIoTOutput(result);
+        const cls = ["failed", "blocked"].includes(String(result?.status || "").toLowerCase()) ? "bad" : "ok";
+        setIoTStatus(`homeassistant ${String(result?.status || "done")}`, cls);
+        appendLog(execute ? "ha_execute" : "ha_preview", result);
+      } catch (err) {
+        appendLog("ha_action_error", String(err));
+        setIoTStatus(String(err), "bad");
+      }
+    }
+
+    async function refreshMQTTStatus() {
+      try {
+        const payload = await sendCoreRoute("/iot/mqtt/status", { method: "GET", timeoutMs: 12000 });
+        setMQTTOutput(payload);
+        const host = String(payload?.host || payload?.broker || "broker");
+        setMQTTStatus(payload?.ok ? `MQTT ${host}` : "MQTT unavailable", payload?.ok ? "ok" : "bad");
+        appendLog("mqtt_status", payload);
+      } catch (err) {
+        appendLog("mqtt_status_error", String(err));
+        setMQTTStatus(String(err), "bad");
+      }
+    }
+
+    async function publishMQTT() {
+      try {
+        const topic = $("mqtt-topic").value.trim();
+        if (!topic) {
+          throw new Error("mqtt topic is required");
+        }
+        if (!window.confirm(`Publish to MQTT topic ${topic}?`)) {
+          return;
+        }
+        const payload = await sendCoreRoute("/iot/mqtt/publish", {
+          method: "POST",
+          body: {
+            topic,
+            payload: $("mqtt-payload").value,
+            retain: $("mqtt-retain").value === "true",
+            execute: true,
+          },
+          timeoutMs: 20000,
+        });
+        setMQTTOutput(payload);
+        setMQTTStatus(`Published ${topic}`, "ok");
+        appendLog("mqtt_publish", payload);
+      } catch (err) {
+        appendLog("mqtt_publish_error", String(err));
+        setMQTTStatus(String(err), "bad");
+      }
+    }
+
+    async function subscribeMQTT() {
+      try {
+        const topic = $("mqtt-topic").value.trim();
+        if (!topic) {
+          throw new Error("mqtt topic is required");
+        }
+        const payload = await sendCoreRoute("/iot/mqtt/subscribe", {
+          method: "POST",
+          body: {
+            topic,
+            timeout_seconds: 1.5,
+            max_messages: 6,
+            qos: 0,
+          },
+          timeoutMs: 20000,
+        });
+        setMQTTOutput(payload);
+        setMQTTStatus(`Subscribed ${topic}`, "ok");
+        appendLog("mqtt_subscribe", payload);
+      } catch (err) {
+        appendLog("mqtt_subscribe_error", String(err));
+        setMQTTStatus(String(err), "bad");
+      }
+    }
+
     $("issue-session-btn").addEventListener("click", () => {
       issueSessionToken();
     });
@@ -1875,6 +2096,30 @@
       runMobileControl(true);
     });
 
+    $("iot-entities-btn").addEventListener("click", () => {
+      refreshIoTEntities();
+    });
+
+    $("ha-preview-btn").addEventListener("click", () => {
+      runHomeAssistantAction(false);
+    });
+
+    $("ha-execute-btn").addEventListener("click", () => {
+      runHomeAssistantAction(true);
+    });
+
+    $("iot-mqtt-status-btn").addEventListener("click", () => {
+      refreshMQTTStatus();
+    });
+
+    $("mqtt-publish-btn").addEventListener("click", () => {
+      publishMQTT();
+    });
+
+    $("mqtt-subscribe-btn").addEventListener("click", () => {
+      subscribeMQTT();
+    });
+
     $("terminal-poll-ms").addEventListener("change", () => {
       if (terminalSessionID) {
         startTerminalPolling(false);
@@ -1897,6 +2142,10 @@
     initTerminal();
     setControlStatus("Control-anything idle");
     setControlOutput("No control-anything activity yet.");
+    setIoTStatus("IoT idle");
+    setIoTOutput("No IoT activity yet.");
+    setMQTTStatus("MQTT idle");
+    setMQTTOutput("No MQTT activity yet.");
     appendLog("ready", "Console loaded");
   </script>
 </body>
