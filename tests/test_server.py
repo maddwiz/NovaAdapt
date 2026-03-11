@@ -228,6 +228,8 @@ class ServerTests(unittest.TestCase):
                 self.assertIn("NovaAdapt Core Dashboard", dashboard_html)
                 self.assertIn("Approve Async", dashboard_html)
                 self.assertIn("cancel-job", dashboard_html)
+                self.assertIn("Run Async", dashboard_html)
+                self.assertIn("Auto Repair Attempts", dashboard_html)
 
                 with self.assertRaises(error.HTTPError) as err:
                     _get_text(f"http://{host}:{port}/dashboard/canvas-workflows")
@@ -1511,6 +1513,7 @@ class ServerTests(unittest.TestCase):
                 dashboard_html = _get_text(f"http://{host}:{port}/dashboard", token="secret")
                 self.assertIn("NovaAdapt Core Dashboard", dashboard_html)
                 self.assertIn("Approve Async", dashboard_html)
+                self.assertIn("Run Async", dashboard_html)
 
                 dashboard_with_query = _get_text(f"http://{host}:{port}/dashboard?token=secret")
                 self.assertIn("NovaAdapt Core Dashboard", dashboard_with_query)

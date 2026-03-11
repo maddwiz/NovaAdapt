@@ -56,6 +56,42 @@ def render_dashboard_html() -> str:
     .warn { color: var(--warn); }
     .bad { color: var(--bad); }
     .toolbar { margin: 14px 0; display: flex; gap: 8px; }
+    .operator-panel { margin-bottom: 12px; }
+    .control-grid {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    }
+    .control-grid .full { grid-column: 1 / -1; }
+    .control-field label {
+      display: block;
+      margin-bottom: 4px;
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+    }
+    .control-field input,
+    .control-field select,
+    .control-field textarea {
+      width: 100%;
+      border: 1px solid var(--border);
+      background: #0f141b;
+      color: var(--text);
+      border-radius: 8px;
+      padding: 8px 10px;
+      font: inherit;
+    }
+    .control-field textarea {
+      min-height: 92px;
+      resize: vertical;
+    }
+    .control-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 12px;
+    }
     button {
       border: 1px solid var(--border);
       background: #21262d;
@@ -163,6 +199,90 @@ def render_dashboard_html() -> str:
     </div>
     <div class=\"action-status\" id=\"action-status\"></div>
 
+    <div class=\"card operator-panel\">
+      <div class=\"section-title\">Operator Console</div>
+      <div class=\"control-grid\">
+        <div class=\"control-field full\">
+          <label for=\"operator-objective\">Objective</label>
+          <textarea id=\"operator-objective\" placeholder=\"Describe the run or plan you want NovaAdapt to execute.\"></textarea>
+        </div>
+        <div class=\"control-field\">
+          <label for=\"operator-strategy\">Strategy</label>
+          <select id=\"operator-strategy\">
+            <option value=\"single\">single</option>
+            <option value=\"vote\">vote</option>
+            <option value=\"decompose\">decompose</option>
+          </select>
+        </div>
+        <div class=\"control-field\">
+          <label for=\"operator-model\">Model</label>
+          <input id=\"operator-model\" placeholder=\"default model\" />
+        </div>
+        <div class=\"control-field\">
+          <label for=\"operator-candidates\">Candidates</label>
+          <input id=\"operator-candidates\" placeholder=\"model-a, model-b\" />
+        </div>
+        <div class=\"control-field\">
+          <label for=\"operator-fallbacks\">Fallbacks</label>
+          <input id=\"operator-fallbacks\" placeholder=\"model-c, model-d\" />
+        </div>
+        <div class=\"control-field\">
+          <label for=\"operator-execute\">Run Mode</label>
+          <select id=\"operator-execute\">
+            <option value=\"true\">execute</option>
+            <option value=\"false\">preview</option>
+          </select>
+        </div>
+        <div class=\"control-field\">
+          <label for=\"operator-allow-dangerous\">Dangerous Actions</label>
+          <select id=\"operator-allow-dangerous\">
+            <option value=\"false\">block</option>
+            <option value=\"true\">allow</option>
+          </select>
+        </div>
+        <div class=\"control-field\">
+          <label for=\"operator-max-actions\">Max Actions</label>
+          <input id=\"operator-max-actions\" type=\"number\" min=\"1\" value=\"25\" />
+        </div>
+        <div class=\"control-field\">
+          <label for=\"operator-action-retries\">Action Retries</label>
+          <input id=\"operator-action-retries\" type=\"number\" min=\"0\" value=\"2\" />
+        </div>
+        <div class=\"control-field\">
+          <label for=\"operator-action-backoff\">Retry Backoff Seconds</label>
+          <input id=\"operator-action-backoff\" type=\"number\" min=\"0\" step=\"0.1\" value=\"0.2\" />
+        </div>
+        <div class=\"control-field\">
+          <label for=\"operator-auto-repair\">Auto Repair Attempts</label>
+          <input id=\"operator-auto-repair\" type=\"number\" min=\"0\" value=\"1\" />
+        </div>
+        <div class=\"control-field\">
+          <label for=\"operator-repair-strategy\">Repair Strategy</label>
+          <select id=\"operator-repair-strategy\">
+            <option value=\"single\">single</option>
+            <option value=\"vote\">vote</option>
+            <option value=\"decompose\">decompose</option>
+          </select>
+        </div>
+        <div class=\"control-field\">
+          <label for=\"operator-repair-model\">Repair Model</label>
+          <input id=\"operator-repair-model\" placeholder=\"default repair model\" />
+        </div>
+        <div class=\"control-field\">
+          <label for=\"operator-repair-candidates\">Repair Candidates</label>
+          <input id=\"operator-repair-candidates\" placeholder=\"model-a, model-b\" />
+        </div>
+        <div class=\"control-field\">
+          <label for=\"operator-repair-fallbacks\">Repair Fallbacks</label>
+          <input id=\"operator-repair-fallbacks\" placeholder=\"model-c, model-d\" />
+        </div>
+      </div>
+      <div class=\"control-actions\">
+        <button id=\"run-async\">Run Async</button>
+        <button id=\"create-plan\">Create Plan</button>
+      </div>
+    </div>
+
     <div class=\"tables\">
       <div>
         <div class=\"section-title\">Async Jobs</div>
@@ -227,6 +347,9 @@ def render_dashboard_html() -> str:
     const jobsTbody = document.getElementById('jobs');
     const plansTbody = document.getElementById('plans');
     const artifactsEl = document.getElementById('artifacts');
+    const operatorObjective = document.getElementById('operator-objective');
+    const runAsyncButton = document.getElementById('run-async');
+    const createPlanButton = document.getElementById('create-plan');
 
     function metricColor(v, ok=0){
       if (Number(v) <= ok) return 'ok';
@@ -259,6 +382,58 @@ def render_dashboard_html() -> str:
         .replaceAll('>', '&gt;')
         .replaceAll('"', '&quot;')
         .replaceAll("'", '&#39;');
+    }
+
+    function parseNameList(value){
+      return String(value || '')
+        .split(',')
+        .map(item => item.trim())
+        .filter(Boolean);
+    }
+
+    function readInteger(id, fallback){
+      const value = Number.parseInt(document.getElementById(id).value, 10);
+      return Number.isFinite(value) ? value : fallback;
+    }
+
+    function readFloat(id, fallback){
+      const value = Number.parseFloat(document.getElementById(id).value);
+      return Number.isFinite(value) ? value : fallback;
+    }
+
+    function operatorControlPayload(includeObjective=true){
+      const payload = {
+        strategy: document.getElementById('operator-strategy').value || 'single',
+        allow_dangerous: document.getElementById('operator-allow-dangerous').value === 'true',
+        max_actions: Math.max(1, readInteger('operator-max-actions', 25)),
+        action_retry_attempts: Math.max(0, readInteger('operator-action-retries', 2)),
+        action_retry_backoff_seconds: Math.max(0, readFloat('operator-action-backoff', 0.2)),
+        auto_repair_attempts: Math.max(0, readInteger('operator-auto-repair', 1)),
+        repair_strategy: document.getElementById('operator-repair-strategy').value || 'single',
+      };
+      const model = document.getElementById('operator-model').value.trim();
+      const candidates = parseNameList(document.getElementById('operator-candidates').value);
+      const fallbacks = parseNameList(document.getElementById('operator-fallbacks').value);
+      const repairModel = document.getElementById('operator-repair-model').value.trim();
+      const repairCandidates = parseNameList(document.getElementById('operator-repair-candidates').value);
+      const repairFallbacks = parseNameList(document.getElementById('operator-repair-fallbacks').value);
+      if (includeObjective) {
+        payload.objective = operatorObjective.value.trim();
+      }
+      if (model) payload.model = model;
+      if (candidates.length) payload.candidates = candidates;
+      if (fallbacks.length) payload.fallbacks = fallbacks;
+      if (repairModel) payload.repair_model = repairModel;
+      if (repairCandidates.length) payload.repair_candidates = repairCandidates;
+      if (repairFallbacks.length) payload.repair_fallbacks = repairFallbacks;
+      return payload;
+    }
+
+    function operatorExecutionPayload(){
+      return {
+        ...operatorControlPayload(false),
+        execute: true,
+      };
     }
 
     function countResultsByStatus(results){
@@ -430,6 +605,36 @@ def render_dashboard_html() -> str:
       return payload;
     }
 
+    async function handleOperatorAction(kind){
+      const payload = operatorControlPayload(true);
+      if (!payload.objective) {
+        setActionStatus('Objective is required', false);
+        operatorObjective.focus();
+        return;
+      }
+
+      if (kind === 'run') {
+        payload.execute = document.getElementById('operator-execute').value === 'true';
+      }
+
+      const button = kind === 'run' ? runAsyncButton : createPlanButton;
+      button.disabled = true;
+      try {
+        if (kind === 'run') {
+          const out = await postJSON('/run_async', payload);
+          setActionStatus(`Queued objective run (job ${out.job_id || 'n/a'})`, true);
+        } else {
+          const out = await postJSON('/plans', payload);
+          setActionStatus(`Created plan ${out.id || 'n/a'}`, true);
+        }
+        await refresh();
+      } catch (err) {
+        setActionStatus(String(err), false);
+      } finally {
+        button.disabled = false;
+      }
+    }
+
     async function handleTableAction(event){
       const button = event.target.closest('button[data-action]');
       if (!button) return;
@@ -444,7 +649,7 @@ def render_dashboard_html() -> str:
           await postJSON(`/jobs/${encodeURIComponent(id)}/cancel`, {});
           setActionStatus(`Requested cancel for job ${id}`, true);
         } else if (action === 'approve-plan') {
-          const out = await postJSON(`/plans/${encodeURIComponent(id)}/approve_async`, { execute: true });
+          const out = await postJSON(`/plans/${encodeURIComponent(id)}/approve_async`, operatorExecutionPayload());
           setActionStatus(`Queued approval for plan ${id} (job ${out.job_id || 'n/a'})`, true);
         } else if (action === 'reject-plan') {
           const reason = prompt(`Reject plan ${id}. Optional reason:`, 'Operator rejected');
@@ -454,11 +659,7 @@ def render_dashboard_html() -> str:
           await postJSON(`/plans/${encodeURIComponent(id)}/undo`, { mark_only: true });
           setActionStatus(`Marked plan ${id} action logs as undone`, true);
         } else if (action === 'retry-failed-plan') {
-          const out = await postJSON(`/plans/${encodeURIComponent(id)}/retry_failed_async`, {
-            allow_dangerous: true,
-            action_retry_attempts: 2,
-            action_retry_backoff_seconds: 0.2,
-          });
+          const out = await postJSON(`/plans/${encodeURIComponent(id)}/retry_failed_async`, operatorExecutionPayload());
           setActionStatus(`Queued failed-action retry for plan ${id} (job ${out.job_id || 'n/a'})`, true);
         }
         await refresh();
@@ -614,6 +815,8 @@ def render_dashboard_html() -> str:
     }
 
     document.getElementById('refresh').addEventListener('click', refresh);
+    runAsyncButton.addEventListener('click', () => handleOperatorAction('run'));
+    createPlanButton.addEventListener('click', () => handleOperatorAction('plan'));
     document.getElementById('auto').addEventListener('click', () => {
       state.auto = !state.auto;
       document.getElementById('auto').textContent = `Auto: ${state.auto ? 'On' : 'Off'}`;
