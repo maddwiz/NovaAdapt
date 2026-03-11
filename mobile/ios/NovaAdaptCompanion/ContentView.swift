@@ -42,6 +42,7 @@ struct ContentView: View {
             .onAppear {
                 bridge.refreshDashboard()
                 bridge.refreshMQTTStatus()
+                bridge.ensureLiveEventStream()
             }
             .confirmationDialog(
                 confirmationTitle,
@@ -262,6 +263,31 @@ struct ContentView: View {
                     .tint(.novaGood)
                 Button("Disconnect") { bridge.disconnect() }
                     .buttonStyle(.bordered)
+            }
+
+            itemCard {
+                VStack(alignment: .leading, spacing: 8) {
+                    Toggle("Live Audit Stream", isOn: Binding(
+                        get: { bridge.liveEventsEnabled },
+                        set: { bridge.liveEventsEnabled = $0 }
+                    ))
+                    .foregroundStyle(Color.novaInk)
+                    .tint(.novaHot)
+
+                    HStack {
+                        Text(bridge.liveEventsConnected ? "Connected" : "Standby")
+                            .font(.headline)
+                            .foregroundStyle(bridge.liveEventsConnected ? Color.novaGood : Color.novaMuted)
+                        Spacer()
+                        Text("\(bridge.liveAuditEventsSeen) events")
+                            .font(.caption.monospaced())
+                            .foregroundStyle(Color.novaMuted)
+                    }
+
+                    Text(bridge.liveEventsStatus)
+                        .font(.caption)
+                        .foregroundStyle(Color.novaMuted)
+                }
             }
         }
     }

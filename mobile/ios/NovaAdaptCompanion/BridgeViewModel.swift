@@ -189,6 +189,22 @@ final class BridgeViewModel: ObservableObject {
     @Published var governanceJobRunning: Int = 0
     @Published var governanceJobMaxWorkers: Int = 0
     @Published var governancePerModel: [RuntimeGovernanceModelSummary] = []
+    @Published var liveEventsEnabled: Bool = false {
+        didSet {
+            persistSettings()
+            if hydrating {
+                return
+            }
+            if liveEventsEnabled {
+                ensureLiveEventStream()
+            } else {
+                stopLiveEventStream(statusText: "Live audit stream idle")
+            }
+        }
+    }
+    @Published var liveEventsConnected: Bool = false
+    @Published var liveEventsStatus: String = "Live audit stream idle"
+    @Published var liveAuditEventsSeen: Int = 0
     @Published var wsEvents: [String] = []
     @Published var status: String = "Idle"
 
@@ -211,6 +227,11 @@ final class BridgeViewModel: ObservableObject {
 
     private var socketTask: URLSessionWebSocketTask?
     private var wsCommandResolvers: [String: (Result<[String: Any], Error>) -> Void] = [:]
+    private var liveEventStreamTask: Task<Void, Never>?
+    private var liveRefreshTask: Task<Void, Never>?
+    private var liveLastAuditID: Int = 0
+    private var liveRefreshInFlight = false
+    private var liveRefreshQueued = false
     private var terminalPollTask: Task<Void, Never>?
     private var terminalNextSeq: Int = 0
     private var hydrating = false
@@ -240,6 +261,7 @@ final class BridgeViewModel: ObservableObject {
         static let mqttRetain = "novaadapt.mobile.mqttRetain"
         static let governanceBudgetLimit = "novaadapt.mobile.governanceBudgetLimit"
         static let governanceMaxActiveRuns = "novaadapt.mobile.governanceMaxActiveRuns"
+        static let liveEventsEnabled = "novaadapt.mobile.liveEventsEnabled"
         static let terminalCommand = "novaadapt.mobile.terminalCommand"
         static let terminalCWD = "novaadapt.mobile.terminalCWD"
         static let terminalShell = "novaadapt.mobile.terminalShell"
@@ -313,19 +335,21 @@ final class BridgeViewModel: ObservableObject {
         resolveAllWSCommands(error: NSError(domain: "NovaAdaptCompanion", code: -1, userInfo: [NSLocalizedDescriptionKey: "WebSocket disconnected"]))
     }
 
+    func ensureLiveEventStream() {
+        guard liveEventsEnabled else {
+            stopLiveEventStream(statusText: "Live audit stream idle")
+            return
+        }
+        guard liveEventStreamTask == nil else {
+            return
+        }
+        startLiveEventStream()
+    }
+
     func refreshDashboard() {
         Task {
             await runAction(label: "Refreshing dashboard") {
-                let payload = try await self.requestJSON(
-                    method: "GET",
-                    path: "/dashboard/data?plans_limit=30&jobs_limit=30&events_limit=30",
-                    body: nil
-                )
-                self.plans = self.parsePlans(payload["plans"])
-                self.jobs = self.parseJobs(payload["jobs"])
-                self.events = self.parseEvents(payload["events"])
-                self.controlArtifacts = self.parseControlArtifacts(payload["control_artifacts"])
-                self.applyRuntimeGovernancePayload(payload["governance"])
+                try await self.refreshDashboardAsync()
             }
         }
     }
@@ -1017,6 +1041,7 @@ final class BridgeViewModel: ObservableObject {
         if let value = defaults.string(forKey: DefaultsKey.governanceMaxActiveRuns) {
             governanceMaxActiveRuns = value
         }
+        liveEventsEnabled = defaults.bool(forKey: DefaultsKey.liveEventsEnabled)
         if let value = defaults.string(forKey: DefaultsKey.terminalCommand) {
             terminalCommand = value
         }
@@ -1064,6 +1089,7 @@ final class BridgeViewModel: ObservableObject {
         defaults.set(mqttRetain, forKey: DefaultsKey.mqttRetain)
         defaults.set(governanceBudgetLimit, forKey: DefaultsKey.governanceBudgetLimit)
         defaults.set(governanceMaxActiveRuns, forKey: DefaultsKey.governanceMaxActiveRuns)
+        defaults.set(liveEventsEnabled, forKey: DefaultsKey.liveEventsEnabled)
         defaults.set(terminalCommand, forKey: DefaultsKey.terminalCommand)
         defaults.set(terminalCWD, forKey: DefaultsKey.terminalCWD)
         defaults.set(terminalShell, forKey: DefaultsKey.terminalShell)
@@ -1089,6 +1115,207 @@ final class BridgeViewModel: ObservableObject {
         }
     }
 
+    private func startLiveEventStream() {
+        stopLiveEventStream(statusText: "Live audit stream connecting")
+        guard liveEventsEnabled else {
+            return
+        }
+        liveEventStreamTask = Task { [weak self] in
+            await self?.runLiveEventStreamLoop()
+        }
+    }
+
+    private func stopLiveEventStream(statusText: String? = nil) {
+        liveEventStreamTask?.cancel()
+        liveEventStreamTask = nil
+        liveRefreshTask?.cancel()
+        liveRefreshTask = nil
+        liveEventsConnected = false
+        liveRefreshInFlight = false
+        liveRefreshQueued = false
+        if let statusText {
+            liveEventsStatus = statusText
+        }
+    }
+
+    private func runLiveEventStreamLoop() async {
+        while liveEventsEnabled && !Task.isCancelled {
+            guard let url = makeURL(
+                path: "/events/stream?timeout=300&interval=0.25&since_id=\(max(0, liveLastAuditID))"
+            ) else {
+                liveEventsConnected = false
+                liveEventsStatus = "Live audit stream unavailable: invalid API URL"
+                liveEventStreamTask = nil
+                return
+            }
+
+            var request = URLRequest(url: url)
+            request.httpMethod = "GET"
+            request.timeoutInterval = 310
+            request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+            let bearer = token.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !bearer.isEmpty {
+                request.setValue("Bearer \(bearer)", forHTTPHeaderField: "Authorization")
+            }
+            let deviceID = bridgeDeviceID.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !deviceID.isEmpty {
+                request.setValue(deviceID, forHTTPHeaderField: "X-Device-ID")
+            }
+
+            do {
+                let (bytes, response) = try await URLSession.shared.bytes(for: request)
+                guard let http = response as? HTTPURLResponse else {
+                    throw URLError(.badServerResponse)
+                }
+                guard (200 ... 299).contains(http.statusCode) else {
+                    throw NSError(
+                        domain: "NovaAdaptCompanion",
+                        code: http.statusCode,
+                        userInfo: [NSLocalizedDescriptionKey: "live stream rejected with status \(http.statusCode)"]
+                    )
+                }
+
+                liveEventsConnected = true
+                liveEventsStatus = "Live audit stream connected"
+
+                var eventName = "message"
+                var dataLines: [String] = []
+                var shouldReconnect = false
+
+                for try await rawLine in bytes.lines {
+                    if Task.isCancelled || !liveEventsEnabled {
+                        shouldReconnect = false
+                        break
+                    }
+
+                    let line = String(rawLine)
+                    if line.isEmpty {
+                        if await handleLiveEvent(eventName: eventName, data: dataLines.joined(separator: "\n")) {
+                            shouldReconnect = true
+                            break
+                        }
+                        eventName = "message"
+                        dataLines.removeAll(keepingCapacity: true)
+                        continue
+                    }
+                    if line.hasPrefix(":") {
+                        continue
+                    }
+                    if line.hasPrefix("event:") {
+                        eventName = String(line.dropFirst(6)).trimmingCharacters(in: .whitespaces)
+                        continue
+                    }
+                    if line.hasPrefix("data:") {
+                        dataLines.append(String(line.dropFirst(5)).trimmingCharacters(in: .whitespaces))
+                    }
+                }
+
+                if !dataLines.isEmpty, !Task.isCancelled, liveEventsEnabled {
+                    _ = await handleLiveEvent(eventName: eventName, data: dataLines.joined(separator: "\n"))
+                }
+
+                if !liveEventsEnabled || Task.isCancelled {
+                    break
+                }
+
+                liveEventsConnected = false
+                if shouldReconnect {
+                    liveEventsStatus = "Live audit stream reconnecting"
+                }
+            } catch {
+                if !liveEventsEnabled || Task.isCancelled {
+                    break
+                }
+                liveEventsConnected = false
+                liveEventsStatus = "Live audit stream reconnecting: \(error.localizedDescription)"
+            }
+
+            if !liveEventsEnabled || Task.isCancelled {
+                break
+            }
+            try? await Task.sleep(nanoseconds: 750_000_000)
+        }
+
+        if !liveEventsEnabled {
+            liveEventsConnected = false
+            liveEventsStatus = "Live audit stream idle"
+        }
+        liveEventStreamTask = nil
+    }
+
+    private func handleLiveEvent(eventName: String, data: String) async -> Bool {
+        let normalizedEvent = eventName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if normalizedEvent == "timeout" {
+            liveEventsStatus = "Live audit stream heartbeat"
+            return true
+        }
+        guard normalizedEvent == "audit", let blob = data.data(using: .utf8) else {
+            return false
+        }
+        guard
+            let object = try? JSONSerialization.jsonObject(with: blob),
+            let payload = object as? [String: Any]
+        else {
+            liveEventsStatus = "Live audit stream update"
+            scheduleLiveDashboardRefresh()
+            return false
+        }
+
+        if let eventID = toInt(payload["id"]) {
+            liveLastAuditID = max(liveLastAuditID, eventID)
+        }
+        if let item = parseEvents([payload]).first {
+            events.removeAll { $0.id == item.id }
+            events.insert(item, at: 0)
+            events = Array(events.prefix(30))
+        }
+        liveAuditEventsSeen += 1
+        let category = string(payload["category"], fallback: "audit")
+        let action = string(payload["action"], fallback: "update")
+        liveEventsStatus = "Live • \(category):\(action)"
+        scheduleLiveDashboardRefresh()
+        return false
+    }
+
+    private func scheduleLiveDashboardRefresh(delayMs: UInt64 = 150) {
+        liveRefreshTask?.cancel()
+        liveRefreshTask = Task { [weak self] in
+            guard let self else { return }
+            try? await Task.sleep(nanoseconds: delayMs * 1_000_000)
+            await self.performLiveDashboardRefresh()
+        }
+    }
+
+    private func performLiveDashboardRefresh() async {
+        if liveRefreshInFlight {
+            liveRefreshQueued = true
+            return
+        }
+        liveRefreshInFlight = true
+        defer {
+            liveRefreshInFlight = false
+            if liveRefreshQueued {
+                liveRefreshQueued = false
+                scheduleLiveDashboardRefresh(delayMs: 50)
+            }
+        }
+
+        do {
+            try await refreshDashboardAsync()
+        } catch {
+            liveEventsConnected = false
+            liveEventsStatus = "Live refresh failed: \(error.localizedDescription)"
+        }
+    }
+
+    private func syncLiveAuditCursor() {
+        for item in events {
+            if let value = Int(item.id) {
+                liveLastAuditID = max(liveLastAuditID, value)
+            }
+        }
+    }
+
     private func refreshDashboardAsync() async throws {
         let payload = try await requestJSON(
             method: "GET",
@@ -1100,6 +1327,7 @@ final class BridgeViewModel: ObservableObject {
         events = parseEvents(payload["events"])
         controlArtifacts = parseControlArtifacts(payload["control_artifacts"])
         applyRuntimeGovernancePayload(payload["governance"])
+        syncLiveAuditCursor()
     }
 
     private func refreshIoTEntitiesAsync() async throws {

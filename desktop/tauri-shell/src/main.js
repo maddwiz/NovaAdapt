@@ -11,6 +11,7 @@ const rememberTokenInput = document.querySelector("#rememberToken");
 const autoRefreshInput = document.querySelector("#autoRefresh");
 const testConnectionBtn = document.querySelector("#testConnectionBtn");
 const refreshBtn = document.querySelector("#refreshBtn");
+const liveStreamBtn = document.querySelector("#liveStreamBtn");
 const objectiveInput = document.querySelector("#objectiveInput");
 const strategySelect = document.querySelector("#strategySelect");
 const candidatesInput = document.querySelector("#candidatesInput");
@@ -33,6 +34,7 @@ const jobCountEl = document.querySelector("#jobCount");
 const eventCountEl = document.querySelector("#eventCount");
 const artifactCountEl = document.querySelector("#artifactCount");
 const connectionStatusEl = document.querySelector("#connectionStatus");
+const liveStreamStatusEl = document.querySelector("#liveStreamStatus");
 const governanceStatusEl = document.querySelector("#governanceStatus");
 const budgetLimitInput = document.querySelector("#budgetLimitInput");
 const maxActiveRunsInput = document.querySelector("#maxActiveRunsInput");
@@ -57,6 +59,16 @@ const mqttSubscribeBtn = document.querySelector("#mqttSubscribeBtn");
 const mqttOutputEl = document.querySelector("#mqttOutput");
 
 let refreshTimer = null;
+let liveRefreshTimer = null;
+let refreshInFlight = false;
+let queuedRefresh = false;
+let scheduledRefreshTimer = null;
+const liveState = {
+  enabled: false,
+  connected: false,
+  lastAuditId: 0,
+  consecutiveErrors: 0,
+};
 
 function normalizeBaseUrl(value) {
   const raw = String(value || "").trim();
@@ -107,6 +119,7 @@ function saveConfig() {
   localStorage.setItem("novaadapt.desktop.repairCandidates", (repairCandidatesInput?.value || "").trim());
   localStorage.setItem("novaadapt.desktop.repairFallbacks", (repairFallbacksInput?.value || "").trim());
   localStorage.setItem("novaadapt.desktop.autoRefresh", autoRefreshInput?.checked ? "1" : "0");
+  localStorage.setItem("novaadapt.desktop.liveStream", liveState.enabled ? "1" : "0");
   localStorage.setItem("novaadapt.desktop.budgetLimit", (budgetLimitInput?.value || "").trim());
   localStorage.setItem("novaadapt.desktop.maxActiveRuns", (maxActiveRunsInput?.value || "").trim());
   localStorage.setItem("novaadapt.desktop.iotDomain", (entityDomainInput?.value || "").trim());
@@ -136,6 +149,7 @@ function loadConfig() {
   repairCandidatesInput.value = localStorage.getItem("novaadapt.desktop.repairCandidates") || "";
   repairFallbacksInput.value = localStorage.getItem("novaadapt.desktop.repairFallbacks") || "";
   autoRefreshInput.checked = (localStorage.getItem("novaadapt.desktop.autoRefresh") || "1") !== "0";
+  liveState.enabled = (localStorage.getItem("novaadapt.desktop.liveStream") || "0") === "1";
   budgetLimitInput.value = localStorage.getItem("novaadapt.desktop.budgetLimit") || "";
   maxActiveRunsInput.value = localStorage.getItem("novaadapt.desktop.maxActiveRuns") || "";
   entityDomainInput.value = localStorage.getItem("novaadapt.desktop.iotDomain") || "";
@@ -332,11 +346,24 @@ function setGovernanceStatus(message, kind = "neutral") {
   governanceStatusEl.className = `badge ${kind}`;
 }
 
+function setLiveStatus(message, kind = "neutral") {
+  if (!liveStreamStatusEl) return;
+  const text = String(message || "").trim() || "Live idle";
+  liveStreamStatusEl.textContent = text;
+  liveStreamStatusEl.className = `badge ${kind}`;
+}
+
 function setIoTStatus(message, kind = "neutral") {
   if (!iotStatusEl) return;
   const text = String(message || "").trim() || "Idle";
   iotStatusEl.textContent = text;
   iotStatusEl.className = `badge ${kind}`;
+}
+
+function updateLiveButton() {
+  if (!liveStreamBtn) return;
+  liveStreamBtn.textContent = liveState.enabled ? "Live On" : "Live Off";
+  liveStreamBtn.className = liveState.enabled ? "primary" : "secondary";
 }
 
 function setBusy(value) {
@@ -358,6 +385,28 @@ function setBusy(value) {
   for (const btn of document.querySelectorAll("[data-mutate='1']")) {
     btn.disabled = busy;
   }
+}
+
+function extractMaxAuditId(items) {
+  let maxId = liveState.lastAuditId;
+  for (const item of Array.isArray(items) ? items : []) {
+    const value = Number.parseInt(String(item?.id ?? "").trim(), 10);
+    if (Number.isFinite(value)) {
+      maxId = Math.max(maxId, value);
+    }
+  }
+  return maxId;
+}
+
+function scheduleRefresh(delayMs = 150) {
+  if (scheduledRefreshTimer) window.clearTimeout(scheduledRefreshTimer);
+  scheduledRefreshTimer = window.setTimeout(() => {
+    scheduledRefreshTimer = null;
+    refresh().catch((err) => {
+      setActionStatus("Live refresh failed", "error");
+      summaryEl.textContent = String(err?.message || err);
+    });
+  }, Math.max(0, Number(delayMs || 0)));
 }
 
 async function runAction(label, fn, refreshAfter = true) {
@@ -1003,14 +1052,21 @@ function renderSummary(data) {
 function render(data) {
   renderPlans(data?.plans || []);
   renderJobs(data?.jobs || []);
-  renderEvents(data?.events || []);
+  const events = data?.events || [];
+  renderEvents(events);
   renderControlArtifacts(data?.control_artifacts || data?.control?.artifacts || []);
   renderGovernance(data?.governance || {});
   renderSummary(data || {});
+  liveState.lastAuditId = extractMaxAuditId(events);
 }
 
 async function refresh() {
+  if (refreshInFlight) {
+    queuedRefresh = true;
+    return;
+  }
   saveConfig();
+  refreshInFlight = true;
   try {
     const data = await dashboardData();
     render(data);
@@ -1018,6 +1074,17 @@ async function refresh() {
   } catch (error) {
     setConnectionStatus("Connection failed", "error");
     throw error;
+  } finally {
+    refreshInFlight = false;
+    if (queuedRefresh) {
+      queuedRefresh = false;
+      window.setTimeout(() => {
+        refresh().catch((err) => {
+          setActionStatus("Refresh failed", "error");
+          summaryEl.textContent = String(err?.message || err);
+        });
+      }, 25);
+    }
   }
 }
 
@@ -1038,6 +1105,71 @@ function startAutoRefresh() {
       summaryEl.textContent = String(err?.message || err);
     });
   }, DEFAULT_REFRESH_INTERVAL_MS);
+}
+
+async function pollLiveEvents() {
+  if (!liveState.enabled) return;
+  try {
+    const query = new URLSearchParams();
+    query.set("limit", "25");
+    if (liveState.lastAuditId > 0) {
+      query.set("since_id", String(liveState.lastAuditId));
+    }
+    const events = await coreRequest("GET", `/events?${query.toString()}`);
+    const items = Array.isArray(events) ? events : [];
+    liveState.connected = true;
+    liveState.consecutiveErrors = 0;
+    if (items.length > 0) {
+      liveState.lastAuditId = extractMaxAuditId(items);
+      const latest = items[items.length - 1] || {};
+      const category = String(latest?.category || "audit");
+      const action = String(latest?.action || "update");
+      setLiveStatus(`Live • ${items.length} event${items.length === 1 ? "" : "s"} • ${category}:${action}`, "ok");
+      scheduleRefresh(80);
+    } else {
+      setLiveStatus("Live • watching audit feed", "ok");
+    }
+  } catch (error) {
+    liveState.connected = false;
+    liveState.consecutiveErrors += 1;
+    const backoff = Math.min(4000, 750 + (liveState.consecutiveErrors - 1) * 500);
+    setLiveStatus(`Live reconnecting • ${String(error?.message || error)}`, "error");
+    if (liveRefreshTimer) window.clearTimeout(liveRefreshTimer);
+    liveRefreshTimer = window.setTimeout(() => {
+      liveRefreshTimer = null;
+      pollLiveEvents().catch(() => {});
+    }, backoff);
+    return;
+  }
+  if (!liveState.enabled) return;
+  if (liveRefreshTimer) window.clearTimeout(liveRefreshTimer);
+  liveRefreshTimer = window.setTimeout(() => {
+    liveRefreshTimer = null;
+    pollLiveEvents().catch(() => {});
+  }, 750);
+}
+
+function stopLivePolling() {
+  liveState.connected = false;
+  if (liveRefreshTimer) {
+    window.clearTimeout(liveRefreshTimer);
+    liveRefreshTimer = null;
+  }
+}
+
+function syncLivePolling() {
+  updateLiveButton();
+  saveConfig();
+  if (!liveState.enabled) {
+    stopLivePolling();
+    setLiveStatus("Live idle", "neutral");
+    return;
+  }
+  stopLivePolling();
+  setLiveStatus("Live starting", "neutral");
+  pollLiveEvents().catch((err) => {
+    setLiveStatus(String(err?.message || err), "error");
+  });
 }
 
 function actionButton(label, kind, onClick) {
@@ -1108,6 +1240,10 @@ autoRefreshInput.addEventListener("change", () => {
   saveConfig();
   startAutoRefresh();
 });
+liveStreamBtn?.addEventListener("click", () => {
+  liveState.enabled = !liveState.enabled;
+  syncLivePolling();
+});
 refreshEntitiesBtn?.addEventListener("click", () => {
   runAction("Refreshing IoT entities", () => refreshIoTEntities(), false).catch(() => {});
 });
@@ -1142,6 +1278,8 @@ mqttSubscribeBtn?.addEventListener("click", () => {
 loadConfig();
 setActionStatus("Idle", "neutral");
 setConnectionStatus("Not connected", "neutral");
+updateLiveButton();
+setLiveStatus(liveState.enabled ? "Live waiting for first event" : "Live idle", "neutral");
 setGovernanceStatus("Unknown", "neutral");
 setIoTStatus("Idle", "neutral");
 renderMQTTOutput(null);
@@ -1154,8 +1292,11 @@ refresh()
     refreshGovernance().catch(() => {});
     refreshMQTTStatus().catch(() => {});
     startAutoRefresh();
+    syncLivePolling();
   });
 
 window.addEventListener("beforeunload", () => {
   if (refreshTimer) window.clearInterval(refreshTimer);
+  if (scheduledRefreshTimer) window.clearTimeout(scheduledRefreshTimer);
+  stopLivePolling();
 });
