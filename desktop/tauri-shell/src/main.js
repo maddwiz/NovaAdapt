@@ -25,6 +25,18 @@ const runAsyncBtn = document.querySelector("#runAsyncBtn");
 const createPlanBtn = document.querySelector("#createPlanBtn");
 const plansEl = document.querySelector("#plans");
 const jobsEl = document.querySelector("#jobs");
+const terminalStatusEl = document.querySelector("#terminalStatus");
+const terminalCommandInput = document.querySelector("#terminalCommandInput");
+const terminalCwdInput = document.querySelector("#terminalCwdInput");
+const terminalShellInput = document.querySelector("#terminalShellInput");
+const terminalRefreshBtn = document.querySelector("#terminalRefreshBtn");
+const terminalStartBtn = document.querySelector("#terminalStartBtn");
+const terminalCloseBtn = document.querySelector("#terminalCloseBtn");
+const terminalSessionsEl = document.querySelector("#terminalSessions");
+const terminalInputBox = document.querySelector("#terminalInputBox");
+const terminalSendBtn = document.querySelector("#terminalSendBtn");
+const terminalCtrlCBtn = document.querySelector("#terminalCtrlCBtn");
+const terminalOutputEl = document.querySelector("#terminalOutput");
 const eventsEl = document.querySelector("#events");
 const controlArtifactsEl = document.querySelector("#controlArtifacts");
 const summaryEl = document.querySelector("#summary");
@@ -72,6 +84,9 @@ let liveRefreshTimer = null;
 let refreshInFlight = false;
 let queuedRefresh = false;
 let scheduledRefreshTimer = null;
+let terminalPollTimer = null;
+let terminalActiveSessionId = "";
+let terminalNextSeq = 0;
 const liveState = {
   enabled: false,
   connected: false,
@@ -127,6 +142,9 @@ function saveConfig() {
   localStorage.setItem("novaadapt.desktop.repairModel", (repairModelInput?.value || "").trim());
   localStorage.setItem("novaadapt.desktop.repairCandidates", (repairCandidatesInput?.value || "").trim());
   localStorage.setItem("novaadapt.desktop.repairFallbacks", (repairFallbacksInput?.value || "").trim());
+  localStorage.setItem("novaadapt.desktop.terminalCommand", (terminalCommandInput?.value || "").trim());
+  localStorage.setItem("novaadapt.desktop.terminalCwd", (terminalCwdInput?.value || "").trim());
+  localStorage.setItem("novaadapt.desktop.terminalShell", (terminalShellInput?.value || "").trim());
   localStorage.setItem("novaadapt.desktop.autoRefresh", autoRefreshInput?.checked ? "1" : "0");
   localStorage.setItem("novaadapt.desktop.liveStream", liveState.enabled ? "1" : "0");
   localStorage.setItem("novaadapt.desktop.budgetLimit", (budgetLimitInput?.value || "").trim());
@@ -159,6 +177,9 @@ function loadConfig() {
   repairModelInput.value = localStorage.getItem("novaadapt.desktop.repairModel") || "";
   repairCandidatesInput.value = localStorage.getItem("novaadapt.desktop.repairCandidates") || "";
   repairFallbacksInput.value = localStorage.getItem("novaadapt.desktop.repairFallbacks") || "";
+  terminalCommandInput.value = localStorage.getItem("novaadapt.desktop.terminalCommand") || "";
+  terminalCwdInput.value = localStorage.getItem("novaadapt.desktop.terminalCwd") || "";
+  terminalShellInput.value = localStorage.getItem("novaadapt.desktop.terminalShell") || "";
   autoRefreshInput.checked = (localStorage.getItem("novaadapt.desktop.autoRefresh") || "1") !== "0";
   liveState.enabled = (localStorage.getItem("novaadapt.desktop.liveStream") || "0") === "1";
   budgetLimitInput.value = localStorage.getItem("novaadapt.desktop.budgetLimit") || "";
@@ -350,6 +371,13 @@ function setConnectionStatus(message, kind = "neutral") {
   const text = String(message || "").trim() || "Not connected";
   connectionStatusEl.textContent = text;
   connectionStatusEl.className = `badge ${kind}`;
+}
+
+function setTerminalStatus(message, kind = "neutral") {
+  if (!terminalStatusEl) return;
+  const text = String(message || "").trim() || "Idle";
+  terminalStatusEl.textContent = text;
+  terminalStatusEl.className = `badge ${kind}`;
 }
 
 function setGovernanceStatus(message, kind = "neutral") {
@@ -943,6 +971,11 @@ function renderTemplateOutput(payload, fallback = "No template activity yet.") {
   templateOutputEl.textContent = JSON.stringify(payload, null, 2);
 }
 
+function renderTerminalOutput(text) {
+  if (!terminalOutputEl) return;
+  terminalOutputEl.textContent = String(text || "No terminal session attached.");
+}
+
 function renderIoTEntities(result) {
   const entities = Array.isArray(result?.entities) ? result.entities : [];
   if (!iotEntitiesEl) return;
@@ -1060,6 +1093,170 @@ async function subscribeMQTTSnapshot() {
   renderMQTTOutput(result, "No MQTT messages received.");
   setIoTStatus(`Subscribed ${topic}`, "ok");
   return result;
+}
+
+function stopTerminalPolling() {
+  if (terminalPollTimer) {
+    window.clearTimeout(terminalPollTimer);
+    terminalPollTimer = null;
+  }
+}
+
+function attachTerminalSession(sessionId, options = {}) {
+  const normalized = String(sessionId || "").trim();
+  terminalActiveSessionId = normalized;
+  terminalNextSeq = Number(options.nextSeq || 0);
+  stopTerminalPolling();
+  if (!normalized) {
+    renderTerminalOutput("No terminal session attached.");
+    setTerminalStatus("Idle", "neutral");
+    return;
+  }
+  const sessionLabel = String(options.command || normalized);
+  setTerminalStatus(`Attached ${sessionLabel}`, "ok");
+  pollTerminalOutput().catch((err) => {
+    setTerminalStatus(String(err?.message || err), "error");
+  });
+}
+
+function renderTerminalSessions(items) {
+  const sessions = Array.isArray(items) ? items : [];
+  if (!terminalSessionsEl) return;
+  if (!sessions.length) {
+    terminalSessionsEl.innerHTML = "<p>No terminal sessions available.</p>";
+    if (!terminalActiveSessionId) {
+      renderTerminalOutput("No terminal session attached.");
+    }
+    return;
+  }
+  terminalSessionsEl.innerHTML = "";
+  for (const session of sessions) {
+    const sessionId = String(session?.id || "");
+    const command = Array.isArray(session?.command) ? session.command.join(" ") : "";
+    const card = document.createElement("article");
+    card.className = "plan";
+    card.innerHTML = `
+      <div class="plan-head">
+        <strong>${escapeHTML(command || sessionId || "terminal")}</strong>
+        <span>${escapeHTML(String(session?.open ? "open" : `exit ${session?.exit_code ?? "-"}`))}</span>
+      </div>
+      <p class="plan-meta">${escapeHTML(String(session?.cwd || "(default cwd)"))}</p>
+      <p class="plan-meta">pid ${escapeHTML(String(session?.pid ?? "-"))} • seq ${escapeHTML(String(session?.last_seq ?? 0))}</p>
+      <div class="row"></div>
+    `;
+    const row = card.querySelector(".row");
+    row.appendChild(
+      actionButton("Attach", terminalActiveSessionId === sessionId ? "primary" : "secondary", async () => {
+        attachTerminalSession(sessionId, {
+          nextSeq: 0,
+          command,
+        });
+      }),
+    );
+    row.appendChild(
+      actionButton("Close", "secondary", async () => {
+        const confirmed = window.confirm(`Close terminal session ${command || sessionId}?`);
+        if (!confirmed) return;
+        await runAction(`Closing terminal ${sessionId}`, async () => {
+          await coreRequest("POST", `/terminal/sessions/${encodeURIComponent(sessionId)}/close`, {});
+          if (terminalActiveSessionId === sessionId) {
+            attachTerminalSession("", {});
+          }
+          await refreshTerminalSessions();
+        }, false);
+      }),
+    );
+    terminalSessionsEl.appendChild(card);
+  }
+}
+
+async function refreshTerminalSessions() {
+  saveConfig();
+  const sessions = await coreRequest("GET", "/terminal/sessions");
+  renderTerminalSessions(sessions);
+  const items = Array.isArray(sessions) ? sessions : [];
+  const active = items.find((item) => String(item?.id || "") === terminalActiveSessionId);
+  if (active) {
+    setTerminalStatus("Attached", "ok");
+  } else if (terminalActiveSessionId) {
+    attachTerminalSession("", {});
+  }
+  return sessions;
+}
+
+async function startTerminalSession() {
+  saveConfig();
+  const payload = {
+    command: String(terminalCommandInput?.value || "").trim() || null,
+    cwd: String(terminalCwdInput?.value || "").trim() || null,
+    shell: String(terminalShellInput?.value || "").trim() || null,
+  };
+  const session = await coreRequest("POST", "/terminal/sessions", payload);
+  await refreshTerminalSessions();
+  attachTerminalSession(session?.id, {
+    nextSeq: 0,
+    command: Array.isArray(session?.command) ? session.command.join(" ") : "",
+  });
+  return session;
+}
+
+async function pollTerminalOutput() {
+  if (!terminalActiveSessionId) return;
+  try {
+    const result = await coreRequest(
+      "GET",
+      `/terminal/sessions/${encodeURIComponent(terminalActiveSessionId)}/output?since_seq=${Math.max(0, terminalNextSeq)}&limit=400`,
+    );
+    const chunks = Array.isArray(result?.chunks) ? result.chunks : [];
+    if (chunks.length > 0) {
+      let existing = String(terminalOutputEl?.textContent || "");
+      if (existing === "No terminal session attached.") existing = "";
+      for (const chunk of chunks) {
+        terminalNextSeq = Math.max(terminalNextSeq, Number(chunk?.seq || terminalNextSeq));
+        existing += String(chunk?.data || "");
+      }
+      renderTerminalOutput(existing || "No terminal output yet.");
+      if (terminalOutputEl) terminalOutputEl.scrollTop = terminalOutputEl.scrollHeight;
+    }
+    const open = Boolean(result?.open);
+    if (open) {
+      stopTerminalPolling();
+      terminalPollTimer = window.setTimeout(() => {
+        terminalPollTimer = null;
+        pollTerminalOutput().catch((err) => {
+          setTerminalStatus(String(err?.message || err), "error");
+        });
+      }, 300);
+      setTerminalStatus("Streaming", "ok");
+    } else {
+      stopTerminalPolling();
+      setTerminalStatus(`Closed (${String(result?.exit_code ?? "-")})`, "neutral");
+    }
+    return result;
+  } catch (error) {
+    stopTerminalPolling();
+    throw error;
+  }
+}
+
+async function sendTerminalInput() {
+  if (!terminalActiveSessionId) throw new Error("Attach a terminal session first");
+  const input = String(terminalInputBox?.value || "");
+  if (!input.trim()) throw new Error("Terminal input is empty");
+  await coreRequest("POST", `/terminal/sessions/${encodeURIComponent(terminalActiveSessionId)}/input`, {
+    input: `${input}\n`,
+  });
+  terminalInputBox.value = "";
+  saveConfig();
+  await pollTerminalOutput();
+}
+
+async function sendTerminalCtrlC() {
+  if (!terminalActiveSessionId) throw new Error("Attach a terminal session first");
+  await coreRequest("POST", `/terminal/sessions/${encodeURIComponent(terminalActiveSessionId)}/input`, {
+    input: "\u0003",
+  });
+  await pollTerminalOutput();
 }
 
 function templateTagQuery() {
@@ -1472,6 +1669,10 @@ repairStrategySelect?.addEventListener("change", saveConfig);
 repairModelInput?.addEventListener("change", saveConfig);
 repairCandidatesInput?.addEventListener("change", saveConfig);
 repairFallbacksInput?.addEventListener("change", saveConfig);
+terminalCommandInput?.addEventListener("change", saveConfig);
+terminalCwdInput?.addEventListener("change", saveConfig);
+terminalShellInput?.addEventListener("change", saveConfig);
+terminalInputBox?.addEventListener("change", saveConfig);
 budgetLimitInput?.addEventListener("change", saveConfig);
 maxActiveRunsInput?.addEventListener("change", saveConfig);
 entityDomainInput?.addEventListener("change", saveConfig);
@@ -1488,6 +1689,26 @@ autoRefreshInput.addEventListener("change", () => {
 liveStreamBtn?.addEventListener("click", () => {
   liveState.enabled = !liveState.enabled;
   syncLivePolling();
+});
+terminalRefreshBtn?.addEventListener("click", () => {
+  runAction("Refreshing terminal sessions", () => refreshTerminalSessions(), false).catch(() => {});
+});
+terminalStartBtn?.addEventListener("click", () => {
+  runAction("Starting terminal session", () => startTerminalSession(), false).catch(() => {});
+});
+terminalCloseBtn?.addEventListener("click", () => {
+  runAction("Closing active terminal session", async () => {
+    if (!terminalActiveSessionId) throw new Error("No active terminal session attached");
+    await coreRequest("POST", `/terminal/sessions/${encodeURIComponent(terminalActiveSessionId)}/close`, {});
+    attachTerminalSession("", {});
+    await refreshTerminalSessions();
+  }, false).catch(() => {});
+});
+terminalSendBtn?.addEventListener("click", () => {
+  runAction("Sending terminal input", () => sendTerminalInput(), false).catch(() => {});
+});
+terminalCtrlCBtn?.addEventListener("click", () => {
+  runAction("Sending Ctrl+C", () => sendTerminalCtrlC(), false).catch(() => {});
 });
 refreshEntitiesBtn?.addEventListener("click", () => {
   runAction("Refreshing IoT entities", () => refreshIoTEntities(), false).catch(() => {});
@@ -1534,17 +1755,20 @@ setActionStatus("Idle", "neutral");
 setConnectionStatus("Not connected", "neutral");
 updateLiveButton();
 setLiveStatus(liveState.enabled ? "Live waiting for first event" : "Live idle", "neutral");
+setTerminalStatus("Idle", "neutral");
 setGovernanceStatus("Unknown", "neutral");
 setIoTStatus("Idle", "neutral");
 setTemplateStatus("Idle", "neutral");
 renderMQTTOutput(null);
 renderTemplateOutput(null);
+renderTerminalOutput(null);
 refresh()
   .catch((err) => {
     setActionStatus("Initial refresh failed", "error");
     summaryEl.textContent = String(err?.message || err);
   })
   .finally(() => {
+    refreshTerminalSessions().catch(() => {});
     refreshGovernance().catch(() => {});
     refreshMQTTStatus().catch(() => {});
     refreshTemplates().catch(() => {});
@@ -1555,5 +1779,6 @@ refresh()
 window.addEventListener("beforeunload", () => {
   if (refreshTimer) window.clearInterval(refreshTimer);
   if (scheduledRefreshTimer) window.clearTimeout(scheduledRefreshTimer);
+  stopTerminalPolling();
   stopLivePolling();
 });

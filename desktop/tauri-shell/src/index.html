@@ -129,6 +129,42 @@
 
       <section class="card">
         <div class="section-head">
+          <h2>Terminal</h2>
+          <span id="terminalStatus" class="badge neutral">Idle</span>
+        </div>
+        <div class="grid compact">
+          <label>
+            <span>Command</span>
+            <input id="terminalCommandInput" type="text" placeholder="npm test" />
+          </label>
+          <label>
+            <span>Working Directory</span>
+            <input id="terminalCwdInput" type="text" placeholder="/workspace/project" />
+          </label>
+          <label>
+            <span>Shell Override</span>
+            <input id="terminalShellInput" type="text" placeholder="/bin/zsh" />
+          </label>
+        </div>
+        <div class="row">
+          <button id="terminalRefreshBtn" class="secondary">Refresh Sessions</button>
+          <button id="terminalStartBtn" class="primary">Start Session</button>
+          <button id="terminalCloseBtn" class="danger">Close Session</button>
+        </div>
+        <div id="terminalSessions" class="plans"></div>
+        <label>
+          <span>Terminal Input</span>
+          <textarea id="terminalInputBox" rows="2" placeholder="ls -la"></textarea>
+        </label>
+        <div class="row">
+          <button id="terminalSendBtn" class="secondary">Send Input</button>
+          <button id="terminalCtrlCBtn" class="secondary">Send Ctrl+C</button>
+        </div>
+        <pre id="terminalOutput" class="summary">No terminal session attached.</pre>
+      </section>
+
+      <section class="card">
+        <div class="section-head">
           <h2>Recent Events</h2>
           <span id="eventCount" class="badge">0</span>
         </div>
