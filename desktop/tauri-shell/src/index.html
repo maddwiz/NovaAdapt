@@ -65,15 +65,42 @@
             <select id="strategySelect">
               <option value="single">single</option>
               <option value="vote">vote</option>
+              <option value="decompose">decompose</option>
             </select>
           </label>
           <label>
-            <span>Vote Candidates (CSV)</span>
+            <span>Candidate Models (CSV)</span>
             <input id="candidatesInput" type="text" placeholder="local-qwen,openai-gpt,gemini-pro" />
           </label>
           <label class="toggle checkbox-inline">
             <input id="executeToggle" type="checkbox" />
             <span>Execute actions immediately</span>
+          </label>
+        </div>
+        <div class="grid compact">
+          <label>
+            <span>Auto-Repair Attempts</span>
+            <input id="autoRepairAttemptsInput" type="number" min="0" step="1" placeholder="0" />
+          </label>
+          <label>
+            <span>Repair Strategy</span>
+            <select id="repairStrategySelect">
+              <option value="decompose">decompose</option>
+              <option value="single">single</option>
+              <option value="vote">vote</option>
+            </select>
+          </label>
+          <label>
+            <span>Repair Model</span>
+            <input id="repairModelInput" type="text" placeholder="optional override" />
+          </label>
+          <label>
+            <span>Repair Candidates (CSV)</span>
+            <input id="repairCandidatesInput" type="text" placeholder="optional" />
+          </label>
+          <label>
+            <span>Repair Fallbacks (CSV)</span>
+            <input id="repairFallbacksInput" type="text" placeholder="optional" />
           </label>
         </div>
         <div class="row">

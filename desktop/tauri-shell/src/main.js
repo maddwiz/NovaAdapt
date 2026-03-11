@@ -15,6 +15,11 @@ const objectiveInput = document.querySelector("#objectiveInput");
 const strategySelect = document.querySelector("#strategySelect");
 const candidatesInput = document.querySelector("#candidatesInput");
 const executeToggle = document.querySelector("#executeToggle");
+const autoRepairAttemptsInput = document.querySelector("#autoRepairAttemptsInput");
+const repairStrategySelect = document.querySelector("#repairStrategySelect");
+const repairModelInput = document.querySelector("#repairModelInput");
+const repairCandidatesInput = document.querySelector("#repairCandidatesInput");
+const repairFallbacksInput = document.querySelector("#repairFallbacksInput");
 const runAsyncBtn = document.querySelector("#runAsyncBtn");
 const createPlanBtn = document.querySelector("#createPlanBtn");
 const plansEl = document.querySelector("#plans");
@@ -96,6 +101,11 @@ function saveConfig() {
   localStorage.setItem("novaadapt.desktop.strategy", strategySelect?.value || "single");
   localStorage.setItem("novaadapt.desktop.candidates", (candidatesInput?.value || "").trim());
   localStorage.setItem("novaadapt.desktop.execute", executeToggle?.checked ? "1" : "0");
+  localStorage.setItem("novaadapt.desktop.autoRepairAttempts", (autoRepairAttemptsInput?.value || "").trim());
+  localStorage.setItem("novaadapt.desktop.repairStrategy", repairStrategySelect?.value || "decompose");
+  localStorage.setItem("novaadapt.desktop.repairModel", (repairModelInput?.value || "").trim());
+  localStorage.setItem("novaadapt.desktop.repairCandidates", (repairCandidatesInput?.value || "").trim());
+  localStorage.setItem("novaadapt.desktop.repairFallbacks", (repairFallbacksInput?.value || "").trim());
   localStorage.setItem("novaadapt.desktop.autoRefresh", autoRefreshInput?.checked ? "1" : "0");
   localStorage.setItem("novaadapt.desktop.budgetLimit", (budgetLimitInput?.value || "").trim());
   localStorage.setItem("novaadapt.desktop.maxActiveRuns", (maxActiveRunsInput?.value || "").trim());
@@ -120,6 +130,11 @@ function loadConfig() {
   strategySelect.value = localStorage.getItem("novaadapt.desktop.strategy") || "single";
   candidatesInput.value = localStorage.getItem("novaadapt.desktop.candidates") || "";
   executeToggle.checked = (localStorage.getItem("novaadapt.desktop.execute") || "0") === "1";
+  autoRepairAttemptsInput.value = localStorage.getItem("novaadapt.desktop.autoRepairAttempts") || "0";
+  repairStrategySelect.value = localStorage.getItem("novaadapt.desktop.repairStrategy") || "decompose";
+  repairModelInput.value = localStorage.getItem("novaadapt.desktop.repairModel") || "";
+  repairCandidatesInput.value = localStorage.getItem("novaadapt.desktop.repairCandidates") || "";
+  repairFallbacksInput.value = localStorage.getItem("novaadapt.desktop.repairFallbacks") || "";
   autoRefreshInput.checked = (localStorage.getItem("novaadapt.desktop.autoRefresh") || "1") !== "0";
   budgetLimitInput.value = localStorage.getItem("novaadapt.desktop.budgetLimit") || "";
   maxActiveRunsInput.value = localStorage.getItem("novaadapt.desktop.maxActiveRuns") || "";
@@ -217,6 +232,31 @@ function parseCandidates(value) {
     .filter(Boolean);
 }
 
+function buildRepairOptions() {
+  const payload = {};
+  const attempts = Number.parseInt(String(autoRepairAttemptsInput?.value || "0").trim() || "0", 10);
+  if (Number.isFinite(attempts) && attempts > 0) {
+    payload.auto_repair_attempts = attempts;
+  }
+  const repairStrategy = String(repairStrategySelect?.value || "decompose").trim();
+  if (repairStrategy) {
+    payload.repair_strategy = repairStrategy;
+  }
+  const repairModel = String(repairModelInput?.value || "").trim();
+  if (repairModel) {
+    payload.repair_model = repairModel;
+  }
+  const repairCandidates = parseCandidates(repairCandidatesInput?.value || "");
+  if (repairCandidates.length > 0) {
+    payload.repair_candidates = repairCandidates;
+  }
+  const repairFallbacks = parseCandidates(repairFallbacksInput?.value || "");
+  if (repairFallbacks.length > 0) {
+    payload.repair_fallbacks = repairFallbacks;
+  }
+  return payload;
+}
+
 function buildObjectivePayload() {
   const objective = (objectiveInput?.value || "").trim();
   if (!objective) throw new Error("Objective is required");
@@ -230,10 +270,11 @@ function buildObjectivePayload() {
       source: "desktop-tauri",
       created_at: new Date().toISOString(),
     },
+    ...buildRepairOptions(),
   };
 
   const candidates = parseCandidates(candidatesInput?.value || "");
-  if (strategy === "vote" && candidates.length > 0) {
+  if (candidates.length > 0) {
     payload.candidates = candidates;
   }
   return payload;
@@ -514,7 +555,7 @@ function renderPlans(plans) {
     if (status === "pending") {
       actionRow.appendChild(
         actionButton("Approve + Execute", "secondary", async () => {
-          await runAction("Approving plan", () => approvePlan(plan.id, { execute: true }));
+          await runAction("Approving plan", () => approvePlan(plan.id, { execute: true, ...buildRepairOptions() }));
         }),
       );
       actionRow.appendChild(
@@ -538,6 +579,7 @@ function renderPlans(plans) {
               allow_dangerous: true,
               action_retry_attempts: 2,
               action_retry_backoff_seconds: 0.2,
+              ...buildRepairOptions(),
             }),
           );
         }),
@@ -1050,6 +1092,11 @@ objectiveInput.addEventListener("change", saveConfig);
 strategySelect.addEventListener("change", saveConfig);
 candidatesInput.addEventListener("change", saveConfig);
 executeToggle.addEventListener("change", saveConfig);
+autoRepairAttemptsInput?.addEventListener("change", saveConfig);
+repairStrategySelect?.addEventListener("change", saveConfig);
+repairModelInput?.addEventListener("change", saveConfig);
+repairCandidatesInput?.addEventListener("change", saveConfig);
+repairFallbacksInput?.addEventListener("change", saveConfig);
 budgetLimitInput?.addEventListener("change", saveConfig);
 maxActiveRunsInput?.addEventListener("change", saveConfig);
 entityDomainInput?.addEventListener("change", saveConfig);

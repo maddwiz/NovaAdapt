@@ -274,15 +274,35 @@ struct ContentView: View {
             Picker("Strategy", selection: $bridge.strategy) {
                 Text("single").tag("single")
                 Text("vote").tag("vote")
+                Text("decompose").tag("decompose")
             }
             .pickerStyle(.segmented)
 
-            TextField("Vote candidates (CSV)", text: $bridge.candidatesCSV)
+            TextField("Candidate models (CSV)", text: $bridge.candidatesCSV)
                 .textFieldStyle(.roundedBorder)
 
             Toggle("Execute actions immediately", isOn: $bridge.execute)
                 .foregroundStyle(Color.novaInk)
                 .tint(.novaHot)
+
+            Stepper("Auto-repair attempts: \(bridge.autoRepairAttempts)", value: $bridge.autoRepairAttempts, in: 0 ... 10)
+                .foregroundStyle(Color.novaInk)
+
+            Picker("Repair Strategy", selection: $bridge.repairStrategy) {
+                Text("decompose").tag("decompose")
+                Text("single").tag("single")
+                Text("vote").tag("vote")
+            }
+            .pickerStyle(.segmented)
+
+            TextField("Repair model (optional)", text: $bridge.repairModel)
+                .textFieldStyle(.roundedBorder)
+
+            TextField("Repair candidates (CSV)", text: $bridge.repairCandidatesCSV)
+                .textFieldStyle(.roundedBorder)
+
+            TextField("Repair fallbacks (CSV)", text: $bridge.repairFallbacksCSV)
+                .textFieldStyle(.roundedBorder)
 
             HStack {
                 Button("Queue Async Run") { bridge.queueObjective() }

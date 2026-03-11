@@ -115,6 +115,21 @@ final class BridgeViewModel: ObservableObject {
     @Published var execute: Bool = false {
         didSet { persistSettings() }
     }
+    @Published var autoRepairAttempts: Int = 0 {
+        didSet { persistSettings() }
+    }
+    @Published var repairStrategy: String = "decompose" {
+        didSet { persistSettings() }
+    }
+    @Published var repairModel: String = "" {
+        didSet { persistSettings() }
+    }
+    @Published var repairCandidatesCSV: String = "" {
+        didSet { persistSettings() }
+    }
+    @Published var repairFallbacksCSV: String = "" {
+        didSet { persistSettings() }
+    }
     @Published var sessionScopesCSV: String = "read,run,plan,approve,reject,undo,cancel" {
         didSet { persistSettings() }
     }
@@ -208,6 +223,11 @@ final class BridgeViewModel: ObservableObject {
         static let strategy = "novaadapt.mobile.strategy"
         static let candidatesCSV = "novaadapt.mobile.candidatesCSV"
         static let execute = "novaadapt.mobile.execute"
+        static let autoRepairAttempts = "novaadapt.mobile.autoRepairAttempts"
+        static let repairStrategy = "novaadapt.mobile.repairStrategy"
+        static let repairModel = "novaadapt.mobile.repairModel"
+        static let repairCandidatesCSV = "novaadapt.mobile.repairCandidatesCSV"
+        static let repairFallbacksCSV = "novaadapt.mobile.repairFallbacksCSV"
         static let sessionScopesCSV = "novaadapt.mobile.sessionScopesCSV"
         static let sessionTTLSeconds = "novaadapt.mobile.sessionTTLSeconds"
         static let issuedSessionID = "novaadapt.mobile.issuedSessionID"
@@ -342,7 +362,7 @@ final class BridgeViewModel: ObservableObject {
                 _ = try await self.requestJSON(
                     method: "POST",
                     path: "/plans/\(planId)/approve",
-                    body: ["execute": true]
+                    body: self.buildRepairPayload(base: ["execute": true])
                 )
                 try await self.refreshDashboardAsync()
             }
@@ -355,11 +375,11 @@ final class BridgeViewModel: ObservableObject {
                 _ = try await self.requestJSON(
                     method: "POST",
                     path: "/plans/\(planId)/retry_failed_async",
-                    body: [
+                    body: self.buildRepairPayload(base: [
                         "allow_dangerous": true,
                         "action_retry_attempts": 2,
                         "action_retry_backoff_seconds": 0.2,
-                    ]
+                    ])
                 )
                 try await self.refreshDashboardAsync()
             }
@@ -946,6 +966,22 @@ final class BridgeViewModel: ObservableObject {
             candidatesCSV = value
         }
         execute = defaults.bool(forKey: DefaultsKey.execute)
+        let autoRepair = defaults.integer(forKey: DefaultsKey.autoRepairAttempts)
+        if autoRepair > 0 {
+            autoRepairAttempts = max(0, min(10, autoRepair))
+        }
+        if let value = defaults.string(forKey: DefaultsKey.repairStrategy), !value.isEmpty {
+            repairStrategy = value
+        }
+        if let value = defaults.string(forKey: DefaultsKey.repairModel) {
+            repairModel = value
+        }
+        if let value = defaults.string(forKey: DefaultsKey.repairCandidatesCSV) {
+            repairCandidatesCSV = value
+        }
+        if let value = defaults.string(forKey: DefaultsKey.repairFallbacksCSV) {
+            repairFallbacksCSV = value
+        }
         if let value = defaults.string(forKey: DefaultsKey.sessionScopesCSV), !value.isEmpty {
             sessionScopesCSV = value
         }
@@ -1011,6 +1047,11 @@ final class BridgeViewModel: ObservableObject {
         defaults.set(strategy, forKey: DefaultsKey.strategy)
         defaults.set(candidatesCSV, forKey: DefaultsKey.candidatesCSV)
         defaults.set(execute, forKey: DefaultsKey.execute)
+        defaults.set(max(0, min(10, autoRepairAttempts)), forKey: DefaultsKey.autoRepairAttempts)
+        defaults.set(repairStrategy, forKey: DefaultsKey.repairStrategy)
+        defaults.set(repairModel, forKey: DefaultsKey.repairModel)
+        defaults.set(repairCandidatesCSV, forKey: DefaultsKey.repairCandidatesCSV)
+        defaults.set(repairFallbacksCSV, forKey: DefaultsKey.repairFallbacksCSV)
         defaults.set(sessionScopesCSV, forKey: DefaultsKey.sessionScopesCSV)
         defaults.set(max(60, min(86400, sessionTTLSeconds)), forKey: DefaultsKey.sessionTTLSeconds)
         defaults.set(issuedSessionID, forKey: DefaultsKey.issuedSessionID)
@@ -1331,8 +1372,39 @@ final class BridgeViewModel: ObservableObject {
             .split(separator: ",")
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
-        if strategy == "vote", !candidates.isEmpty {
+        if !candidates.isEmpty {
             payload["candidates"] = candidates
+        }
+        return buildRepairPayload(base: payload)
+    }
+
+    private func buildRepairPayload(base: [String: Any]) -> [String: Any] {
+        var payload = base
+        let attempts = max(0, min(10, autoRepairAttempts))
+        if attempts > 0 {
+            payload["auto_repair_attempts"] = attempts
+        }
+        let normalizedRepairStrategy = repairStrategy.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !normalizedRepairStrategy.isEmpty {
+            payload["repair_strategy"] = normalizedRepairStrategy
+        }
+        let normalizedRepairModel = repairModel.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !normalizedRepairModel.isEmpty {
+            payload["repair_model"] = normalizedRepairModel
+        }
+        let repairCandidates = repairCandidatesCSV
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        if !repairCandidates.isEmpty {
+            payload["repair_candidates"] = repairCandidates
+        }
+        let repairFallbacks = repairFallbacksCSV
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        if !repairFallbacks.isEmpty {
+            payload["repair_fallbacks"] = repairFallbacks
         }
         return payload
     }

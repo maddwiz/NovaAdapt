@@ -140,6 +140,14 @@ def render_dashboard_html() -> str:
     th { color: var(--muted); font-weight: 600; }
     tr:last-child td { border-bottom: none; }
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .detail {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.4;
+      margin-top: 4px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
   </style>
 </head>
 <body>
@@ -162,10 +170,10 @@ def render_dashboard_html() -> str:
           <thead>
             <tr>
               <th>Job ID</th>
-              <th>Status</th>
+              <th>Status / Kind</th>
+              <th>Objective / Summary</th>
               <th>Created</th>
               <th>Finished</th>
-              <th>Cancel Req</th>
               <th>Actions</th>
             </tr>
           </thead>
@@ -180,7 +188,7 @@ def render_dashboard_html() -> str:
               <th>Plan ID</th>
               <th>Status</th>
               <th>Progress</th>
-              <th>Objective</th>
+              <th>Objective / Summary</th>
               <th>Created</th>
               <th>Actions</th>
             </tr>
@@ -251,6 +259,117 @@ def render_dashboard_html() -> str:
         .replaceAll('>', '&gt;')
         .replaceAll('"', '&quot;')
         .replaceAll("'", '&#39;');
+    }
+
+    function countResultsByStatus(results){
+      const counts = {};
+      for (const item of Array.isArray(results) ? results : []) {
+        const status = String(item?.status || 'unknown').toLowerCase();
+        counts[status] = (counts[status] || 0) + 1;
+      }
+      return counts;
+    }
+
+    function summarizeRepair(repair, results){
+      const counts = countResultsByStatus(results);
+      const repairedCount = Number(counts.repaired || 0);
+      if (!repair || typeof repair !== 'object') {
+        return repairedCount > 0 ? `${repairedCount} repaired action${repairedCount === 1 ? '' : 's'}` : '';
+      }
+      const attempts = Number(repair.attempts || 0);
+      const unresolved = Array.isArray(repair.failed_indexes) ? repair.failed_indexes.length : 0;
+      const healed = Boolean(repair.healed);
+      const parts = [];
+      if (healed) parts.push('auto-repair healed');
+      else if (attempts > 0) parts.push('auto-repair attempted');
+      if (repairedCount > 0) parts.push(`${repairedCount} repaired`);
+      if (attempts > 0) parts.push(`${attempts} attempt${attempts === 1 ? '' : 's'}`);
+      if (unresolved > 0 && !healed) parts.push(`${unresolved} unresolved`);
+      if (repair.last_error && !healed) parts.push(String(repair.last_error));
+      return parts.join(' • ');
+    }
+
+    function summarizeCollaboration(voteSummary, collaboration, fallbackStrategy){
+      const vote = voteSummary && typeof voteSummary === 'object' ? voteSummary : {};
+      const collab = collaboration && typeof collaboration === 'object' ? collaboration : {};
+      const mode = String(collab.mode || fallbackStrategy || '').toLowerCase();
+      if (vote.subtasks_total !== undefined || mode === 'decompose') {
+        const total = Number(vote.subtasks_total || 0);
+        const succeeded = Number(vote.subtasks_succeeded || 0);
+        const reviewed = Number(vote.reviewed_subtasks || 0);
+        const batches = Number(vote.parallel_batches || 0);
+        const parts = ['decompose'];
+        if (total > 0) parts.push(`${succeeded}/${total} subtasks`);
+        if (reviewed > 0) parts.push(`${reviewed} reviewed`);
+        if (batches > 0) parts.push(`${batches} batches`);
+        if (vote.reason) parts.push(String(vote.reason).replaceAll('_', ' '));
+        return parts.join(' • ');
+      }
+      if (vote.winner_votes !== undefined || mode === 'vote') {
+        const winnerVotes = Number(vote.winner_votes || 0);
+        const totalVotes = Number(vote.total_votes || 0);
+        const parts = ['vote'];
+        if (totalVotes > 0) parts.push(`${winnerVotes}/${totalVotes} votes`);
+        if (vote.quorum_met) parts.push('quorum');
+        return parts.join(' • ');
+      }
+      return '';
+    }
+
+    function transcriptPreviewLines(collaboration, limit=3){
+      const collab = collaboration && typeof collaboration === 'object' ? collaboration : {};
+      const transcript = Array.isArray(collab.transcript) ? collab.transcript : [];
+      return transcript.map(item => {
+        const type = String(item?.type || '').toLowerCase();
+        if (type === 'subtask_started') {
+          const subtaskId = String(item?.subtask_id || 'subtask');
+          const model = String(item?.model || '');
+          return `started ${subtaskId}${model ? ` with ${model}` : ''}`;
+        }
+        if (type === 'subtask_output') {
+          const subtaskId = String(item?.subtask_id || 'subtask');
+          const model = String(item?.model || 'model');
+          const attempt = Number(item?.attempt || 1);
+          return `output ${subtaskId} • ${model} • attempt ${attempt}`;
+        }
+        if (type === 'subtask_review') {
+          const reviewer = String(item?.reviewer_model || 'reviewer');
+          const subtaskId = String(item?.subtask_id || 'subtask');
+          return `${reviewer} ${item?.approved ? 'approved' : 'rejected'} ${subtaskId}`;
+        }
+        if (type === 'subtask_failed') {
+          const subtaskId = String(item?.subtask_id || 'subtask');
+          const error = String(item?.error || 'failed');
+          return `${subtaskId} failed • ${error}`;
+        }
+        if (type === 'synthesis') {
+          return `synthesis by ${String(item?.model || 'model')}`;
+        }
+        return '';
+      }).filter(Boolean).slice(0, limit);
+    }
+
+    function summarizeJobResult(result, fallbackKind='run'){
+      const payload = result && typeof result === 'object' ? result : null;
+      if (!payload) return '';
+      const counts = countResultsByStatus(payload.results);
+      const parts = [];
+      const strategy = String(payload.strategy || '');
+      const model = String(payload.model || '');
+      if (strategy) parts.push(strategy);
+      if (model) parts.push(model);
+      const total = Array.isArray(payload.results) ? payload.results.length : 0;
+      if (total > 0) {
+        parts.push(`${total} actions`);
+        if (counts.ok) parts.push(`${counts.ok} ok`);
+        if (counts.preview) parts.push(`${counts.preview} preview`);
+        if (counts.repaired) parts.push(`${counts.repaired} repaired`);
+        const failed = Number(counts.failed || 0) + Number(counts.blocked || 0);
+        if (failed > 0) parts.push(`${failed} failed`);
+      } else if (fallbackKind) {
+        parts.push(String(fallbackKind));
+      }
+      return parts.join(' • ');
     }
 
     function renderArtifacts(items){
@@ -397,6 +516,14 @@ def render_dashboard_html() -> str:
 
         jobsTbody.innerHTML = (jobs || []).map(job => {
           const status = String(job.status || '');
+          const metadata = job.metadata && typeof job.metadata === 'object' ? job.metadata : {};
+          const kind = String(job.kind || metadata.kind || 'run');
+          const objective = String(job.objective || metadata.objective || '');
+          const result = job.result && typeof job.result === 'object' ? job.result : null;
+          const resultSummary = summarizeJobResult(result, kind);
+          const repairSummary = summarizeRepair(result?.repair, result?.results);
+          const collaborationSummary = summarizeCollaboration(result?.vote_summary, result?.collaboration, result?.strategy || kind);
+          const transcriptLines = transcriptPreviewLines(result?.collaboration);
           const canCancel = status === 'running' || status === 'queued';
           const actionCell = canCancel
             ? `<button class="mini warn" data-action="cancel-job" data-id="${escapeHTML(job.id)}">Cancel</button>`
@@ -404,10 +531,20 @@ def render_dashboard_html() -> str:
           return `
           <tr>
             <td class=\"mono\">${escapeHTML(job.id)}</td>
-            <td>${escapeHTML(status)}</td>
+            <td>
+              <div>${escapeHTML(status)}</div>
+              <div class=\"detail\">${escapeHTML(kind)}</div>
+            </td>
+            <td>
+              <div>${escapeHTML(objective || '(no objective)')}</div>
+              ${resultSummary ? `<div class=\"detail\">${escapeHTML(resultSummary)}</div>` : ''}
+              ${job.error ? `<div class=\"detail\">Error: ${escapeHTML(job.error)}</div>` : ''}
+              ${repairSummary ? `<div class=\"detail\">Repair: ${escapeHTML(repairSummary)}</div>` : ''}
+              ${collaborationSummary ? `<div class=\"detail\">Collab: ${escapeHTML(collaborationSummary)}</div>` : ''}
+              ${transcriptLines.length ? `<div class=\"detail\">${transcriptLines.map(line => `• ${escapeHTML(line)}`).join('<br />')}</div>` : ''}
+            </td>
             <td>${escapeHTML(job.created_at || '')}</td>
             <td>${escapeHTML(job.finished_at || '')}</td>
-            <td>${job.cancel_requested ? 'yes' : 'no'}</td>
             <td>${actionCell}</td>
           </tr>
         `;
@@ -415,6 +552,9 @@ def render_dashboard_html() -> str:
 
         plansTbody.innerHTML = (plans || []).map(plan => {
           const status = String(plan.status || '');
+          const repairSummary = summarizeRepair(plan.repair, plan.execution_results);
+          const collaborationSummary = summarizeCollaboration(plan.vote_summary, plan.collaboration, plan.strategy);
+          const transcriptLines = transcriptPreviewLines(plan.collaboration);
           let actionCell = '';
           if (status === 'pending') {
             actionCell = `
@@ -435,7 +575,13 @@ def render_dashboard_html() -> str:
             <td class=\"mono\">${escapeHTML(plan.id)}</td>
             <td>${escapeHTML(status)}</td>
             <td>${Number(plan.progress_completed || 0)}/${Number(plan.progress_total || 0)}</td>
-            <td>${escapeHTML(String(plan.objective || '').slice(0, 80))}</td>
+            <td>
+              <div>${escapeHTML(String(plan.objective || '').slice(0, 120))}</div>
+              ${plan.execution_error ? `<div class=\"detail\">Error: ${escapeHTML(plan.execution_error)}</div>` : ''}
+              ${repairSummary ? `<div class=\"detail\">Repair: ${escapeHTML(repairSummary)}</div>` : ''}
+              ${collaborationSummary ? `<div class=\"detail\">Collab: ${escapeHTML(collaborationSummary)}</div>` : ''}
+              ${transcriptLines.length ? `<div class=\"detail\">${transcriptLines.map(line => `• ${escapeHTML(line)}`).join('<br />')}</div>` : ''}
+            </td>
             <td>${escapeHTML(plan.created_at || '')}</td>
             <td>${actionCell}</td>
           </tr>
