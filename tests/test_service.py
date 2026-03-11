@@ -186,6 +186,38 @@ class _RepairRouter(_StubRouter):
         )
 
 
+class _RunRepairRouter(_StubRouter):
+    def __init__(self):
+        self.objectives: list[str] = []
+
+    def chat(
+        self,
+        messages,
+        model_name=None,
+        strategy="single",
+        candidate_models=None,
+        fallback_models=None,
+    ):
+        objective_text = ""
+        for item in messages:
+            if str(item.get("role", "")) == "user":
+                objective_text = str(item.get("content", ""))
+        self.objectives.append(objective_text)
+        if "Repair only the failed or blocked parts of this plan." in objective_text:
+            content = '{"actions":[{"type":"note","target":"repair","value":"Use the safe archive flow instead."}]}'
+        else:
+            content = '{"actions":[{"type":"delete","target":"/tmp/something"}]}'
+        return RouterResult(
+            model_name=model_name or "local",
+            model_id="qwen",
+            content=content,
+            strategy=strategy,
+            votes={},
+            errors={},
+            attempted_models=[model_name or "local"],
+        )
+
+
 class _StubDirectShellWithProbe(_StubDirectShell):
     def probe(self):
         return {"ok": True, "transport": "stub"}
@@ -194,6 +226,9 @@ class _StubDirectShellWithProbe(_StubDirectShell):
 class _RecordingMemoryBackend:
     def __init__(self):
         self.ingest_calls: list[dict[str, object]] = []
+        self.events: list[str] = []
+        self.consolidate_calls: list[dict[str, object]] = []
+        self.dream_calls = 0
 
     def status(self):
         return {"ok": True, "enabled": True, "backend": "stub-memory"}
@@ -209,6 +244,22 @@ class _RecordingMemoryBackend:
     def ingest(self, text: str, *, source_id: str = "", metadata=None):
         self.ingest_calls.append({"text": text, "source_id": source_id, "metadata": metadata or {}})
         return {"count": 1}
+
+    def track_event(self, event_type: str):
+        self.events.append(str(event_type))
+        return {"ok": True}
+
+    def track_events_batch(self, event_types: list[str]):
+        self.events.extend([str(item) for item in event_types])
+        return {"ok": True}
+
+    def consolidate(self, *, session_id: str = "", max_chunks: int = 32):
+        self.consolidate_calls.append({"session_id": session_id, "max_chunks": max_chunks})
+        return {"ok": True}
+
+    def dream(self):
+        self.dream_calls += 1
+        return {"ok": True}
 
 
 class _StubNovaPrimeBackend:
@@ -1316,6 +1367,39 @@ class ServiceTests(unittest.TestCase):
             undo = service.undo({"mark_only": True})
             self.assertEqual(undo["status"], "marked_undone")
 
+    def test_run_auto_repairs_blocked_actions_and_triggers_memory_maintenance(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            memory = _RecordingMemoryBackend()
+            recorder = _RecordingDirectShell()
+            repair_router = _RunRepairRouter()
+            service = NovaAdaptService(
+                default_config=Path("unused.json"),
+                db_path=Path(tmp) / "actions.db",
+                router_loader=lambda _path: repair_router,
+                directshell_factory=lambda: recorder,
+                memory_backend=memory,
+            )
+
+            out = service.run(
+                {
+                    "objective": "Delete the temp file",
+                    "execute": True,
+                    "allow_dangerous": False,
+                    "auto_repair_attempts": 1,
+                    "repair_strategy": "single",
+                }
+            )
+
+            self.assertEqual(out["results"][0]["status"], "repaired")
+            self.assertTrue(out["repair"]["healed"])
+            self.assertEqual(len(out["action_log_ids"]), 2)
+            self.assertEqual(len(recorder.executed_actions), 1)
+            self.assertEqual(recorder.executed_actions[0]["type"], "note")
+            self.assertIn("run.auto_repaired", memory.events)
+            self.assertTrue(memory.consolidate_calls)
+            self.assertEqual(memory.dream_calls, 1)
+            self.assertTrue(any("Repair only the failed or blocked parts of this plan." in text for text in repair_router.objectives))
+
     def test_run_requires_objective(self):
         service = NovaAdaptService(
             default_config=Path("unused.json"),
@@ -2327,6 +2411,9 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(out["rating"], 9)
         self.assertTrue(memory.ingest_calls)
         self.assertTrue(any("novaadapt:feedback:" in str(item["source_id"]) for item in memory.ingest_calls))
+        self.assertIn("feedback.recorded", memory.events)
+        self.assertTrue(memory.consolidate_calls)
+        self.assertEqual(memory.dream_calls, 1)
 
 
 if __name__ == "__main__":

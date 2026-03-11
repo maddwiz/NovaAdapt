@@ -173,6 +173,36 @@ class AdaptCLITests(unittest.TestCase):
         run_payload = service.run.call_args.args[0]
         self.assertEqual(run_payload["strategy"], "decompose")
 
+    def test_run_command_passes_auto_repair_controls(self):
+        service = mock.Mock()
+        service.run.return_value = {"ok": True}
+        with mock.patch("novaadapt_core.cli.NovaAdaptService", return_value=service):
+            payload = self._run_cli(
+                "run",
+                "--objective",
+                "Handle the failed cleanup",
+                "--execute",
+                "--auto-repair-attempts",
+                "2",
+                "--repair-strategy",
+                "vote",
+                "--repair-model",
+                "local",
+                "--repair-candidates",
+                "local,backup",
+                "--repair-fallbacks",
+                "backup",
+            )
+        self.assertTrue(payload["ok"])
+        service.run.assert_called_once()
+        run_payload = service.run.call_args.args[0]
+        self.assertTrue(run_payload["execute"])
+        self.assertEqual(run_payload["auto_repair_attempts"], 2)
+        self.assertEqual(run_payload["repair_strategy"], "vote")
+        self.assertEqual(run_payload["repair_model"], "local")
+        self.assertEqual(run_payload["repair_candidates"], "local,backup")
+        self.assertEqual(run_payload["repair_fallbacks"], "backup")
+
     def test_plan_create_command_accepts_decompose_strategy(self):
         service = mock.Mock()
         service.create_plan.return_value = {"id": "plan-2", "status": "pending"}

@@ -144,6 +144,29 @@ def _build_parser() -> argparse.ArgumentParser:
         default="",
         help="Optional JSON object for marketplace buy op (listing_id/buyer)",
     )
+    run_cmd.add_argument(
+        "--auto-repair-attempts",
+        type=int,
+        default=0,
+        help="Generate and execute replacement actions when execution still fails or blocks",
+    )
+    run_cmd.add_argument(
+        "--repair-strategy",
+        default="decompose",
+        choices=["single", "vote", "decompose"],
+        help="Model routing strategy for auto-repair attempts",
+    )
+    run_cmd.add_argument("--repair-model", default="", help="Optional model endpoint for auto-repair")
+    run_cmd.add_argument(
+        "--repair-candidates",
+        default="",
+        help="Comma-separated candidate models for auto-repair",
+    )
+    run_cmd.add_argument(
+        "--repair-fallbacks",
+        default="",
+        help="Comma-separated fallback models for auto-repair",
+    )
 
     history_cmd = sub.add_parser("history", help="Show recent action history")
     history_cmd.add_argument("--limit", type=int, default=20)
@@ -1619,6 +1642,11 @@ def main() -> None:
                 "mesh_transfer_amount": args.mesh_transfer_amount,
                 "mesh_marketplace_list": _parse_optional_json_object(args.mesh_marketplace_list, "--mesh-marketplace-list"),
                 "mesh_marketplace_buy": _parse_optional_json_object(args.mesh_marketplace_buy, "--mesh-marketplace-buy"),
+                "auto_repair_attempts": max(0, int(args.auto_repair_attempts)),
+                "repair_strategy": str(args.repair_strategy or "decompose"),
+                "repair_model": str(args.repair_model or "").strip(),
+                "repair_candidates": args.repair_candidates,
+                "repair_fallbacks": args.repair_fallbacks,
             }
             print(json.dumps(service.run(payload), indent=2))
             return

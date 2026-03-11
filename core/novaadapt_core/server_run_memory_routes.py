@@ -102,6 +102,11 @@ def post_swarm_run(
         "mesh_transfer_amount": payload.get("mesh_transfer_amount"),
         "mesh_marketplace_list": payload.get("mesh_marketplace_list"),
         "mesh_marketplace_buy": payload.get("mesh_marketplace_buy"),
+        "auto_repair_attempts": int(payload.get("auto_repair_attempts", 0)),
+        "repair_strategy": payload.get("repair_strategy", payload.get("strategy", "single")),
+        "repair_model": payload.get("repair_model"),
+        "repair_candidates": payload.get("repair_candidates"),
+        "repair_fallbacks": payload.get("repair_fallbacks"),
     }
     if "use_kernel" in payload:
         shared_payload["use_kernel"] = coerce_bool(payload.get("use_kernel"), default=False)

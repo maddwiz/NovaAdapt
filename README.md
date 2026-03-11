@@ -36,6 +36,7 @@ Implemented now:
   - Exposes local-first agent template export/import/share/launch flows with a built-in gallery and shareable manifests.
   - Records operator feedback (`/feedback`) into memory for self-improvement loops.
   - Supports automatic plan self-healing by generating and executing replacement actions for failed steps.
+  - Supports automatic raw-run self-healing plus NovaSpine consolidation/dream hooks after runs, repairs, and strong feedback.
   - Exposes HTTP API with optional bearer auth and async jobs.
 - `bridge` relay service in Go for secure remote forwarding into core API.
   - Includes realtime WebSocket control channel (`/ws`) for events + command relay.
@@ -117,6 +118,13 @@ novaadapt run \
   --objective "Open a browser and navigate to example.com" \
   --strategy vote \
   --candidates local-qwen,openai-gpt
+
+novaadapt run \
+  --config config/models.local.json \
+  --objective "Complete the cleanup safely" \
+  --execute \
+  --auto-repair-attempts 1 \
+  --repair-strategy decompose
 
 # SIB/NovaPrime-aware run context (identity/presence/mesh probes)
 novaadapt run \
@@ -316,6 +324,7 @@ API endpoints:
 - `GET /terminal/sessions/{id}`
 - `GET /terminal/sessions/{id}/output?since_seq=0&limit=200`
 - `POST /run` with JSON payload
+  Supports optional self-healing controls: `auto_repair_attempts`, `repair_strategy`, `repair_model`, `repair_candidates`, `repair_fallbacks`.
 - Optional NovaPrime runtime context on `/run` and `/swarm/run`: `adapt_id`, `player_id`, `realm`, `activity`, `post_realm`, `post_activity`, `mesh_node_id`, `mesh_probe`, `mesh_probe_marketplace`, `mesh_credit_amount`, `mesh_transfer_to`, `mesh_transfer_amount`, `mesh_marketplace_list`, `mesh_marketplace_buy` (adds `novaprime` metadata in response when Adapt or mesh fields are provided)
 - `POST /run_async` with JSON payload (returns `job_id`)
 - `POST /swarm/run` with JSON payload (fan out multiple objectives into parallel jobs)

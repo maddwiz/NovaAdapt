@@ -2410,6 +2410,12 @@ class NovaAdaptService:
                 "objective": objective[:240],
             },
         )
+        self._finalize_memory_events(
+            ["feedback.recorded"],
+            session_id=f"feedback:{feedback_id}",
+            consolidate=True,
+            dream=rating >= 9 or rating <= 3,
+        )
         return {
             "ok": True,
             "id": feedback_id,
@@ -2579,6 +2585,12 @@ class NovaAdaptService:
         record_history = coerce_bool(payload.get("record_history"), default=True)
         allow_dangerous = coerce_bool(payload.get("allow_dangerous"), default=False)
         max_actions = int(payload.get("max_actions", 25))
+        auto_repair_attempts = max(0, int(payload.get("auto_repair_attempts", 0)))
+        repair_strategy = str(payload.get("repair_strategy") or strategy or "decompose").strip() or "decompose"
+        repair_model = str(payload.get("repair_model") or model_name or "").strip() or None
+        repair_candidates = self._as_name_list(payload.get("repair_candidates")) or list(candidate_models)
+        repair_fallbacks = self._as_name_list(payload.get("repair_fallbacks")) or list(fallback_models)
+        memory_session_id = str(payload.get("memory_session_id") or "").strip() or f"run:{uuid.uuid4().hex[:12]}"
         adapt_id = str(payload.get("adapt_id") or "").strip()
         player_id = str(payload.get("player_id") or "").strip()
         realm = str(payload.get("realm") or "").strip()
@@ -2728,7 +2740,7 @@ class NovaAdaptService:
                         max_actions=max(1, max_actions),
                         identity_profile=planning_identity_profile,
                         bond_verified=bond_verified,
-                    )
+                )
             else:
                 result = agent.run_objective(
                     objective=objective,
@@ -2743,6 +2755,42 @@ class NovaAdaptService:
                     identity_profile=planning_identity_profile,
                     bond_verified=bond_verified,
                 )
+            repair_summary: dict[str, Any] | None = None
+            if execute and isinstance(result, dict) and auto_repair_attempts > 0:
+                execution_results = [
+                    dict(item) for item in result.get("results", []) if isinstance(item, dict)
+                ]
+                action_log_ids = []
+                for item in result.get("action_log_ids", []):
+                    try:
+                        action_log_ids.append(int(item))
+                    except (TypeError, ValueError):
+                        continue
+                failed_actions = [
+                    item
+                    for item in execution_results
+                    if str(item.get("status", "")).lower() in {"failed", "blocked"}
+                ]
+                if failed_actions:
+                    repaired_results, repaired_action_log_ids, repair_summary = self._attempt_execution_self_heal(
+                        objective=objective,
+                        actions=[dict(item) for item in result.get("actions", []) if isinstance(item, dict)],
+                        execution_results=execution_results,
+                        action_log_ids=action_log_ids,
+                        allow_dangerous=allow_dangerous,
+                        max_actions=max_actions,
+                        repair_attempts=auto_repair_attempts,
+                        repair_strategy=repair_strategy,
+                        repair_model=repair_model,
+                        repair_candidates=repair_candidates,
+                        repair_fallbacks=repair_fallbacks,
+                        config_path=config_path,
+                        identity_profile=planning_identity_profile,
+                        bond_verified=bond_verified,
+                    )
+                    result["results"] = repaired_results
+                    result["action_log_ids"] = repaired_action_log_ids
+                    result["repair"] = repair_summary
             self.runtime_governance.record_model_usage(
                 usage=result.get("model_usage") if isinstance(result, dict) else None,
                 strategy=strategy,
@@ -2783,6 +2831,27 @@ class NovaAdaptService:
             result["novaprime"] = novaprime_context
         if adapt_context:
             result["adapt"] = adapt_context
+        run_event_names = ["run.executed" if execute else "run.preview"]
+        failed_after_run = any(
+            str(item.get("status", "")).lower() in {"failed", "blocked"}
+            for item in result.get("results", [])
+            if isinstance(item, dict)
+        )
+        repair_summary = result.get("repair") if isinstance(result.get("repair"), dict) else None
+        if repair_summary is not None:
+            run_event_names.append("run.auto_repair_attempted")
+            if bool(repair_summary.get("healed", False)):
+                run_event_names.append("run.auto_repaired")
+            else:
+                run_event_names.append("run.auto_repair_failed")
+        if failed_after_run:
+            run_event_names.append("run.failed_actions")
+        self._finalize_memory_events(
+            run_event_names,
+            session_id=memory_session_id,
+            consolidate=True,
+            dream=bool(repair_summary and repair_summary.get("healed", False)),
+        )
         return result
 
     def create_plan(self, payload: dict[str, Any]) -> dict[str, Any]:
@@ -2988,7 +3057,7 @@ class NovaAdaptService:
             if str(item.get("status", "")).lower() in {"failed", "blocked"}
         ]
         if failed_actions and auto_repair_attempts > 0:
-            execution_results, action_log_ids, repair_summary = self._attempt_plan_self_heal(
+            execution_results, action_log_ids, repair_summary = self._attempt_execution_self_heal(
                 objective=str(plan.get("objective", "")),
                 actions=actions,
                 execution_results=execution_results,
@@ -3025,7 +3094,12 @@ class NovaAdaptService:
                     execution_results=execution_results,
                     execution_error="",
                 )
-                self._track_memory_events(["plan.executed", "plan.auto_repaired"])
+                self._finalize_memory_events(
+                    ["plan.executed", "plan.auto_repaired"],
+                    session_id=f"plan:{plan_id}",
+                    consolidate=True,
+                    dream=True,
+                )
                 return approved
 
         if failed_actions:
@@ -3049,7 +3123,12 @@ class NovaAdaptService:
                 execution_results=execution_results,
                 execution_error=str(failed.get("execution_error", "")),
             )
-            self._track_memory_events(["plan.failed", "plan.failed_actions"])
+            self._finalize_memory_events(
+                ["plan.failed", "plan.failed_actions"],
+                session_id=f"plan:{plan_id}",
+                consolidate=True,
+                dream=bool(repair_summary and repair_summary.get("attempts")),
+            )
             return failed
 
         approved = self._plans().approve(
@@ -3070,10 +3149,15 @@ class NovaAdaptService:
             execution_results=execution_results,
             execution_error="",
         )
-        self._track_memory_events(["plan.executed"])
+        self._finalize_memory_events(
+            ["plan.executed"],
+            session_id=f"plan:{plan_id}",
+            consolidate=True,
+            dream=False,
+        )
         return approved
 
-    def _attempt_plan_self_heal(
+    def _attempt_execution_self_heal(
         self,
         *,
         objective: str,
@@ -3087,6 +3171,9 @@ class NovaAdaptService:
         repair_model: str | None,
         repair_candidates: list[str] | None,
         repair_fallbacks: list[str] | None,
+        config_path: Path | None = None,
+        identity_profile: dict[str, Any] | None = None,
+        bond_verified: bool | None = None,
         cancel_requested: Callable[[], bool] | None = None,
     ) -> tuple[list[dict[str, Any]], list[int], dict[str, Any]]:
         repaired_results = [dict(item) for item in execution_results]
@@ -3128,6 +3215,9 @@ class NovaAdaptService:
                 fallback_models=repair_fallbacks,
                 allow_dangerous=allow_dangerous,
                 max_actions=max_actions,
+                config_path=config_path,
+                identity_profile=identity_profile,
+                bond_verified=bond_verified,
             )
             repair_results = [
                 dict(item) for item in repair_run.get("results", []) if isinstance(item, dict)
@@ -3214,8 +3304,11 @@ class NovaAdaptService:
         fallback_models: list[str] | None,
         allow_dangerous: bool,
         max_actions: int,
+        config_path: Path | None = None,
+        identity_profile: dict[str, Any] | None = None,
+        bond_verified: bool | None = None,
     ) -> dict[str, Any]:
-        router = self.router_loader(self.default_config)
+        router = self.router_loader(Path(config_path or self.default_config))
         queue = UndoQueue(db_path=self.db_path)
         agent = NovaAdaptAgent(
             router=router,
@@ -3233,6 +3326,8 @@ class NovaAdaptService:
             record_history=True,
             allow_dangerous=allow_dangerous,
             max_actions=max(1, int(max_actions)),
+            identity_profile=identity_profile,
+            bond_verified=bond_verified,
         )
         self.runtime_governance.record_model_usage(
             usage=result.get("model_usage") if isinstance(result, dict) else None,
@@ -3531,6 +3626,30 @@ class NovaAdaptService:
                     track_single(item)
                 except Exception:
                     return
+
+    def _finalize_memory_events(
+        self,
+        event_names: list[str],
+        *,
+        session_id: str = "",
+        consolidate: bool = False,
+        dream: bool = False,
+    ) -> None:
+        self._track_memory_events(event_names)
+        if consolidate:
+            consolidate_fn = getattr(self.memory_backend, "consolidate", None)
+            if callable(consolidate_fn):
+                try:
+                    consolidate_fn(session_id=str(session_id or ""), max_chunks=32)
+                except Exception:
+                    pass
+        if dream:
+            dream_fn = getattr(self.memory_backend, "dream", None)
+            if callable(dream_fn):
+                try:
+                    dream_fn()
+                except Exception:
+                    pass
 
     @staticmethod
     def _decode_base64_image(value: object) -> bytes | None:
