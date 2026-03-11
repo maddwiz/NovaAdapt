@@ -115,6 +115,47 @@
       </section>
 
       <section class="card">
+        <div class="section-head">
+          <h2>IoT Control</h2>
+          <span id="iotStatus" class="badge neutral">Idle</span>
+        </div>
+        <div class="grid compact">
+          <label>
+            <span>Entity Domain</span>
+            <input id="entityDomainInput" type="text" placeholder="light" />
+          </label>
+          <label>
+            <span>Entity Prefix</span>
+            <input id="entityPrefixInput" type="text" placeholder="light.office" />
+          </label>
+          <div class="row row-end">
+            <button id="refreshEntitiesBtn" class="secondary">Refresh Entities</button>
+            <button id="refreshMqttStatusBtn" class="secondary">MQTT Status</button>
+          </div>
+        </div>
+        <div id="iotEntities" class="iot-grid"></div>
+        <div class="grid compact">
+          <label>
+            <span>MQTT Topic</span>
+            <input id="mqttTopicInput" type="text" placeholder="novaadapt/test" />
+          </label>
+          <label>
+            <span>MQTT Payload</span>
+            <textarea id="mqttPayloadInput" rows="3" placeholder='{"hello":"world"}'></textarea>
+          </label>
+          <label class="toggle checkbox-inline">
+            <input id="mqttRetainInput" type="checkbox" />
+            <span>Retain publish</span>
+          </label>
+        </div>
+        <div class="row">
+          <button id="mqttPublishBtn" class="primary">Publish MQTT</button>
+          <button id="mqttSubscribeBtn" class="secondary">Subscribe Snapshot</button>
+        </div>
+        <pre id="mqttOutput" class="summary">No MQTT activity yet.</pre>
+      </section>
+
+      <section class="card">
         <h2>System Snapshot</h2>
         <pre id="summary" class="summary">No data loaded.</pre>
       </section>

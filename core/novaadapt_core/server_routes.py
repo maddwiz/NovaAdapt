@@ -168,6 +168,7 @@ def build_post_exact_routes(handler: Any) -> dict[str, Any]:
         "/mobile/action": lambda body: handler._post_mobile_action("/mobile/action", body),
         "/iot/homeassistant/action": lambda body: handler._post_homeassistant_action("/iot/homeassistant/action", body),
         "/iot/mqtt/publish": lambda body: handler._post_mqtt_publish("/iot/mqtt/publish", body),
+        "/iot/mqtt/subscribe": lambda body: handler._post_mqtt_subscribe("/iot/mqtt/subscribe", body),
     }
 
 
@@ -232,7 +233,7 @@ def is_idempotent_route(path: str) -> bool:
         return True
     if path in {"/memory/ingest"}:
         return True
-    if path in {"/execute/vision", "/mobile/action", "/iot/homeassistant/action", "/iot/mqtt/publish"}:
+    if path in {"/execute/vision", "/mobile/action", "/iot/homeassistant/action", "/iot/mqtt/publish", "/iot/mqtt/subscribe"}:
         return True
     if path.startswith("/channels/") and (path.endswith("/send") or path.endswith("/inbound")):
         return True

@@ -41,6 +41,24 @@ struct ControlArtifactSummary: Identifiable {
     let dangerous: Bool
 }
 
+struct HomeAssistantEntitySummary: Identifiable {
+    let id: String
+    let entityID: String
+    let domain: String
+    let friendlyName: String
+    let state: String
+    let detail: String
+}
+
+struct MQTTMessageSummary: Identifiable {
+    let id: String
+    let topic: String
+    let payload: String
+    let qos: Int
+    let retain: Bool
+    let receivedAt: String
+}
+
 struct TerminalSessionSummary: Identifiable {
     let id: String
     let open: Bool
@@ -98,6 +116,24 @@ final class BridgeViewModel: ObservableObject {
     @Published var jobs: [JobSummary] = []
     @Published var events: [AuditEventSummary] = []
     @Published var controlArtifacts: [ControlArtifactSummary] = []
+    @Published var iotDomainFilter: String = "" {
+        didSet { persistSettings() }
+    }
+    @Published var iotEntityPrefix: String = "" {
+        didSet { persistSettings() }
+    }
+    @Published var homeAssistantEntities: [HomeAssistantEntitySummary] = []
+    @Published var mqttTopic: String = "" {
+        didSet { persistSettings() }
+    }
+    @Published var mqttPayload: String = "" {
+        didSet { persistSettings() }
+    }
+    @Published var mqttRetain: Bool = false {
+        didSet { persistSettings() }
+    }
+    @Published var mqttMessages: [MQTTMessageSummary] = []
+    @Published var mqttStatusSummary: String = "MQTT idle"
     @Published var wsEvents: [String] = []
     @Published var status: String = "Idle"
 
@@ -137,6 +173,11 @@ final class BridgeViewModel: ObservableObject {
         static let issuedSessionID = "novaadapt.mobile.issuedSessionID"
         static let revokeExpiresAt = "novaadapt.mobile.revokeExpiresAt"
         static let allowlistDeviceID = "novaadapt.mobile.allowlistDeviceID"
+        static let iotDomainFilter = "novaadapt.mobile.iotDomainFilter"
+        static let iotEntityPrefix = "novaadapt.mobile.iotEntityPrefix"
+        static let mqttTopic = "novaadapt.mobile.mqttTopic"
+        static let mqttPayload = "novaadapt.mobile.mqttPayload"
+        static let mqttRetain = "novaadapt.mobile.mqttRetain"
         static let terminalCommand = "novaadapt.mobile.terminalCommand"
         static let terminalCWD = "novaadapt.mobile.terminalCWD"
         static let terminalShell = "novaadapt.mobile.terminalShell"
@@ -312,6 +353,97 @@ final class BridgeViewModel: ObservableObject {
         Task {
             await runAction(label: "Canceling job \(jobId)") {
                 _ = try await self.requestJSON(method: "POST", path: "/jobs/\(jobId)/cancel", body: [:])
+                try await self.refreshDashboardAsync()
+            }
+        }
+    }
+
+    func refreshIoTEntities() {
+        Task {
+            await runAction(label: "Refreshing IoT entities") {
+                try await self.refreshIoTEntitiesAsync()
+            }
+        }
+    }
+
+    func refreshMQTTStatus() {
+        Task {
+            await runAction(label: "Refreshing MQTT status") {
+                let payload = try await self.requestJSON(method: "GET", path: "/iot/mqtt/status", body: nil)
+                self.mqttStatusSummary = self.formatMQTTStatus(payload)
+            }
+        }
+    }
+
+    func executeHomeAssistantService(entityID: String, domain: String, service: String) {
+        Task {
+            await runAction(label: "Executing \(domain).\(service)") {
+                let payload = try await self.requestJSON(
+                    method: "POST",
+                    path: "/iot/homeassistant/action",
+                    body: [
+                        "action": [
+                            "type": "ha_service",
+                            "domain": domain,
+                            "service": service,
+                            "entity_id": entityID,
+                        ],
+                        "execute": true,
+                    ]
+                )
+                self.mqttStatusSummary = self.string(payload["output"], fallback: "\(domain).\(service) sent")
+                try await self.refreshDashboardAsync()
+                try await self.refreshIoTEntitiesAsync()
+            }
+        }
+    }
+
+    func publishMQTTMessage() {
+        Task {
+            let topic = mqttTopic.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !topic.isEmpty else {
+                status = "MQTT topic is empty"
+                return
+            }
+            await runAction(label: "Publishing MQTT message") {
+                let payload = try await self.requestJSON(
+                    method: "POST",
+                    path: "/iot/mqtt/publish",
+                    body: [
+                        "topic": topic,
+                        "payload": self.mqttPayload,
+                        "retain": self.mqttRetain,
+                        "execute": true,
+                    ]
+                )
+                self.mqttStatusSummary = self.string(payload["output"], fallback: "MQTT publish complete")
+                try await self.refreshDashboardAsync()
+                try await self.refreshMQTTStatusAsync()
+            }
+        }
+    }
+
+    func subscribeMQTTSnapshot() {
+        Task {
+            let topic = mqttTopic.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !topic.isEmpty else {
+                status = "MQTT topic is empty"
+                return
+            }
+            await runAction(label: "Subscribing to MQTT snapshot") {
+                let payload = try await self.requestJSON(
+                    method: "POST",
+                    path: "/iot/mqtt/subscribe",
+                    body: [
+                        "topic": topic,
+                        "timeout_seconds": 1.5,
+                        "max_messages": 6,
+                        "qos": 0,
+                    ]
+                )
+                let data = payload["data"] as? [String: Any]
+                self.mqttMessages = self.parseMQTTMessages(data?["messages"])
+                self.mqttStatusSummary = self.string(payload["output"], fallback: "MQTT snapshot complete")
                 try await self.refreshDashboardAsync()
             }
         }
@@ -699,6 +831,19 @@ final class BridgeViewModel: ObservableObject {
         if let value = defaults.string(forKey: DefaultsKey.allowlistDeviceID) {
             allowlistDeviceID = value
         }
+        if let value = defaults.string(forKey: DefaultsKey.iotDomainFilter) {
+            iotDomainFilter = value
+        }
+        if let value = defaults.string(forKey: DefaultsKey.iotEntityPrefix) {
+            iotEntityPrefix = value
+        }
+        if let value = defaults.string(forKey: DefaultsKey.mqttTopic) {
+            mqttTopic = value
+        }
+        if let value = defaults.string(forKey: DefaultsKey.mqttPayload) {
+            mqttPayload = value
+        }
+        mqttRetain = defaults.bool(forKey: DefaultsKey.mqttRetain)
         if let value = defaults.string(forKey: DefaultsKey.terminalCommand) {
             terminalCommand = value
         }
@@ -734,6 +879,11 @@ final class BridgeViewModel: ObservableObject {
         defaults.set(issuedSessionID, forKey: DefaultsKey.issuedSessionID)
         defaults.set(revokeExpiresAt, forKey: DefaultsKey.revokeExpiresAt)
         defaults.set(allowlistDeviceID, forKey: DefaultsKey.allowlistDeviceID)
+        defaults.set(iotDomainFilter, forKey: DefaultsKey.iotDomainFilter)
+        defaults.set(iotEntityPrefix, forKey: DefaultsKey.iotEntityPrefix)
+        defaults.set(mqttTopic, forKey: DefaultsKey.mqttTopic)
+        defaults.set(mqttPayload, forKey: DefaultsKey.mqttPayload)
+        defaults.set(mqttRetain, forKey: DefaultsKey.mqttRetain)
         defaults.set(terminalCommand, forKey: DefaultsKey.terminalCommand)
         defaults.set(terminalCWD, forKey: DefaultsKey.terminalCWD)
         defaults.set(terminalShell, forKey: DefaultsKey.terminalShell)
@@ -769,6 +919,32 @@ final class BridgeViewModel: ObservableObject {
         jobs = parseJobs(payload["jobs"])
         events = parseEvents(payload["events"])
         controlArtifacts = parseControlArtifacts(payload["control_artifacts"])
+    }
+
+    private func refreshIoTEntitiesAsync() async throws {
+        let domain = iotDomainFilter.trimmingCharacters(in: .whitespacesAndNewlines)
+        let prefix = iotEntityPrefix.trimmingCharacters(in: .whitespacesAndNewlines)
+        var queryItems = [URLQueryItem(name: "limit", value: "24")]
+        if !domain.isEmpty {
+            queryItems.append(URLQueryItem(name: "domain", value: domain))
+        }
+        if !prefix.isEmpty {
+            queryItems.append(URLQueryItem(name: "entity_id_prefix", value: prefix))
+        }
+        var components = URLComponents()
+        components.queryItems = queryItems
+        let query = components.percentEncodedQuery ?? "limit=24"
+        let payload = try await requestJSON(
+            method: "GET",
+            path: "/iot/homeassistant/entities?\(query)",
+            body: nil
+        )
+        homeAssistantEntities = parseHomeAssistantEntities(payload)
+    }
+
+    private func refreshMQTTStatusAsync() async throws {
+        let payload = try await requestJSON(method: "GET", path: "/iot/mqtt/status", body: nil)
+        mqttStatusSummary = formatMQTTStatus(payload)
     }
 
     private func startTerminalPolling() {
@@ -1179,6 +1355,45 @@ final class BridgeViewModel: ObservableObject {
         }
     }
 
+    private func parseHomeAssistantEntities(_ payload: [String: Any]) -> [HomeAssistantEntitySummary] {
+        guard let items = payload["entities"] as? [[String: Any]] else {
+            return []
+        }
+        return items.map { item in
+            let entityID = string(item["entity_id"], fallback: UUID().uuidString)
+            let attributes = item["attributes"] as? [String: Any] ?? [:]
+            let domain = entityID.split(separator: ".", maxSplits: 1).first.map(String.init) ?? ""
+            let friendlyName = string(attributes["friendly_name"], fallback: entityID)
+            return HomeAssistantEntitySummary(
+                id: entityID,
+                entityID: entityID,
+                domain: domain,
+                friendlyName: friendlyName.isEmpty ? entityID : friendlyName,
+                state: string(item["state"], fallback: "unknown"),
+                detail: summarizeHomeAssistantAttributes(attributes)
+            )
+        }
+        .sorted { lhs, rhs in
+            lhs.friendlyName.localizedCaseInsensitiveCompare(rhs.friendlyName) == .orderedAscending
+        }
+    }
+
+    private func parseMQTTMessages(_ value: Any?) -> [MQTTMessageSummary] {
+        guard let items = value as? [[String: Any]] else {
+            return []
+        }
+        return items.map { item in
+            MQTTMessageSummary(
+                id: UUID().uuidString,
+                topic: string(item["topic"]),
+                payload: string(item["payload"]),
+                qos: toInt(item["qos"]) ?? 0,
+                retain: bool(item["retain"]),
+                receivedAt: formatReceivedAt(item["received_at"])
+            )
+        }
+    }
+
     func controlArtifactPreviewURL(for artifact: ControlArtifactSummary) -> URL? {
         let rawPath = artifact.previewPath.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !rawPath.isEmpty else {
@@ -1258,6 +1473,66 @@ final class BridgeViewModel: ObservableObject {
         }
         return nil
     }
+
+    private func bool(_ value: Any?) -> Bool {
+        if let flag = value as? Bool {
+            return flag
+        }
+        if let number = value as? NSNumber {
+            return number.boolValue
+        }
+        if let text = value as? String {
+            return ["1", "true", "yes", "on"].contains(text.lowercased())
+        }
+        return false
+    }
+
+    private func summarizeHomeAssistantAttributes(_ attributes: [String: Any]) -> String {
+        var parts: [String] = []
+        for key in ["device_class", "unit_of_measurement", "brightness", "temperature", "current_position"] {
+            let value = attributes[key]
+            let text = string(value)
+            if !text.isEmpty {
+                parts.append("\(key): \(text)")
+            }
+            if parts.count >= 4 {
+                break
+            }
+        }
+        return parts.isEmpty ? "No additional attributes" : parts.joined(separator: " • ")
+    }
+
+    private func formatMQTTStatus(_ payload: [String: Any]) -> String {
+        let ok = bool(payload["ok"])
+        let host = string(payload["host"], fallback: string(payload["broker"], fallback: "broker"))
+        let port = string(payload["port"])
+        let configured = bool(payload["configured"])
+        if ok {
+            return "MQTT connected to \(host)\(port.isEmpty ? "" : ":\(port)")"
+        }
+        if !configured {
+            return "MQTT not configured"
+        }
+        let errorText = string(payload["error"])
+        return errorText.isEmpty ? "MQTT unavailable" : "MQTT unavailable: \(errorText)"
+    }
+
+    private func formatReceivedAt(_ value: Any?) -> String {
+        if let number = value as? NSNumber {
+            return Self.timestampFormatter.string(from: Date(timeIntervalSince1970: number.doubleValue))
+        }
+        if let text = value as? String, let parsed = Double(text) {
+            return Self.timestampFormatter.string(from: Date(timeIntervalSince1970: parsed))
+        }
+        return "-"
+    }
+
+    private static let timestampFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .none
+        formatter.timeStyle = .medium
+        return formatter
+    }()
 
     private func planRank(_ status: String) -> Int {
         switch status.lowercased() {

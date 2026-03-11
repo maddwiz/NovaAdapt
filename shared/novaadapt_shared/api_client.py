@@ -1219,6 +1219,29 @@ class NovaAdaptAPIClient:
             return payload
         raise APIClientError("Expected object payload from /iot/mqtt/publish")
 
+    def mqtt_subscribe(
+        self,
+        topic: str,
+        *,
+        timeout_seconds: float = 3.0,
+        max_messages: int = 10,
+        qos: int = 0,
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        payload = self._post_json(
+            "/iot/mqtt/subscribe",
+            {
+                "topic": str(topic or ""),
+                "timeout_seconds": float(timeout_seconds),
+                "max_messages": max(1, int(max_messages)),
+                "qos": int(qos),
+            },
+            idempotency_key=idempotency_key,
+        )
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /iot/mqtt/subscribe")
+
     def browser_status(self) -> dict[str, Any]:
         payload = self._get_json("/browser/status")
         if isinstance(payload, dict):

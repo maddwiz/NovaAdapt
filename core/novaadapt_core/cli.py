@@ -853,6 +853,16 @@ def _build_parser() -> argparse.ArgumentParser:
     mqtt_publish_cmd.add_argument("--execute", action="store_true")
     mqtt_publish_cmd.add_argument("--allow-dangerous", action="store_true")
 
+    mqtt_subscribe_cmd = sub.add_parser(
+        "mqtt-subscribe",
+        help="Collect a bounded snapshot of MQTT messages for a topic",
+    )
+    mqtt_subscribe_cmd.add_argument("--config", type=Path, default=_default_config_path())
+    mqtt_subscribe_cmd.add_argument("--topic", required=True)
+    mqtt_subscribe_cmd.add_argument("--timeout-seconds", type=float, default=3.0)
+    mqtt_subscribe_cmd.add_argument("--max-messages", type=int, default=10)
+    mqtt_subscribe_cmd.add_argument("--qos", type=int, default=0)
+
     native_daemon_cmd = sub.add_parser(
         "native-daemon",
         help="Run built-in Native DirectShell-compatible daemon",
@@ -2175,6 +2185,21 @@ def main() -> None:
                             "execute": bool(args.execute),
                             "allow_dangerous": bool(args.allow_dangerous),
                         }
+                    ),
+                    indent=2,
+                )
+            )
+            return
+
+        if args.command == "mqtt-subscribe":
+            service = NovaAdaptService(default_config=args.config)
+            print(
+                json.dumps(
+                    service.mqtt_subscribe(
+                        topic=str(args.topic or ""),
+                        timeout_seconds=float(args.timeout_seconds),
+                        max_messages=max(1, int(args.max_messages)),
+                        qos=int(args.qos),
                     ),
                     indent=2,
                 )

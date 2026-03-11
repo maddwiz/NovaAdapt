@@ -592,6 +592,9 @@ def _build_handler(
         def _post_mqtt_publish(self, path: str, payload: dict[str, object]) -> int:
             return control_routes.post_mqtt_publish(self, service, path, payload)
 
+        def _post_mqtt_subscribe(self, path: str, payload: dict[str, object]) -> int:
+            return control_routes.post_mqtt_subscribe(self, service, path, payload)
+
         def _post_browser_typed_action(
             self,
             path: str,

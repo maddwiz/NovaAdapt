@@ -476,6 +476,30 @@ class NovaAdaptService:
             limit=max(1, int(limit)),
         )
 
+    def mqtt_subscribe(
+        self,
+        *,
+        topic: str,
+        timeout_seconds: float = 3.0,
+        max_messages: int = 10,
+        qos: int = 0,
+    ) -> dict[str, Any]:
+        out = self.homeassistant_action(
+            {
+                "action": {
+                    "type": "mqtt_subscribe",
+                    "topic": str(topic or ""),
+                    "timeout_seconds": float(timeout_seconds),
+                    "max_messages": max(1, int(max_messages)),
+                    "qos": int(qos),
+                    "transport": "mqtt-direct",
+                },
+                "execute": True,
+                "allow_dangerous": False,
+            }
+        )
+        return out
+
     def homeassistant_action(self, payload: dict[str, Any]) -> dict[str, Any]:
         raw_action = payload.get("action")
         if isinstance(raw_action, dict):
@@ -2890,7 +2914,7 @@ class NovaAdaptService:
             result = self._mobile().execute_action(normalized_action, dry_run=not execute)
             return _result_payload(result.status, result.output, result.action, result.data)
 
-        if action_type in {"ha_service", "mqtt_publish", "discover", "discover_entities", "list_entities"} or executor_name in {"homeassistant", "iot"}:
+        if action_type in {"ha_service", "mqtt_publish", "mqtt_subscribe", "discover", "discover_entities", "list_entities"} or executor_name in {"homeassistant", "iot"}:
             result = self._homeassistant().execute_action(normalized_action, dry_run=not execute)
             return _result_payload(result.status, result.output, result.action, result.data)
 

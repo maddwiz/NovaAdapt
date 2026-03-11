@@ -22,6 +22,7 @@ struct ContentView: View {
                         terminalCard
                         eventsCard
                         controlArtifactsCard
+                        iotControlCard
                         websocketCard
                     }
                     .padding(16)
@@ -39,6 +40,7 @@ struct ContentView: View {
             .preferredColorScheme(.dark)
             .onAppear {
                 bridge.refreshDashboard()
+                bridge.refreshMQTTStatus()
             }
             .confirmationDialog(
                 confirmationTitle,
@@ -536,6 +538,125 @@ struct ContentView: View {
         }
     }
 
+    private var iotControlCard: some View {
+        sectionCard(title: "IoT Control") {
+            TextField("Entity domain (light, switch, vacuum)", text: $bridge.iotDomainFilter)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled(true)
+                .textFieldStyle(.roundedBorder)
+
+            TextField("Entity prefix (light.office)", text: $bridge.iotEntityPrefix)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled(true)
+                .textFieldStyle(.roundedBorder)
+
+            HStack {
+                Button("Refresh Entities") { bridge.refreshIoTEntities() }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.novaBrand)
+                Button("MQTT Status") { bridge.refreshMQTTStatus() }
+                    .buttonStyle(.bordered)
+            }
+
+            Text(bridge.mqttStatusSummary)
+                .font(.caption)
+                .foregroundStyle(Color.novaMuted)
+
+            if bridge.homeAssistantEntities.isEmpty {
+                Text("No Home Assistant entities loaded.")
+                    .font(.subheadline)
+                    .foregroundStyle(Color.novaMuted)
+            } else {
+                ForEach(Array(bridge.homeAssistantEntities.prefix(10))) { entity in
+                    itemCard {
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Text(entity.friendlyName)
+                                    .font(.headline)
+                                    .foregroundStyle(.white)
+                                Spacer()
+                                Text(entity.state)
+                                    .font(.caption.monospaced())
+                                    .foregroundStyle(Color.novaBrand)
+                            }
+                            Text(entity.entityID)
+                                .font(.caption.monospaced())
+                                .foregroundStyle(Color.novaMuted)
+                            Text(entity.detail)
+                                .font(.caption)
+                                .foregroundStyle(Color.novaMuted)
+                            HStack {
+                                ForEach(quickActions(for: entity)) { action in
+                                    Button(action.label) {
+                                        pendingConfirmation = .executeIoT(entity.entityID, entity.domain, action.service)
+                                    }
+                                    .buttonStyle(.bordered)
+                                    .tint(action.service == "turn_off" || action.service == "close_cover" ? .novaDanger : .novaBrand)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            TextField("MQTT topic", text: $bridge.mqttTopic)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled(true)
+                .textFieldStyle(.roundedBorder)
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("MQTT Payload")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color.novaMuted)
+                TextEditor(text: $bridge.mqttPayload)
+                    .scrollContentBackground(.hidden)
+                    .frame(minHeight: 78)
+                    .padding(8)
+                    .background(Color.black.opacity(0.18))
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .stroke(Color.novaLine.opacity(0.85), lineWidth: 1)
+                    )
+                    .foregroundStyle(Color.novaInk)
+            }
+
+            Toggle("Retain MQTT publish", isOn: $bridge.mqttRetain)
+                .foregroundStyle(Color.novaInk)
+                .tint(.novaHot)
+
+            HStack {
+                Button("Publish MQTT") { pendingConfirmation = .publishMQTT }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.novaHot)
+                Button("Subscribe Snapshot") { bridge.subscribeMQTTSnapshot() }
+                    .buttonStyle(.bordered)
+            }
+
+            if bridge.mqttMessages.isEmpty {
+                Text("No MQTT messages captured yet.")
+                    .font(.subheadline)
+                    .foregroundStyle(Color.novaMuted)
+            } else {
+                ForEach(Array(bridge.mqttMessages.prefix(8))) { message in
+                    itemCard {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(message.topic)
+                                .font(.headline)
+                                .foregroundStyle(.white)
+                            Text("qos \(message.qos)\(message.retain ? " • retain" : "") • \(message.receivedAt)")
+                                .font(.caption)
+                                .foregroundStyle(Color.novaMuted)
+                            Text(message.payload.isEmpty ? "(empty payload)" : message.payload)
+                                .font(.caption.monospaced())
+                                .foregroundStyle(Color.novaInk)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     private var websocketCard: some View {
         sectionCard(title: "WebSocket Feed") {
             if bridge.wsEvents.isEmpty {
@@ -597,6 +718,8 @@ private enum PendingConfirmation {
     case rejectPlan(String)
     case retryFailed(String)
     case cancelJob(String)
+    case executeIoT(String, String, String)
+    case publishMQTT
 }
 
 private extension ContentView {
@@ -615,6 +738,10 @@ private extension ContentView {
             return "Retry failed plan steps?"
         case .cancelJob:
             return "Cancel this running job?"
+        case .executeIoT:
+            return "Execute IoT action?"
+        case .publishMQTT:
+            return "Publish MQTT message?"
         }
     }
 
@@ -633,6 +760,10 @@ private extension ContentView {
             return "Only failed steps for plan \(id) will be queued for retry."
         case .cancelJob(let id):
             return "Job \(id) will be canceled."
+        case let .executeIoT(entityID, domain, service):
+            return "\(domain).\(service) will run for \(entityID)."
+        case .publishMQTT:
+            return "The current MQTT topic and payload will be published immediately."
         }
     }
 
@@ -652,8 +783,46 @@ private extension ContentView {
             bridge.retryFailedPlan(id)
         case .cancelJob(let id):
             bridge.cancelJob(id)
+        case let .executeIoT(entityID, domain, service):
+            bridge.executeHomeAssistantService(entityID: entityID, domain: domain, service: service)
+        case .publishMQTT:
+            bridge.publishMQTTMessage()
         }
     }
+
+    func quickActions(for entity: HomeAssistantEntitySummary) -> [EntityQuickAction] {
+        switch entity.domain {
+        case "light", "switch", "input_boolean":
+            return [
+                EntityQuickAction(label: "On", service: "turn_on"),
+                EntityQuickAction(label: "Off", service: "turn_off"),
+                EntityQuickAction(label: "Toggle", service: "toggle"),
+            ]
+        case "cover":
+            return [
+                EntityQuickAction(label: "Open", service: "open_cover"),
+                EntityQuickAction(label: "Close", service: "close_cover"),
+                EntityQuickAction(label: "Stop", service: "stop_cover"),
+            ]
+        case "vacuum":
+            return [
+                EntityQuickAction(label: "Start", service: "start"),
+                EntityQuickAction(label: "Pause", service: "pause"),
+                EntityQuickAction(label: "Dock", service: "return_to_base"),
+            ]
+        case "scene", "script":
+            return [EntityQuickAction(label: "Run", service: "turn_on")]
+        default:
+            return [EntityQuickAction(label: "Execute", service: "turn_on")]
+        }
+    }
+}
+
+private struct EntityQuickAction: Identifiable {
+    let label: String
+    let service: String
+
+    var id: String { service }
 }
 
 private extension Color {

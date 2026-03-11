@@ -28,6 +28,18 @@ const jobCountEl = document.querySelector("#jobCount");
 const eventCountEl = document.querySelector("#eventCount");
 const artifactCountEl = document.querySelector("#artifactCount");
 const connectionStatusEl = document.querySelector("#connectionStatus");
+const iotStatusEl = document.querySelector("#iotStatus");
+const entityDomainInput = document.querySelector("#entityDomainInput");
+const entityPrefixInput = document.querySelector("#entityPrefixInput");
+const refreshEntitiesBtn = document.querySelector("#refreshEntitiesBtn");
+const refreshMqttStatusBtn = document.querySelector("#refreshMqttStatusBtn");
+const iotEntitiesEl = document.querySelector("#iotEntities");
+const mqttTopicInput = document.querySelector("#mqttTopicInput");
+const mqttPayloadInput = document.querySelector("#mqttPayloadInput");
+const mqttRetainInput = document.querySelector("#mqttRetainInput");
+const mqttPublishBtn = document.querySelector("#mqttPublishBtn");
+const mqttSubscribeBtn = document.querySelector("#mqttSubscribeBtn");
+const mqttOutputEl = document.querySelector("#mqttOutput");
 
 let refreshTimer = null;
 
@@ -75,6 +87,11 @@ function saveConfig() {
   localStorage.setItem("novaadapt.desktop.candidates", (candidatesInput?.value || "").trim());
   localStorage.setItem("novaadapt.desktop.execute", executeToggle?.checked ? "1" : "0");
   localStorage.setItem("novaadapt.desktop.autoRefresh", autoRefreshInput?.checked ? "1" : "0");
+  localStorage.setItem("novaadapt.desktop.iotDomain", (entityDomainInput?.value || "").trim());
+  localStorage.setItem("novaadapt.desktop.iotPrefix", (entityPrefixInput?.value || "").trim());
+  localStorage.setItem("novaadapt.desktop.mqttTopic", (mqttTopicInput?.value || "").trim());
+  localStorage.setItem("novaadapt.desktop.mqttPayload", mqttPayloadInput?.value || "");
+  localStorage.setItem("novaadapt.desktop.mqttRetain", mqttRetainInput?.checked ? "1" : "0");
 }
 
 function loadConfig() {
@@ -92,6 +109,11 @@ function loadConfig() {
   candidatesInput.value = localStorage.getItem("novaadapt.desktop.candidates") || "";
   executeToggle.checked = (localStorage.getItem("novaadapt.desktop.execute") || "0") === "1";
   autoRefreshInput.checked = (localStorage.getItem("novaadapt.desktop.autoRefresh") || "1") !== "0";
+  entityDomainInput.value = localStorage.getItem("novaadapt.desktop.iotDomain") || "";
+  entityPrefixInput.value = localStorage.getItem("novaadapt.desktop.iotPrefix") || "";
+  mqttTopicInput.value = localStorage.getItem("novaadapt.desktop.mqttTopic") || "";
+  mqttPayloadInput.value = localStorage.getItem("novaadapt.desktop.mqttPayload") || "";
+  mqttRetainInput.checked = (localStorage.getItem("novaadapt.desktop.mqttRetain") || "0") === "1";
 }
 
 async function coreRequest(method, path, payload = null) {
@@ -248,12 +270,23 @@ function setConnectionStatus(message, kind = "neutral") {
   connectionStatusEl.className = `badge ${kind}`;
 }
 
+function setIoTStatus(message, kind = "neutral") {
+  if (!iotStatusEl) return;
+  const text = String(message || "").trim() || "Idle";
+  iotStatusEl.textContent = text;
+  iotStatusEl.className = `badge ${kind}`;
+}
+
 function setBusy(value) {
   const busy = Boolean(value);
   refreshBtn.disabled = busy;
   testConnectionBtn.disabled = busy;
   runAsyncBtn.disabled = busy;
   createPlanBtn.disabled = busy;
+  if (refreshEntitiesBtn) refreshEntitiesBtn.disabled = busy;
+  if (refreshMqttStatusBtn) refreshMqttStatusBtn.disabled = busy;
+  if (mqttPublishBtn) mqttPublishBtn.disabled = busy;
+  if (mqttSubscribeBtn) mqttSubscribeBtn.disabled = busy;
   for (const btn of document.querySelectorAll("[data-mutate='1']")) {
     btn.disabled = busy;
   }
@@ -486,6 +519,169 @@ function renderControlArtifacts(items) {
   }
 }
 
+function quickActionsForEntity(entity) {
+  const entityId = String(entity?.entity_id || "");
+  const domain = entityId.split(".", 1)[0] || "";
+  const state = String(entity?.state || "").toLowerCase();
+  if (domain === "light" || domain === "switch" || domain === "input_boolean") {
+    return [
+      { label: "Turn On", service: "turn_on" },
+      { label: state === "on" ? "Turn Off" : "Turn Off", service: "turn_off" },
+      { label: "Toggle", service: "toggle" },
+    ];
+  }
+  if (domain === "cover") {
+    return [
+      { label: "Open", service: "open_cover" },
+      { label: "Close", service: "close_cover" },
+      { label: "Stop", service: "stop_cover" },
+    ];
+  }
+  if (domain === "vacuum") {
+    return [
+      { label: "Start", service: "start" },
+      { label: "Pause", service: "pause" },
+      { label: "Dock", service: "return_to_base" },
+    ];
+  }
+  if (domain === "script" || domain === "scene") {
+    return [{ label: "Run", service: "turn_on" }];
+  }
+  return [{ label: "Execute", service: "turn_on" }];
+}
+
+function renderMQTTOutput(payload, fallback = "No MQTT activity yet.") {
+  if (!mqttOutputEl) return;
+  if (payload === null || payload === undefined || payload === "") {
+    mqttOutputEl.textContent = fallback;
+    return;
+  }
+  if (typeof payload === "string") {
+    mqttOutputEl.textContent = payload;
+    return;
+  }
+  mqttOutputEl.textContent = JSON.stringify(payload, null, 2);
+}
+
+function renderIoTEntities(result) {
+  const entities = Array.isArray(result?.entities) ? result.entities : [];
+  if (!iotEntitiesEl) return;
+  if (!entities.length) {
+    iotEntitiesEl.innerHTML = "<p>No entities matched the current filters.</p>";
+    return;
+  }
+  iotEntitiesEl.innerHTML = "";
+  for (const entity of entities.slice(0, 18)) {
+    const entityId = String(entity?.entity_id || "");
+    const domain = entityId.split(".", 1)[0] || "";
+    const attrs = entity?.attributes && typeof entity.attributes === "object" ? entity.attributes : {};
+    const friendlyName = String(attrs.friendly_name || entityId || "Entity");
+    const card = document.createElement("article");
+    card.className = "iot-entity";
+    card.innerHTML = `
+      <div class="event-head">
+        <strong>${escapeHTML(friendlyName)}</strong>
+        <span>${escapeHTML(String(entity?.state ?? "unknown"))}</span>
+      </div>
+      <p class="event-meta">${escapeHTML(entityId)}</p>
+      <p class="event-meta">${escapeHTML(summarizeEntityAttributes(attrs))}</p>
+      <div class="row"></div>
+    `;
+    const row = card.querySelector(".row");
+    for (const action of quickActionsForEntity(entity)) {
+      row.appendChild(
+        actionButton(action.label, "secondary", async () => {
+          const confirmed = window.confirm(`Execute ${domain}.${action.service} for ${entityId}?`);
+          if (!confirmed) return;
+          await runAction(`Executing ${domain}.${action.service}`, async () => {
+            const response = await coreRequest("POST", "/iot/homeassistant/action", {
+              action: {
+                type: "ha_service",
+                domain,
+                service: action.service,
+                entity_id: entityId,
+              },
+              execute: true,
+            });
+            renderMQTTOutput(response, "Service executed.");
+            await refreshIoTEntities();
+          }, false);
+        }),
+      );
+    }
+    iotEntitiesEl.appendChild(card);
+  }
+}
+
+function summarizeEntityAttributes(attributes) {
+  const entries = [];
+  const friendly = String(attributes?.friendly_name || "").trim();
+  if (friendly) entries.push(`Name: ${friendly}`);
+  for (const key of ["device_class", "unit_of_measurement", "brightness", "temperature", "current_position"]) {
+    const value = attributes?.[key];
+    if (value !== undefined && value !== null && `${value}`.trim() !== "") {
+      entries.push(`${key}: ${value}`);
+    }
+    if (entries.length >= 4) break;
+  }
+  return entries.length ? entries.join(" • ") : "No additional attributes";
+}
+
+async function refreshIoTEntities() {
+  saveConfig();
+  const domain = encodeURIComponent((entityDomainInput?.value || "").trim());
+  const prefix = encodeURIComponent((entityPrefixInput?.value || "").trim());
+  const query = [`limit=24`];
+  if (domain) query.push(`domain=${domain}`);
+  if (prefix) query.push(`entity_id_prefix=${prefix}`);
+  const result = await coreRequest("GET", `/iot/homeassistant/entities?${query.join("&")}`);
+  renderIoTEntities(result);
+  setIoTStatus(`Loaded ${Number(result?.count || 0)} entities`, "ok");
+  return result;
+}
+
+async function refreshMQTTStatus() {
+  saveConfig();
+  const result = await coreRequest("GET", "/iot/mqtt/status");
+  const host = String(result?.host || result?.broker || "broker");
+  const kind = result?.ok ? "ok" : "error";
+  setIoTStatus(result?.ok ? `MQTT ${host}` : "MQTT unavailable", kind);
+  renderMQTTOutput(result, "MQTT status unavailable.");
+  return result;
+}
+
+async function publishMQTT() {
+  const topic = String(mqttTopicInput?.value || "").trim();
+  if (!topic) throw new Error("MQTT topic is required");
+  saveConfig();
+  const confirmed = window.confirm(`Publish to MQTT topic ${topic}?`);
+  if (!confirmed) return null;
+  const result = await coreRequest("POST", "/iot/mqtt/publish", {
+    topic,
+    payload: mqttPayloadInput?.value || "",
+    retain: Boolean(mqttRetainInput?.checked),
+    execute: true,
+  });
+  renderMQTTOutput(result, "MQTT publish complete.");
+  setIoTStatus(`Published ${topic}`, "ok");
+  return result;
+}
+
+async function subscribeMQTTSnapshot() {
+  const topic = String(mqttTopicInput?.value || "").trim();
+  if (!topic) throw new Error("MQTT topic is required");
+  saveConfig();
+  const result = await coreRequest("POST", "/iot/mqtt/subscribe", {
+    topic,
+    timeout_seconds: 1.5,
+    max_messages: 6,
+    qos: 0,
+  });
+  renderMQTTOutput(result, "No MQTT messages received.");
+  setIoTStatus(`Subscribed ${topic}`, "ok");
+  return result;
+}
+
 function renderSummary(data) {
   const plans = Array.isArray(data?.plans) ? data.plans : [];
   const jobs = Array.isArray(data?.jobs) ? data.jobs : [];
@@ -596,20 +792,42 @@ objectiveInput.addEventListener("change", saveConfig);
 strategySelect.addEventListener("change", saveConfig);
 candidatesInput.addEventListener("change", saveConfig);
 executeToggle.addEventListener("change", saveConfig);
+entityDomainInput?.addEventListener("change", saveConfig);
+entityPrefixInput?.addEventListener("change", saveConfig);
+mqttTopicInput?.addEventListener("change", saveConfig);
+mqttPayloadInput?.addEventListener("change", saveConfig);
+mqttRetainInput?.addEventListener("change", saveConfig);
 autoRefreshInput.addEventListener("change", () => {
   saveConfig();
   startAutoRefresh();
+});
+refreshEntitiesBtn?.addEventListener("click", () => {
+  runAction("Refreshing IoT entities", () => refreshIoTEntities(), false).catch(() => {});
+});
+refreshMqttStatusBtn?.addEventListener("click", () => {
+  runAction("Refreshing MQTT status", () => refreshMQTTStatus(), false).catch(() => {});
+});
+mqttPublishBtn?.addEventListener("click", () => {
+  runAction("Publishing MQTT message", () => publishMQTT(), false).catch(() => {});
+});
+mqttSubscribeBtn?.addEventListener("click", () => {
+  runAction("Subscribing to MQTT snapshot", () => subscribeMQTTSnapshot(), false).catch(() => {});
 });
 
 loadConfig();
 setActionStatus("Idle", "neutral");
 setConnectionStatus("Not connected", "neutral");
+setIoTStatus("Idle", "neutral");
+renderMQTTOutput(null);
 refresh()
   .catch((err) => {
     setActionStatus("Initial refresh failed", "error");
     summaryEl.textContent = String(err?.message || err);
   })
-  .finally(() => startAutoRefresh());
+  .finally(() => {
+    refreshMQTTStatus().catch(() => {});
+    startAutoRefresh();
+  });
 
 window.addEventListener("beforeunload", () => {
   if (refreshTimer) window.clearInterval(refreshTimer);

@@ -107,6 +107,18 @@ class _StubHomeAssistantExecutor:
                     "topic": action.get("topic"),
                 },
             )
+        if str(action.get("type") or "").strip().lower() == "mqtt_subscribe":
+            return HomeAssistantExecutionResult(
+                status="preview" if dry_run else "ok",
+                output=("Preview " if dry_run else "Received ") + "mqtt_subscribe",
+                action=dict(action),
+                data={
+                    "transport": "mqtt-direct",
+                    "topic": action.get("topic"),
+                    "count": 1,
+                    "messages": [{"topic": action.get("topic"), "payload": "ping"}],
+                },
+            )
         return HomeAssistantExecutionResult(
             status="preview" if dry_run else "ok",
             output=("Preview " if dry_run else "Executed ") + str(action.get("type") or "ha_service"),
@@ -303,7 +315,11 @@ class ControlAPIClientTests(unittest.TestCase):
                 self.assertEqual(mqtt_action["status"], "preview")
                 self.assertEqual(mqtt_action["data"]["transport"], "mqtt-direct")
 
-                artifacts = client.control_artifacts(limit=5)
+                mqtt_messages = client.mqtt_subscribe("novaadapt/test", timeout_seconds=0.1, max_messages=1)
+                self.assertEqual(mqtt_messages["status"], "ok")
+                self.assertEqual(mqtt_messages["data"]["count"], 1)
+
+                artifacts = client.control_artifacts(limit=12)
                 self.assertTrue(artifacts)
                 artifact_id = vision["artifact"]["artifact_id"]
                 self.assertTrue(any(item["artifact_id"] == artifact_id for item in artifacts))

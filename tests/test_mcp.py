@@ -481,6 +481,19 @@ class _StubService:
     def mqtt_status(self):
         return {"ok": True, "transport": "mqtt-direct"}
 
+    def mqtt_subscribe(self, *, topic="", timeout_seconds=3.0, max_messages=10, qos=0):
+        return {
+            "status": "ok",
+            "topic": topic,
+            "data": {
+                "count": 1,
+                "messages": [{"topic": topic, "payload": "ping"}],
+                "timeout_seconds": timeout_seconds,
+                "max_messages": max_messages,
+                "qos": qos,
+            },
+        }
+
     def browser_status(self):
         return {"ok": True, "transport": "browser", "capabilities": ["navigate", "click_selector"]}
 
@@ -584,6 +597,7 @@ class MCPServerTests(unittest.TestCase):
         self.assertIn("novaadapt_homeassistant_action", names)
         self.assertIn("novaadapt_mqtt_status", names)
         self.assertIn("novaadapt_mqtt_publish", names)
+        self.assertIn("novaadapt_mqtt_subscribe", names)
         self.assertIn("novaadapt_browser_status", names)
         self.assertIn("novaadapt_browser_pages", names)
         self.assertIn("novaadapt_browser_action", names)
@@ -1678,6 +1692,20 @@ class MCPServerTests(unittest.TestCase):
         )
         mqtt_publish_payload = mqtt_publish_resp["result"]["content"][0]["json"]
         self.assertEqual(mqtt_publish_payload["action"]["type"], "mqtt_publish")
+
+        mqtt_subscribe_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 9353,
+                "method": "tools/call",
+                "params": {
+                    "name": "novaadapt_mqtt_subscribe",
+                    "arguments": {"topic": "novaadapt/test", "timeout_seconds": 0.1, "max_messages": 1},
+                },
+            }
+        )
+        mqtt_subscribe_payload = mqtt_subscribe_resp["result"]["content"][0]["json"]
+        self.assertEqual(mqtt_subscribe_payload["data"]["count"], 1)
 
         browser_status_resp = server.handle_request(
             {

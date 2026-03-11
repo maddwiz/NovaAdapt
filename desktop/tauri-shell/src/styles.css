@@ -354,6 +354,30 @@ button:disabled {
   flex-wrap: wrap;
 }
 
+.row-end {
+  align-items: end;
+  justify-content: flex-end;
+}
+
+.iot-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  margin: 12px 0;
+}
+
+.iot-entity {
+  border: 1px solid rgba(153, 136, 255, 0.35);
+  background: var(--panel-strong);
+  border-radius: 12px;
+  padding: 12px;
+  box-shadow: 0 10px 18px rgba(0, 0, 0, 0.22);
+}
+
+.iot-entity strong {
+  color: #f6f3ff;
+}
+
 .toggle {
   display: inline-flex;
   align-items: center;
@@ -411,5 +435,9 @@ button:disabled {
 
   .hero-actions {
     justify-content: flex-start;
+  }
+
+  .row-end {
+    justify-content: stretch;
   }
 }

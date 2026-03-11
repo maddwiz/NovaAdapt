@@ -921,6 +921,12 @@ def build_openapi_spec() -> dict:
                     "responses": {"200": {"description": "MQTT publish result"}},
                 }
             },
+            "/iot/mqtt/subscribe": {
+                "post": {
+                    "summary": "Collect a bounded snapshot of MQTT messages for a topic",
+                    "responses": {"200": {"description": "MQTT subscribe snapshot"}},
+                }
+            },
             "/browser/status": {
                 "get": {
                     "summary": "Get browser automation runtime status and capabilities",

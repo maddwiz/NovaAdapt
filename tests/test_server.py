@@ -282,6 +282,7 @@ class ServerTests(unittest.TestCase):
                 self.assertIn("/iot/homeassistant/action", openapi["paths"])
                 self.assertIn("/iot/mqtt/status", openapi["paths"])
                 self.assertIn("/iot/mqtt/publish", openapi["paths"])
+                self.assertIn("/iot/mqtt/subscribe", openapi["paths"])
                 self.assertIn("/plugins", openapi["paths"])
                 self.assertIn("/plugins/{name}/health", openapi["paths"])
                 self.assertIn("/plugins/{name}/call", openapi["paths"])

@@ -134,6 +134,31 @@ def post_mqtt_publish(handler, service: NovaAdaptService, path: str, payload: di
     )
 
 
+def post_mqtt_subscribe(handler, service: NovaAdaptService, path: str, payload: dict[str, object]) -> int:
+    normalized: dict[str, object] = {
+        "topic": str(payload.get("topic") or ""),
+        "timeout_seconds": float(payload.get("timeout_seconds", 3.0) or 3.0),
+        "max_messages": int(payload.get("max_messages", 10) or 10),
+        "qos": int(payload.get("qos", 0) or 0),
+    }
+    return handler._respond_idempotent(
+        path=path,
+        payload=normalized,
+        operation=lambda: (
+            200,
+            service.mqtt_subscribe(
+                topic=str(normalized["topic"]),
+                timeout_seconds=float(normalized["timeout_seconds"]),
+                max_messages=int(normalized["max_messages"]),
+                qos=int(normalized["qos"]),
+            ),
+        ),
+        category="iot",
+        action="mqtt_subscribe",
+        entity_type="mqtt",
+    )
+
+
 def decode_screenshot_base64(value: object) -> bytes | None:
     raw = str(value or "").strip()
     if not raw:

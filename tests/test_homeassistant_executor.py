@@ -5,9 +5,9 @@ from novaadapt_core.homeassistant_executor import DirectMQTTExecutor
 
 
 class _FakeMQTTSocket:
-    def __init__(self):
+    def __init__(self, responses: bytes | None = None):
         self.sent = []
-        self._recv = bytearray(b"\x20\x02\x00\x00")
+        self._recv = bytearray(responses if responses is not None else b"\x20\x02\x00\x00")
         self.closed = False
         self.timeout = None
 
@@ -71,3 +71,20 @@ class DirectMQTTExecutorTests(unittest.TestCase):
         executor = DirectMQTTExecutor(broker_url="mqtt://broker.local:1883")
         with self.assertRaises(ValueError):
             executor.publish(topic="novaadapt/test", payload="ping", qos=1)
+
+    def test_subscribe_collects_publish_messages(self):
+        responses = (
+            b"\x20\x02\x00\x00"  # CONNACK
+            b"\x90\x03\x00\x01\x00"  # SUBACK
+            b"\x30\x14\x00\x0enovaadapt/testping"  # PUBLISH
+        )
+        fake_socket = _FakeMQTTSocket(responses=responses)
+        executor = DirectMQTTExecutor(broker_url="mqtt://broker.local:1883", client_id="novaadapt-test")
+
+        with mock.patch("novaadapt_core.homeassistant_executor.socket.create_connection", return_value=fake_socket):
+            result = executor.subscribe(topic="novaadapt/test", timeout_seconds=0.2, max_messages=1)
+
+        self.assertEqual(result["count"], 1)
+        self.assertEqual(result["messages"][0]["topic"], "novaadapt/test")
+        self.assertEqual(result["messages"][0]["payload"], "ping")
+        self.assertEqual(fake_socket.sent[1][0], 0x82)

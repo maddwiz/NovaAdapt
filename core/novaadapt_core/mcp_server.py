@@ -972,6 +972,20 @@ class NovaAdaptMCPServer:
                 },
             ),
             MCPTool(
+                name="novaadapt_mqtt_subscribe",
+                description="Collect a bounded snapshot of MQTT messages for a topic",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "topic": {"type": "string"},
+                        "timeout_seconds": {"type": "number"},
+                        "max_messages": {"type": "integer"},
+                        "qos": {"type": "integer"},
+                    },
+                    "required": ["topic"],
+                },
+            ),
+            MCPTool(
                 name="novaadapt_browser_status",
                 description="Get browser automation runtime status/capabilities",
                 input_schema={"type": "object", "properties": {}},
@@ -1804,6 +1818,16 @@ class NovaAdaptMCPServer:
                     "execute": bool(arguments.get("execute", False)),
                     "allow_dangerous": bool(arguments.get("allow_dangerous", False)),
                 }
+            )
+        if tool_name == "novaadapt_mqtt_subscribe":
+            topic = str(arguments.get("topic") or "").strip()
+            if not topic:
+                raise ValueError("'topic' is required")
+            return self.service.mqtt_subscribe(
+                topic=topic,
+                timeout_seconds=float(arguments.get("timeout_seconds", 3.0) or 3.0),
+                max_messages=max(1, int(arguments.get("max_messages", 10) or 10)),
+                qos=int(arguments.get("qos", 0) or 0),
             )
         if tool_name == "novaadapt_browser_status":
             return self.service.browser_status()

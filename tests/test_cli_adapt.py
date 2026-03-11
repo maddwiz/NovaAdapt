@@ -206,6 +206,7 @@ class AdaptCLITests(unittest.TestCase):
         service.homeassistant_discover.return_value = {"ok": True, "count": 1, "entities": [{"entity_id": "light.office"}]}
         service.homeassistant_action.return_value = {"status": "preview", "action": {"type": "ha_service"}}
         service.mqtt_status.return_value = {"ok": True, "transport": "mqtt-direct"}
+        service.mqtt_subscribe.return_value = {"status": "ok", "data": {"count": 1, "messages": [{"payload": "ping"}]}}
         with tempfile.TemporaryDirectory() as tmp:
             screenshot = io.BytesIO(b"fake-png")
             screenshot_path = f"{tmp}/shot.png"
@@ -244,6 +245,15 @@ class AdaptCLITests(unittest.TestCase):
                     "--payload",
                     "ping",
                 )
+                mqtt_subscribe_payload = self._run_cli(
+                    "mqtt-subscribe",
+                    "--topic",
+                    "novaadapt/test",
+                    "--timeout-seconds",
+                    "0.1",
+                    "--max-messages",
+                    "1",
+                )
 
         self.assertEqual(vision_payload["status"], "preview")
         self.assertTrue(mobile_status_payload["ok"])
@@ -253,6 +263,7 @@ class AdaptCLITests(unittest.TestCase):
         self.assertEqual(homeassistant_action_payload["status"], "preview")
         self.assertTrue(mqtt_status_payload["ok"])
         self.assertEqual(mqtt_publish_payload["status"], "preview")
+        self.assertEqual(mqtt_subscribe_payload["status"], "ok")
         service.vision_execute.assert_called_once()
         vision_args = service.vision_execute.call_args.args[0]
         self.assertTrue(vision_args["screenshot_base64"])
@@ -268,6 +279,7 @@ class AdaptCLITests(unittest.TestCase):
         self.assertEqual(mqtt_args["action"]["type"], "mqtt_publish")
         self.assertEqual(mqtt_args["action"]["transport"], "mqtt-direct")
         service.mqtt_status.assert_called_once_with()
+        service.mqtt_subscribe.assert_called_once_with(topic="novaadapt/test", timeout_seconds=0.1, max_messages=1, qos=0)
 
     def test_voice_transcribe_and_synthesize_commands(self):
         service = mock.Mock()

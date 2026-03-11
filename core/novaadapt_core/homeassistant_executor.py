@@ -4,6 +4,7 @@ import json
 import os
 import socket
 import ssl
+import time
 from dataclasses import dataclass
 from typing import Any
 from urllib import error, request
@@ -104,6 +105,65 @@ class DirectMQTTExecutor:
             "retain": bool(retain),
         }
 
+    def subscribe(
+        self,
+        *,
+        topic: str,
+        timeout_seconds: float = 3.0,
+        max_messages: int = 10,
+        qos: int = 0,
+    ) -> dict[str, Any]:
+        normalized_topic = str(topic or "").strip()
+        if not normalized_topic:
+            raise ValueError("mqtt topic is required")
+        normalized_qos = int(qos or 0)
+        if normalized_qos != 0:
+            raise ValueError("direct MQTT transport currently supports qos=0 only")
+        deadline = time.time() + max(0.1, float(timeout_seconds))
+        message_limit = max(1, int(max_messages))
+        conn = self._connect()
+        packet_id = 1
+        messages: list[dict[str, Any]] = []
+        try:
+            body = packet_id.to_bytes(2, "big") + self._encode_string(normalized_topic) + bytes([normalized_qos])
+            conn.sendall(b"\x82" + self._encode_remaining_length(len(body)) + body)
+            packet_type = self._read_exact(conn, 1)[0]
+            remaining = self._decode_remaining_length(conn)
+            response = self._read_exact(conn, remaining)
+            if packet_type != 0x90 or len(response) < 3:
+                raise RuntimeError("invalid MQTT SUBACK from broker")
+            granted_qos = response[-1]
+            if granted_qos == 0x80:
+                raise RuntimeError("MQTT broker rejected subscription")
+
+            while len(messages) < message_limit and time.time() < deadline:
+                remaining_seconds = max(0.05, deadline - time.time())
+                conn.settimeout(remaining_seconds)
+                try:
+                    fixed_header = self._read_exact(conn, 1)[0]
+                except socket.timeout:
+                    break
+                remaining_length = self._decode_remaining_length(conn)
+                payload = self._read_exact(conn, remaining_length)
+                packet_kind = fixed_header >> 4
+                if packet_kind != 3:
+                    continue
+                messages.append(self._parse_publish_packet(fixed_header, payload))
+            self._disconnect(conn)
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
+        return {
+            "transport": "mqtt-direct",
+            "topic": normalized_topic,
+            "count": len(messages),
+            "messages": messages,
+            "timeout_seconds": float(timeout_seconds),
+            "max_messages": message_limit,
+        }
+
     def _connect(self):
         target = self._target()
         conn = socket.create_connection((target["host"], target["port"]), timeout=self.timeout_seconds)
@@ -191,6 +251,41 @@ class DirectMQTTExecutor:
                 raise RuntimeError("unexpected EOF from MQTT broker")
             buffer.extend(chunk)
         return bytes(buffer)
+
+    @staticmethod
+    def _parse_publish_packet(header: int, payload: bytes) -> dict[str, Any]:
+        if len(payload) < 2:
+            raise RuntimeError("invalid MQTT PUBLISH packet")
+        topic_length = int.from_bytes(payload[:2], "big")
+        cursor = 2
+        topic_end = cursor + topic_length
+        if topic_end > len(payload):
+            raise RuntimeError("invalid MQTT publish topic length")
+        topic = payload[cursor:topic_end].decode("utf-8", errors="replace")
+        cursor = topic_end
+        qos = (header >> 1) & 0x03
+        if qos > 0:
+            if cursor + 2 > len(payload):
+                raise RuntimeError("invalid MQTT publish packet id")
+            packet_id = int.from_bytes(payload[cursor : cursor + 2], "big")
+            cursor += 2
+        else:
+            packet_id = None
+        raw_message = payload[cursor:]
+        try:
+            message = raw_message.decode("utf-8")
+        except UnicodeDecodeError:
+            message = raw_message.decode("utf-8", errors="replace")
+        return {
+            "topic": topic,
+            "payload": message,
+            "payload_bytes": len(raw_message),
+            "qos": qos,
+            "retain": bool(header & 0x01),
+            "duplicate": bool(header & 0x08),
+            "packet_id": packet_id,
+            "received_at": time.time(),
+        }
 
 
 class HomeAssistantExecutor:
@@ -313,6 +408,42 @@ class HomeAssistantExecutor:
                 output=f"published to {service_payload['topic']}",
                 action=action,
                 data={"transport": "homeassistant-http", "response": payload},
+            )
+        if action_type == "mqtt_subscribe":
+            transport = str(action.get("transport") or "").strip().lower()
+            topic = str(action.get("topic") or action.get("target") or "").strip()
+            timeout_seconds = float(action.get("timeout_seconds", 3.0) or 3.0)
+            max_messages = int(action.get("max_messages", 10) or 10)
+            qos = int(action.get("qos", 0) or 0)
+            if not topic:
+                raise ValueError("mqtt_subscribe requires topic")
+            use_direct = transport in {"mqtt", "mqtt-direct", ""} and self.direct_mqtt_executor.available()
+            if not use_direct:
+                raise ValueError("mqtt_subscribe currently requires direct MQTT transport")
+            if dry_run:
+                return HomeAssistantExecutionResult(
+                    status="preview",
+                    output=f"Preview mqtt subscribe to {topic}",
+                    action=action,
+                    data={
+                        "transport": "mqtt-direct",
+                        "topic": topic,
+                        "timeout_seconds": timeout_seconds,
+                        "max_messages": max_messages,
+                        "qos": qos,
+                    },
+                )
+            result = self.direct_mqtt_executor.subscribe(
+                topic=topic,
+                timeout_seconds=timeout_seconds,
+                max_messages=max_messages,
+                qos=qos,
+            )
+            return HomeAssistantExecutionResult(
+                status="ok",
+                output=f"received {result['count']} message(s) from {topic}",
+                action=action,
+                data=result,
             )
         if action_type != "ha_service":
             raise ValueError(f"unsupported Home Assistant action type '{action_type}'")
