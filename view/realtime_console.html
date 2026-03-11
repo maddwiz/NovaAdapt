@@ -603,6 +603,54 @@
         <div class="status" id="mqtt-status">MQTT idle</div>
         <div class="log mini" id="mqtt-output"></div>
       </section>
+
+      <section class="card span2">
+        <h2>Agent Marketplace</h2>
+        <div class="row triple">
+          <div>
+            <label for="template-name">Template Name</label>
+            <input id="template-name" placeholder="novaadapt-mobile-ops" />
+          </div>
+          <div>
+            <label for="template-strategy">Strategy</label>
+            <select id="template-strategy">
+              <option value="single">single</option>
+              <option value="vote">vote</option>
+              <option value="decompose">decompose</option>
+            </select>
+          </div>
+          <div>
+            <label for="template-tag-filter">Tag Filter / Tags (CSV)</label>
+            <input id="template-tag-filter" placeholder="mobile, ops, iot" />
+          </div>
+        </div>
+        <div class="row single">
+          <div>
+            <label for="template-objective">Template Objective</label>
+            <textarea id="template-objective">Open the Android settings app and verify Wi-Fi is enabled.</textarea>
+          </div>
+        </div>
+        <div class="row single">
+          <div>
+            <label for="template-candidates">Candidate Models (CSV, optional)</label>
+            <input id="template-candidates" placeholder="local-qwen,claude-sonnet,gemini-pro" />
+          </div>
+        </div>
+        <div class="row single">
+          <div>
+            <label for="template-manifest-json">Template Manifest JSON</label>
+            <textarea id="template-manifest-json">{"name":"My agent","objective":"..."}</textarea>
+          </div>
+        </div>
+        <div class="controls">
+          <button id="templates-refresh-btn">Refresh Local</button>
+          <button id="templates-gallery-btn">Refresh Gallery</button>
+          <button class="brand" id="template-export-btn">Export Template</button>
+          <button id="template-import-btn">Import Manifest</button>
+        </div>
+        <div class="status" id="template-status">Marketplace idle</div>
+        <div class="log mini" id="template-output"></div>
+      </section>
     </div>
 
     <div class="split">
@@ -721,6 +769,8 @@
     const iotOutputEl = $("iot-output");
     const mqttStatusEl = $("mqtt-status");
     const mqttOutputEl = $("mqtt-output");
+    const templateStatusEl = $("template-status");
+    const templateOutputEl = $("template-output");
 
     function nowTime() {
       return new Date().toISOString().replace("T", " ").replace("Z", "");
@@ -762,6 +812,11 @@
       mqttStatusEl.className = `status ${cls}`.trim();
     }
 
+    function setTemplateStatus(text, cls = "") {
+      templateStatusEl.textContent = text;
+      templateStatusEl.className = `status ${cls}`.trim();
+    }
+
     function setBrowserOutput(payload) {
       const outputEl = $("browser-output");
       const text = typeof payload === "string" ? payload : JSON.stringify(payload, null, 2);
@@ -785,6 +840,12 @@
       const text = typeof payload === "string" ? payload : JSON.stringify(payload, null, 2);
       mqttOutputEl.textContent = text;
       mqttOutputEl.scrollTop = mqttOutputEl.scrollHeight;
+    }
+
+    function setTemplateOutput(payload) {
+      const text = typeof payload === "string" ? payload : JSON.stringify(payload, null, 2);
+      templateOutputEl.textContent = text;
+      templateOutputEl.scrollTop = templateOutputEl.scrollHeight;
     }
 
     function isWSOpen() {
@@ -1647,6 +1708,31 @@
       };
     }
 
+    function buildTemplateExportPayload() {
+      const name = $("template-name").value.trim();
+      const objective = $("template-objective").value.trim();
+      if (!name) {
+        throw new Error("template name is required");
+      }
+      if (!objective) {
+        throw new Error("template objective is required");
+      }
+      const payload = {
+        name,
+        objective,
+        strategy: $("template-strategy").value || "single",
+        tags: parseCSV($("template-tag-filter").value),
+        candidates: parseCSV($("template-candidates").value),
+        include_memory: true,
+        source: "realtime-console",
+        metadata: {
+          source: "realtime-console",
+          exported_at: new Date().toISOString(),
+        },
+      };
+      return payload;
+    }
+
     function maybeAttachPageID(body) {
       const pageID = $("browser-page-id").value.trim();
       if (pageID) {
@@ -1943,6 +2029,57 @@
       }
     }
 
+    async function refreshTemplates(kind) {
+      try {
+        const tag = $("template-tag-filter").value.trim();
+        const query = tag ? `?tag=${encodeURIComponent(tag)}` : "";
+        const path = kind === "gallery" ? `/agents/gallery${query}` : `/agents/templates?limit=24${query ? `&${query.slice(1)}` : ""}`;
+        const payload = await sendCoreRoute(path, { method: "GET", timeoutMs: 20000 });
+        setTemplateOutput(payload);
+        const count = Number(payload?.count || 0);
+        setTemplateStatus(`${kind === "gallery" ? "gallery" : "local"} templates ${count}`, "ok");
+        appendLog(kind === "gallery" ? "templates_gallery" : "templates_local", payload);
+      } catch (err) {
+        appendLog("templates_refresh_error", String(err));
+        setTemplateStatus(String(err), "bad");
+      }
+    }
+
+    async function exportTemplate() {
+      try {
+        const payload = buildTemplateExportPayload();
+        const result = await sendCoreRoute("/agents/templates/export", {
+          method: "POST",
+          body: payload,
+          timeoutMs: 30000,
+        });
+        $("template-manifest-json").value = JSON.stringify(result?.manifest || {}, null, 2);
+        setTemplateOutput(result);
+        setTemplateStatus(`exported ${payload.name}`, "ok");
+        appendLog("template_export", result);
+      } catch (err) {
+        appendLog("template_export_error", String(err));
+        setTemplateStatus(String(err), "bad");
+      }
+    }
+
+    async function importTemplate() {
+      try {
+        const manifest = parseRequiredJSONObject($("template-manifest-json").value, "template manifest json");
+        const result = await sendCoreRoute("/agents/templates/import", {
+          method: "POST",
+          body: { manifest },
+          timeoutMs: 30000,
+        });
+        setTemplateOutput(result);
+        setTemplateStatus(`imported ${result?.name || result?.template_id || "template"}`, "ok");
+        appendLog("template_import", result);
+      } catch (err) {
+        appendLog("template_import_error", String(err));
+        setTemplateStatus(String(err), "bad");
+      }
+    }
+
     $("issue-session-btn").addEventListener("click", () => {
       issueSessionToken();
     });
@@ -2120,6 +2257,22 @@
       subscribeMQTT();
     });
 
+    $("templates-refresh-btn").addEventListener("click", () => {
+      refreshTemplates("local");
+    });
+
+    $("templates-gallery-btn").addEventListener("click", () => {
+      refreshTemplates("gallery");
+    });
+
+    $("template-export-btn").addEventListener("click", () => {
+      exportTemplate();
+    });
+
+    $("template-import-btn").addEventListener("click", () => {
+      importTemplate();
+    });
+
     $("terminal-poll-ms").addEventListener("change", () => {
       if (terminalSessionID) {
         startTerminalPolling(false);
@@ -2146,6 +2299,8 @@
     setIoTOutput("No IoT activity yet.");
     setMQTTStatus("MQTT idle");
     setMQTTOutput("No MQTT activity yet.");
+    setTemplateStatus("Marketplace idle");
+    setTemplateOutput("No marketplace activity yet.");
     appendLog("ready", "Console loaded");
   </script>
 </body>
