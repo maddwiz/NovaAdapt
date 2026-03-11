@@ -712,6 +712,84 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Surface context for flag evaluation",
     )
 
+    agent_templates_list_cmd = sub.add_parser(
+        "agent-templates-list",
+        help="List stored agent templates",
+    )
+    agent_templates_list_cmd.add_argument("--config", type=Path, default=_default_config_path())
+    agent_templates_list_cmd.add_argument("--limit", type=int, default=50)
+    agent_templates_list_cmd.add_argument("--source", default="")
+    agent_templates_list_cmd.add_argument("--tag", default="")
+
+    agent_gallery_cmd = sub.add_parser(
+        "agent-gallery",
+        help="List built-in local agent gallery templates",
+    )
+    agent_gallery_cmd.add_argument("--config", type=Path, default=_default_config_path())
+    agent_gallery_cmd.add_argument("--tag", default="")
+
+    agent_template_get_cmd = sub.add_parser(
+        "agent-template-get",
+        help="Get a stored agent template",
+    )
+    agent_template_get_cmd.add_argument("--config", type=Path, default=_default_config_path())
+    agent_template_get_cmd.add_argument("--template-id", required=True)
+
+    agent_template_export_cmd = sub.add_parser(
+        "agent-template-export",
+        help="Export an agent template with optional memory snapshot",
+    )
+    agent_template_export_cmd.add_argument("--config", type=Path, default=_default_config_path())
+    agent_template_export_cmd.add_argument("--name", default="")
+    agent_template_export_cmd.add_argument("--description", default="")
+    agent_template_export_cmd.add_argument("--objective", default="")
+    agent_template_export_cmd.add_argument("--strategy", default="single")
+    agent_template_export_cmd.add_argument("--candidates", default="")
+    agent_template_export_cmd.add_argument("--steps", default="", help="Optional JSON array of step objects")
+    agent_template_export_cmd.add_argument("--metadata", default="", help="Optional JSON object metadata")
+    agent_template_export_cmd.add_argument("--tags", default="")
+    agent_template_export_cmd.add_argument("--workflow-id", default="")
+    agent_template_export_cmd.add_argument("--template-id", default="")
+    agent_template_export_cmd.add_argument("--include-memory", action="store_true")
+    agent_template_export_cmd.add_argument("--memory-query", default="")
+    agent_template_export_cmd.add_argument("--memory-top-k", type=int, default=5)
+    agent_template_export_cmd.add_argument("--source", default="local")
+
+    agent_template_import_cmd = sub.add_parser(
+        "agent-template-import",
+        help="Import an agent template manifest",
+    )
+    agent_template_import_cmd.add_argument("--config", type=Path, default=_default_config_path())
+    agent_template_import_cmd.add_argument("--manifest", required=True, help="JSON object manifest")
+    agent_template_import_cmd.add_argument("--source", default="")
+    agent_template_import_cmd.add_argument("--template-id", default="")
+
+    agent_template_share_cmd = sub.add_parser(
+        "agent-template-share",
+        help="Enable, rotate, or revoke share access for an agent template",
+    )
+    agent_template_share_cmd.add_argument("--config", type=Path, default=_default_config_path())
+    agent_template_share_cmd.add_argument("--template-id", required=True)
+    agent_template_share_cmd.add_argument("--rotate", action="store_true")
+    agent_template_share_cmd.add_argument("--disable", action="store_true")
+
+    agent_template_launch_cmd = sub.add_parser(
+        "agent-template-launch",
+        help="Launch an agent template as a plan, run, or workflow",
+    )
+    agent_template_launch_cmd.add_argument("--config", type=Path, default=_default_config_path())
+    agent_template_launch_cmd.add_argument("--template-id", required=True)
+    agent_template_launch_cmd.add_argument("--mode", default="plan", choices=["plan", "run", "workflow"])
+    agent_template_launch_cmd.add_argument("--execute", action="store_true")
+    agent_template_launch_cmd.add_argument("--allow-dangerous", action="store_true")
+    agent_template_launch_cmd.add_argument(
+        "--context",
+        default="cli",
+        choices=["cli", "api", "mcp"],
+        help="Surface context for workflow launches",
+    )
+    agent_template_launch_cmd.add_argument("--overrides", default="", help="Optional JSON object overrides")
+
     directshell_check_cmd = sub.add_parser(
         "directshell-check",
         help="Probe DirectShell execution transport readiness",
@@ -2041,6 +2119,108 @@ def main() -> None:
                         limit=max(1, int(args.limit)),
                         status=str(args.status or ""),
                         context=str(args.context or "cli"),
+                    ),
+                    indent=2,
+                )
+            )
+            return
+
+        if args.command == "agent-templates-list":
+            service = NovaAdaptService(default_config=args.config)
+            print(
+                json.dumps(
+                    service.agent_templates_list(
+                        limit=max(1, int(args.limit)),
+                        source=str(args.source or ""),
+                        tag=str(args.tag or ""),
+                    ),
+                    indent=2,
+                )
+            )
+            return
+
+        if args.command == "agent-gallery":
+            service = NovaAdaptService(default_config=args.config)
+            print(json.dumps(service.agent_templates_gallery(tag=str(args.tag or "")), indent=2))
+            return
+
+        if args.command == "agent-template-get":
+            service = NovaAdaptService(default_config=args.config)
+            print(json.dumps(service.agent_template_get(str(args.template_id or "")), indent=2))
+            return
+
+        if args.command == "agent-template-export":
+            service = NovaAdaptService(default_config=args.config)
+            steps = _parse_optional_json_array(args.steps, "--steps")
+            metadata = _parse_optional_json_object(args.metadata, "--metadata")
+            print(
+                json.dumps(
+                    service.agent_template_export(
+                        name=str(args.name or ""),
+                        description=str(args.description or ""),
+                        objective=str(args.objective or ""),
+                        strategy=str(args.strategy or "single"),
+                        candidates=_parse_csv(args.candidates),
+                        steps=[dict(item) for item in steps if isinstance(item, dict)] if steps else [],
+                        metadata=metadata if isinstance(metadata, dict) else {},
+                        tags=_parse_csv(args.tags),
+                        workflow_id=str(args.workflow_id or ""),
+                        template_id=str(args.template_id or ""),
+                        include_memory=bool(args.include_memory),
+                        memory_query=str(args.memory_query or ""),
+                        memory_top_k=max(1, int(args.memory_top_k)),
+                        source=str(args.source or "local"),
+                    ),
+                    indent=2,
+                )
+            )
+            return
+
+        if args.command == "agent-template-import":
+            service = NovaAdaptService(default_config=args.config)
+            manifest = _parse_optional_json_object(args.manifest, "--manifest")
+            if manifest is None:
+                raise ValueError("--manifest must be a JSON object")
+            print(
+                json.dumps(
+                    service.agent_template_import(
+                        {
+                            "manifest": manifest,
+                            "source": str(args.source or ""),
+                            "template_id": str(args.template_id or ""),
+                        }
+                    ),
+                    indent=2,
+                )
+            )
+            return
+
+        if args.command == "agent-template-share":
+            service = NovaAdaptService(default_config=args.config)
+            print(
+                json.dumps(
+                    service.agent_template_share(
+                        str(args.template_id or ""),
+                        rotate=bool(args.rotate),
+                        shared=not bool(args.disable),
+                    ),
+                    indent=2,
+                )
+            )
+            return
+
+        if args.command == "agent-template-launch":
+            service = NovaAdaptService(default_config=args.config)
+            overrides = _parse_optional_json_object(args.overrides, "--overrides")
+            print(
+                json.dumps(
+                    service.agent_template_launch(
+                        str(args.template_id or ""),
+                        mode=str(args.mode or "plan"),
+                        execute=bool(args.execute),
+                        allow_dangerous=bool(args.allow_dangerous),
+                        context=str(args.context or "cli"),
+                        overrides=overrides if isinstance(overrides, dict) else {},
                     ),
                     indent=2,
                 )

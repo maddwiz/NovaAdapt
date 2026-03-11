@@ -1,0 +1,54 @@
+[
+  {
+    "template_id": "desktop-triage",
+    "name": "Desktop Triage",
+    "description": "Audit a desktop backlog, summarize failures, and prepare a reviewed execution plan.",
+    "objective": "Inspect the active desktop operations queue, summarize the highest-priority failures, and prepare a safe execution plan.",
+    "strategy": "vote",
+    "candidates": ["local-qwen", "openai-gpt", "anthropic-claude"],
+    "tags": ["desktop", "ops", "review"],
+    "metadata": {
+      "surface": "desktop",
+      "mode": "plan-first"
+    },
+    "steps": [
+      {"name": "collect_context", "objective": "Read the latest queue, job, and event state."},
+      {"name": "rank_failures", "objective": "Prioritize failures by operator impact and urgency."},
+      {"name": "prepare_plan", "objective": "Draft the safest next-action plan with approvals."}
+    ]
+  },
+  {
+    "template_id": "mobile-finance-review",
+    "name": "Mobile Finance Review",
+    "description": "Use mobile controls conservatively to review billing or banking flows before any money movement.",
+    "objective": "Open the target mobile finance app, review the pending bill or payment context, and stop for approval before submitting anything.",
+    "strategy": "single",
+    "tags": ["mobile", "finance", "approval"],
+    "metadata": {
+      "surface": "mobile",
+      "requires_approval": true
+    },
+    "steps": [
+      {"name": "open_app", "objective": "Launch the requested mobile finance app."},
+      {"name": "inspect_state", "objective": "Review the visible payment details and capture a preview."},
+      {"name": "await_approval", "objective": "Pause for operator approval before any irreversible action."}
+    ]
+  },
+  {
+    "template_id": "iot-night-shutdown",
+    "name": "IoT Night Shutdown",
+    "description": "Coordinate Home Assistant and MQTT endpoints to close down a workspace safely.",
+    "objective": "Prepare and execute the nightly workspace shutdown routine across lights, covers, and automation topics.",
+    "strategy": "decompose",
+    "tags": ["iot", "homeassistant", "automation"],
+    "metadata": {
+      "surface": "iot",
+      "profile": "nightly-close"
+    },
+    "steps": [
+      {"name": "discover_devices", "objective": "Discover the relevant Home Assistant entities for the workspace."},
+      {"name": "prepare_actions", "objective": "Build the light, cover, and MQTT shutdown actions."},
+      {"name": "execute_shutdown", "objective": "Execute the approved shutdown actions and verify the resulting state."}
+    ]
+  }
+]

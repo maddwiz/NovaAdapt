@@ -852,6 +852,104 @@ class NovaAdaptMCPServer:
                 },
             ),
             MCPTool(
+                name="novaadapt_agent_templates_list",
+                description="List stored agent templates",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "limit": {"type": "integer"},
+                        "source": {"type": "string"},
+                        "tag": {"type": "string"},
+                    },
+                },
+            ),
+            MCPTool(
+                name="novaadapt_agent_templates_gallery",
+                description="List built-in gallery agent templates",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "tag": {"type": "string"},
+                    },
+                },
+            ),
+            MCPTool(
+                name="novaadapt_agent_template_get",
+                description="Get a stored agent template",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "template_id": {"type": "string"},
+                    },
+                    "required": ["template_id"],
+                },
+            ),
+            MCPTool(
+                name="novaadapt_agent_template_export",
+                description="Export an agent template manifest",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string"},
+                        "description": {"type": "string"},
+                        "objective": {"type": "string"},
+                        "strategy": {"type": "string"},
+                        "candidates": {"type": "array", "items": {"type": "string"}},
+                        "steps": {"type": "array", "items": {"type": "object"}},
+                        "metadata": {"type": "object"},
+                        "tags": {"type": "array", "items": {"type": "string"}},
+                        "workflow_id": {"type": "string"},
+                        "template_id": {"type": "string"},
+                        "include_memory": {"type": "boolean"},
+                        "memory_query": {"type": "string"},
+                        "memory_top_k": {"type": "integer"},
+                        "source": {"type": "string"},
+                    },
+                },
+            ),
+            MCPTool(
+                name="novaadapt_agent_template_import",
+                description="Import an agent template manifest",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "manifest": {"type": "object"},
+                        "source": {"type": "string"},
+                        "template_id": {"type": "string"},
+                    },
+                    "required": ["manifest"],
+                },
+            ),
+            MCPTool(
+                name="novaadapt_agent_template_share",
+                description="Enable, rotate, or revoke share access for an agent template",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "template_id": {"type": "string"},
+                        "rotate": {"type": "boolean"},
+                        "shared": {"type": "boolean"},
+                    },
+                    "required": ["template_id"],
+                },
+            ),
+            MCPTool(
+                name="novaadapt_agent_template_launch",
+                description="Launch an agent template as a plan, run, or workflow",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "template_id": {"type": "string"},
+                        "mode": {"type": "string"},
+                        "execute": {"type": "boolean"},
+                        "allow_dangerous": {"type": "boolean"},
+                        "context": {"type": "string"},
+                        "overrides": {"type": "object"},
+                    },
+                    "required": ["template_id"],
+                },
+            ),
+            MCPTool(
                 name="novaadapt_memory_recall",
                 description="Recall relevant long-term memory entries",
                 input_schema={
@@ -1717,6 +1815,75 @@ class NovaAdaptMCPServer:
                 limit=max(1, min(500, int(arguments.get("limit", 50)))),
                 status=str(arguments.get("status", "")).strip(),
                 context=str(arguments.get("context", "mcp")).strip() or "mcp",
+            )
+        if tool_name == "novaadapt_agent_templates_list":
+            return self.service.agent_templates_list(
+                limit=max(1, min(500, int(arguments.get("limit", 50)))),
+                source=str(arguments.get("source", "")).strip(),
+                tag=str(arguments.get("tag", "")).strip(),
+            )
+        if tool_name == "novaadapt_agent_templates_gallery":
+            return self.service.agent_templates_gallery(tag=str(arguments.get("tag", "")).strip())
+        if tool_name == "novaadapt_agent_template_get":
+            template_id = str(arguments.get("template_id", "")).strip()
+            if not template_id:
+                raise ValueError("'template_id' is required")
+            return self.service.agent_template_get(template_id)
+        if tool_name == "novaadapt_agent_template_export":
+            metadata = arguments.get("metadata")
+            steps = arguments.get("steps")
+            tags = arguments.get("tags")
+            candidates = arguments.get("candidates")
+            return self.service.agent_template_export(
+                name=str(arguments.get("name", "")).strip(),
+                description=str(arguments.get("description", "")).strip(),
+                objective=str(arguments.get("objective", "")).strip(),
+                strategy=str(arguments.get("strategy", "single")).strip() or "single",
+                candidates=[str(item).strip() for item in candidates if str(item).strip()]
+                if isinstance(candidates, list)
+                else None,
+                steps=[dict(item) for item in steps if isinstance(item, dict)] if isinstance(steps, list) else None,
+                metadata=metadata if isinstance(metadata, dict) else None,
+                tags=[str(item).strip() for item in tags if str(item).strip()] if isinstance(tags, list) else None,
+                workflow_id=str(arguments.get("workflow_id", "")).strip(),
+                template_id=str(arguments.get("template_id", "")).strip(),
+                include_memory=bool(arguments.get("include_memory", True)),
+                memory_query=str(arguments.get("memory_query", "")).strip(),
+                memory_top_k=max(1, min(20, int(arguments.get("memory_top_k", 5) or 5))),
+                source=str(arguments.get("source", "local")).strip() or "local",
+            )
+        if tool_name == "novaadapt_agent_template_import":
+            manifest = arguments.get("manifest")
+            if not isinstance(manifest, dict):
+                raise ValueError("'manifest' is required and must be an object")
+            return self.service.agent_template_import(
+                {
+                    "manifest": manifest,
+                    "source": str(arguments.get("source", "")).strip(),
+                    "template_id": str(arguments.get("template_id", "")).strip(),
+                }
+            )
+        if tool_name == "novaadapt_agent_template_share":
+            template_id = str(arguments.get("template_id", "")).strip()
+            if not template_id:
+                raise ValueError("'template_id' is required")
+            return self.service.agent_template_share(
+                template_id,
+                rotate=bool(arguments.get("rotate", False)),
+                shared=bool(arguments.get("shared", True)),
+            )
+        if tool_name == "novaadapt_agent_template_launch":
+            template_id = str(arguments.get("template_id", "")).strip()
+            if not template_id:
+                raise ValueError("'template_id' is required")
+            overrides = arguments.get("overrides")
+            return self.service.agent_template_launch(
+                template_id,
+                mode=str(arguments.get("mode", "plan")).strip() or "plan",
+                execute=bool(arguments.get("execute", False)),
+                allow_dangerous=bool(arguments.get("allow_dangerous", False)),
+                context=str(arguments.get("context", "mcp")).strip() or "mcp",
+                overrides=overrides if isinstance(overrides, dict) else None,
             )
         if tool_name == "novaadapt_memory_recall":
             query = str(arguments.get("query", "")).strip()

@@ -34,6 +34,7 @@ from . import server_sib_routes as sib_routes
 from . import server_voice_routes as voice_routes
 from . import server_canvas_routes as canvas_routes
 from . import server_workflow_routes as workflow_routes
+from . import server_agent_template_routes as agent_template_routes
 from . import server_plugin_routes as plugin_routes
 from . import server_control_routes as control_routes
 from . import server_runtime_routes as runtime_routes
@@ -327,6 +328,18 @@ def _build_handler(
         def _get_workflow_item(self, query: dict[str, list[str]]) -> int:
             return workflow_routes.get_workflow_item(self, service, _single, query)
 
+        def _get_agent_templates(self, query: dict[str, list[str]]) -> int:
+            return agent_template_routes.get_agent_templates(self, service, _single, query)
+
+        def _get_agent_templates_gallery(self, query: dict[str, list[str]]) -> int:
+            return agent_template_routes.get_agent_templates_gallery(self, service, _single, query)
+
+        def _get_agent_template_item(self, path: str, _query: dict[str, list[str]]) -> int:
+            return agent_template_routes.get_agent_template_item(self, service, path)
+
+        def _get_agent_template_shared(self, path: str, _query: dict[str, list[str]]) -> int:
+            return agent_template_routes.get_agent_template_shared(self, service, path)
+
         def _get_browser_status(self, _query: dict[str, list[str]]) -> int:
             return terminal_browser_routes.get_browser_status(self, service)
 
@@ -545,6 +558,18 @@ def _build_handler(
         def _post_workflows_resume(self, _path: str, payload: dict[str, object]) -> int:
             return workflow_routes.post_workflows_resume(self, service, payload)
 
+        def _post_agent_template_export(self, path: str, payload: dict[str, object]) -> int:
+            return agent_template_routes.post_agent_template_export(self, service, path, payload)
+
+        def _post_agent_template_import(self, path: str, payload: dict[str, object]) -> int:
+            return agent_template_routes.post_agent_template_import(self, service, path, payload)
+
+        def _post_agent_template_share(self, path: str, payload: dict[str, object]) -> int:
+            return agent_template_routes.post_agent_template_share(self, service, path, payload)
+
+        def _post_agent_template_launch(self, path: str, payload: dict[str, object]) -> int:
+            return agent_template_routes.post_agent_template_launch(self, service, path, payload)
+
         def _post_memory_ingest(self, path: str, payload: dict[str, object]) -> int:
             return memory_routes.post_memory_ingest(self, service, path, payload)
 
@@ -667,7 +692,12 @@ def _build_handler(
             return remote_host or "unknown"
 
         def _check_auth(self, path: str, query: dict[str, list[str]] | None = None) -> bool:
-            if path == "/health" or (path.startswith("/channels/") and path.endswith("/inbound")) or not api_token:
+            if (
+                path == "/health"
+                or path.startswith("/agents/templates/shared/")
+                or (path.startswith("/channels/") and path.endswith("/inbound"))
+                or not api_token
+            ):
                 return True
             if query is not None and (
                 path in {"/dashboard", "/dashboard/canvas-workflows", "/dashboard/data"}

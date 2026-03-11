@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import secrets
 import time
 import uuid
 from datetime import datetime, timezone
@@ -12,6 +13,7 @@ from typing import Any, Callable
 from novaadapt_shared import ModelRouter, UndoQueue
 
 from .adapt import AdaptBondCache, AdaptPersonaEngine, AdaptToggleStore
+from .agent_templates import AgentTemplateRecord, AgentTemplateStore
 from .audit_store import AuditStore
 from .agent import NovaAdaptAgent
 from .browser_executor import BrowserExecutor
@@ -104,6 +106,7 @@ class NovaAdaptService:
         self._workflow_checkpoints: WorkflowCheckpointStore | None = None
         self._workflow_engine: WorkflowEngine | None = None
         self._control_artifact_store: ControlArtifactStore | None = None
+        self._agent_template_store: AgentTemplateStore | None = None
 
     def close(self) -> None:
         browser = self._browser_executor
@@ -1660,6 +1663,257 @@ class NovaAdaptService:
             "context": normalized_context,
         }
 
+    def agent_templates_list(
+        self,
+        *,
+        limit: int = 50,
+        source: str = "",
+        tag: str = "",
+    ) -> dict[str, Any]:
+        rows = self._agent_template_store_obj().list(
+            limit=max(1, min(500, int(limit))),
+            source=str(source or "").strip(),
+            tag=str(tag or "").strip(),
+        )
+        return {
+            "ok": True,
+            "count": len(rows),
+            "templates": [self._agent_template_payload(item) for item in rows],
+        }
+
+    def agent_templates_gallery(self, *, tag: str = "") -> dict[str, Any]:
+        normalized_tag = str(tag or "").strip().lower()
+        items = []
+        for item in self._load_agent_gallery():
+            tags = [str(tag_item).strip().lower() for tag_item in item.get("tags", []) if str(tag_item).strip()]
+            if normalized_tag and normalized_tag not in tags:
+                continue
+            items.append(dict(item))
+        return {
+            "ok": True,
+            "count": len(items),
+            "templates": items,
+        }
+
+    def agent_template_get(self, template_id: str) -> dict[str, Any]:
+        normalized_id = str(template_id or "").strip()
+        if not normalized_id:
+            raise ValueError("'template_id' is required")
+        record = self._agent_template_store_obj().get(normalized_id)
+        if record is None:
+            return {"ok": False, "error": "agent template not found", "template_id": normalized_id}
+        out = self._agent_template_payload(record)
+        out["ok"] = True
+        out["manifest"] = self._agent_template_manifest(record)
+        return out
+
+    def agent_template_shared(self, share_token: str) -> dict[str, Any]:
+        normalized_token = str(share_token or "").strip()
+        if not normalized_token:
+            raise ValueError("'share_token' is required")
+        record = self._agent_template_store_obj().get_by_share_token(normalized_token)
+        if record is None:
+            return {"ok": False, "error": "shared agent template not found", "share_token": normalized_token}
+        out = self._agent_template_payload(record)
+        out["ok"] = True
+        out["manifest"] = self._agent_template_manifest(record)
+        out["shared"] = True
+        return out
+
+    def agent_template_export(
+        self,
+        *,
+        name: str = "",
+        description: str = "",
+        objective: str = "",
+        strategy: str = "single",
+        candidates: list[str] | None = None,
+        steps: list[dict[str, Any]] | None = None,
+        metadata: dict[str, Any] | None = None,
+        tags: list[str] | None = None,
+        workflow_id: str = "",
+        template_id: str = "",
+        include_memory: bool = True,
+        memory_query: str = "",
+        memory_top_k: int = 5,
+        source: str = "local",
+    ) -> dict[str, Any]:
+        normalized_objective = str(objective or "").strip()
+        normalized_name = str(name or "").strip()
+        normalized_description = str(description or "").strip()
+        normalized_strategy = str(strategy or "single").strip() or "single"
+        normalized_steps = [dict(item) for item in (steps or []) if isinstance(item, dict)]
+        normalized_metadata = dict(metadata or {})
+        normalized_workflow = str(workflow_id or "").strip()
+
+        workflow_record: WorkflowRecord | None = None
+        if normalized_workflow:
+            workflow_record = self._workflow_store_obj().get(normalized_workflow)
+            if workflow_record is None:
+                raise ValueError("workflow not found")
+            if not normalized_objective:
+                normalized_objective = workflow_record.objective
+            if not normalized_steps:
+                normalized_steps = [dict(item) for item in workflow_record.steps]
+            normalized_metadata.setdefault("workflow_id", workflow_record.workflow_id)
+            normalized_metadata.setdefault("workflow_status", workflow_record.status)
+
+        if not normalized_objective:
+            raise ValueError("'objective' is required")
+        if not normalized_name:
+            normalized_name = normalized_objective[:72]
+        if not normalized_description:
+            normalized_description = f"Exported agent template for {normalized_name}"
+
+        memory_snapshot: list[dict[str, Any]] = []
+        if include_memory:
+            query = str(memory_query or normalized_objective).strip() or normalized_objective
+            memory_snapshot = self.memory_backend.recall(query, top_k=max(1, min(20, int(memory_top_k))))
+            normalized_metadata.setdefault("memory_query", query)
+        if workflow_record is not None:
+            normalized_metadata.setdefault("workflow", self._workflow_payload(workflow_record))
+
+        record = self._agent_template_store_obj().create_or_update(
+            name=normalized_name,
+            description=normalized_description,
+            objective=normalized_objective,
+            strategy=normalized_strategy,
+            candidates=[str(item).strip() for item in (candidates or []) if str(item).strip()],
+            steps=normalized_steps,
+            metadata=normalized_metadata,
+            memory_snapshot=memory_snapshot,
+            tags=[str(item).strip() for item in (tags or []) if str(item).strip()],
+            source=str(source or "local").strip() or "local",
+            template_id=str(template_id or "").strip(),
+        )
+        self._remember_agent_template_event("agent_template_export", record)
+        out = self._agent_template_payload(record)
+        out["ok"] = True
+        out["manifest"] = self._agent_template_manifest(record)
+        return out
+
+    def agent_template_import(self, payload: dict[str, Any]) -> dict[str, Any]:
+        manifest = payload.get("manifest") if isinstance(payload.get("manifest"), dict) else payload
+        normalized = dict(manifest if isinstance(manifest, dict) else {})
+        record = self._agent_template_store_obj().create_or_update(
+            name=str(normalized.get("name") or normalized.get("title") or "").strip(),
+            description=str(normalized.get("description") or "").strip(),
+            objective=str(normalized.get("objective") or "").strip(),
+            strategy=str(normalized.get("strategy") or "single").strip() or "single",
+            candidates=self._as_name_list(normalized.get("candidates")),
+            steps=[dict(item) for item in normalized.get("steps", []) if isinstance(item, dict)]
+            if isinstance(normalized.get("steps"), list)
+            else [],
+            metadata=normalized.get("metadata") if isinstance(normalized.get("metadata"), dict) else {},
+            memory_snapshot=[
+                dict(item) for item in normalized.get("memory_snapshot", []) if isinstance(item, dict)
+            ]
+            if isinstance(normalized.get("memory_snapshot"), list)
+            else [],
+            tags=[str(item).strip() for item in normalized.get("tags", []) if str(item).strip()]
+            if isinstance(normalized.get("tags"), list)
+            else [],
+            source=str(normalized.get("source") or payload.get("source") or "import").strip() or "import",
+            template_id=str(normalized.get("template_id") or payload.get("template_id") or "").strip(),
+            share_token=str(normalized.get("share_token") or "").strip(),
+            shared=coerce_bool(normalized.get("shared"), default=False),
+        )
+        self._remember_agent_template_event("agent_template_import", record)
+        out = self._agent_template_payload(record)
+        out["ok"] = True
+        out["manifest"] = self._agent_template_manifest(record)
+        return out
+
+    def agent_template_share(
+        self,
+        template_id: str,
+        *,
+        rotate: bool = False,
+        shared: bool = True,
+    ) -> dict[str, Any]:
+        normalized_id = str(template_id or "").strip()
+        if not normalized_id:
+            raise ValueError("'template_id' is required")
+        record = self._agent_template_store_obj().get(normalized_id)
+        if record is None:
+            return {"ok": False, "error": "agent template not found", "template_id": normalized_id}
+        share_token = record.share_token
+        if shared:
+            if rotate or not share_token:
+                share_token = secrets.token_urlsafe(18)
+        else:
+            share_token = ""
+        updated = self._agent_template_store_obj().update_share(
+            normalized_id,
+            share_token=share_token,
+            shared=bool(shared),
+        )
+        if updated is None:
+            return {"ok": False, "error": "agent template not found", "template_id": normalized_id}
+        self._remember_agent_template_event("agent_template_share", updated)
+        out = self._agent_template_payload(updated)
+        out["ok"] = True
+        out["manifest"] = self._agent_template_manifest(updated)
+        out["share"] = self._agent_template_share_descriptor(updated)
+        return out
+
+    def agent_template_launch(
+        self,
+        template_id: str,
+        *,
+        mode: str = "plan",
+        execute: bool = False,
+        allow_dangerous: bool = False,
+        context: str = "api",
+        overrides: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        normalized_id = str(template_id or "").strip()
+        if not normalized_id:
+            raise ValueError("'template_id' is required")
+        record = self._agent_template_store_obj().get(normalized_id)
+        if record is None:
+            return {"ok": False, "error": "agent template not found", "template_id": normalized_id}
+        override_map = dict(overrides or {})
+        objective = str(override_map.get("objective") or record.objective).strip()
+        if not objective:
+            raise ValueError("'objective' is required")
+        strategy = str(override_map.get("strategy") or record.strategy or "single").strip() or "single"
+        candidates = self._as_name_list(override_map.get("candidates")) or list(record.candidates)
+        metadata = dict(record.metadata)
+        incoming_metadata = override_map.get("metadata")
+        if isinstance(incoming_metadata, dict):
+            metadata.update(incoming_metadata)
+        metadata.setdefault("template_id", record.template_id)
+        metadata.setdefault("template_name", record.name)
+
+        if str(mode or "plan").strip().lower() == "workflow":
+            launch = self.workflows_start(
+                objective,
+                steps=[dict(item) for item in record.steps],
+                metadata=metadata,
+                context=context,
+            )
+        else:
+            run_payload: dict[str, Any] = {
+                "objective": objective,
+                "strategy": strategy,
+                "execute": bool(execute),
+                "metadata": metadata,
+            }
+            if candidates:
+                run_payload["candidates"] = candidates
+            if allow_dangerous:
+                run_payload["allow_dangerous"] = True
+            launch = self.run(run_payload) if str(mode or "plan").strip().lower() == "run" else self.create_plan(run_payload)
+        self._remember_agent_template_event("agent_template_launch", record)
+        return {
+            "ok": True,
+            "template_id": record.template_id,
+            "mode": str(mode or "plan").strip().lower() or "plan",
+            "template": self._agent_template_payload(record),
+            "launch": launch,
+        }
+
     def channels(self) -> list[dict[str, Any]]:
         return self.channel_registry.list_channels()
 
@@ -3156,6 +3410,65 @@ class NovaAdaptService:
             )
         return self._workflow_engine
 
+    def _agent_templates_db_path(self) -> Path:
+        if isinstance(self.db_path, Path):
+            return self.db_path.with_name("novaadapt_agent_templates.sqlite3")
+        base_dir = self.default_config.parent if isinstance(self.default_config, Path) else Path(".")
+        return base_dir / ".novaadapt_agent_templates.sqlite3"
+
+    def _agent_template_store_obj(self) -> AgentTemplateStore:
+        if self._agent_template_store is None:
+            db_path = self._agent_templates_db_path()
+            db_path.parent.mkdir(parents=True, exist_ok=True)
+            self._agent_template_store = AgentTemplateStore(str(db_path))
+        return self._agent_template_store
+
+    def _agent_gallery_path(self) -> Path:
+        if isinstance(self.default_config, Path):
+            return self.default_config.parent / "agent_gallery.json"
+        return Path("config") / "agent_gallery.json"
+
+    def _load_agent_gallery(self) -> list[dict[str, Any]]:
+        path = self._agent_gallery_path()
+        if not path.exists():
+            return []
+        try:
+            loaded = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            return []
+        if not isinstance(loaded, list):
+            return []
+        items: list[dict[str, Any]] = []
+        for raw in loaded:
+            if not isinstance(raw, dict):
+                continue
+            template_id = str(raw.get("template_id") or raw.get("id") or "").strip() or f"gallery-{uuid.uuid4().hex[:10]}"
+            item = {
+                "template_id": template_id,
+                "name": str(raw.get("name") or raw.get("title") or template_id).strip(),
+                "description": str(raw.get("description") or "").strip(),
+                "objective": str(raw.get("objective") or "").strip(),
+                "strategy": str(raw.get("strategy") or "single").strip() or "single",
+                "candidates": self._as_name_list(raw.get("candidates")),
+                "steps": [dict(step) for step in raw.get("steps", []) if isinstance(step, dict)]
+                if isinstance(raw.get("steps"), list)
+                else [],
+                "metadata": raw.get("metadata") if isinstance(raw.get("metadata"), dict) else {},
+                "memory_snapshot": [
+                    dict(item) for item in raw.get("memory_snapshot", []) if isinstance(item, dict)
+                ]
+                if isinstance(raw.get("memory_snapshot"), list)
+                else [],
+                "tags": [str(item).strip() for item in raw.get("tags", []) if str(item).strip()]
+                if isinstance(raw.get("tags"), list)
+                else [],
+                "source": "gallery",
+                "shared": False,
+                "share_token": "",
+            }
+            items.append(item)
+        return items
+
     def _control_artifact_dir(self) -> Path:
         if isinstance(self.db_path, Path):
             return self.db_path.with_name("novaadapt_control_artifacts")
@@ -3196,6 +3509,77 @@ class NovaAdaptService:
             "updated_at": str(record.updated_at),
             "last_error": str(record.last_error),
         }
+
+    def _agent_template_payload(self, record: AgentTemplateRecord) -> dict[str, Any]:
+        payload = self._agent_template_manifest(record)
+        payload.update(
+            {
+                "created_at": str(record.created_at),
+                "updated_at": str(record.updated_at),
+                "shared": bool(record.shared),
+            }
+        )
+        if record.shared:
+            payload["share"] = self._agent_template_share_descriptor(record)
+        return payload
+
+    @staticmethod
+    def _agent_template_manifest(record: AgentTemplateRecord) -> dict[str, Any]:
+        return {
+            "template_id": str(record.template_id),
+            "name": str(record.name),
+            "description": str(record.description),
+            "objective": str(record.objective),
+            "strategy": str(record.strategy),
+            "candidates": list(record.candidates),
+            "steps": [dict(item) for item in record.steps],
+            "metadata": dict(record.metadata),
+            "memory_snapshot": [dict(item) for item in record.memory_snapshot],
+            "tags": list(record.tags),
+            "source": str(record.source),
+            "share_token": str(record.share_token),
+            "shared": bool(record.shared),
+            "manifest_version": 1,
+        }
+
+    def _agent_template_share_descriptor(self, record: AgentTemplateRecord) -> dict[str, Any]:
+        share_token = str(record.share_token or "").strip()
+        share_path = f"/agents/templates/shared/{share_token}" if share_token else ""
+        public_base = str(os.getenv("NOVAADAPT_PUBLIC_BASE_URL", "")).rstrip("/")
+        share_url = f"{public_base}{share_path}" if public_base and share_path else ""
+        share_uri = f"novaadapt://agent-template/{share_token}" if share_token else ""
+        return {
+            "share_token": share_token,
+            "share_path": share_path,
+            "share_url": share_url,
+            "share_uri": share_uri,
+            "qr_payload": share_url or share_uri or share_path,
+        }
+
+    def _remember_agent_template_event(self, event_type: str, record: AgentTemplateRecord) -> None:
+        payload = {
+            "type": str(event_type or "agent_template"),
+            "template_id": record.template_id,
+            "name": record.name,
+            "objective": record.objective,
+            "strategy": record.strategy,
+            "tags": list(record.tags),
+            "source": record.source,
+            "shared": bool(record.shared),
+        }
+        try:
+            self.memory_backend.ingest(
+                text=json.dumps(payload, ensure_ascii=True),
+                source_id=f"novaadapt:agent_template:{record.template_id}:{event_type}",
+                metadata={
+                    "type": str(event_type or "agent_template"),
+                    "template_id": record.template_id,
+                    "name": record.name[:120],
+                },
+            )
+        except Exception:
+            pass
+        self._track_memory_events([f"agents.templates.{str(event_type or 'updated').strip().lower()}"])
 
     def _plans(self) -> PlanStore:
         if self._plan_store is None:

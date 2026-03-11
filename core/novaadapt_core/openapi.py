@@ -843,6 +843,62 @@ def build_openapi_spec() -> dict:
                     "responses": {"200": {"description": "Resumed workflow"}},
                 }
             },
+            "/agents/templates": {
+                "get": {
+                    "summary": "List locally stored agent templates",
+                    "parameters": [
+                        {"name": "limit", "in": "query", "required": False, "schema": {"type": "integer"}},
+                        {"name": "source", "in": "query", "required": False, "schema": {"type": "string"}},
+                        {"name": "tag", "in": "query", "required": False, "schema": {"type": "string"}},
+                    ],
+                    "responses": {"200": {"description": "Agent template list"}},
+                }
+            },
+            "/agents/gallery": {
+                "get": {
+                    "summary": "List built-in local-first gallery templates",
+                    "parameters": [
+                        {"name": "tag", "in": "query", "required": False, "schema": {"type": "string"}}
+                    ],
+                    "responses": {"200": {"description": "Gallery templates"}},
+                }
+            },
+            "/agents/templates/{template_id}": {
+                "get": {
+                    "summary": "Get a stored agent template and its export manifest",
+                    "responses": {"200": {"description": "Agent template detail"}, "404": {"description": "Not found"}},
+                }
+            },
+            "/agents/templates/shared/{share_token}": {
+                "get": {
+                    "summary": "Resolve a shared agent template manifest from its share token",
+                    "responses": {"200": {"description": "Shared agent template"}, "404": {"description": "Not found"}},
+                }
+            },
+            "/agents/templates/export": {
+                "post": {
+                    "summary": "Export an agent template with optional workflow context and memory snapshot",
+                    "responses": {"200": {"description": "Exported agent template"}},
+                }
+            },
+            "/agents/templates/import": {
+                "post": {
+                    "summary": "Import an agent template manifest into the local template store",
+                    "responses": {"200": {"description": "Imported agent template"}},
+                }
+            },
+            "/agents/templates/{template_id}/share": {
+                "post": {
+                    "summary": "Enable, rotate, or revoke share access for an agent template",
+                    "responses": {"200": {"description": "Agent template share metadata"}},
+                }
+            },
+            "/agents/templates/{template_id}/launch": {
+                "post": {
+                    "summary": "Launch an agent template as a plan, run, or workflow",
+                    "responses": {"200": {"description": "Agent template launch result"}},
+                }
+            },
             "/memory/recall": {
                 "post": {
                     "summary": "Recall memory entries relevant to a query",

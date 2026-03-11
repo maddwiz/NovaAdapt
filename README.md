@@ -32,6 +32,7 @@ Implemented now:
   - Exposes multi-channel messaging adapters (`webchat`, `iMessage`, `WhatsApp`, `Messenger`, `Instagram`, `SMS`, `Telegram`, `Discord`, `Slack`, `Signal`, `Teams`, `Google Chat`, `Matrix`) with normalized inbound + outbound send flows.
   - Exposes first-party plugin adapters (`novabridge`, `nova4d`, `novablox`) for external tool execution.
   - Exposes first-class Playwright browser automation routes/runtime (`/browser/*`) with domain allow/block policy hooks.
+  - Exposes local-first agent template export/import/share/launch flows with a built-in gallery and shareable manifests.
   - Records operator feedback (`/feedback`) into memory for self-improvement loops.
   - Exposes HTTP API with optional bearer auth and async jobs.
 - `bridge` relay service in Go for secure remote forwarding into core API.
@@ -301,6 +302,10 @@ API endpoints:
 - `GET /adapt/bond?adapt_id=...`
 - `GET /browser/status`
 - `GET /browser/pages`
+- `GET /agents/templates`
+- `GET /agents/gallery`
+- `GET /agents/templates/{template_id}`
+- `GET /agents/templates/shared/{share_token}` (public read-only manifest fetch)
 - `GET /history?limit=20`
 - `GET /metrics` (Prometheus-style counters, auth-protected when token is enabled)
 - `GET /events?limit=100` (audit log filters: `category`, `entity_type`, `entity_id`, `since_id`)
@@ -348,6 +353,10 @@ API endpoints:
 - `POST /browser/wait_for_selector` with JSON payload (`selector`, optional `state`/`timeout_ms`)
 - `POST /browser/evaluate_js` with JSON payload (`script`, optional `arg`)
 - `POST /browser/close`
+- `POST /agents/templates/export` with JSON payload (`objective` required, optional `name`, `description`, `strategy`, `candidates`, `steps`, `tags`, `workflow_id`, `include_memory`)
+- `POST /agents/templates/import` with JSON payload (`manifest` object or template fields at top level)
+- `POST /agents/templates/{id}/share` with JSON payload (optional `rotate`, `shared`)
+- `POST /agents/templates/{id}/launch` with JSON payload (optional `mode`, `execute`, `allow_dangerous`, `context`, `overrides`)
 - `POST /terminal/sessions` with JSON payload (optional `command`, `cwd`, `shell`)
 - `POST /terminal/sessions/{id}/input` with JSON payload (`input` required)
 - `POST /terminal/sessions/{id}/close`
@@ -647,6 +656,37 @@ Exposed tools:
 - `novaadapt_browser_wait_for_selector`
 - `novaadapt_browser_evaluate_js`
 - `novaadapt_browser_close`
+- `novaadapt_agent_templates_list`
+- `novaadapt_agent_templates_gallery`
+- `novaadapt_agent_template_get`
+- `novaadapt_agent_template_export`
+- `novaadapt_agent_template_import`
+- `novaadapt_agent_template_share`
+- `novaadapt_agent_template_launch`
+
+## Agent Templates
+
+NovaAdapt now includes a local-first agent template store for saving, sharing, and relaunching proven agent configurations.
+
+- Gallery templates live in `/Users/desmondpottle/Documents/New project/NovaAdapt/config/agent_gallery.json`.
+- Exported templates are stored locally in a SQLite-backed registry beside the core state DB.
+- Shared templates can be fetched through public read-only manifest URLs without exposing the rest of the control plane.
+- Launch modes support `plan`, `run`, and `workflow` flows, so templates can be reused for previews, immediate execution, or longer-lived orchestration.
+
+CLI examples:
+
+```bash
+PYTHONPATH=core:shared python3 -m novaadapt_core.cli agent-template-export \
+  --objective "Audit the desktop release checklist and prepare a safe plan" \
+  --name "Desktop Release Triage" \
+  --tags ops,release
+
+PYTHONPATH=core:shared python3 -m novaadapt_core.cli agent-templates-list
+
+PYTHONPATH=core:shared python3 -m novaadapt_core.cli agent-template-share \
+  --template-id agtpl-1234567890abcdef \
+  --rotate
+```
 
 ## Docker Deployment
 
@@ -731,6 +771,13 @@ print(client.retry_failed_plan_async("plan-id"))
 print(client.job_stream("job-id", timeout_seconds=10))
 print(client.plan_stream("plan-id", timeout_seconds=10))
 print(client.events(limit=20))
+template = client.agent_template_export(
+    name="Desktop Release Triage",
+    objective="Audit the desktop release checklist and prepare a safe plan",
+    tags=["ops", "release"],
+)
+print(client.agent_template_share(template["template_id"], rotate=True))
+print(client.agent_template_launch(template["template_id"], mode="plan"))
 session = client.issue_session_token(scopes=["read", "plan", "approve"], ttl_seconds=900)
 print(client.revoke_session_token(session["token"]))
 print(client.revoke_session_id(session["session_id"]))
