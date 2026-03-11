@@ -57,6 +57,15 @@ const mqttRetainInput = document.querySelector("#mqttRetainInput");
 const mqttPublishBtn = document.querySelector("#mqttPublishBtn");
 const mqttSubscribeBtn = document.querySelector("#mqttSubscribeBtn");
 const mqttOutputEl = document.querySelector("#mqttOutput");
+const templateStatusEl = document.querySelector("#templateStatus");
+const templateTagInput = document.querySelector("#templateTagInput");
+const templateManifestInput = document.querySelector("#templateManifestInput");
+const refreshTemplatesBtn = document.querySelector("#refreshTemplatesBtn");
+const exportTemplateBtn = document.querySelector("#exportTemplateBtn");
+const importTemplateBtn = document.querySelector("#importTemplateBtn");
+const templateLibraryEl = document.querySelector("#templateLibrary");
+const templateGalleryEl = document.querySelector("#templateGallery");
+const templateOutputEl = document.querySelector("#templateOutput");
 
 let refreshTimer = null;
 let liveRefreshTimer = null;
@@ -127,6 +136,8 @@ function saveConfig() {
   localStorage.setItem("novaadapt.desktop.mqttTopic", (mqttTopicInput?.value || "").trim());
   localStorage.setItem("novaadapt.desktop.mqttPayload", mqttPayloadInput?.value || "");
   localStorage.setItem("novaadapt.desktop.mqttRetain", mqttRetainInput?.checked ? "1" : "0");
+  localStorage.setItem("novaadapt.desktop.templateTag", (templateTagInput?.value || "").trim());
+  localStorage.setItem("novaadapt.desktop.templateManifest", templateManifestInput?.value || "");
 }
 
 function loadConfig() {
@@ -157,6 +168,8 @@ function loadConfig() {
   mqttTopicInput.value = localStorage.getItem("novaadapt.desktop.mqttTopic") || "";
   mqttPayloadInput.value = localStorage.getItem("novaadapt.desktop.mqttPayload") || "";
   mqttRetainInput.checked = (localStorage.getItem("novaadapt.desktop.mqttRetain") || "0") === "1";
+  templateTagInput.value = localStorage.getItem("novaadapt.desktop.templateTag") || "";
+  templateManifestInput.value = localStorage.getItem("novaadapt.desktop.templateManifest") || "";
 }
 
 async function coreRequest(method, path, payload = null) {
@@ -358,6 +371,13 @@ function setIoTStatus(message, kind = "neutral") {
   const text = String(message || "").trim() || "Idle";
   iotStatusEl.textContent = text;
   iotStatusEl.className = `badge ${kind}`;
+}
+
+function setTemplateStatus(message, kind = "neutral") {
+  if (!templateStatusEl) return;
+  const text = String(message || "").trim() || "Idle";
+  templateStatusEl.textContent = text;
+  templateStatusEl.className = `badge ${kind}`;
 }
 
 function updateLiveButton() {
@@ -910,6 +930,19 @@ function renderMQTTOutput(payload, fallback = "No MQTT activity yet.") {
   mqttOutputEl.textContent = JSON.stringify(payload, null, 2);
 }
 
+function renderTemplateOutput(payload, fallback = "No template activity yet.") {
+  if (!templateOutputEl) return;
+  if (payload === null || payload === undefined || payload === "") {
+    templateOutputEl.textContent = fallback;
+    return;
+  }
+  if (typeof payload === "string") {
+    templateOutputEl.textContent = payload;
+    return;
+  }
+  templateOutputEl.textContent = JSON.stringify(payload, null, 2);
+}
+
 function renderIoTEntities(result) {
   const entities = Array.isArray(result?.entities) ? result.entities : [];
   if (!iotEntitiesEl) return;
@@ -1026,6 +1059,216 @@ async function subscribeMQTTSnapshot() {
   });
   renderMQTTOutput(result, "No MQTT messages received.");
   setIoTStatus(`Subscribed ${topic}`, "ok");
+  return result;
+}
+
+function templateTagQuery() {
+  const tag = String(templateTagInput?.value || "").trim();
+  return tag ? `?tag=${encodeURIComponent(tag)}` : "";
+}
+
+function summarizeTemplate(template) {
+  const tags = Array.isArray(template?.tags) ? template.tags.filter(Boolean).join(", ") : "";
+  const strategy = String(template?.strategy || "single");
+  const source = String(template?.source || "local");
+  const memory = Array.isArray(template?.memory_snapshot) ? template.memory_snapshot.length : 0;
+  const parts = [`strategy ${strategy}`, `source ${source}`];
+  if (tags) parts.push(`tags ${tags}`);
+  if (memory > 0) parts.push(`memory ${memory}`);
+  return parts.join(" • ");
+}
+
+function renderTemplateCards(container, templates, actionsFactory, emptyMessage) {
+  if (!container) return;
+  const items = Array.isArray(templates) ? templates : [];
+  if (!items.length) {
+    container.innerHTML = `<p>${escapeHTML(emptyMessage)}</p>`;
+    return;
+  }
+  container.innerHTML = "";
+  for (const template of items) {
+    const templateId = String(template?.template_id || template?.id || "");
+    const card = document.createElement("article");
+    card.className = "plan";
+    card.innerHTML = `
+      <div class="plan-head">
+        <strong>${escapeHTML(String(template?.name || templateId || "Template"))}</strong>
+        <span>${escapeHTML(String(template?.updated_at || template?.created_at || templateId || ""))}</span>
+      </div>
+      <p class="plan-meta">${escapeHTML(String(template?.description || template?.objective || "(no description)"))}</p>
+      <p class="plan-meta">${escapeHTML(summarizeTemplate(template))}</p>
+      <p class="plan-meta">${escapeHTML(String(template?.objective || "(no objective)"))}</p>
+      <div class="row"></div>
+    `;
+    const actionRow = card.querySelector(".row");
+    for (const action of actionsFactory(template)) {
+      actionRow.appendChild(
+        actionButton(action.label, action.kind || "secondary", async () => {
+          await action.onClick(template);
+        }),
+      );
+    }
+    container.appendChild(card);
+  }
+}
+
+function renderTemplateLibrary(payload) {
+  renderTemplateCards(
+    templateLibraryEl,
+    payload?.templates || [],
+    (template) => [
+      {
+        label: "Plan",
+        kind: "secondary",
+        onClick: async () => {
+          await runAction(`Launching template ${template.name} as plan`, async () => {
+            const result = await coreRequest("POST", `/agents/templates/${encodeURIComponent(template.template_id)}/launch`, {
+              mode: "plan",
+              execute: false,
+              context: "desktop-tauri",
+            });
+            renderTemplateOutput(result, "Template plan launch complete.");
+            await refresh();
+          }, true);
+        },
+      },
+      {
+        label: "Run",
+        kind: "primary",
+        onClick: async () => {
+          const confirmed = window.confirm(`Launch ${template.name} as an immediate run?`);
+          if (!confirmed) return;
+          await runAction(`Launching template ${template.name} as run`, async () => {
+            const result = await coreRequest("POST", `/agents/templates/${encodeURIComponent(template.template_id)}/launch`, {
+              mode: "run",
+              execute: true,
+              context: "desktop-tauri",
+            });
+            renderTemplateOutput(result, "Template run launch complete.");
+            await refresh();
+          }, true);
+        },
+      },
+      {
+        label: "Share",
+        kind: "secondary",
+        onClick: async () => {
+          await runAction(`Sharing template ${template.name}`, async () => {
+            const result = await coreRequest("POST", `/agents/templates/${encodeURIComponent(template.template_id)}/share`, {
+              shared: true,
+              rotate: false,
+            });
+            renderTemplateOutput(result, "Template share metadata ready.");
+            const shareUrl = result?.share?.share_url || result?.share?.share_uri || result?.share?.share_path;
+            if (shareUrl && navigator.clipboard?.writeText) {
+              try {
+                await navigator.clipboard.writeText(String(shareUrl));
+              } catch {
+                // clipboard failure is non-fatal
+              }
+            }
+            await refreshTemplates();
+          }, false);
+        },
+      },
+    ],
+    "No local templates yet.",
+  );
+}
+
+function renderTemplateGallery(payload) {
+  renderTemplateCards(
+    templateGalleryEl,
+    payload?.templates || [],
+    (template) => [
+      {
+        label: "Import",
+        kind: "secondary",
+        onClick: async () => {
+          await runAction(`Importing gallery template ${template.name}`, async () => {
+            const result = await coreRequest("POST", "/agents/templates/import", {
+              manifest: template,
+              source: "gallery",
+            });
+            renderTemplateOutput(result, "Gallery template imported.");
+            templateManifestInput.value = JSON.stringify(result?.manifest || template, null, 2);
+            saveConfig();
+            await refreshTemplates();
+          }, false);
+        },
+      },
+      {
+        label: "Use Objective",
+        kind: "secondary",
+        onClick: async () => {
+          objectiveInput.value = String(template?.objective || "");
+          strategySelect.value = String(template?.strategy || "single");
+          candidatesInput.value = Array.isArray(template?.candidates) ? template.candidates.join(",") : "";
+          saveConfig();
+          setTemplateStatus(`Loaded ${template.name} into the objective console`, "ok");
+        },
+      },
+    ],
+    "No gallery templates matched the current tag filter.",
+  );
+}
+
+async function refreshTemplates() {
+  saveConfig();
+  const query = templateTagQuery();
+  const [library, gallery] = await Promise.all([
+    coreRequest("GET", `/agents/templates?limit=24${query ? `&${query.slice(1)}` : ""}`),
+    coreRequest("GET", `/agents/gallery${query}`),
+  ]);
+  renderTemplateLibrary(library);
+  renderTemplateGallery(gallery);
+  setTemplateStatus(
+    `Templates ${Number(library?.count || 0)} local • ${Number(gallery?.count || 0)} gallery`,
+    "ok",
+  );
+  return { library, gallery };
+}
+
+async function exportCurrentTemplate() {
+  const objective = String(objectiveInput?.value || "").trim();
+  if (!objective) throw new Error("Objective is required before exporting a template");
+  const name = (window.prompt("Template name", objective.slice(0, 60)) || "").trim();
+  if (!name) return null;
+  const description = (window.prompt("Template description", `Exported operator template for ${name}`) || "").trim();
+  const tags = (window.prompt("Template tags (CSV)", String(templateTagInput?.value || "").trim()) || "").trim();
+  const result = await coreRequest("POST", "/agents/templates/export", {
+    name,
+    description,
+    objective,
+    strategy: String(strategySelect?.value || "single"),
+    candidates: parseCandidates(candidatesInput?.value || ""),
+    tags: parseCandidates(tags),
+    metadata: {
+      source: "desktop-tauri",
+      exported_at: new Date().toISOString(),
+    },
+    include_memory: true,
+    source: "desktop",
+  });
+  renderTemplateOutput(result, "Template exported.");
+  templateManifestInput.value = JSON.stringify(result?.manifest || {}, null, 2);
+  saveConfig();
+  await refreshTemplates();
+  return result;
+}
+
+async function importTemplateManifest() {
+  const raw = String(templateManifestInput?.value || "").trim();
+  if (!raw) throw new Error("Paste a template manifest JSON payload first");
+  let manifest;
+  try {
+    manifest = JSON.parse(raw);
+  } catch {
+    throw new Error("Template manifest must be valid JSON");
+  }
+  const result = await coreRequest("POST", "/agents/templates/import", { manifest });
+  renderTemplateOutput(result, "Template imported.");
+  await refreshTemplates();
   return result;
 }
 
@@ -1236,6 +1479,8 @@ entityPrefixInput?.addEventListener("change", saveConfig);
 mqttTopicInput?.addEventListener("change", saveConfig);
 mqttPayloadInput?.addEventListener("change", saveConfig);
 mqttRetainInput?.addEventListener("change", saveConfig);
+templateTagInput?.addEventListener("change", saveConfig);
+templateManifestInput?.addEventListener("change", saveConfig);
 autoRefreshInput.addEventListener("change", () => {
   saveConfig();
   startAutoRefresh();
@@ -1274,6 +1519,15 @@ mqttPublishBtn?.addEventListener("click", () => {
 mqttSubscribeBtn?.addEventListener("click", () => {
   runAction("Subscribing to MQTT snapshot", () => subscribeMQTTSnapshot(), false).catch(() => {});
 });
+refreshTemplatesBtn?.addEventListener("click", () => {
+  runAction("Refreshing templates", () => refreshTemplates(), false).catch(() => {});
+});
+exportTemplateBtn?.addEventListener("click", () => {
+  runAction("Exporting template", () => exportCurrentTemplate(), false).catch(() => {});
+});
+importTemplateBtn?.addEventListener("click", () => {
+  runAction("Importing template manifest", () => importTemplateManifest(), false).catch(() => {});
+});
 
 loadConfig();
 setActionStatus("Idle", "neutral");
@@ -1282,7 +1536,9 @@ updateLiveButton();
 setLiveStatus(liveState.enabled ? "Live waiting for first event" : "Live idle", "neutral");
 setGovernanceStatus("Unknown", "neutral");
 setIoTStatus("Idle", "neutral");
+setTemplateStatus("Idle", "neutral");
 renderMQTTOutput(null);
+renderTemplateOutput(null);
 refresh()
   .catch((err) => {
     setActionStatus("Initial refresh failed", "error");
@@ -1291,6 +1547,7 @@ refresh()
   .finally(() => {
     refreshGovernance().catch(() => {});
     refreshMQTTStatus().catch(() => {});
+    refreshTemplates().catch(() => {});
     startAutoRefresh();
     syncLivePolling();
   });

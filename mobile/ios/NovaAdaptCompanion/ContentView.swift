@@ -23,6 +23,7 @@ struct ContentView: View {
                         eventsCard
                         controlArtifactsCard
                         runtimeGovernanceCard
+                        agentMarketplaceCard
                         iotControlCard
                         websocketCard
                     }
@@ -42,6 +43,7 @@ struct ContentView: View {
             .onAppear {
                 bridge.refreshDashboard()
                 bridge.refreshMQTTStatus()
+                bridge.refreshTemplates()
                 bridge.ensureLiveEventStream()
             }
             .confirmationDialog(
@@ -891,6 +893,136 @@ struct ContentView: View {
         }
     }
 
+    private var agentMarketplaceCard: some View {
+        sectionCard(title: "Agent Marketplace") {
+            TextField("Tag filter", text: $bridge.templateTagFilter)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled(true)
+                .textFieldStyle(.roundedBorder)
+
+            HStack {
+                Button("Refresh") { bridge.refreshTemplates() }
+                    .buttonStyle(.bordered)
+                Button("Export Current") { bridge.exportCurrentTemplate() }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.novaBrand)
+                Button("Import Manifest") { bridge.importTemplateManifest() }
+                    .buttonStyle(.bordered)
+            }
+
+            Text(bridge.templateStatus)
+                .font(.caption)
+                .foregroundStyle(Color.novaMuted)
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Manifest JSON")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color.novaMuted)
+                TextEditor(text: $bridge.templateManifestJSON)
+                    .scrollContentBackground(.hidden)
+                    .frame(minHeight: 96)
+                    .padding(8)
+                    .background(Color.black.opacity(0.18))
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .stroke(Color.novaLine.opacity(0.85), lineWidth: 1)
+                    )
+                    .foregroundStyle(Color.novaInk)
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Local Templates")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color.novaMuted)
+                if bridge.templateLibrary.isEmpty {
+                    Text("No local templates yet.")
+                        .font(.subheadline)
+                        .foregroundStyle(Color.novaMuted)
+                } else {
+                    ForEach(bridge.templateLibrary) { template in
+                        itemCard {
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack {
+                                    Text(template.name)
+                                        .font(.headline)
+                                        .foregroundStyle(.white)
+                                    Spacer()
+                                    Text(template.updatedAt)
+                                        .font(.caption.monospaced())
+                                        .foregroundStyle(Color.novaMuted)
+                                }
+                                Text(template.description.isEmpty ? template.objective : template.description)
+                                    .font(.caption)
+                                    .foregroundStyle(Color.novaMuted)
+                                Text(template.objective)
+                                    .font(.caption.monospaced())
+                                    .foregroundStyle(Color.novaInk)
+                                Text(templateSummary(template))
+                                    .font(.caption)
+                                    .foregroundStyle(Color.novaMuted)
+                                HStack {
+                                    Button("Use") { bridge.useTemplateObjective(template) }
+                                        .buttonStyle(.bordered)
+                                    Button("Plan") { bridge.createPlanFromTemplate(template) }
+                                        .buttonStyle(.borderedProminent)
+                                        .tint(.novaBrand)
+                                    Button("Share") { bridge.shareTemplate(template) }
+                                        .buttonStyle(.bordered)
+                                }
+                                if template.shared, !template.shareURL.isEmpty {
+                                    Text(template.shareURL)
+                                        .font(.caption2.monospaced())
+                                        .foregroundStyle(Color.novaBrand)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Gallery")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color.novaMuted)
+                if bridge.templateGallery.isEmpty {
+                    Text("No gallery templates matched the current filter.")
+                        .font(.subheadline)
+                        .foregroundStyle(Color.novaMuted)
+                } else {
+                    ForEach(bridge.templateGallery) { template in
+                        itemCard {
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack {
+                                    Text(template.name)
+                                        .font(.headline)
+                                        .foregroundStyle(.white)
+                                    Spacer()
+                                    Text(template.source)
+                                        .font(.caption.monospaced())
+                                        .foregroundStyle(Color.novaBrand)
+                                }
+                                Text(template.description.isEmpty ? template.objective : template.description)
+                                    .font(.caption)
+                                    .foregroundStyle(Color.novaMuted)
+                                Text(templateSummary(template))
+                                    .font(.caption)
+                                    .foregroundStyle(Color.novaMuted)
+                                HStack {
+                                    Button("Use") { bridge.useTemplateObjective(template) }
+                                        .buttonStyle(.bordered)
+                                    Button("Import") { bridge.importGalleryTemplate(template) }
+                                        .buttonStyle(.borderedProminent)
+                                        .tint(.novaHot)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     private var websocketCard: some View {
         sectionCard(title: "WebSocket Feed") {
             if bridge.wsEvents.isEmpty {
@@ -965,6 +1097,15 @@ struct ContentView: View {
 
     private func currencyString(_ value: Double) -> String {
         String(format: "$%.4f", value)
+    }
+
+    private func templateSummary(_ template: AgentTemplateSummary) -> String {
+        let tags = template.tags.joined(separator: ", ")
+        var parts = ["strategy \(template.strategy)", "source \(template.source)"]
+        if !tags.isEmpty {
+            parts.append("tags \(tags)")
+        }
+        return parts.joined(separator: " • ")
     }
 }
 

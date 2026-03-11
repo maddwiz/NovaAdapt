@@ -78,6 +78,21 @@ struct RuntimeGovernanceModelSummary: Identifiable {
     let estimatedCostUSD: Double
 }
 
+struct AgentTemplateSummary: Identifiable {
+    let id: String
+    let templateID: String
+    let name: String
+    let description: String
+    let objective: String
+    let strategy: String
+    let tags: [String]
+    let source: String
+    let updatedAt: String
+    let shared: Bool
+    let shareURL: String
+    let manifest: [String: Any]
+}
+
 struct TerminalSessionSummary: Identifiable {
     let id: String
     let open: Bool
@@ -189,6 +204,15 @@ final class BridgeViewModel: ObservableObject {
     @Published var governanceJobRunning: Int = 0
     @Published var governanceJobMaxWorkers: Int = 0
     @Published var governancePerModel: [RuntimeGovernanceModelSummary] = []
+    @Published var templateTagFilter: String = "" {
+        didSet { persistSettings() }
+    }
+    @Published var templateManifestJSON: String = "" {
+        didSet { persistSettings() }
+    }
+    @Published var templateStatus: String = "Template marketplace idle"
+    @Published var templateLibrary: [AgentTemplateSummary] = []
+    @Published var templateGallery: [AgentTemplateSummary] = []
     @Published var liveEventsEnabled: Bool = false {
         didSet {
             persistSettings()
@@ -261,6 +285,8 @@ final class BridgeViewModel: ObservableObject {
         static let mqttRetain = "novaadapt.mobile.mqttRetain"
         static let governanceBudgetLimit = "novaadapt.mobile.governanceBudgetLimit"
         static let governanceMaxActiveRuns = "novaadapt.mobile.governanceMaxActiveRuns"
+        static let templateTagFilter = "novaadapt.mobile.templateTagFilter"
+        static let templateManifestJSON = "novaadapt.mobile.templateManifestJSON"
         static let liveEventsEnabled = "novaadapt.mobile.liveEventsEnabled"
         static let terminalCommand = "novaadapt.mobile.terminalCommand"
         static let terminalCWD = "novaadapt.mobile.terminalCWD"
@@ -546,6 +572,136 @@ final class BridgeViewModel: ObservableObject {
                 )
                 self.applyRuntimeGovernancePayload(payload["governance"])
                 try await self.refreshDashboardAsync()
+            }
+        }
+    }
+
+    func refreshTemplates() {
+        Task {
+            await runAction(label: "Refreshing templates") {
+                try await self.refreshTemplatesAsync()
+            }
+        }
+    }
+
+    func exportCurrentTemplate() {
+        Task {
+            let normalizedObjective = objective.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !normalizedObjective.isEmpty else {
+                templateStatus = "Objective is empty"
+                return
+            }
+            await runAction(label: "Exporting current template") {
+                let payload = try await self.requestJSON(
+                    method: "POST",
+                    path: "/agents/templates/export",
+                    body: [
+                        "name": String(normalizedObjective.prefix(60)),
+                        "description": "Exported from NovaAdapt iOS companion",
+                        "objective": normalizedObjective,
+                        "strategy": self.strategy,
+                        "candidates": self.parseCSV(self.candidatesCSV),
+                        "tags": self.parseCSV(self.templateTagFilter),
+                        "include_memory": true,
+                        "source": "ios",
+                        "metadata": [
+                            "source": "ios-companion",
+                            "exported_at": ISO8601DateFormatter().string(from: Date()),
+                        ],
+                    ]
+                )
+                self.templateManifestJSON = self.prettyJSONString(payload["manifest"]) ?? self.templateManifestJSON
+                self.templateStatus = self.string(payload["name"], fallback: "Template exported")
+                try await self.refreshTemplatesAsync()
+            }
+        }
+    }
+
+    func importTemplateManifest() {
+        Task {
+            let raw = templateManifestJSON.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !raw.isEmpty else {
+                templateStatus = "Paste a template manifest JSON first"
+                return
+            }
+            guard
+                let data = raw.data(using: .utf8),
+                let object = try? JSONSerialization.jsonObject(with: data),
+                let manifest = object as? [String: Any]
+            else {
+                templateStatus = "Template manifest JSON is invalid"
+                return
+            }
+            await runAction(label: "Importing template manifest") {
+                _ = try await self.requestJSON(
+                    method: "POST",
+                    path: "/agents/templates/import",
+                    body: ["manifest": manifest]
+                )
+                try await self.refreshTemplatesAsync()
+            }
+        }
+    }
+
+    func importGalleryTemplate(_ template: AgentTemplateSummary) {
+        Task {
+            guard let manifest = templateManifest(template) else {
+                templateStatus = "Gallery template payload is incomplete"
+                return
+            }
+            await runAction(label: "Importing gallery template \(template.name)") {
+                let payload = try await self.requestJSON(
+                    method: "POST",
+                    path: "/agents/templates/import",
+                    body: [
+                        "manifest": manifest,
+                        "source": "gallery",
+                    ]
+                )
+                self.templateManifestJSON = self.prettyJSONString(payload["manifest"]) ?? self.templateManifestJSON
+                try await self.refreshTemplatesAsync()
+            }
+        }
+    }
+
+    func useTemplateObjective(_ template: AgentTemplateSummary) {
+        objective = template.objective
+        strategy = template.strategy.isEmpty ? "single" : template.strategy
+        templateStatus = "Loaded \(template.name) into the objective console"
+    }
+
+    func createPlanFromTemplate(_ template: AgentTemplateSummary) {
+        Task {
+            await runAction(label: "Launching template \(template.name) as plan") {
+                _ = try await self.requestJSON(
+                    method: "POST",
+                    path: "/agents/templates/\(template.templateID)/launch",
+                    body: [
+                        "mode": "plan",
+                        "execute": false,
+                        "context": "ios-companion",
+                    ]
+                )
+                try await self.refreshDashboardAsync()
+            }
+        }
+    }
+
+    func shareTemplate(_ template: AgentTemplateSummary) {
+        Task {
+            await runAction(label: "Sharing template \(template.name)") {
+                let payload = try await self.requestJSON(
+                    method: "POST",
+                    path: "/agents/templates/\(template.templateID)/share",
+                    body: [
+                        "shared": true,
+                        "rotate": false,
+                    ]
+                )
+                self.templateManifestJSON = self.prettyJSONString(payload["manifest"]) ?? self.templateManifestJSON
+                let share = payload["share"] as? [String: Any] ?? [:]
+                self.templateStatus = self.string(share["share_url"], fallback: self.string(share["share_uri"], fallback: "Template shared"))
+                try await self.refreshTemplatesAsync()
             }
         }
     }
@@ -1041,6 +1197,12 @@ final class BridgeViewModel: ObservableObject {
         if let value = defaults.string(forKey: DefaultsKey.governanceMaxActiveRuns) {
             governanceMaxActiveRuns = value
         }
+        if let value = defaults.string(forKey: DefaultsKey.templateTagFilter) {
+            templateTagFilter = value
+        }
+        if let value = defaults.string(forKey: DefaultsKey.templateManifestJSON) {
+            templateManifestJSON = value
+        }
         liveEventsEnabled = defaults.bool(forKey: DefaultsKey.liveEventsEnabled)
         if let value = defaults.string(forKey: DefaultsKey.terminalCommand) {
             terminalCommand = value
@@ -1089,6 +1251,8 @@ final class BridgeViewModel: ObservableObject {
         defaults.set(mqttRetain, forKey: DefaultsKey.mqttRetain)
         defaults.set(governanceBudgetLimit, forKey: DefaultsKey.governanceBudgetLimit)
         defaults.set(governanceMaxActiveRuns, forKey: DefaultsKey.governanceMaxActiveRuns)
+        defaults.set(templateTagFilter, forKey: DefaultsKey.templateTagFilter)
+        defaults.set(templateManifestJSON, forKey: DefaultsKey.templateManifestJSON)
         defaults.set(liveEventsEnabled, forKey: DefaultsKey.liveEventsEnabled)
         defaults.set(terminalCommand, forKey: DefaultsKey.terminalCommand)
         defaults.set(terminalCWD, forKey: DefaultsKey.terminalCWD)
@@ -1328,6 +1492,23 @@ final class BridgeViewModel: ObservableObject {
         controlArtifacts = parseControlArtifacts(payload["control_artifacts"])
         applyRuntimeGovernancePayload(payload["governance"])
         syncLiveAuditCursor()
+    }
+
+    private func refreshTemplatesAsync() async throws {
+        let tag = templateTagFilter.trimmingCharacters(in: .whitespacesAndNewlines)
+        let query = tag.isEmpty ? "" : "?tag=\(tag.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? tag)"
+        async let libraryPayload = requestJSON(
+            method: "GET",
+            path: "/agents/templates?limit=24\(query.isEmpty ? "" : "&" + String(query.dropFirst()))",
+            body: nil
+        )
+        async let galleryPayload = requestJSON(method: "GET", path: "/agents/gallery\(query)", body: nil)
+        let (library, gallery) = try await (libraryPayload, galleryPayload)
+        templateLibrary = parseAgentTemplates(library["templates"])
+        templateGallery = parseAgentTemplates(gallery["templates"])
+        let libraryCount = toInt(library["count"]) ?? templateLibrary.count
+        let galleryCount = toInt(gallery["count"]) ?? templateGallery.count
+        templateStatus = "Templates \(libraryCount) local • \(galleryCount) gallery"
     }
 
     private func refreshIoTEntitiesAsync() async throws {
@@ -1596,10 +1777,7 @@ final class BridgeViewModel: ObservableObject {
                 "created_at": ISO8601DateFormatter().string(from: Date()),
             ],
         ]
-        let candidates = candidatesCSV
-            .split(separator: ",")
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
+        let candidates = parseCSV(candidatesCSV)
         if !candidates.isEmpty {
             payload["candidates"] = candidates
         }
@@ -1635,6 +1813,13 @@ final class BridgeViewModel: ObservableObject {
             payload["repair_fallbacks"] = repairFallbacks
         }
         return payload
+    }
+
+    private func parseCSV(_ raw: String) -> [String] {
+        raw
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
     }
 
     private func adminOrPrimaryToken() -> String {
@@ -1983,6 +2168,30 @@ final class BridgeViewModel: ObservableObject {
         }
     }
 
+    private func parseAgentTemplates(_ value: Any?) -> [AgentTemplateSummary] {
+        guard let items = value as? [[String: Any]] else {
+            return []
+        }
+        return items.prefix(24).map { item in
+            let templateID = string(item["template_id"], fallback: UUID().uuidString)
+            let share = item["share"] as? [String: Any] ?? [:]
+            return AgentTemplateSummary(
+                id: templateID,
+                templateID: templateID,
+                name: string(item["name"], fallback: templateID),
+                description: string(item["description"]),
+                objective: string(item["objective"]),
+                strategy: string(item["strategy"], fallback: "single"),
+                tags: (item["tags"] as? [Any] ?? []).map { string($0) }.filter { !$0.isEmpty },
+                source: string(item["source"], fallback: "local"),
+                updatedAt: string(item["updated_at"], fallback: string(item["created_at"], fallback: "-")),
+                shared: bool(item["shared"]),
+                shareURL: string(share["share_url"], fallback: string(share["share_uri"], fallback: string(share["share_path"]))),
+                manifest: item
+            )
+        }
+    }
+
     private func parseControlArtifacts(_ value: Any?) -> [ControlArtifactSummary] {
         guard let items = value as? [[String: Any]] else {
             return []
@@ -2245,6 +2454,37 @@ final class BridgeViewModel: ObservableObject {
         case "canceled": return 4
         default: return 99
         }
+    }
+
+    private func templateManifest(_ template: AgentTemplateSummary) -> [String: Any]? {
+        if !template.manifest.isEmpty {
+            return template.manifest
+        }
+        guard !template.name.isEmpty, !template.objective.isEmpty else {
+            return nil
+        }
+        return [
+            "template_id": template.templateID,
+            "name": template.name,
+            "description": template.description,
+            "objective": template.objective,
+            "strategy": template.strategy,
+            "tags": template.tags,
+            "source": template.source,
+        ]
+    }
+
+    private func prettyJSONString(_ value: Any?) -> String? {
+        guard let value else {
+            return nil
+        }
+        guard JSONSerialization.isValidJSONObject(value) else {
+            return nil
+        }
+        guard let data = try? JSONSerialization.data(withJSONObject: value, options: [.prettyPrinted]) else {
+            return nil
+        }
+        return String(data: data, encoding: .utf8)
     }
 
     private func prettyJSON(_ raw: String) -> String? {

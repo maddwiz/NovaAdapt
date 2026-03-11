@@ -213,6 +213,39 @@
       </section>
 
       <section class="card">
+        <div class="section-head">
+          <h2>Agent Marketplace</h2>
+          <span id="templateStatus" class="badge neutral">Idle</span>
+        </div>
+        <div class="grid compact">
+          <label>
+            <span>Tag Filter</span>
+            <input id="templateTagInput" type="text" placeholder="mobile, ops, iot" />
+          </label>
+          <label>
+            <span>Import Manifest JSON</span>
+            <textarea id="templateManifestInput" rows="4" placeholder='{"name":"My agent","objective":"..."}'></textarea>
+          </label>
+          <div class="row row-end">
+            <button id="refreshTemplatesBtn" class="secondary">Refresh Templates</button>
+            <button id="exportTemplateBtn" class="primary">Export Current Objective</button>
+            <button id="importTemplateBtn" class="secondary">Import Manifest</button>
+          </div>
+        </div>
+        <div class="grid compact">
+          <div>
+            <h3>Local Templates</h3>
+            <div id="templateLibrary" class="plans"></div>
+          </div>
+          <div>
+            <h3>Gallery</h3>
+            <div id="templateGallery" class="plans"></div>
+          </div>
+        </div>
+        <pre id="templateOutput" class="summary">No template activity yet.</pre>
+      </section>
+
+      <section class="card">
         <h2>System Snapshot</h2>
         <pre id="summary" class="summary">No data loaded.</pre>
       </section>
