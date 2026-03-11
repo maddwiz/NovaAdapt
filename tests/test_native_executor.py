@@ -106,6 +106,38 @@ class NativeExecutorTests(unittest.TestCase):
         self.assertEqual(cmd, ["xdotool", "mousemove", "120", "340", "click", "--repeat", "2", "1"])
         self.assertFalse(shell)
 
+    def test_linux_scroll_uses_xdotool_wheel_button(self):
+        executor = _RecordingLinuxExecutor()
+        result = executor.execute_action({"type": "scroll", "direction": "down", "amount": 4})
+        self.assertEqual(result.status, "ok")
+        cmd, shell = executor.calls[-1]
+        self.assertEqual(cmd, ["xdotool", "click", "--repeat", "4", "5"])
+        self.assertFalse(shell)
+
+    def test_linux_drag_uses_xdotool_mouse_sequence(self):
+        executor = _RecordingLinuxExecutor()
+        result = executor.execute_action({"type": "drag", "x1": 10, "y1": 20, "x2": 50, "y2": 60})
+        self.assertEqual(result.status, "ok")
+        cmd, shell = executor.calls[-1]
+        self.assertEqual(
+            cmd,
+            [
+                "xdotool",
+                "mousemove",
+                "10",
+                "20",
+                "mousedown",
+                "1",
+                "mousemove",
+                "--sync",
+                "50",
+                "60",
+                "mouseup",
+                "1",
+            ],
+        )
+        self.assertFalse(shell)
+
     def test_linux_probe_includes_xdotool_flag(self):
         class _NoToolExecutor(NativeDesktopExecutor):
             def _linux_has_xdotool(self) -> bool:
@@ -165,6 +197,56 @@ class NativeExecutorTests(unittest.TestCase):
         cmd, shell = executor.calls[-1]
         self.assertFalse(shell)
         self.assertIn("$i -lt 2", cmd[-1])
+
+    def test_windows_scroll_uses_wheel_mouse_event(self):
+        executor = _RecordingWindowsExecutor()
+        result = executor.execute_action({"type": "scroll", "direction": "up", "amount": 2})
+        self.assertEqual(result.status, "ok")
+        cmd, shell = executor.calls[-1]
+        self.assertFalse(shell)
+        self.assertIn("$i -lt 2", cmd[-1])
+        self.assertIn("mouse_event(0x0800", cmd[-1])
+        self.assertIn("120", cmd[-1])
+
+    def test_windows_scroll_uses_mouse_wheel_event(self):
+        executor = _RecordingWindowsExecutor()
+        result = executor.execute_action({"type": "scroll", "direction": "down", "amount": 2})
+        self.assertEqual(result.status, "ok")
+        cmd, shell = executor.calls[-1]
+        self.assertFalse(shell)
+        self.assertIn("$i -lt 2", cmd[-1])
+        self.assertIn("mouse_event(0x0800", cmd[-1])
+
+    def test_windows_drag_uses_mouse_down_move_up(self):
+        executor = _RecordingWindowsExecutor()
+        result = executor.execute_action({"type": "drag", "target": "45,90", "value": "120,180"})
+        self.assertEqual(result.status, "ok")
+        cmd, shell = executor.calls[-1]
+        self.assertFalse(shell)
+        self.assertIn("SetCursorPos(45, 90)", cmd[-1])
+        self.assertIn("SetCursorPos(120, 180)", cmd[-1])
+        self.assertIn("mouse_event(0x0002", cmd[-1])
+        self.assertIn("mouse_event(0x0004", cmd[-1])
+
+    def test_macos_scroll_uses_jxa_scroll_event(self):
+        executor = _RecordingMacExecutor()
+        result = executor.execute_action({"type": "scroll", "direction": "up", "amount": 3})
+        self.assertEqual(result.status, "ok")
+        cmd, shell = executor.calls[-1]
+        self.assertFalse(shell)
+        self.assertEqual(cmd[:3], ["osascript", "-l", "JavaScript"])
+        self.assertIn("CGEventCreateScrollWheelEvent", cmd[-1])
+
+    def test_macos_drag_uses_jxa_mouse_events(self):
+        executor = _RecordingMacExecutor()
+        result = executor.execute_action({"type": "drag", "x1": 1, "y1": 2, "x2": 3, "y2": 4})
+        self.assertEqual(result.status, "ok")
+        cmd, shell = executor.calls[-1]
+        self.assertFalse(shell)
+        self.assertEqual(cmd[:3], ["osascript", "-l", "JavaScript"])
+        self.assertIn("kCGEventLeftMouseDown", cmd[-1])
+        self.assertIn("kCGEventLeftMouseDragged", cmd[-1])
+        self.assertIn("kCGEventLeftMouseUp", cmd[-1])
 
     def test_macos_open_app_supports_args(self):
         executor = _RecordingMacExecutor()

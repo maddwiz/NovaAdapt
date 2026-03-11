@@ -453,6 +453,21 @@ class _StubService:
     def memory_ingest(self, text, source_id="", metadata=None):
         return {"ok": True, "source_id": source_id, "metadata": metadata or {}, "result": {"ingested": text}}
 
+    def vision_execute(self, payload):
+        return {"status": "preview", "goal": payload.get("goal"), "action": {"type": "click", "target": "10,10"}}
+
+    def mobile_status(self):
+        return {"ok": True, "android": {"ok": True}, "ios": {"ok": True}}
+
+    def mobile_action(self, payload):
+        return {"status": "preview", "platform": payload.get("platform"), "action": payload.get("action", {})}
+
+    def homeassistant_status(self):
+        return {"ok": True, "transport": "homeassistant-http"}
+
+    def homeassistant_action(self, payload):
+        return {"status": "preview", "action": payload.get("action", {})}
+
     def browser_status(self):
         return {"ok": True, "transport": "browser", "capabilities": ["navigate", "click_selector"]}
 
@@ -548,6 +563,11 @@ class MCPServerTests(unittest.TestCase):
         self.assertIn("novaadapt_workflows_list", names)
         self.assertIn("novaadapt_memory_recall", names)
         self.assertIn("novaadapt_memory_ingest", names)
+        self.assertIn("novaadapt_vision_execute", names)
+        self.assertIn("novaadapt_mobile_status", names)
+        self.assertIn("novaadapt_mobile_action", names)
+        self.assertIn("novaadapt_homeassistant_status", names)
+        self.assertIn("novaadapt_homeassistant_action", names)
         self.assertIn("novaadapt_browser_status", names)
         self.assertIn("novaadapt_browser_pages", names)
         self.assertIn("novaadapt_browser_action", names)
@@ -1530,6 +1550,76 @@ class MCPServerTests(unittest.TestCase):
         )
         memory_ingest_payload = memory_ingest_resp["result"]["content"][0]["json"]
         self.assertEqual(memory_ingest_payload["source_id"], "mcp-test")
+
+        vision_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 931,
+                "method": "tools/call",
+                "params": {
+                    "name": "novaadapt_vision_execute",
+                    "arguments": {"goal": "Click continue"},
+                },
+            }
+        )
+        vision_payload = vision_resp["result"]["content"][0]["json"]
+        self.assertEqual(vision_payload["goal"], "Click continue")
+
+        mobile_status_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 932,
+                "method": "tools/call",
+                "params": {
+                    "name": "novaadapt_mobile_status",
+                    "arguments": {},
+                },
+            }
+        )
+        mobile_status_payload = mobile_status_resp["result"]["content"][0]["json"]
+        self.assertTrue(mobile_status_payload["ok"])
+
+        mobile_action_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 933,
+                "method": "tools/call",
+                "params": {
+                    "name": "novaadapt_mobile_action",
+                    "arguments": {"platform": "android", "action": {"type": "tap", "x": 1, "y": 2}},
+                },
+            }
+        )
+        mobile_action_payload = mobile_action_resp["result"]["content"][0]["json"]
+        self.assertEqual(mobile_action_payload["platform"], "android")
+
+        homeassistant_status_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 934,
+                "method": "tools/call",
+                "params": {
+                    "name": "novaadapt_homeassistant_status",
+                    "arguments": {},
+                },
+            }
+        )
+        homeassistant_status_payload = homeassistant_status_resp["result"]["content"][0]["json"]
+        self.assertTrue(homeassistant_status_payload["ok"])
+
+        homeassistant_action_resp = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 935,
+                "method": "tools/call",
+                "params": {
+                    "name": "novaadapt_homeassistant_action",
+                    "arguments": {"action": {"type": "ha_service", "domain": "light", "service": "turn_on"}},
+                },
+            }
+        )
+        homeassistant_action_payload = homeassistant_action_resp["result"]["content"][0]["json"]
+        self.assertEqual(homeassistant_action_payload["action"]["type"], "ha_service")
 
         browser_status_resp = server.handle_request(
             {

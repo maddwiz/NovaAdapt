@@ -1091,6 +1091,69 @@ class NovaAdaptAPIClient:
             return payload
         raise APIClientError("Expected object payload from /memory/ingest")
 
+    def vision_execute(
+        self,
+        goal: str,
+        *,
+        execute: bool = False,
+        idempotency_key: str | None = None,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        payload = self._post_json(
+            "/execute/vision",
+            {"goal": str(goal or ""), "execute": bool(execute), **kwargs},
+            idempotency_key=idempotency_key,
+        )
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /execute/vision")
+
+    def mobile_action(
+        self,
+        platform: str,
+        action: dict[str, Any] | None = None,
+        *,
+        execute: bool = False,
+        idempotency_key: str | None = None,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {"platform": str(platform or ""), "execute": bool(execute), **kwargs}
+        if action is not None:
+            body["action"] = action
+        payload = self._post_json("/mobile/action", body, idempotency_key=idempotency_key)
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /mobile/action")
+
+    def mobile_status(self) -> dict[str, Any]:
+        payload = self._get_json("/mobile/status")
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /mobile/status")
+
+    def homeassistant_status(self) -> dict[str, Any]:
+        payload = self._get_json("/iot/homeassistant/status")
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /iot/homeassistant/status")
+
+    def homeassistant_action(
+        self,
+        action: dict[str, Any],
+        *,
+        execute: bool = False,
+        idempotency_key: str | None = None,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        payload = self._post_json(
+            "/iot/homeassistant/action",
+            {"action": action, "execute": bool(execute), **kwargs},
+            idempotency_key=idempotency_key,
+        )
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /iot/homeassistant/action")
+
     def browser_status(self) -> dict[str, Any]:
         payload = self._get_json("/browser/status")
         if isinstance(payload, dict):

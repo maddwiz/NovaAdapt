@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import json
 import os
 import time
@@ -18,7 +19,9 @@ from .channels import ChannelRegistry, build_channel_registry
 from .canvas import CanvasRenderResult, CanvasRenderer, CanvasSessionStore, canvas_enabled
 from .directshell import DirectShellClient
 from .flags import coerce_bool
+from .homeassistant_executor import HomeAssistantExecutor
 from .memory import MemoryBackend, build_memory_backend
+from .mobile_executor import AndroidMaestroExecutor, IOSVisionExecutor, UnifiedMobileExecutor
 from .novaprime import (
     NovaPrimeBackend,
     build_novaprime_client,
@@ -30,7 +33,19 @@ from .plan_store import PlanStore
 from .policy import ActionPolicy
 from .plugins import PluginRegistry, SIBBridge, build_plugin_registry
 from .voice import build_stt_backend, build_tts_backend
+from .vision_grounding import VisionGroundingExecutor
 from .workflows import WorkflowCheckpointStore, WorkflowEngine, WorkflowRecord, WorkflowStore, workflows_enabled
+
+
+def _result_payload(status: str, output: str, action: dict[str, Any], data: dict[str, Any] | None) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "status": str(status),
+        "output": str(output),
+        "action": dict(action),
+    }
+    if data is not None:
+        payload["data"] = dict(data)
+    return payload
 
 
 class NovaAdaptService:
@@ -45,6 +60,9 @@ class NovaAdaptService:
         router_loader: Callable[[Path], ModelRouter] | None = None,
         directshell_factory: Callable[[], DirectShellClient] | None = None,
         browser_executor_factory: Callable[[], BrowserExecutor] | None = None,
+        vision_executor_factory: Callable[[], VisionGroundingExecutor] | None = None,
+        mobile_executor_factory: Callable[[], UnifiedMobileExecutor] | None = None,
+        homeassistant_executor_factory: Callable[[], HomeAssistantExecutor] | None = None,
         memory_backend: MemoryBackend | None = None,
         novaprime_client: NovaPrimeBackend | None = None,
         adapt_toggle_store: AdaptToggleStore | None = None,
@@ -60,6 +78,9 @@ class NovaAdaptService:
         self.router_loader = router_loader or ModelRouter.from_config_file
         self.directshell_factory = directshell_factory or DirectShellClient
         self.browser_executor_factory = browser_executor_factory or BrowserExecutor
+        self.vision_executor_factory = vision_executor_factory
+        self.mobile_executor_factory = mobile_executor_factory
+        self.homeassistant_executor_factory = homeassistant_executor_factory or HomeAssistantExecutor
         self.memory_backend = memory_backend or build_memory_backend()
         self.novaprime_client = novaprime_client or build_novaprime_client()
         self.adapt_toggle_store = adapt_toggle_store or AdaptToggleStore()
@@ -70,6 +91,9 @@ class NovaAdaptService:
         self._plan_store: PlanStore | None = None
         self._audit_store: AuditStore | None = None
         self._browser_executor: BrowserExecutor | None = None
+        self._vision_executor: VisionGroundingExecutor | None = None
+        self._mobile_executor: UnifiedMobileExecutor | None = None
+        self._homeassistant_executor: HomeAssistantExecutor | None = None
         self._sib_bridge: SIBBridge | None = None
         self._canvas_renderer: CanvasRenderer | None = None
         self._canvas_sessions: CanvasSessionStore | None = None
@@ -80,14 +104,21 @@ class NovaAdaptService:
     def close(self) -> None:
         browser = self._browser_executor
         self._browser_executor = None
+        vision = self._vision_executor
+        self._vision_executor = None
+        mobile = self._mobile_executor
+        self._mobile_executor = None
+        homeassistant = self._homeassistant_executor
+        self._homeassistant_executor = None
         if browser is None:
-            return
-        close_fn = getattr(browser, "close", None)
-        if callable(close_fn):
-            try:
-                close_fn()
-            except Exception:
-                pass
+            browser = None
+        for runtime in (browser, vision, mobile, homeassistant):
+            close_fn = getattr(runtime, "close", None)
+            if callable(close_fn):
+                try:
+                    close_fn()
+                except Exception:
+                    pass
 
     def models(self, config_path: Path | None = None) -> list[dict[str, Any]]:
         router = self.router_loader(config_path or self.default_config)
@@ -172,6 +203,183 @@ class NovaAdaptService:
             "status": str(result.status),
             "output": str(result.output),
         }
+
+    def vision_execute(self, payload: dict[str, Any]) -> dict[str, Any]:
+        config_path = Path(payload.get("config") or self.default_config)
+        goal = str(payload.get("goal") or payload.get("objective") or "").strip()
+        if not goal:
+            raise ValueError("'goal' or 'objective' is required")
+
+        strategy = str(payload.get("strategy", "single") or "single")
+        model_name = str(payload.get("model") or "").strip() or None
+        candidate_models = self._as_name_list(payload.get("candidates"))
+        fallback_models = self._as_name_list(payload.get("fallbacks"))
+        execute = coerce_bool(payload.get("execute"), default=False)
+        allow_dangerous = coerce_bool(payload.get("allow_dangerous"), default=False)
+        screenshot_png = self._decode_base64_image(payload.get("screenshot_base64"))
+        app_name = str(payload.get("app_name") or "").strip()
+        context = payload.get("context") if isinstance(payload.get("context"), dict) else {}
+        grounded = self._vision().ground(
+            goal=goal,
+            config_path=config_path,
+            screenshot_png=screenshot_png,
+            app_name=app_name,
+            model_name=model_name,
+            strategy=strategy,
+            candidate_models=candidate_models or None,
+            fallback_models=fallback_models or None,
+            context=context,
+            ocr_text=str(payload.get("ocr_text") or ""),
+            accessibility_tree=str(payload.get("accessibility_tree") or ""),
+        )
+        policy = ActionPolicy()
+        decision = policy.evaluate(grounded.action, allow_dangerous=allow_dangerous)
+        runtime_result = self._execute_routed_action(
+            grounded.action,
+            execute=(execute and decision.allowed),
+            config_path=config_path,
+        )
+        out: dict[str, Any] = {
+            "goal": goal,
+            "status": "blocked" if execute and not decision.allowed else runtime_result["status"],
+            "output": decision.reason if execute and not decision.allowed else runtime_result["output"],
+            "action": runtime_result["action"],
+            "dangerous": decision.dangerous,
+            "vision": {
+                "confidence": grounded.confidence,
+                "reason": grounded.reason,
+                "model": grounded.model_name,
+                "model_id": grounded.model_id,
+                "strategy": grounded.strategy,
+                "vote_summary": grounded.vote_summary,
+                "attempted_models": grounded.attempted_models,
+                "model_errors": grounded.model_errors,
+                "ocr_text": grounded.ocr_text,
+                "accessibility_tree": grounded.accessibility_tree,
+                "screenshot_base64": grounded.screenshot_base64,
+            },
+        }
+        if runtime_result.get("data") is not None:
+            out["data"] = runtime_result.get("data")
+        self._ingest_control_memory(
+            control_type="vision",
+            payload={
+                "goal": goal,
+                "result": out,
+                "context": context,
+            },
+            event_names=["control.vision", f"control.vision.{out['status']}"],
+        )
+        return out
+
+    def mobile_action(self, payload: dict[str, Any]) -> dict[str, Any]:
+        platform_name = str(payload.get("platform") or "").strip().lower()
+        if platform_name not in {"android", "ios"}:
+            raise ValueError("'platform' must be 'android' or 'ios'")
+        execute = coerce_bool(payload.get("execute"), default=False)
+        allow_dangerous = coerce_bool(payload.get("allow_dangerous"), default=False)
+        config_path = Path(payload.get("config") or self.default_config)
+        strategy = str(payload.get("strategy", "single") or "single")
+        model_name = str(payload.get("model") or "").strip() or None
+        candidate_models = self._as_name_list(payload.get("candidates"))
+        fallback_models = self._as_name_list(payload.get("fallbacks"))
+
+        if platform_name == "ios":
+            grounded, routed_action = self._mobile().ios_executor.execute(
+                payload,
+                config_path=config_path,
+                execute=execute,
+                strategy=strategy,
+                model_name=model_name,
+                candidate_models=candidate_models or None,
+                fallback_models=fallback_models or None,
+            )
+            policy = ActionPolicy()
+            decision = policy.evaluate(routed_action, allow_dangerous=allow_dangerous)
+            runtime_result = self._execute_routed_action(
+                routed_action,
+                execute=(execute and decision.allowed),
+                config_path=config_path,
+            )
+            out: dict[str, Any] = {
+                "platform": "ios",
+                "goal": str(payload.get("goal") or payload.get("objective") or ""),
+                "status": "blocked" if execute and not decision.allowed else runtime_result["status"],
+                "output": decision.reason if execute and not decision.allowed else runtime_result["output"],
+                "action": runtime_result["action"],
+                "dangerous": decision.dangerous,
+                "vision": {
+                    "confidence": grounded.confidence,
+                    "reason": grounded.reason,
+                    "model": grounded.model_name,
+                    "model_id": grounded.model_id,
+                    "screenshot_base64": grounded.screenshot_base64,
+                },
+            }
+            if runtime_result.get("data") is not None:
+                out["data"] = runtime_result.get("data")
+        else:
+            raw_action = payload.get("action")
+            if isinstance(raw_action, dict):
+                action = dict(raw_action)
+            else:
+                action = {key: value for key, value in payload.items() if key not in {"action", "config"}}
+            action["platform"] = "android"
+            policy = ActionPolicy()
+            decision = policy.evaluate(action, allow_dangerous=allow_dangerous)
+            runtime_result = self._execute_routed_action(
+                action,
+                execute=(execute and decision.allowed),
+                config_path=config_path,
+            )
+            out = {
+                "platform": "android",
+                "status": "blocked" if execute and not decision.allowed else runtime_result["status"],
+                "output": decision.reason if execute and not decision.allowed else runtime_result["output"],
+                "action": runtime_result["action"],
+                "dangerous": decision.dangerous,
+            }
+            if runtime_result.get("data") is not None:
+                out["data"] = runtime_result.get("data")
+
+        self._ingest_control_memory(
+            control_type="mobile",
+            payload=out,
+            event_names=["control.mobile", f"control.mobile.{platform_name}", f"control.mobile.{out['status']}"],
+        )
+        return out
+
+    def mobile_status(self) -> dict[str, Any]:
+        return self._mobile().status()
+
+    def homeassistant_status(self) -> dict[str, Any]:
+        return self._homeassistant().status()
+
+    def homeassistant_action(self, payload: dict[str, Any]) -> dict[str, Any]:
+        raw_action = payload.get("action")
+        if isinstance(raw_action, dict):
+            action = dict(raw_action)
+        else:
+            action = {key: value for key, value in payload.items() if key != "action"}
+        execute = coerce_bool(payload.get("execute"), default=False)
+        allow_dangerous = coerce_bool(payload.get("allow_dangerous"), default=False)
+        policy = ActionPolicy()
+        decision = policy.evaluate(action, allow_dangerous=allow_dangerous)
+        runtime_result = self._execute_routed_action(action, execute=(execute and decision.allowed))
+        out: dict[str, Any] = {
+            "status": "blocked" if execute and not decision.allowed else runtime_result["status"],
+            "output": decision.reason if execute and not decision.allowed else runtime_result["output"],
+            "action": runtime_result["action"],
+            "dangerous": decision.dangerous,
+        }
+        if runtime_result.get("data") is not None:
+            out["data"] = runtime_result.get("data")
+        self._ingest_control_memory(
+            control_type="iot",
+            payload=out,
+            event_names=["control.iot", f"control.iot.{out['status']}"],
+        )
+        return out
 
     def memory_status(self) -> dict[str, Any]:
         status = self.memory_backend.status()
@@ -2219,7 +2427,6 @@ class NovaAdaptService:
 
         policy = ActionPolicy()
         queue = UndoQueue(db_path=self.db_path)
-        directshell = self.directshell_factory()
         self._plans().mark_executing(plan_id=plan_id, total_actions=len(actions))
 
         execution_results: list[dict[str, Any]] = []
@@ -2256,28 +2463,29 @@ class NovaAdaptService:
                     )
                     continue
 
-                run_result = directshell.execute_action(action=action, dry_run=False)
+                routed = self._execute_routed_action(action, execute=True)
                 attempts = 1
-                while str(run_result.status).lower() != "ok" and attempts <= action_retry_attempts:
+                while str(routed["status"]).lower() != "ok" and attempts <= action_retry_attempts:
                     if callable(cancel_requested) and bool(cancel_requested()):
                         raise RuntimeError("execution canceled by operator")
                     if action_retry_backoff_seconds > 0:
                         time.sleep(action_retry_backoff_seconds * (2 ** (attempts - 1)))
-                    run_result = directshell.execute_action(action=action, dry_run=False)
+                    routed = self._execute_routed_action(action, execute=True)
                     attempts += 1
                 execution_results.append(
                     {
-                        "status": run_result.status,
-                        "output": run_result.output,
-                        "action": run_result.action,
+                        "status": routed["status"],
+                        "output": routed["output"],
+                        "action": routed["action"],
                         "dangerous": decision.dangerous,
                         "attempts": attempts,
+                        "data": routed.get("data"),
                     }
                 )
                 action_log_ids.append(
                     queue.record(
-                        action=run_result.action,
-                        status=run_result.status,
+                        action=routed["action"],
+                        status=routed["status"],
                         undo_action=undo_action,
                     )
                 )
@@ -2331,6 +2539,7 @@ class NovaAdaptService:
                 execution_results=execution_results,
                 execution_error=str(failed.get("execution_error", "")),
             )
+            self._track_memory_events(["plan.failed", "plan.failed_actions"])
             return failed
 
         approved = self._plans().approve(
@@ -2349,6 +2558,7 @@ class NovaAdaptService:
             execution_results=execution_results,
             execution_error="",
         )
+        self._track_memory_events(["plan.executed"])
         return approved
 
     def reject_plan(self, plan_id: str, reason: str | None = None) -> dict[str, Any]:
@@ -2360,6 +2570,11 @@ class NovaAdaptService:
         rejected = self._plans().reject(plan_id, reason=reason)
         if rejected is None:
             raise ValueError("Plan not found")
+        self._ingest_control_memory(
+            control_type="plan_reject",
+            payload={"plan_id": plan_id, "reason": str(reason or ""), "status": "rejected"},
+            event_names=["plan.reject"],
+        )
         return rejected
 
     def undo_plan(self, plan_id: str, payload: dict[str, Any]) -> dict[str, Any]:
@@ -2386,12 +2601,18 @@ class NovaAdaptService:
             except ValueError as exc:
                 results.append({"id": int(action_id), "ok": False, "error": str(exc)})
 
-        return {
+        payload = {
             "plan_id": plan_id,
             "executed": execute,
             "mark_only": mark_only,
             "results": results,
         }
+        self._ingest_control_memory(
+            control_type="plan_undo",
+            payload=payload,
+            event_names=["plan.undo"],
+        )
+        return payload
 
     def history(self, limit: int = 20) -> list[dict[str, Any]]:
         queue = UndoQueue(db_path=self.db_path)
@@ -2420,21 +2641,26 @@ class NovaAdaptService:
             queue.mark_undone(item["id"])
             return {"id": item["id"], "status": "marked_undone", "mode": "mark_only"}
 
-        directshell = self.directshell_factory()
-        result = directshell.execute_action(action=undo_action, dry_run=not execute)
-        marked = bool(execute and result.status == "ok")
+        result = self._execute_routed_action(undo_action, execute=execute)
+        marked = bool(execute and result["status"] == "ok")
         if marked:
             queue.mark_undone(item["id"])
-        return {
+        payload = {
             "id": item["id"],
             "executed": execute,
             "undo_result": {
-                "status": result.status,
-                "output": result.output,
-                "action": result.action,
+                "status": result["status"],
+                "output": result["output"],
+                "action": result["action"],
             },
             "marked_undone": marked,
         }
+        self._ingest_control_memory(
+            control_type="undo",
+            payload=payload,
+            event_names=["undo.executed" if marked else "undo.preview"],
+        )
+        return payload
 
     def events(
         self,
@@ -2482,6 +2708,153 @@ class NovaAdaptService:
             if time.monotonic() >= deadline:
                 return []
             time.sleep(interval)
+
+    def _execute_routed_action(
+        self,
+        action: dict[str, Any],
+        *,
+        execute: bool,
+        config_path: Path | None = None,
+    ) -> dict[str, Any]:
+        normalized_action = self._normalize_routed_action(action)
+        action_type = str(normalized_action.get("type") or "").strip().lower()
+        executor_name = str(normalized_action.get("executor") or "").strip().lower()
+        platform_name = str(normalized_action.get("platform") or "").strip().lower()
+
+        if executor_name == "vision" or action_type == "vision_goal":
+            goal = str(normalized_action.get("goal") or normalized_action.get("target") or normalized_action.get("value") or "").strip()
+            grounded = self._vision().ground(
+                goal=goal,
+                config_path=config_path or self.default_config,
+                screenshot_png=self._decode_base64_image(normalized_action.get("screenshot_base64")),
+                app_name=str(normalized_action.get("app_name") or "").strip(),
+                model_name=str(normalized_action.get("model") or "").strip() or None,
+                strategy=str(normalized_action.get("strategy") or "single"),
+                candidate_models=self._as_name_list(normalized_action.get("candidates")) or None,
+                fallback_models=self._as_name_list(normalized_action.get("fallbacks")) or None,
+                context=normalized_action.get("context") if isinstance(normalized_action.get("context"), dict) else None,
+                ocr_text=str(normalized_action.get("ocr_text") or ""),
+                accessibility_tree=str(normalized_action.get("accessibility_tree") or ""),
+            )
+            inner_action = dict(grounded.action)
+            result = self._execute_routed_action(inner_action, execute=execute, config_path=config_path)
+            result.setdefault("data", {})
+            if isinstance(result["data"], dict):
+                result["data"]["vision"] = {
+                    "confidence": grounded.confidence,
+                    "reason": grounded.reason,
+                    "model": grounded.model_name,
+                    "model_id": grounded.model_id,
+                }
+            return result
+
+        if platform_name == "android" or executor_name == "mobile" or action_type.startswith("android_"):
+            if action_type.startswith("android_"):
+                normalized_action["type"] = action_type.removeprefix("android_")
+            normalized_action["platform"] = "android"
+            result = self._mobile().execute_action(normalized_action, dry_run=not execute)
+            return _result_payload(result.status, result.output, result.action, result.data)
+
+        if action_type in {"ha_service", "mqtt_publish", "discover", "discover_entities", "list_entities"} or executor_name in {"homeassistant", "iot"}:
+            result = self._homeassistant().execute_action(normalized_action, dry_run=not execute)
+            return _result_payload(result.status, result.output, result.action, result.data)
+
+        browser_types = set(BrowserExecutor.capabilities())
+        if action_type in browser_types or executor_name == "browser":
+            if not execute:
+                return _result_payload(
+                    "preview",
+                    f"Preview only: browser {action_type}",
+                    normalized_action,
+                    {"transport": "browser"},
+                )
+            result = self._browser().execute_action(normalized_action)
+            return _result_payload(
+                str(result.status),
+                str(result.output),
+                normalized_action,
+                result.data if isinstance(result.data, dict) else None,
+            )
+
+        result = self.directshell_factory().execute_action(action=normalized_action, dry_run=not execute)
+        return _result_payload(result.status, result.output, result.action, None)
+
+    @staticmethod
+    def _normalize_routed_action(action: dict[str, Any]) -> dict[str, Any]:
+        normalized = dict(action or {})
+        action_type = str(normalized.get("type") or "").strip().lower()
+        if action_type in {"click", "right_click", "double_click"} and not normalized.get("target"):
+            x = normalized.get("x")
+            y = normalized.get("y")
+            if x is not None and y is not None:
+                try:
+                    normalized["target"] = f"{int(x)},{int(y)}"
+                except Exception:
+                    pass
+        if action_type in {"type", "text", "input"} and not normalized.get("value") and normalized.get("text") is not None:
+            normalized["value"] = str(normalized.get("text") or "")
+        if action_type == "hotkey" and not normalized.get("target"):
+            keys = normalized.get("keys")
+            if isinstance(keys, list):
+                normalized["target"] = "+".join(str(item).strip() for item in keys if str(item).strip())
+        return normalized
+
+    def _ingest_control_memory(
+        self,
+        *,
+        control_type: str,
+        payload: dict[str, Any],
+        event_names: list[str] | None = None,
+    ) -> None:
+        normalized_type = str(control_type or "").strip().lower() or "control"
+        created_at = datetime.now(timezone.utc).isoformat()
+        try:
+            self.memory_backend.ingest(
+                text=json.dumps(
+                    {
+                        "type": f"novaadapt_{normalized_type}",
+                        "created_at": created_at,
+                        "payload": payload,
+                    },
+                    ensure_ascii=True,
+                ),
+                source_id=f"novaadapt:{normalized_type}:{uuid.uuid4().hex}",
+                metadata={"type": f"novaadapt_{normalized_type}"},
+            )
+        except Exception:
+            pass
+        self._track_memory_events(event_names or [])
+
+    def _track_memory_events(self, event_names: list[str]) -> None:
+        cleaned = [str(item).strip() for item in event_names if str(item).strip()]
+        if not cleaned:
+            return
+        track_batch = getattr(self.memory_backend, "track_events_batch", None)
+        if callable(track_batch):
+            try:
+                track_batch(cleaned)
+                return
+            except Exception:
+                return
+        track_single = getattr(self.memory_backend, "track_event", None)
+        if callable(track_single):
+            for item in cleaned:
+                try:
+                    track_single(item)
+                except Exception:
+                    return
+
+    @staticmethod
+    def _decode_base64_image(value: object) -> bytes | None:
+        raw = str(value or "").strip()
+        if not raw:
+            return None
+        if "," in raw and raw.lower().startswith("data:image"):
+            raw = raw.split(",", 1)[1]
+        try:
+            return base64.b64decode(raw, validate=True)
+        except Exception as exc:
+            raise ValueError("invalid screenshot_base64 payload") from exc
 
     @staticmethod
     def _as_name_list(value: object) -> list[str]:
@@ -2614,6 +2987,33 @@ class NovaAdaptService:
         if self._browser_executor is None:
             self._browser_executor = self.browser_executor_factory()
         return self._browser_executor
+
+    def _vision(self) -> VisionGroundingExecutor:
+        if self._vision_executor is None:
+            if self.vision_executor_factory is not None:
+                self._vision_executor = self.vision_executor_factory()
+            else:
+                self._vision_executor = VisionGroundingExecutor(
+                    router_loader=self.router_loader,
+                    default_config=self.default_config,
+                )
+        return self._vision_executor
+
+    def _mobile(self) -> UnifiedMobileExecutor:
+        if self._mobile_executor is None:
+            if self.mobile_executor_factory is not None:
+                self._mobile_executor = self.mobile_executor_factory()
+            else:
+                self._mobile_executor = UnifiedMobileExecutor(
+                    android_executor=AndroidMaestroExecutor(),
+                    ios_executor=IOSVisionExecutor(self._vision()),
+                )
+        return self._mobile_executor
+
+    def _homeassistant(self) -> HomeAssistantExecutor:
+        if self._homeassistant_executor is None:
+            self._homeassistant_executor = self.homeassistant_executor_factory()
+        return self._homeassistant_executor
 
     def _sib(self) -> SIBBridge:
         if self._sib_bridge is None:

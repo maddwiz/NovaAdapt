@@ -205,6 +205,16 @@ class ServerTests(unittest.TestCase):
                 self.assertIn("jobs", dashboard_data)
                 self.assertIn("plans", dashboard_data)
                 self.assertIn("events", dashboard_data)
+                self.assertIn("control", dashboard_data)
+                self.assertIn("mobile", dashboard_data["control"])
+                self.assertIn("homeassistant", dashboard_data["control"])
+
+                mobile_status, _ = _get_json_with_headers(f"http://{host}:{port}/mobile/status")
+                self.assertIn("ok", mobile_status)
+                self.assertIn("android", mobile_status)
+
+                homeassistant_status, _ = _get_json_with_headers(f"http://{host}:{port}/iot/homeassistant/status")
+                self.assertIn("ok", homeassistant_status)
 
                 openapi, _ = _get_json_with_headers(f"http://{host}:{port}/openapi.json")
                 self.assertEqual(openapi["openapi"], "3.1.0")
@@ -222,6 +232,11 @@ class ServerTests(unittest.TestCase):
                 self.assertIn("/dashboard/data", openapi["paths"])
                 self.assertIn("/events", openapi["paths"])
                 self.assertIn("/events/stream", openapi["paths"])
+                self.assertIn("/mobile/status", openapi["paths"])
+                self.assertIn("/execute/vision", openapi["paths"])
+                self.assertIn("/mobile/action", openapi["paths"])
+                self.assertIn("/iot/homeassistant/status", openapi["paths"])
+                self.assertIn("/iot/homeassistant/action", openapi["paths"])
                 self.assertIn("/plugins", openapi["paths"])
                 self.assertIn("/plugins/{name}/health", openapi["paths"])
                 self.assertIn("/plugins/{name}/call", openapi["paths"])

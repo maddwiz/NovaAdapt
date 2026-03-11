@@ -855,6 +855,36 @@ def build_openapi_spec() -> dict:
                     "responses": {"200": {"description": "Memory ingest result"}},
                 }
             },
+            "/execute/vision": {
+                "post": {
+                    "summary": "Ground and optionally execute the next desktop action from a screenshot and goal",
+                    "responses": {"200": {"description": "Vision grounding and execution result"}},
+                }
+            },
+            "/mobile/action": {
+                "post": {
+                    "summary": "Execute or preview a unified Android or iOS mobile action",
+                    "responses": {"200": {"description": "Mobile action result"}},
+                }
+            },
+            "/mobile/status": {
+                "get": {
+                    "summary": "Get mobile executor status and platform readiness",
+                    "responses": {"200": {"description": "Mobile status"}},
+                }
+            },
+            "/iot/homeassistant/status": {
+                "get": {
+                    "summary": "Get Home Assistant integration status",
+                    "responses": {"200": {"description": "Home Assistant status"}},
+                }
+            },
+            "/iot/homeassistant/action": {
+                "post": {
+                    "summary": "Preview or execute a Home Assistant or MQTT action",
+                    "responses": {"200": {"description": "IoT action result"}},
+                }
+            },
             "/browser/status": {
                 "get": {
                     "summary": "Get browser automation runtime status and capabilities",

@@ -128,6 +128,19 @@ def get_dashboard_data(
     plans_limit = int(single(query, "plans_limit") or 25)
     events_limit = int(single(query, "events_limit") or 25)
     config = single(query, "config")
+    control: dict[str, object] = {}
+    try:
+        control["browser"] = service.browser_status()
+    except Exception as exc:
+        control["browser"] = {"ok": False, "error": str(exc)}
+    try:
+        control["mobile"] = service.mobile_status()
+    except Exception as exc:
+        control["mobile"] = {"ok": False, "error": str(exc)}
+    try:
+        control["homeassistant"] = service.homeassistant_status()
+    except Exception as exc:
+        control["homeassistant"] = {"ok": False, "error": str(exc)}
     handler._send_json(
         200,
         {
@@ -141,6 +154,7 @@ def get_dashboard_data(
                 else []
             ),
             "models_count": len(service.models(config_path=to_path(config))),
+            "control": control,
         },
     )
     return 200

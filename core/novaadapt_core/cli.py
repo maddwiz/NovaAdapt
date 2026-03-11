@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import os
 import time
@@ -772,6 +773,58 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Close browser automation session",
     )
     browser_close_cmd.add_argument("--config", type=Path, default=_default_config_path())
+
+    vision_execute_cmd = sub.add_parser(
+        "vision-execute",
+        help="Ground and optionally execute a desktop action from goal plus screenshot",
+    )
+    vision_execute_cmd.add_argument("--config", type=Path, default=_default_config_path())
+    vision_execute_cmd.add_argument("--goal", required=True)
+    vision_execute_cmd.add_argument("--model", default="")
+    vision_execute_cmd.add_argument("--strategy", choices=["single", "vote", "decompose"], default="single")
+    vision_execute_cmd.add_argument("--candidates", default="")
+    vision_execute_cmd.add_argument("--fallbacks", default="")
+    vision_execute_cmd.add_argument("--app-name", default="")
+    vision_execute_cmd.add_argument("--screenshot-path", type=Path, default=None)
+    vision_execute_cmd.add_argument("--execute", action="store_true")
+    vision_execute_cmd.add_argument("--allow-dangerous", action="store_true")
+
+    mobile_status_cmd = sub.add_parser(
+        "mobile-status",
+        help="Get mobile executor readiness and platform status",
+    )
+    mobile_status_cmd.add_argument("--config", type=Path, default=_default_config_path())
+
+    mobile_action_cmd = sub.add_parser(
+        "mobile-action",
+        help="Preview or execute a mobile action payload",
+    )
+    mobile_action_cmd.add_argument("--config", type=Path, default=_default_config_path())
+    mobile_action_cmd.add_argument("--platform", choices=["android", "ios"], required=True)
+    mobile_action_cmd.add_argument("--action-json", default="")
+    mobile_action_cmd.add_argument("--goal", default="")
+    mobile_action_cmd.add_argument("--model", default="")
+    mobile_action_cmd.add_argument("--strategy", choices=["single", "vote", "decompose"], default="single")
+    mobile_action_cmd.add_argument("--candidates", default="")
+    mobile_action_cmd.add_argument("--fallbacks", default="")
+    mobile_action_cmd.add_argument("--screenshot-path", type=Path, default=None)
+    mobile_action_cmd.add_argument("--execute", action="store_true")
+    mobile_action_cmd.add_argument("--allow-dangerous", action="store_true")
+
+    homeassistant_status_cmd = sub.add_parser(
+        "homeassistant-status",
+        help="Get Home Assistant integration readiness",
+    )
+    homeassistant_status_cmd.add_argument("--config", type=Path, default=_default_config_path())
+
+    homeassistant_action_cmd = sub.add_parser(
+        "homeassistant-action",
+        help="Preview or execute a Home Assistant action payload",
+    )
+    homeassistant_action_cmd.add_argument("--config", type=Path, default=_default_config_path())
+    homeassistant_action_cmd.add_argument("--action-json", required=True)
+    homeassistant_action_cmd.add_argument("--execute", action="store_true")
+    homeassistant_action_cmd.add_argument("--allow-dangerous", action="store_true")
 
     native_daemon_cmd = sub.add_parser(
         "native-daemon",
@@ -1991,6 +2044,74 @@ def main() -> None:
             print(json.dumps(service.browser_close(), indent=2))
             return
 
+        if args.command == "vision-execute":
+            service = NovaAdaptService(default_config=args.config)
+            payload: dict[str, object] = {
+                "goal": args.goal,
+                "model": str(args.model or ""),
+                "strategy": str(args.strategy or "single"),
+                "candidates": _parse_csv(args.candidates),
+                "fallbacks": _parse_csv(args.fallbacks),
+                "app_name": str(args.app_name or ""),
+                "execute": bool(args.execute),
+                "allow_dangerous": bool(args.allow_dangerous),
+            }
+            screenshot_base64 = _encode_optional_file_base64(args.screenshot_path)
+            if screenshot_base64:
+                payload["screenshot_base64"] = screenshot_base64
+            print(json.dumps(service.vision_execute(payload), indent=2))
+            return
+
+        if args.command == "mobile-status":
+            service = NovaAdaptService(default_config=args.config)
+            print(json.dumps(service.mobile_status(), indent=2))
+            return
+
+        if args.command == "mobile-action":
+            service = NovaAdaptService(default_config=args.config)
+            action = _parse_optional_json_object(args.action_json, "--action-json") if str(args.action_json or "").strip() else None
+            payload = {
+                "platform": str(args.platform),
+                "goal": str(args.goal or ""),
+                "model": str(args.model or ""),
+                "strategy": str(args.strategy or "single"),
+                "candidates": _parse_csv(args.candidates),
+                "fallbacks": _parse_csv(args.fallbacks),
+                "execute": bool(args.execute),
+                "allow_dangerous": bool(args.allow_dangerous),
+            }
+            if action is not None:
+                payload["action"] = action
+            screenshot_base64 = _encode_optional_file_base64(args.screenshot_path)
+            if screenshot_base64:
+                payload["screenshot_base64"] = screenshot_base64
+            print(json.dumps(service.mobile_action(payload), indent=2))
+            return
+
+        if args.command == "homeassistant-status":
+            service = NovaAdaptService(default_config=args.config)
+            print(json.dumps(service.homeassistant_status(), indent=2))
+            return
+
+        if args.command == "homeassistant-action":
+            service = NovaAdaptService(default_config=args.config)
+            action = _parse_optional_json_object(args.action_json, "--action-json")
+            if action is None:
+                raise ValueError("--action-json must be a JSON object")
+            print(
+                json.dumps(
+                    service.homeassistant_action(
+                        {
+                            "action": action,
+                            "execute": bool(args.execute),
+                            "allow_dangerous": bool(args.allow_dangerous),
+                        }
+                    ),
+                    indent=2,
+                )
+            )
+            return
+
         if args.command == "native-daemon":
             daemon = NativeExecutionDaemon(
                 socket_path=str(args.socket or ""),
@@ -2319,6 +2440,12 @@ def _parse_scopes_csv(raw: object, arg_name: str) -> list[str]:
     if not scopes:
         raise ValueError(f"{arg_name} must contain at least one scope")
     return scopes
+
+
+def _encode_optional_file_base64(path: Path | None) -> str:
+    if path is None:
+        return ""
+    return base64.b64encode(path.read_bytes()).decode("ascii")
 
 
 def _clamp_confidence(value: object) -> float:

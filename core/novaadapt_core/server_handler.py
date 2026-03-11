@@ -35,6 +35,7 @@ from . import server_voice_routes as voice_routes
 from . import server_canvas_routes as canvas_routes
 from . import server_workflow_routes as workflow_routes
 from . import server_plugin_routes as plugin_routes
+from . import server_control_routes as control_routes
 from . import server_idempotency_utils as idempotency_utils
 from . import server_stream_utils as stream_utils
 
@@ -331,6 +332,12 @@ def _build_handler(
         def _get_browser_pages(self, _query: dict[str, list[str]]) -> int:
             return terminal_browser_routes.get_browser_pages(self, service)
 
+        def _get_mobile_status(self, _query: dict[str, list[str]]) -> int:
+            return control_routes.get_mobile_status(self, service)
+
+        def _get_homeassistant_status(self, _query: dict[str, list[str]]) -> int:
+            return control_routes.get_homeassistant_status(self, service)
+
         def _get_plugin_health(self, path: str, _query: dict[str, list[str]]) -> int:
             return plugin_routes.get_plugin_health(self, service, path)
 
@@ -557,6 +564,15 @@ def _build_handler(
 
         def _post_browser_close(self, path: str, payload: dict[str, object]) -> int:
             return terminal_browser_routes.post_browser_close(self, service, path, payload)
+
+        def _post_execute_vision(self, path: str, payload: dict[str, object]) -> int:
+            return control_routes.post_execute_vision(self, service, path, payload)
+
+        def _post_mobile_action(self, path: str, payload: dict[str, object]) -> int:
+            return control_routes.post_mobile_action(self, service, path, payload)
+
+        def _post_homeassistant_action(self, path: str, payload: dict[str, object]) -> int:
+            return control_routes.post_homeassistant_action(self, service, path, payload)
 
         def _post_browser_typed_action(
             self,

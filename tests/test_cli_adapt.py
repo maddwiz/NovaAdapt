@@ -1,6 +1,7 @@
 import io
 import json
 import sys
+import tempfile
 import unittest
 from contextlib import redirect_stdout
 from unittest import mock
@@ -195,6 +196,59 @@ class AdaptCLITests(unittest.TestCase):
             payload = self._run_cli("voice-status")
         self.assertTrue(payload["ok"])
         service.voice_status.assert_called_once_with(context="cli")
+
+    def test_control_surface_commands(self):
+        service = mock.Mock()
+        service.vision_execute.return_value = {"status": "preview", "action": {"type": "click", "target": "10,10"}}
+        service.mobile_status.return_value = {"ok": True, "android": {"ok": True}}
+        service.mobile_action.return_value = {"status": "preview", "platform": "ios"}
+        service.homeassistant_status.return_value = {"ok": True, "transport": "homeassistant-http"}
+        service.homeassistant_action.return_value = {"status": "preview", "action": {"type": "ha_service"}}
+        with tempfile.TemporaryDirectory() as tmp:
+            screenshot = io.BytesIO(b"fake-png")
+            screenshot_path = f"{tmp}/shot.png"
+            with open(screenshot_path, "wb") as handle:
+                handle.write(screenshot.getvalue())
+            with mock.patch("novaadapt_core.cli.NovaAdaptService", return_value=service):
+                vision_payload = self._run_cli(
+                    "vision-execute",
+                    "--goal",
+                    "Click continue",
+                    "--screenshot-path",
+                    screenshot_path,
+                )
+                mobile_status_payload = self._run_cli("mobile-status")
+                mobile_action_payload = self._run_cli(
+                    "mobile-action",
+                    "--platform",
+                    "ios",
+                    "--goal",
+                    "Tap continue",
+                    "--screenshot-path",
+                    screenshot_path,
+                )
+                homeassistant_status_payload = self._run_cli("homeassistant-status")
+                homeassistant_action_payload = self._run_cli(
+                    "homeassistant-action",
+                    "--action-json",
+                    '{"type":"ha_service","domain":"light","service":"turn_on","entity_id":"light.office"}',
+                )
+
+        self.assertEqual(vision_payload["status"], "preview")
+        self.assertTrue(mobile_status_payload["ok"])
+        self.assertEqual(mobile_action_payload["platform"], "ios")
+        self.assertTrue(homeassistant_status_payload["ok"])
+        self.assertEqual(homeassistant_action_payload["status"], "preview")
+        service.vision_execute.assert_called_once()
+        vision_args = service.vision_execute.call_args.args[0]
+        self.assertTrue(vision_args["screenshot_base64"])
+        service.mobile_status.assert_called_once_with()
+        service.mobile_action.assert_called_once()
+        mobile_args = service.mobile_action.call_args.args[0]
+        self.assertEqual(mobile_args["platform"], "ios")
+        self.assertTrue(mobile_args["screenshot_base64"])
+        service.homeassistant_status.assert_called_once_with()
+        service.homeassistant_action.assert_called_once()
 
     def test_voice_transcribe_and_synthesize_commands(self):
         service = mock.Mock()

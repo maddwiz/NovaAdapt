@@ -289,13 +289,23 @@ def render_dashboard_html() -> str:
         const events = data.events || [];
         const metrics = data.metrics || {};
         const modelsCount = Number(data.models_count || 0);
+        const control = data.control || {};
+        const browser = control.browser || {};
+        const mobile = control.mobile || {};
+        const homeassistant = control.homeassistant || {};
         const pendingPlans = plans.filter(item => item.status === 'pending').length;
         const runningJobs = jobs.filter(item => item.status === 'running').length;
         const failedAudits = events.filter(item => item.status === 'error' || item.status === 'failed').length;
+        const mobilePlatforms = [];
+        if (mobile.android) mobilePlatforms.push(`android:${mobile.android.ok ? 'ready' : 'degraded'}`);
+        if (mobile.ios) mobilePlatforms.push(`ios:${mobile.ios.ok ? 'ready' : 'degraded'}`);
 
         const summary = [
           { label: 'Service', value: health.ok ? 'Healthy' : 'Unhealthy', cls: health.ok ? 'ok' : 'bad' },
           { label: 'Configured Models', value: modelsCount, cls: '' },
+          { label: 'Browser Runtime', value: browser.ok ? 'Ready' : 'Degraded', cls: browser.ok ? 'ok' : 'warn' },
+          { label: 'Mobile Runtime', value: mobilePlatforms.join(' | ') || (mobile.ok ? 'Ready' : 'Degraded'), cls: mobile.ok ? 'ok' : 'warn' },
+          { label: 'IoT Runtime', value: homeassistant.ok ? 'Ready' : 'Degraded', cls: homeassistant.ok ? 'ok' : 'warn' },
           { label: 'Running Jobs', value: runningJobs, cls: runningJobs > 0 ? 'warn' : 'ok' },
           { label: 'Pending Plans', value: pendingPlans, cls: pendingPlans > 0 ? 'warn' : 'ok' },
           { label: 'Failed Audits', value: failedAudits, cls: metricColor(failedAudits, 0) },

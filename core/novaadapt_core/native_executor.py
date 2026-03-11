@@ -37,6 +37,10 @@ _APPLE_KEY_CODES = {
     "down": 125,
     "left": 123,
     "right": 124,
+    "pageup": 116,
+    "pagedown": 121,
+    "home": 115,
+    "end": 119,
 }
 
 _XDOTOOL_KEY_ALIASES = {
@@ -139,6 +143,8 @@ class NativeDesktopExecutor:
             "context_click": self._execute_right_click,
             "double_click": self._execute_double_click,
             "dblclick": self._execute_double_click,
+            "scroll": self._execute_scroll,
+            "drag": self._execute_drag,
             "run_shell": self._execute_run_shell,
             "shell": self._execute_run_shell,
             "terminal": self._execute_run_shell,
@@ -182,7 +188,7 @@ class NativeDesktopExecutor:
                 "output": (
                     "linux native execution available"
                     if has_xdotool
-                    else "linux native execution available (limited: install xdotool for type/key/hotkey/click)"
+                    else "linux native execution available (limited: install xdotool for type/key/hotkey/click/scroll/drag)"
                 ),
                 "xdotool_available": has_xdotool,
             }
@@ -195,7 +201,7 @@ class NativeDesktopExecutor:
                 "capabilities": capabilities,
                 "output": (
                     "windows native execution available "
-                    "(open_url/open_app/run_shell/wait/type/key/hotkey/click)"
+                    "(open_url/open_app/run_shell/wait/type/key/hotkey/click/scroll/drag)"
                 ),
             }
 
@@ -220,6 +226,8 @@ class NativeDesktopExecutor:
             "click",
             "right_click",
             "double_click",
+            "scroll",
+            "drag",
             "run_shell",
         ]
 
@@ -393,6 +401,128 @@ class NativeDesktopExecutor:
     def _execute_double_click(self, action: dict[str, Any]) -> NativeExecutionResult:
         return self._execute_pointer_click(action, button=1, clicks=2, action_name="double_click")
 
+    def _execute_scroll(self, action: dict[str, Any]) -> NativeExecutionResult:
+        direction = str(action.get("direction") or action.get("target") or action.get("value") or "down").strip().lower()
+        steps = max(1, int(action.get("amount") or action.get("steps") or 3))
+        if self._is_macos():
+            vertical = 0
+            horizontal = 0
+            if direction == "up":
+                vertical = steps
+            elif direction == "down":
+                vertical = -steps
+            elif direction == "left":
+                horizontal = steps
+            elif direction == "right":
+                horizontal = -steps
+            else:
+                return NativeExecutionResult(status="failed", output=f"unsupported scroll direction '{direction}'")
+            script = (
+                "ObjC.import('ApplicationServices');"
+                f"const event=$.CGEventCreateScrollWheelEvent(null,$.kCGScrollEventUnitLine,2,{vertical},{horizontal});"
+                "$.CGEventPost($.kCGHIDEventTap,event);"
+            )
+            completed = self._run_subprocess(["osascript", "-l", "JavaScript", "-e", script], shell=False)
+            return self._result_from_completed(completed)
+        if self._is_linux():
+            if not self._linux_has_xdotool():
+                return NativeExecutionResult(status="failed", output="scroll on linux requires 'xdotool' in PATH")
+            button = {"up": "4", "down": "5", "left": "6", "right": "7"}.get(direction)
+            if button is None:
+                return NativeExecutionResult(status="failed", output=f"unsupported scroll direction '{direction}'")
+            cmd = ["xdotool", "click", "--repeat", str(steps), button]
+            completed = self._run_subprocess(cmd, shell=False)
+            return self._result_from_completed(completed)
+        if self._is_windows():
+            delta = {"up": 120, "down": -120, "left": 120, "right": -120}.get(direction)
+            if delta is None:
+                return NativeExecutionResult(status="failed", output=f"unsupported scroll direction '{direction}'")
+            event_flag = "0x1000" if direction in {"left", "right"} else "0x0800"
+            completed = self._run_powershell_script(
+                (
+                    "if (-not ('NativeMouse' -as [type])) { "
+                    "Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; "
+                    "public static class NativeMouse { "
+                    "[DllImport(\"user32.dll\")] public static extern void mouse_event("
+                    "uint dwFlags, uint dx, uint dy, uint dwData, UIntPtr dwExtraInfo); "
+                    "}'; "
+                    "} "
+                    f"for ($i = 0; $i -lt {steps}; $i++) {{ "
+                    f"[NativeMouse]::mouse_event({event_flag}, 0, 0, {delta}, [UIntPtr]::Zero); "
+                    "}"
+                )
+            )
+            return self._result_from_completed(completed)
+        return NativeExecutionResult(
+            status="failed",
+            output=f"scroll is only implemented for macOS/linux/windows native runtime (platform={self.platform_name})",
+        )
+
+    def _execute_drag(self, action: dict[str, Any]) -> NativeExecutionResult:
+        start, end = self._parse_drag_coordinates(action)
+        if start is None or end is None:
+            return NativeExecutionResult(
+                status="failed",
+                output="drag requires start and end coordinates via x1/y1+x2/y2, target+to_target, or target+value",
+            )
+        x1, y1 = start
+        x2, y2 = end
+        if self._is_macos():
+            script = (
+                "ObjC.import('ApplicationServices');"
+                f"const start=$.CGPointMake({x1},{y1});"
+                f"const end=$.CGPointMake({x2},{y2});"
+                "const down=$.CGEventCreateMouseEvent(null,$.kCGEventLeftMouseDown,start,$.kCGMouseButtonLeft);"
+                "const drag=$.CGEventCreateMouseEvent(null,$.kCGEventLeftMouseDragged,end,$.kCGMouseButtonLeft);"
+                "const up=$.CGEventCreateMouseEvent(null,$.kCGEventLeftMouseUp,end,$.kCGMouseButtonLeft);"
+                "$.CGEventPost($.kCGHIDEventTap,down);"
+                "$.CGEventPost($.kCGHIDEventTap,drag);"
+                "$.CGEventPost($.kCGHIDEventTap,up);"
+            )
+            completed = self._run_subprocess(["osascript", "-l", "JavaScript", "-e", script], shell=False)
+            return self._result_from_completed(completed)
+        if self._is_linux():
+            if not self._linux_has_xdotool():
+                return NativeExecutionResult(status="failed", output="drag on linux requires 'xdotool' in PATH")
+            cmd = [
+                "xdotool",
+                "mousemove",
+                str(x1),
+                str(y1),
+                "mousedown",
+                "1",
+                "mousemove",
+                "--sync",
+                str(x2),
+                str(y2),
+                "mouseup",
+                "1",
+            ]
+            completed = self._run_subprocess(cmd, shell=False)
+            return self._result_from_completed(completed)
+        if self._is_windows():
+            completed = self._run_powershell_script(
+                (
+                    "if (-not ('NativeMouse' -as [type])) { "
+                    "Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; "
+                    "public static class NativeMouse { "
+                    "[DllImport(\"user32.dll\")] public static extern bool SetCursorPos(int X, int Y); "
+                    "[DllImport(\"user32.dll\")] public static extern void mouse_event("
+                    "uint dwFlags, uint dx, uint dy, uint dwData, UIntPtr dwExtraInfo); "
+                    "}'; "
+                    "} "
+                    f"[NativeMouse]::SetCursorPos({x1}, {y1}) | Out-Null; "
+                    "[NativeMouse]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero); "
+                    f"[NativeMouse]::SetCursorPos({x2}, {y2}) | Out-Null; "
+                    "[NativeMouse]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero); "
+                )
+            )
+            return self._result_from_completed(completed)
+        return NativeExecutionResult(
+            status="failed",
+            output=f"drag is only implemented for macOS/linux/windows native runtime (platform={self.platform_name})",
+        )
+
     def _execute_pointer_click(
         self,
         action: dict[str, Any],
@@ -522,6 +652,20 @@ class NativeDesktopExecutor:
         if match:
             return int(match.group("x")), int(match.group("y"))
         return None
+
+    @classmethod
+    def _parse_drag_coordinates(cls, action: dict[str, Any]) -> tuple[tuple[int, int] | None, tuple[int, int] | None]:
+        if all(action.get(key) is not None for key in ("x1", "y1", "x2", "y2")):
+            try:
+                return (
+                    (int(action.get("x1")), int(action.get("y1"))),
+                    (int(action.get("x2")), int(action.get("y2"))),
+                )
+            except Exception:
+                return None, None
+        start = cls._parse_coordinates(str(action.get("target") or "").strip())
+        end = cls._parse_coordinates(str(action.get("to_target") or action.get("value") or "").strip())
+        return start, end
 
     @staticmethod
     def _escape_applescript_string(value: str) -> str:

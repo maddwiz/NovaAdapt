@@ -877,6 +877,68 @@ class NovaAdaptMCPServer:
                 },
             ),
             MCPTool(
+                name="novaadapt_vision_execute",
+                description="Ground and optionally execute a desktop action from a screenshot and goal",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "goal": {"type": "string"},
+                        "model": {"type": "string"},
+                        "strategy": {"type": "string"},
+                        "candidates": {"type": "array", "items": {"type": "string"}},
+                        "fallbacks": {"type": "array", "items": {"type": "string"}},
+                        "app_name": {"type": "string"},
+                        "screenshot_base64": {"type": "string"},
+                        "execute": {"type": "boolean"},
+                        "allow_dangerous": {"type": "boolean"},
+                    },
+                    "required": ["goal"],
+                },
+            ),
+            MCPTool(
+                name="novaadapt_mobile_status",
+                description="Get mobile executor status and platform readiness",
+                input_schema={"type": "object", "properties": {}},
+            ),
+            MCPTool(
+                name="novaadapt_mobile_action",
+                description="Preview or execute an Android or iOS mobile action",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "platform": {"type": "string", "enum": ["android", "ios"]},
+                        "action": {"type": "object"},
+                        "goal": {"type": "string"},
+                        "model": {"type": "string"},
+                        "strategy": {"type": "string"},
+                        "candidates": {"type": "array", "items": {"type": "string"}},
+                        "fallbacks": {"type": "array", "items": {"type": "string"}},
+                        "screenshot_base64": {"type": "string"},
+                        "execute": {"type": "boolean"},
+                        "allow_dangerous": {"type": "boolean"},
+                    },
+                    "required": ["platform"],
+                },
+            ),
+            MCPTool(
+                name="novaadapt_homeassistant_status",
+                description="Get Home Assistant integration status",
+                input_schema={"type": "object", "properties": {}},
+            ),
+            MCPTool(
+                name="novaadapt_homeassistant_action",
+                description="Preview or execute a Home Assistant or MQTT action",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "action": {"type": "object"},
+                        "execute": {"type": "boolean"},
+                        "allow_dangerous": {"type": "boolean"},
+                    },
+                    "required": ["action"],
+                },
+            ),
+            MCPTool(
                 name="novaadapt_browser_status",
                 description="Get browser automation runtime status/capabilities",
                 input_schema={"type": "object", "properties": {}},
@@ -1625,6 +1687,63 @@ class NovaAdaptMCPServer:
                 text,
                 source_id=source_id,
                 metadata=metadata if isinstance(metadata, dict) else None,
+            )
+        if tool_name == "novaadapt_vision_execute":
+            goal = str(arguments.get("goal", "")).strip()
+            if not goal:
+                raise ValueError("'goal' is required")
+            payload: dict[str, Any] = {
+                "goal": goal,
+                "model": str(arguments.get("model", "")).strip(),
+                "strategy": str(arguments.get("strategy", "single")).strip() or "single",
+                "execute": bool(arguments.get("execute", False)),
+                "allow_dangerous": bool(arguments.get("allow_dangerous", False)),
+            }
+            if isinstance(arguments.get("candidates"), list):
+                payload["candidates"] = [str(item) for item in arguments.get("candidates") if str(item).strip()]
+            if isinstance(arguments.get("fallbacks"), list):
+                payload["fallbacks"] = [str(item) for item in arguments.get("fallbacks") if str(item).strip()]
+            if arguments.get("app_name") is not None:
+                payload["app_name"] = str(arguments.get("app_name"))
+            if arguments.get("screenshot_base64") is not None:
+                payload["screenshot_base64"] = str(arguments.get("screenshot_base64"))
+            return self.service.vision_execute(payload)
+        if tool_name == "novaadapt_mobile_status":
+            return self.service.mobile_status()
+        if tool_name == "novaadapt_mobile_action":
+            platform = str(arguments.get("platform", "")).strip().lower()
+            if platform not in {"android", "ios"}:
+                raise ValueError("'platform' is required and must be 'android' or 'ios'")
+            payload = {
+                "platform": platform,
+                "goal": str(arguments.get("goal", "")).strip(),
+                "model": str(arguments.get("model", "")).strip(),
+                "strategy": str(arguments.get("strategy", "single")).strip() or "single",
+                "execute": bool(arguments.get("execute", False)),
+                "allow_dangerous": bool(arguments.get("allow_dangerous", False)),
+            }
+            action = arguments.get("action")
+            if isinstance(action, dict):
+                payload["action"] = action
+            if isinstance(arguments.get("candidates"), list):
+                payload["candidates"] = [str(item) for item in arguments.get("candidates") if str(item).strip()]
+            if isinstance(arguments.get("fallbacks"), list):
+                payload["fallbacks"] = [str(item) for item in arguments.get("fallbacks") if str(item).strip()]
+            if arguments.get("screenshot_base64") is not None:
+                payload["screenshot_base64"] = str(arguments.get("screenshot_base64"))
+            return self.service.mobile_action(payload)
+        if tool_name == "novaadapt_homeassistant_status":
+            return self.service.homeassistant_status()
+        if tool_name == "novaadapt_homeassistant_action":
+            action = arguments.get("action")
+            if not isinstance(action, dict):
+                raise ValueError("'action' is required and must be an object")
+            return self.service.homeassistant_action(
+                {
+                    "action": action,
+                    "execute": bool(arguments.get("execute", False)),
+                    "allow_dangerous": bool(arguments.get("allow_dangerous", False)),
+                }
             )
         if tool_name == "novaadapt_browser_status":
             return self.service.browser_status()

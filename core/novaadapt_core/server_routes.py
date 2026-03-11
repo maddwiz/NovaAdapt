@@ -49,6 +49,8 @@ def build_get_private_routes(handler: Any) -> dict[str, Any]:
         "/terminal/sessions": handler._get_terminal_sessions,
         "/browser/status": handler._get_browser_status,
         "/browser/pages": handler._get_browser_pages,
+        "/mobile/status": handler._get_mobile_status,
+        "/iot/homeassistant/status": handler._get_homeassistant_status,
     }
 
 
@@ -157,6 +159,9 @@ def build_post_exact_routes(handler: Any) -> dict[str, Any]:
         ),
         "/browser/evaluate_js": lambda body: handler._post_browser_evaluate_js("/browser/evaluate_js", body),
         "/browser/close": lambda body: handler._post_browser_close("/browser/close", body),
+        "/execute/vision": lambda body: handler._post_execute_vision("/execute/vision", body),
+        "/mobile/action": lambda body: handler._post_mobile_action("/mobile/action", body),
+        "/iot/homeassistant/action": lambda body: handler._post_homeassistant_action("/iot/homeassistant/action", body),
     }
 
 
@@ -220,6 +225,8 @@ def is_idempotent_route(path: str) -> bool:
     if path in {"/canvas/render", "/workflows/start", "/workflows/advance", "/workflows/resume"}:
         return True
     if path in {"/memory/ingest"}:
+        return True
+    if path in {"/execute/vision", "/mobile/action", "/iot/homeassistant/action"}:
         return True
     if path.startswith("/channels/") and (path.endswith("/send") or path.endswith("/inbound")):
         return True
