@@ -636,6 +636,16 @@
             <input id="template-candidates" placeholder="local-qwen,claude-sonnet,gemini-pro" />
           </div>
         </div>
+        <div class="row">
+          <div>
+            <label for="template-id">Selected Local Template ID</label>
+            <input id="template-id" placeholder="auto-filled from latest local refresh" />
+          </div>
+          <div>
+            <label for="template-share-token">Share Token</label>
+            <input id="template-share-token" placeholder="paste token to resolve shared template" />
+          </div>
+        </div>
         <div class="row single">
           <div>
             <label for="template-manifest-json">Template Manifest JSON</label>
@@ -648,8 +658,45 @@
           <button class="brand" id="template-export-btn">Export Template</button>
           <button id="template-import-btn">Import Manifest</button>
         </div>
+        <div class="controls">
+          <button id="template-load-btn">Load Selected</button>
+          <button id="template-share-btn">Share Selected</button>
+          <button id="template-plan-btn">Launch Plan</button>
+          <button class="brand" id="template-run-btn">Launch Run</button>
+          <button id="template-resolve-share-btn">Resolve Share</button>
+        </div>
         <div class="status" id="template-status">Marketplace idle</div>
         <div class="log mini" id="template-output"></div>
+      </section>
+
+      <section class="card span2">
+        <h2>Control Artifacts</h2>
+        <div class="row triple">
+          <div>
+            <label for="artifact-limit">Limit</label>
+            <input id="artifact-limit" type="number" min="1" max="50" value="12" />
+          </div>
+          <div>
+            <label for="artifact-type">Control Type</label>
+            <select id="artifact-type">
+              <option value="">all</option>
+              <option value="vision">vision</option>
+              <option value="mobile">mobile</option>
+              <option value="iot">iot</option>
+            </select>
+          </div>
+          <div>
+            <label for="artifact-id">Artifact ID</label>
+            <input id="artifact-id" placeholder="auto-filled from latest refresh" />
+          </div>
+        </div>
+        <div class="controls">
+          <button id="artifacts-refresh-btn">Refresh Artifacts</button>
+          <button id="artifact-detail-btn">Load Detail</button>
+          <button id="artifact-use-latest-btn">Use Latest</button>
+        </div>
+        <div class="status" id="artifact-status">Artifacts idle</div>
+        <div class="log mini" id="artifact-output"></div>
       </section>
     </div>
 
@@ -771,6 +818,8 @@
     const mqttOutputEl = $("mqtt-output");
     const templateStatusEl = $("template-status");
     const templateOutputEl = $("template-output");
+    const artifactStatusEl = $("artifact-status");
+    const artifactOutputEl = $("artifact-output");
 
     function nowTime() {
       return new Date().toISOString().replace("T", " ").replace("Z", "");
@@ -817,6 +866,11 @@
       templateStatusEl.className = `status ${cls}`.trim();
     }
 
+    function setArtifactStatus(text, cls = "") {
+      artifactStatusEl.textContent = text;
+      artifactStatusEl.className = `status ${cls}`.trim();
+    }
+
     function setBrowserOutput(payload) {
       const outputEl = $("browser-output");
       const text = typeof payload === "string" ? payload : JSON.stringify(payload, null, 2);
@@ -846,6 +900,12 @@
       const text = typeof payload === "string" ? payload : JSON.stringify(payload, null, 2);
       templateOutputEl.textContent = text;
       templateOutputEl.scrollTop = templateOutputEl.scrollHeight;
+    }
+
+    function setArtifactOutput(payload) {
+      const text = typeof payload === "string" ? payload : JSON.stringify(payload, null, 2);
+      artifactOutputEl.textContent = text;
+      artifactOutputEl.scrollTop = artifactOutputEl.scrollHeight;
     }
 
     function isWSOpen() {
@@ -1733,6 +1793,56 @@
       return payload;
     }
 
+    function selectedTemplateID() {
+      const templateID = $("template-id").value.trim();
+      if (!templateID) {
+        throw new Error("selected local template id is required");
+      }
+      return templateID;
+    }
+
+    function templateLaunchOverrides() {
+      const overrides = {};
+      const objective = $("template-objective").value.trim();
+      if (objective) {
+        overrides.objective = objective;
+      }
+      const strategy = $("template-strategy").value || "single";
+      if (strategy) {
+        overrides.strategy = strategy;
+      }
+      const candidates = parseCSV($("template-candidates").value);
+      if (candidates.length) {
+        overrides.candidates = candidates;
+      }
+      const tags = parseCSV($("template-tag-filter").value);
+      if (tags.length) {
+        overrides.metadata = { tags };
+      }
+      return overrides;
+    }
+
+    function syncTemplateSelection(payload) {
+      const templates = Array.isArray(payload?.templates) ? payload.templates : [];
+      if (!templates.length) {
+        return null;
+      }
+      const idInput = $("template-id");
+      const tokenInput = $("template-share-token");
+      const currentID = idInput.value.trim();
+      const selected =
+        templates.find((item) => String(item?.template_id || "").trim() === currentID) || templates[0];
+      const templateID = String(selected?.template_id || "").trim();
+      if (templateID) {
+        idInput.value = templateID;
+      }
+      const share = selected?.share && typeof selected.share === "object" ? selected.share : {};
+      if (share?.share_token) {
+        tokenInput.value = String(share.share_token);
+      }
+      return selected;
+    }
+
     function maybeAttachPageID(body) {
       const pageID = $("browser-page-id").value.trim();
       if (pageID) {
@@ -2036,6 +2146,14 @@
         const path = kind === "gallery" ? `/agents/gallery${query}` : `/agents/templates?limit=24${query ? `&${query.slice(1)}` : ""}`;
         const payload = await sendCoreRoute(path, { method: "GET", timeoutMs: 20000 });
         setTemplateOutput(payload);
+        if (kind === "local") {
+          syncTemplateSelection(payload);
+        } else {
+          const templates = Array.isArray(payload?.templates) ? payload.templates : [];
+          if (templates.length) {
+            $("template-manifest-json").value = JSON.stringify(templates[0], null, 2);
+          }
+        }
         const count = Number(payload?.count || 0);
         setTemplateStatus(`${kind === "gallery" ? "gallery" : "local"} templates ${count}`, "ok");
         appendLog(kind === "gallery" ? "templates_gallery" : "templates_local", payload);
@@ -2053,6 +2171,12 @@
           body: payload,
           timeoutMs: 30000,
         });
+        if (result?.template_id) {
+          $("template-id").value = String(result.template_id);
+        }
+        if (result?.share?.share_token) {
+          $("template-share-token").value = String(result.share.share_token);
+        }
         $("template-manifest-json").value = JSON.stringify(result?.manifest || {}, null, 2);
         setTemplateOutput(result);
         setTemplateStatus(`exported ${payload.name}`, "ok");
@@ -2071,12 +2195,188 @@
           body: { manifest },
           timeoutMs: 30000,
         });
+        if (result?.template_id) {
+          $("template-id").value = String(result.template_id);
+        }
+        if (result?.share?.share_token) {
+          $("template-share-token").value = String(result.share.share_token);
+        }
         setTemplateOutput(result);
         setTemplateStatus(`imported ${result?.name || result?.template_id || "template"}`, "ok");
         appendLog("template_import", result);
       } catch (err) {
         appendLog("template_import_error", String(err));
         setTemplateStatus(String(err), "bad");
+      }
+    }
+
+    async function loadTemplateDetail() {
+      try {
+        const templateID = selectedTemplateID();
+        const result = await sendCoreRoute(`/agents/templates/${encodeURIComponent(templateID)}`, {
+          method: "GET",
+          timeoutMs: 20000,
+        });
+        if (result?.template_id) {
+          $("template-id").value = String(result.template_id);
+        }
+        if (result?.share?.share_token) {
+          $("template-share-token").value = String(result.share.share_token);
+        }
+        if (result?.manifest) {
+          $("template-manifest-json").value = JSON.stringify(result.manifest, null, 2);
+        }
+        setTemplateOutput(result);
+        setTemplateStatus(`loaded ${result?.name || templateID}`, "ok");
+        appendLog("template_detail", result);
+      } catch (err) {
+        appendLog("template_detail_error", String(err));
+        setTemplateStatus(String(err), "bad");
+      }
+    }
+
+    async function shareTemplate() {
+      try {
+        const templateID = selectedTemplateID();
+        const result = await sendCoreRoute(`/agents/templates/${encodeURIComponent(templateID)}/share`, {
+          method: "POST",
+          body: { shared: true, rotate: false },
+          timeoutMs: 20000,
+        });
+        if (result?.share?.share_token) {
+          $("template-share-token").value = String(result.share.share_token);
+        }
+        setTemplateOutput(result);
+        const shareLabel = result?.share?.share_url || result?.share?.share_uri || result?.share?.share_path || templateID;
+        setTemplateStatus(`shared ${shareLabel}`, "ok");
+        appendLog("template_share", result);
+      } catch (err) {
+        appendLog("template_share_error", String(err));
+        setTemplateStatus(String(err), "bad");
+      }
+    }
+
+    async function launchTemplate(mode) {
+      try {
+        const templateID = selectedTemplateID();
+        const execute = mode === "run";
+        if (execute && !window.confirm(`Launch template ${templateID} as an immediate run?`)) {
+          return;
+        }
+        const result = await sendCoreRoute(`/agents/templates/${encodeURIComponent(templateID)}/launch`, {
+          method: "POST",
+          body: {
+            mode,
+            execute,
+            allow_dangerous: $("control-allow-dangerous").value === "true",
+            context: "realtime-console",
+            overrides: templateLaunchOverrides(),
+          },
+          timeoutMs: 30000,
+        });
+        setTemplateOutput(result);
+        const launchID =
+          result?.launch?.plan_id ||
+          result?.launch?.job_id ||
+          result?.launch?.workflow_id ||
+          result?.launch?.id ||
+          templateID;
+        setTemplateStatus(`${mode} launch ${launchID}`, "ok");
+        appendLog(mode === "run" ? "template_run" : "template_plan", result);
+      } catch (err) {
+        appendLog("template_launch_error", String(err));
+        setTemplateStatus(String(err), "bad");
+      }
+    }
+
+    async function resolveSharedTemplate() {
+      try {
+        const shareToken = $("template-share-token").value.trim();
+        if (!shareToken) {
+          throw new Error("share token is required");
+        }
+        const result = await sendCoreRoute(`/agents/templates/shared/${encodeURIComponent(shareToken)}`, {
+          method: "GET",
+          timeoutMs: 20000,
+        });
+        if (result?.manifest) {
+          $("template-manifest-json").value = JSON.stringify(result.manifest, null, 2);
+        }
+        setTemplateOutput(result);
+        setTemplateStatus(`resolved shared template ${result?.name || shareToken}`, "ok");
+        appendLog("template_resolve_share", result);
+      } catch (err) {
+        appendLog("template_resolve_share_error", String(err));
+        setTemplateStatus(String(err), "bad");
+      }
+    }
+
+    async function refreshArtifacts() {
+      try {
+        const limit = Math.max(1, Math.min(50, Number($("artifact-limit").value || 12)));
+        const controlType = $("artifact-type").value.trim();
+        const params = new URLSearchParams();
+        params.set("limit", String(limit));
+        if (controlType) {
+          params.set("control_type", controlType);
+        }
+        const payload = await sendCoreRoute(`/control/artifacts?${params.toString()}`, {
+          method: "GET",
+          timeoutMs: 15000,
+        });
+        const items = Array.isArray(payload) ? payload : [];
+        const currentID = $("artifact-id").value.trim();
+        const selected =
+          items.find((item) => String(item?.artifact_id || "").trim() === currentID) || items[0] || null;
+        if (selected?.artifact_id) {
+          $("artifact-id").value = String(selected.artifact_id);
+        }
+        setArtifactOutput(items);
+        setArtifactStatus(`artifacts ${items.length}`, items.length ? "ok" : "");
+        appendLog("artifacts_refresh", items);
+      } catch (err) {
+        appendLog("artifacts_refresh_error", String(err));
+        setArtifactStatus(String(err), "bad");
+      }
+    }
+
+    async function loadArtifactDetail() {
+      try {
+        const artifactID = $("artifact-id").value.trim();
+        if (!artifactID) {
+          throw new Error("artifact id is required");
+        }
+        const result = await sendCoreRoute(`/control/artifacts/${encodeURIComponent(artifactID)}`, {
+          method: "GET",
+          timeoutMs: 15000,
+        });
+        setArtifactOutput(result);
+        const summary = [result?.control_type, result?.status, result?.action_type].filter(Boolean).join(" ");
+        setArtifactStatus(summary || `artifact ${artifactID}`, "ok");
+        appendLog("artifact_detail", result);
+      } catch (err) {
+        appendLog("artifact_detail_error", String(err));
+        setArtifactStatus(String(err), "bad");
+      }
+    }
+
+    async function useLatestArtifact() {
+      try {
+        const payload = await sendCoreRoute("/control/artifacts?limit=1", {
+          method: "GET",
+          timeoutMs: 12000,
+        });
+        const latest = Array.isArray(payload) ? payload[0] : null;
+        if (!latest?.artifact_id) {
+          throw new Error("no control artifacts found");
+        }
+        $("artifact-id").value = String(latest.artifact_id);
+        setArtifactOutput(latest);
+        setArtifactStatus(`latest ${latest.control_type || "artifact"} ${latest.artifact_id}`, "ok");
+        appendLog("artifact_latest", latest);
+      } catch (err) {
+        appendLog("artifact_latest_error", String(err));
+        setArtifactStatus(String(err), "bad");
       }
     }
 
@@ -2273,6 +2573,38 @@
       importTemplate();
     });
 
+    $("template-load-btn").addEventListener("click", () => {
+      loadTemplateDetail();
+    });
+
+    $("template-share-btn").addEventListener("click", () => {
+      shareTemplate();
+    });
+
+    $("template-plan-btn").addEventListener("click", () => {
+      launchTemplate("plan");
+    });
+
+    $("template-run-btn").addEventListener("click", () => {
+      launchTemplate("run");
+    });
+
+    $("template-resolve-share-btn").addEventListener("click", () => {
+      resolveSharedTemplate();
+    });
+
+    $("artifacts-refresh-btn").addEventListener("click", () => {
+      refreshArtifacts();
+    });
+
+    $("artifact-detail-btn").addEventListener("click", () => {
+      loadArtifactDetail();
+    });
+
+    $("artifact-use-latest-btn").addEventListener("click", () => {
+      useLatestArtifact();
+    });
+
     $("terminal-poll-ms").addEventListener("change", () => {
       if (terminalSessionID) {
         startTerminalPolling(false);
@@ -2301,6 +2633,8 @@
     setMQTTOutput("No MQTT activity yet.");
     setTemplateStatus("Marketplace idle");
     setTemplateOutput("No marketplace activity yet.");
+    setArtifactStatus("Artifacts idle");
+    setArtifactOutput("No control artifact activity yet.");
     appendLog("ready", "Console loaded");
   </script>
 </body>
