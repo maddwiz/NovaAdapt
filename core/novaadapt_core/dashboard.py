@@ -452,6 +452,62 @@ def render_dashboard_html() -> str:
       </div>
 
       <div class=\"card\">
+        <div class=\"section-title\">Control Anything</div>
+        <div class=\"control-grid\">
+          <div class=\"control-field full\">
+            <label for=\"vision-goal\">Vision Goal</label>
+            <textarea id=\"vision-goal\" placeholder=\"Click the visible Continue button and save the current file.\"></textarea>
+          </div>
+          <div class=\"control-field\">
+            <label for=\"vision-app-name\">Vision App Name</label>
+            <input id=\"vision-app-name\" placeholder=\"Photoshop\" />
+          </div>
+          <div class=\"control-field\">
+            <label for=\"control-allow-dangerous\">Dangerous Actions</label>
+            <select id=\"control-allow-dangerous\">
+              <option value=\"false\">block</option>
+              <option value=\"true\">allow</option>
+            </select>
+          </div>
+        </div>
+        <div class=\"control-actions\">
+          <button id=\"refresh-mobile-status\">Mobile Status</button>
+          <button id=\"preview-vision\">Preview Vision</button>
+          <button id=\"execute-vision\">Execute Vision</button>
+        </div>
+        <div class=\"control-grid\" style=\"margin-top: 10px;\">
+          <div class=\"control-field\">
+            <label for=\"mobile-goal\">Mobile Goal</label>
+            <input id=\"mobile-goal\" placeholder=\"Open Settings and enable Wi-Fi\" />
+          </div>
+          <div class=\"control-field\">
+            <label for=\"mobile-platform\">Platform</label>
+            <select id=\"mobile-platform\">
+              <option value=\"android\">android</option>
+              <option value=\"ios\">ios</option>
+            </select>
+          </div>
+          <div class=\"control-field\">
+            <label for=\"mobile-prefer-appium\">Prefer Appium</label>
+            <select id=\"mobile-prefer-appium\">
+              <option value=\"false\">vision default</option>
+              <option value=\"true\">appium when available</option>
+            </select>
+          </div>
+          <div class=\"control-field full\">
+            <label for=\"mobile-action-json\">Mobile Action JSON</label>
+            <textarea id=\"mobile-action-json\" placeholder='{"type":"open_app","package":"com.android.settings"}'>{"type":"open_app","package":"com.android.settings"}</textarea>
+          </div>
+        </div>
+        <div class=\"control-actions\">
+          <button id=\"preview-mobile\">Preview Mobile</button>
+          <button id=\"execute-mobile\">Execute Mobile</button>
+        </div>
+        <div class=\"control-status\" id=\"control-status\"></div>
+        <pre id=\"control-output\" class=\"surface-output\">No control-anything activity yet.</pre>
+      </div>
+
+      <div class=\"card\">
         <div class=\"section-title\">Agent Marketplace</div>
         <div class=\"control-grid\">
           <div class=\"control-field\">
@@ -559,6 +615,7 @@ def render_dashboard_html() -> str:
     const actionStatus = document.getElementById('action-status');
     const governanceStatus = document.getElementById('governance-status');
     const terminalStatus = document.getElementById('terminal-status');
+    const controlStatus = document.getElementById('control-status');
     const templateStatus = document.getElementById('template-status');
     const jobsTbody = document.getElementById('jobs');
     const plansTbody = document.getElementById('plans');
@@ -566,6 +623,7 @@ def render_dashboard_html() -> str:
     const observabilityEl = document.getElementById('observability');
     const terminalSessionsEl = document.getElementById('terminal-sessions');
     const terminalOutputEl = document.getElementById('terminal-output');
+    const controlOutputEl = document.getElementById('control-output');
     const templateLibraryEl = document.getElementById('template-library');
     const templateGalleryEl = document.getElementById('template-gallery');
     const templateOutputEl = document.getElementById('template-output');
@@ -582,6 +640,11 @@ def render_dashboard_html() -> str:
     const terminalCloseButton = document.getElementById('terminal-close');
     const terminalSendButton = document.getElementById('terminal-send');
     const terminalCtrlCButton = document.getElementById('terminal-ctrlc');
+    const refreshMobileStatusButton = document.getElementById('refresh-mobile-status');
+    const previewVisionButton = document.getElementById('preview-vision');
+    const executeVisionButton = document.getElementById('execute-vision');
+    const previewMobileButton = document.getElementById('preview-mobile');
+    const executeMobileButton = document.getElementById('execute-mobile');
     const templateRefreshButton = document.getElementById('template-refresh');
     const templateExportButton = document.getElementById('template-export');
     const templateImportButton = document.getElementById('template-import');
@@ -618,6 +681,11 @@ def render_dashboard_html() -> str:
     function setTerminalStatus(message, ok=true){
       terminalStatus.textContent = String(message || '');
       terminalStatus.className = `control-status ${ok ? 'ok' : 'bad'}`;
+    }
+
+    function setControlStatus(message, ok=true){
+      controlStatus.textContent = String(message || '');
+      controlStatus.className = `control-status ${ok ? 'ok' : 'bad'}`;
     }
 
     function setTemplateStatus(message, ok=true){
@@ -657,6 +725,24 @@ def render_dashboard_html() -> str:
         return;
       }
       target.textContent = JSON.stringify(payload, null, 2);
+    }
+
+    function controlAllowDangerous(){
+      return document.getElementById('control-allow-dangerous').value === 'true';
+    }
+
+    function controlSharedPayload(){
+      const payload = {
+        strategy: document.getElementById('operator-strategy').value || 'single',
+        allow_dangerous: controlAllowDangerous(),
+      };
+      const model = document.getElementById('operator-model').value.trim();
+      const candidates = parseNameList(document.getElementById('operator-candidates').value);
+      const fallbacks = parseNameList(document.getElementById('operator-fallbacks').value);
+      if (model) payload.model = model;
+      if (candidates.length) payload.candidates = candidates;
+      if (fallbacks.length) payload.fallbacks = fallbacks;
+      return payload;
     }
 
     function readInteger(id, fallback){
@@ -1377,6 +1463,119 @@ def render_dashboard_html() -> str:
       }
     }
 
+    function formatMobileRuntimeStatus(payload){
+      const status = payload && typeof payload === 'object' ? payload : {};
+      const android = status.android && typeof status.android === 'object' ? status.android : {};
+      const ios = status.ios && typeof status.ios === 'object' ? status.ios : {};
+      const androidText = android.ok ? 'android ready' : `android ${android.error || 'degraded'}`;
+      const iosTransport = String(ios.transport || (ios.ok ? 'vision' : 'unavailable'));
+      const iosText = ios.ok ? `ios ${iosTransport}` : `ios ${ios.error || 'degraded'}`;
+      return `${androidText} • ${iosText}`;
+    }
+
+    function buildVisionPayload(execute){
+      const goal = document.getElementById('vision-goal').value.trim();
+      if (!goal) throw new Error('Vision goal is required');
+      const payload = {
+        ...controlSharedPayload(),
+        goal,
+        execute: Boolean(execute),
+      };
+      const appName = document.getElementById('vision-app-name').value.trim();
+      if (appName) payload.app_name = appName;
+      return payload;
+    }
+
+    function parseMobileActionJSON(){
+      const raw = document.getElementById('mobile-action-json').value.trim();
+      if (!raw) throw new Error('Mobile action JSON is required');
+      try {
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+          throw new Error('Mobile action JSON must be an object');
+        }
+        return parsed;
+      } catch (err) {
+        throw new Error(`Mobile action JSON is invalid: ${String(err?.message || err)}`);
+      }
+    }
+
+    function buildMobilePayload(execute){
+      const platform = (document.getElementById('mobile-platform').value || 'android').trim().toLowerCase();
+      const payload = {
+        ...controlSharedPayload(),
+        platform: platform || 'android',
+        action: parseMobileActionJSON(),
+        execute: Boolean(execute),
+      };
+      const goal = document.getElementById('mobile-goal').value.trim();
+      if (goal) payload.goal = goal;
+      if (payload.platform === 'ios' && document.getElementById('mobile-prefer-appium').value === 'true') {
+        payload.prefer_appium = true;
+      }
+      return payload;
+    }
+
+    async function refreshMobileStatus(){
+      const out = await fetchJSON('/mobile/status');
+      setControlStatus(out?.ok ? formatMobileRuntimeStatus(out) : 'Mobile runtime unavailable', Boolean(out?.ok));
+      renderSurfaceOutput(controlOutputEl, out, 'Mobile runtime status unavailable.');
+      return out;
+    }
+
+    async function handleControlAction(kind){
+      const buttonMap = {
+        refresh_mobile: refreshMobileStatusButton,
+        preview_vision: previewVisionButton,
+        execute_vision: executeVisionButton,
+        preview_mobile: previewMobileButton,
+        execute_mobile: executeMobileButton,
+      };
+      const button = buttonMap[kind];
+      if (!button) return;
+      button.disabled = true;
+      try {
+        if (kind === 'refresh_mobile') {
+          await refreshMobileStatus();
+        } else if (kind === 'preview_vision') {
+          const out = await postJSON('/execute/vision', buildVisionPayload(false));
+          renderSurfaceOutput(controlOutputEl, out, 'Vision preview complete.');
+          setControlStatus(`Vision ${String(out?.status || 'preview')}`, !['failed', 'blocked'].includes(String(out?.status || '').toLowerCase()));
+          await refresh();
+        } else if (kind === 'execute_vision') {
+          const goal = document.getElementById('vision-goal').value.trim() || 'this goal';
+          if (!confirm(`Execute vision-grounded desktop action for: ${goal}?`)) return;
+          const out = await postJSON('/execute/vision', buildVisionPayload(true));
+          renderSurfaceOutput(controlOutputEl, out, 'Vision execution complete.');
+          setControlStatus(`Vision ${String(out?.status || 'unknown')}`, String(out?.status || '').toLowerCase() === 'ok');
+          await refresh();
+        } else if (kind === 'preview_mobile') {
+          const out = await postJSON('/mobile/action', buildMobilePayload(false));
+          renderSurfaceOutput(controlOutputEl, out, 'Mobile preview complete.');
+          setControlStatus(
+            `Mobile ${String(out?.platform || '')} ${String(out?.status || 'preview')}`.trim(),
+            !['failed', 'blocked'].includes(String(out?.status || '').toLowerCase()),
+          );
+          await refresh();
+        } else if (kind === 'execute_mobile') {
+          const platform = document.getElementById('mobile-platform').value || 'android';
+          const goal = document.getElementById('mobile-goal').value.trim();
+          if (!confirm(`Execute ${platform} mobile action${goal ? ` for "${goal}"` : ''}?`)) return;
+          const out = await postJSON('/mobile/action', buildMobilePayload(true));
+          renderSurfaceOutput(controlOutputEl, out, 'Mobile execution complete.');
+          setControlStatus(
+            `Mobile ${String(out?.platform || platform)} ${String(out?.status || 'unknown')}`.trim(),
+            String(out?.status || '').toLowerCase() === 'ok',
+          );
+          await refresh();
+        }
+      } catch (err) {
+        setControlStatus(String(err), false);
+      } finally {
+        button.disabled = false;
+      }
+    }
+
     function syncGovernanceInputs(governance){
       const payload = governance && typeof governance === 'object' ? governance : {};
       const paused = Boolean(payload.paused);
@@ -1797,6 +1996,11 @@ def render_dashboard_html() -> str:
     terminalCloseButton.addEventListener('click', () => handleTerminalAction('close'));
     terminalSendButton.addEventListener('click', () => handleTerminalAction('send'));
     terminalCtrlCButton.addEventListener('click', () => handleTerminalAction('ctrlc'));
+    refreshMobileStatusButton.addEventListener('click', () => handleControlAction('refresh_mobile'));
+    previewVisionButton.addEventListener('click', () => handleControlAction('preview_vision'));
+    executeVisionButton.addEventListener('click', () => handleControlAction('execute_vision'));
+    previewMobileButton.addEventListener('click', () => handleControlAction('preview_mobile'));
+    executeMobileButton.addEventListener('click', () => handleControlAction('execute_mobile'));
     templateRefreshButton.addEventListener('click', () => handleTemplateAction('refresh'));
     templateExportButton.addEventListener('click', () => handleTemplateAction('export'));
     templateImportButton.addEventListener('click', () => handleTemplateAction('import'));
@@ -1812,10 +2016,13 @@ def render_dashboard_html() -> str:
 
     updateLiveButton();
     setTerminalStatus('Idle', true);
+    setControlStatus('Idle', true);
     setTemplateStatus('Idle', true);
     renderSurfaceOutput(terminalOutputEl, null, 'No terminal session attached.');
+    renderSurfaceOutput(controlOutputEl, null, 'No control-anything activity yet.');
     renderSurfaceOutput(templateOutputEl, null, 'No template activity yet.');
     refresh();
+    refreshMobileStatus().catch(err => setControlStatus(String(err), false));
     window.addEventListener('beforeunload', () => {
       if (state.timer) clearInterval(state.timer);
       if (state.refreshScheduled) clearTimeout(state.refreshScheduled);
