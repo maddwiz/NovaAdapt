@@ -33,6 +33,7 @@ from .novaprime import (
 from .plan_store import PlanStore
 from .policy import ActionPolicy
 from .plugins import PluginRegistry, SIBBridge, build_plugin_registry
+from .runtime_governance import RuntimeGovernance, _UNSET as _RUNTIME_UNSET
 from .voice import build_stt_backend, build_tts_backend
 from .vision_grounding import VisionGroundingExecutor
 from .workflows import WorkflowCheckpointStore, WorkflowEngine, WorkflowRecord, WorkflowStore, workflows_enabled
@@ -47,7 +48,6 @@ def _result_payload(status: str, output: str, action: dict[str, Any], data: dict
     if data is not None:
         payload["data"] = dict(data)
     return payload
-
 
 class NovaAdaptService:
     """Shared application service used by CLI and HTTP server."""
@@ -71,6 +71,7 @@ class NovaAdaptService:
         adapt_persona: AdaptPersonaEngine | None = None,
         channel_registry: ChannelRegistry | None = None,
         plugin_registry: PluginRegistry | None = None,
+        runtime_governance: RuntimeGovernance | None = None,
     ) -> None:
         self.default_config = default_config
         self.db_path = db_path
@@ -89,6 +90,7 @@ class NovaAdaptService:
         self.adapt_persona = adapt_persona or AdaptPersonaEngine()
         self.channel_registry = channel_registry or build_channel_registry()
         self.plugin_registry = plugin_registry or build_plugin_registry()
+        self.runtime_governance = runtime_governance or RuntimeGovernance(self._runtime_governance_state_path())
         self._plan_store: PlanStore | None = None
         self._audit_store: AuditStore | None = None
         self._browser_executor: BrowserExecutor | None = None
@@ -447,6 +449,44 @@ class NovaAdaptService:
 
     def control_artifact_preview(self, artifact_id: str) -> tuple[bytes, str] | None:
         return self._control_artifact_store_obj().read_preview(artifact_id)
+
+    def runtime_governance_status(self, *, job_stats: dict[str, Any] | None = None) -> dict[str, Any]:
+        return self.runtime_governance.snapshot(job_stats=job_stats)
+
+    def runtime_governance_preflight(self) -> str | None:
+        return self.runtime_governance.preflight_error()
+
+    def runtime_governance_update(
+        self,
+        *,
+        paused: bool | None = None,
+        pause_reason: str | None = None,
+        budget_limit_usd: float | None | object = _RUNTIME_UNSET,
+        max_active_runs: int | None | object = _RUNTIME_UNSET,
+        reset_usage: bool = False,
+        job_stats: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        budget_value = (
+            budget_limit_usd
+            if budget_limit_usd is _RUNTIME_UNSET or budget_limit_usd is None or isinstance(budget_limit_usd, (int, float))
+            else _RUNTIME_UNSET
+        )
+        max_active_value = (
+            max_active_runs
+            if max_active_runs is _RUNTIME_UNSET or max_active_runs is None or isinstance(max_active_runs, int)
+            else _RUNTIME_UNSET
+        )
+        state = self.runtime_governance.update(
+            paused=paused,
+            pause_reason=pause_reason,
+            budget_limit_usd=budget_value,
+            max_active_runs=max_active_value,
+        )
+        if reset_usage:
+            state = self.runtime_governance.reset_usage()
+        if isinstance(job_stats, dict):
+            state["jobs"] = job_stats
+        return state
 
     def homeassistant_status(self) -> dict[str, Any]:
         return self._homeassistant().status()
@@ -2380,47 +2420,62 @@ class NovaAdaptService:
             else:
                 planning_identity_profile = {"persona": persona_context}
 
-        router = self.router_loader(config_path)
-        queue = UndoQueue(db_path=self.db_path)
-        agent = NovaAdaptAgent(
-            router=router,
-            directshell=self.directshell_factory(),
-            undo_queue=queue,
-            memory_backend=self.memory_backend,
-        )
-        kernel_context: dict[str, Any] | None = None
-        if should_use_kernel(payload):
-            novaprime_context["enabled"] = True
-            kernel_response = run_with_kernel(
-                payload=payload,
-                objective=objective,
-                strategy=strategy,
-                model_name=str(model_name or "").strip() or None,
+        with self.runtime_governance.run_guard():
+            router = self.router_loader(config_path)
+            queue = UndoQueue(db_path=self.db_path)
+            agent = NovaAdaptAgent(
                 router=router,
-                agent=agent,
-                execute=execute,
-                record_history=record_history,
-                allow_dangerous=allow_dangerous,
-                max_actions=max(1, max_actions),
-                adapt_id=adapt_id,
-                player_id=player_id,
-                identity_profile=planning_identity_profile,
+                directshell=self.directshell_factory(),
+                undo_queue=queue,
+                memory_backend=self.memory_backend,
             )
-            raw_kernel_context = kernel_response.get("kernel")
-            if isinstance(raw_kernel_context, dict):
-                kernel_context = dict(raw_kernel_context)
-            if bool(kernel_response.get("ok", False)) and isinstance(kernel_response.get("result"), dict):
-                result = dict(kernel_response.get("result", {}))
-            else:
-                kernel_error = str(kernel_response.get("error") or "novaprime kernel execution failed")
-                if kernel_context is None:
-                    kernel_context = {"ok": False, "error": kernel_error}
+            kernel_context: dict[str, Any] | None = None
+            if should_use_kernel(payload):
+                novaprime_context["enabled"] = True
+                kernel_response = run_with_kernel(
+                    payload=payload,
+                    objective=objective,
+                    strategy=strategy,
+                    model_name=str(model_name or "").strip() or None,
+                    router=router,
+                    agent=agent,
+                    execute=execute,
+                    record_history=record_history,
+                    allow_dangerous=allow_dangerous,
+                    max_actions=max(1, max_actions),
+                    adapt_id=adapt_id,
+                    player_id=player_id,
+                    identity_profile=planning_identity_profile,
+                )
+                raw_kernel_context = kernel_response.get("kernel")
+                if isinstance(raw_kernel_context, dict):
+                    kernel_context = dict(raw_kernel_context)
+                if bool(kernel_response.get("ok", False)) and isinstance(kernel_response.get("result"), dict):
+                    result = dict(kernel_response.get("result", {}))
                 else:
-                    kernel_context.setdefault("ok", False)
-                    kernel_context.setdefault("error", kernel_error)
-                if kernel_required(payload):
-                    raise RuntimeError(kernel_error)
-                kernel_context["fallback"] = "legacy_agent"
+                    kernel_error = str(kernel_response.get("error") or "novaprime kernel execution failed")
+                    if kernel_context is None:
+                        kernel_context = {"ok": False, "error": kernel_error}
+                    else:
+                        kernel_context.setdefault("ok", False)
+                        kernel_context.setdefault("error", kernel_error)
+                    if kernel_required(payload):
+                        raise RuntimeError(kernel_error)
+                    kernel_context["fallback"] = "legacy_agent"
+                    result = agent.run_objective(
+                        objective=objective,
+                        strategy=strategy,
+                        model_name=model_name,
+                        candidate_models=candidate_models or None,
+                        fallback_models=fallback_models or None,
+                        dry_run=not execute,
+                        record_history=record_history,
+                        allow_dangerous=allow_dangerous,
+                        max_actions=max(1, max_actions),
+                        identity_profile=planning_identity_profile,
+                        bond_verified=bond_verified,
+                    )
+            else:
                 result = agent.run_objective(
                     objective=objective,
                     strategy=strategy,
@@ -2434,19 +2489,10 @@ class NovaAdaptService:
                     identity_profile=planning_identity_profile,
                     bond_verified=bond_verified,
                 )
-        else:
-            result = agent.run_objective(
-                objective=objective,
+            self.runtime_governance.record_model_usage(
+                usage=result.get("model_usage") if isinstance(result, dict) else None,
                 strategy=strategy,
-                model_name=model_name,
-                candidate_models=candidate_models or None,
-                fallback_models=fallback_models or None,
-                dry_run=not execute,
-                record_history=record_history,
-                allow_dangerous=allow_dangerous,
-                max_actions=max(1, max_actions),
-                identity_profile=planning_identity_profile,
-                bond_verified=bond_verified,
+                objective=objective,
             )
         if isinstance(kernel_context, dict):
             novaprime_context["kernel"] = kernel_context
@@ -3115,6 +3161,12 @@ class NovaAdaptService:
             return self.db_path.with_name("novaadapt_control_artifacts")
         base_dir = self.default_config.parent if isinstance(self.default_config, Path) else Path(".")
         return base_dir / ".novaadapt_control_artifacts"
+
+    def _runtime_governance_state_path(self) -> Path:
+        if isinstance(self.db_path, Path):
+            return self.db_path.with_name("novaadapt_runtime_governance.json")
+        base_dir = self.default_config.parent if isinstance(self.default_config, Path) else Path(".")
+        return base_dir / ".novaadapt_runtime_governance.json"
 
     def _control_artifact_store_obj(self) -> ControlArtifactStore:
         if self._control_artifact_store is None:

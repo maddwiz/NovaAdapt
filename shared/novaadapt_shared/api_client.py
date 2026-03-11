@@ -1131,6 +1131,57 @@ class NovaAdaptAPIClient:
             return payload
         raise APIClientError("Expected object payload from /mobile/status")
 
+    def runtime_governance(self) -> dict[str, Any]:
+        payload = self._get_json("/runtime/governance")
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /runtime/governance")
+
+    def update_runtime_governance(
+        self,
+        *,
+        paused: bool | None = None,
+        pause_reason: str | None = None,
+        budget_limit_usd: float | None | object = ...,
+        max_active_runs: int | None | object = ...,
+        reset_usage: bool = False,
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {}
+        if paused is not None:
+            body["paused"] = bool(paused)
+        if pause_reason is not None:
+            body["pause_reason"] = str(pause_reason)
+        if budget_limit_usd is not ...:
+            body["budget_limit_usd"] = None if budget_limit_usd is None else float(budget_limit_usd)
+        if max_active_runs is not ...:
+            body["max_active_runs"] = None if max_active_runs is None else int(max_active_runs)
+        if reset_usage:
+            body["reset_usage"] = True
+        payload = self._post_json("/runtime/governance", body, idempotency_key=idempotency_key)
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /runtime/governance")
+
+    def cancel_all_jobs(
+        self,
+        *,
+        pause: bool = False,
+        pause_reason: str = "",
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        payload = self._post_json(
+            "/runtime/jobs/cancel_all",
+            {
+                "pause": bool(pause),
+                "pause_reason": str(pause_reason or ""),
+            },
+            idempotency_key=idempotency_key,
+        )
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /runtime/jobs/cancel_all")
+
     def control_artifacts(self, *, limit: int = 10, control_type: str | None = None) -> list[dict[str, Any]]:
         query = f"limit={max(1, int(limit))}"
         if control_type:

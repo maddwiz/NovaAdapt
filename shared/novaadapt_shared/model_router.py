@@ -19,6 +19,7 @@ class ModelEndpoint:
     provider: str = "openai-compatible"
     api_key_env: str | None = None
     headers: dict[str, str] = field(default_factory=dict)
+    estimated_cost_per_call_usd: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -31,6 +32,8 @@ class RouterResult:
     errors: dict[str, str] = field(default_factory=dict)
     attempted_models: list[str] = field(default_factory=list)
     vote_summary: dict[str, object] = field(default_factory=dict)
+    usage: dict[str, dict[str, object]] = field(default_factory=dict)
+    estimated_cost_usd: float = 0.0
 
 
 class ModelRouter:
@@ -80,6 +83,7 @@ class ModelRouter:
                 provider=item.get("provider", "openai-compatible"),
                 api_key_env=item.get("api_key_env"),
                 headers=item.get("headers", {}),
+                estimated_cost_per_call_usd=float(item.get("estimated_cost_per_call_usd", 0.0) or 0.0),
             )
             for item in raw["models"]
         ]
@@ -186,8 +190,10 @@ class ModelRouter:
         errors: dict[str, str] = {}
         endpoint = self._resolve_model(ordered_names[0])
         content = ""
+        attempted: list[str] = []
         for name in ordered_names:
             endpoint = self._resolve_model(name)
+            attempted.append(name)
             try:
                 content = self._invoke(endpoint, messages)
                 break
@@ -203,7 +209,9 @@ class ModelRouter:
             content=content,
             strategy="single",
             errors=errors,
-            attempted_models=ordered_names,
+            attempted_models=attempted,
+            usage=self._usage_for_attempts(attempted),
+            estimated_cost_usd=self._usage_total(self._usage_for_attempts(attempted)),
         )
 
     def _chat_vote(
@@ -270,6 +278,8 @@ class ModelRouter:
                 "total_votes": len(outputs),
                 "quorum_met": True,
             },
+            usage=self._usage_for_attempts(names),
+            estimated_cost_usd=self._usage_total(self._usage_for_attempts(names)),
         )
 
     def _chat_decompose(
@@ -308,6 +318,7 @@ class ModelRouter:
 
         attempted_models: list[str] = [planner_name]
         errors: dict[str, str] = {}
+        usage: dict[str, dict[str, object]] = self._usage_for_attempts([planner_name])
 
         def _fallback(reason: str, planner_error: str, *, subtasks_total: int, subtasks_succeeded: int) -> RouterResult:
             errors["decompose.planner"] = planner_error
@@ -335,6 +346,8 @@ class ModelRouter:
                     "subtasks_succeeded": subtasks_succeeded,
                     "subtasks_failed": max(0, subtasks_total - subtasks_succeeded),
                 },
+                usage=self._merge_usage(usage, fallback.usage),
+                estimated_cost_usd=self._usage_total(self._merge_usage(usage, fallback.usage)),
             )
 
         try:
@@ -382,6 +395,7 @@ class ModelRouter:
                     fallback_models=fallback_models,
                 )
                 attempted_models.extend(sub_result.attempted_models)
+                usage = self._merge_usage(usage, sub_result.usage)
                 for key, value in sub_result.errors.items():
                     errors[f"decompose.{subtask_id}.{key}"] = value
                 subtask_votes[subtask_id] = sub_result.content
@@ -424,6 +438,7 @@ class ModelRouter:
             fallback_models=fallback_models,
         )
         attempted_models.extend(synthesis.attempted_models)
+        usage = self._merge_usage(usage, synthesis.usage)
         for key, value in synthesis.errors.items():
             errors[f"decompose.synthesis.{key}"] = value
 
@@ -441,6 +456,8 @@ class ModelRouter:
                 "subtasks_failed": max(0, len(subtasks) - len(subtask_outputs)),
                 "quorum_met": len(subtask_outputs) > 0,
             },
+            usage=usage,
+            estimated_cost_usd=self._usage_total(usage),
         )
 
     def _invoke(self, endpoint: ModelEndpoint, messages: list[dict[str, str]]) -> str:
@@ -566,6 +583,44 @@ class ModelRouter:
             if self._normalize(item) == winner_norm:
                 return item, winner_count
         return outputs[0], winner_count
+
+    def _usage_for_attempts(self, attempts: Iterable[str]) -> dict[str, dict[str, object]]:
+        counts = Counter(str(name) for name in attempts if str(name))
+        usage: dict[str, dict[str, object]] = {}
+        for name, count in counts.items():
+            endpoint = self._resolve_model(name)
+            estimated_cost = round(float(endpoint.estimated_cost_per_call_usd or 0.0) * count, 6)
+            usage[name] = {
+                "calls": int(count),
+                "model_id": endpoint.model,
+                "estimated_cost_usd": estimated_cost,
+            }
+        return usage
+
+    @staticmethod
+    def _merge_usage(
+        left: dict[str, dict[str, object]],
+        right: dict[str, dict[str, object]],
+    ) -> dict[str, dict[str, object]]:
+        merged = json.loads(json.dumps(left, ensure_ascii=True))
+        for name, item in right.items():
+            current = merged.setdefault(name, {"calls": 0, "estimated_cost_usd": 0.0, "model_id": ""})
+            current["calls"] = int(current.get("calls", 0) or 0) + int(item.get("calls", 0) or 0)
+            current["estimated_cost_usd"] = round(
+                float(current.get("estimated_cost_usd", 0.0) or 0.0)
+                + float(item.get("estimated_cost_usd", 0.0) or 0.0),
+                6,
+            )
+            if item.get("model_id"):
+                current["model_id"] = str(item.get("model_id") or "")
+        return merged
+
+    @staticmethod
+    def _usage_total(usage: dict[str, dict[str, object]]) -> float:
+        total = 0.0
+        for item in usage.values():
+            total += float(item.get("estimated_cost_usd", 0.0) or 0.0)
+        return round(total, 6)
 
     @staticmethod
     def _dedupe_names(names: list[str]) -> list[str]:

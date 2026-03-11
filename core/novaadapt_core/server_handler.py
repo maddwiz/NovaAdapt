@@ -36,6 +36,7 @@ from . import server_canvas_routes as canvas_routes
 from . import server_workflow_routes as workflow_routes
 from . import server_plugin_routes as plugin_routes
 from . import server_control_routes as control_routes
+from . import server_runtime_routes as runtime_routes
 from . import server_idempotency_utils as idempotency_utils
 from . import server_stream_utils as stream_utils
 
@@ -347,6 +348,9 @@ def _build_handler(
         def _get_control_artifacts(self, query: dict[str, list[str]]) -> int:
             return control_routes.get_control_artifacts(self, service, _single, query)
 
+        def _get_runtime_governance(self, _query: dict[str, list[str]]) -> int:
+            return runtime_routes.get_runtime_governance(self, service, job_manager)
+
         def _get_control_artifact_item(self, path: str, _query: dict[str, list[str]]) -> int:
             return control_routes.get_control_artifact_item(self, service, path)
 
@@ -594,6 +598,12 @@ def _build_handler(
 
         def _post_mqtt_subscribe(self, path: str, payload: dict[str, object]) -> int:
             return control_routes.post_mqtt_subscribe(self, service, path, payload)
+
+        def _post_runtime_governance(self, path: str, payload: dict[str, object]) -> int:
+            return runtime_routes.post_runtime_governance(self, service, job_manager, path, payload)
+
+        def _post_runtime_cancel_all_jobs(self, path: str, payload: dict[str, object]) -> int:
+            return runtime_routes.post_runtime_cancel_all_jobs(self, service, job_manager, path, payload)
 
         def _post_browser_typed_action(
             self,

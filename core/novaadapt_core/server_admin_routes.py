@@ -151,12 +151,15 @@ def get_dashboard_data(
     except Exception as exc:
         control["artifacts"] = []
         control["artifacts_error"] = str(exc)
+    job_rows = job_manager.list(limit=max(1, jobs_limit))
+    job_stats = job_manager.stats()
     handler._send_json(
         200,
         {
             "health": {"ok": True, "service": "novaadapt"},
             "metrics": metrics.snapshot(),
-            "jobs": job_manager.list(limit=max(1, jobs_limit)),
+            "jobs": job_rows,
+            "governance": service.runtime_governance_status(job_stats=job_stats),
             "plans": service.list_plans(limit=max(1, plans_limit)),
             "events": (
                 audit_store.list(limit=max(1, events_limit))

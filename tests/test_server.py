@@ -238,11 +238,34 @@ class ServerTests(unittest.TestCase):
                 self.assertTrue(dashboard_data["health"]["ok"])
                 self.assertIn("metrics", dashboard_data)
                 self.assertIn("jobs", dashboard_data)
+                self.assertIn("governance", dashboard_data)
                 self.assertIn("plans", dashboard_data)
                 self.assertIn("events", dashboard_data)
                 self.assertIn("control", dashboard_data)
                 self.assertIn("mobile", dashboard_data["control"])
                 self.assertIn("homeassistant", dashboard_data["control"])
+
+                runtime_governance, _ = _get_json_with_headers(f"http://{host}:{port}/runtime/governance")
+                self.assertIn("paused", runtime_governance)
+                self.assertIn("jobs", runtime_governance)
+
+                runtime_update, _ = _post_json_with_headers(
+                    f"http://{host}:{port}/runtime/governance",
+                    {"paused": True, "pause_reason": "ops freeze", "reset_usage": True},
+                )
+                self.assertTrue(runtime_update["paused"])
+                self.assertEqual(runtime_update["llm_calls_total"], 0)
+
+                cancel_all, _ = _post_json_with_headers(
+                    f"http://{host}:{port}/runtime/jobs/cancel_all",
+                    {"pause": True, "pause_reason": "ops freeze"},
+                )
+                self.assertTrue(cancel_all["ok"])
+                self.assertIn("governance", cancel_all)
+                _post_json_with_headers(
+                    f"http://{host}:{port}/runtime/governance",
+                    {"paused": False, "pause_reason": ""},
+                )
 
                 mobile_status, _ = _get_json_with_headers(f"http://{host}:{port}/mobile/status")
                 self.assertIn("ok", mobile_status)
@@ -275,6 +298,8 @@ class ServerTests(unittest.TestCase):
                 self.assertIn("/events", openapi["paths"])
                 self.assertIn("/events/stream", openapi["paths"])
                 self.assertIn("/mobile/status", openapi["paths"])
+                self.assertIn("/runtime/governance", openapi["paths"])
+                self.assertIn("/runtime/jobs/cancel_all", openapi["paths"])
                 self.assertIn("/execute/vision", openapi["paths"])
                 self.assertIn("/mobile/action", openapi["paths"])
                 self.assertIn("/iot/homeassistant/entities", openapi["paths"])

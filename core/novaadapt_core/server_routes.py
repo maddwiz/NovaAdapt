@@ -50,6 +50,7 @@ def build_get_private_routes(handler: Any) -> dict[str, Any]:
         "/browser/status": handler._get_browser_status,
         "/browser/pages": handler._get_browser_pages,
         "/mobile/status": handler._get_mobile_status,
+        "/runtime/governance": handler._get_runtime_governance,
         "/iot/homeassistant/entities": handler._get_homeassistant_entities,
         "/iot/homeassistant/status": handler._get_homeassistant_status,
         "/iot/mqtt/status": handler._get_mqtt_status,
@@ -166,6 +167,8 @@ def build_post_exact_routes(handler: Any) -> dict[str, Any]:
         "/browser/close": lambda body: handler._post_browser_close("/browser/close", body),
         "/execute/vision": lambda body: handler._post_execute_vision("/execute/vision", body),
         "/mobile/action": lambda body: handler._post_mobile_action("/mobile/action", body),
+        "/runtime/governance": lambda body: handler._post_runtime_governance("/runtime/governance", body),
+        "/runtime/jobs/cancel_all": lambda body: handler._post_runtime_cancel_all_jobs("/runtime/jobs/cancel_all", body),
         "/iot/homeassistant/action": lambda body: handler._post_homeassistant_action("/iot/homeassistant/action", body),
         "/iot/mqtt/publish": lambda body: handler._post_mqtt_publish("/iot/mqtt/publish", body),
         "/iot/mqtt/subscribe": lambda body: handler._post_mqtt_subscribe("/iot/mqtt/subscribe", body),
@@ -233,7 +236,15 @@ def is_idempotent_route(path: str) -> bool:
         return True
     if path in {"/memory/ingest"}:
         return True
-    if path in {"/execute/vision", "/mobile/action", "/iot/homeassistant/action", "/iot/mqtt/publish", "/iot/mqtt/subscribe"}:
+    if path in {
+        "/execute/vision",
+        "/mobile/action",
+        "/runtime/governance",
+        "/runtime/jobs/cancel_all",
+        "/iot/homeassistant/action",
+        "/iot/mqtt/publish",
+        "/iot/mqtt/subscribe",
+    }:
         return True
     if path.startswith("/channels/") and (path.endswith("/send") or path.endswith("/inbound")):
         return True

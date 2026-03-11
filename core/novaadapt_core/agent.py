@@ -157,6 +157,8 @@ class NovaAdaptAgent:
             "vote_summary": result.vote_summary,
             "model_errors": result.errors,
             "attempted_models": result.attempted_models,
+            "model_usage": result.usage,
+            "estimated_cost_usd": result.estimated_cost_usd,
             "actions": actions,
             "results": execution,
             "action_log_ids": action_log_ids,

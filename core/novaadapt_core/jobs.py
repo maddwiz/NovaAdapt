@@ -3,6 +3,7 @@ from __future__ import annotations
 import inspect
 import threading
 import uuid
+from collections import Counter
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -27,7 +28,8 @@ class JobManager:
     """Async job manager with optional SQLite-backed persistence."""
 
     def __init__(self, max_workers: int = 4, store: JobStore | None = None) -> None:
-        self._executor = ThreadPoolExecutor(max_workers=max_workers)
+        self.max_workers = max(1, int(max_workers))
+        self._executor = ThreadPoolExecutor(max_workers=self.max_workers)
         self._lock = threading.Lock()
         self._jobs: dict[str, JobRecord] = {}
         self._futures: dict[str, Future[None]] = {}
@@ -181,6 +183,47 @@ class JobManager:
         if self._store is not None:
             return self._store.list(limit=limit)
         return []
+
+    def stats(self) -> dict[str, Any]:
+        with self._lock:
+            records = list(self._jobs.values())
+        counts = Counter(record.status for record in records)
+        cancel_requested = sum(1 for record in records if record.cancel_requested)
+        return {
+            "total": len(records),
+            "queued": int(counts.get("queued", 0)),
+            "running": int(counts.get("running", 0)),
+            "succeeded": int(counts.get("succeeded", 0)),
+            "failed": int(counts.get("failed", 0)),
+            "canceled": int(counts.get("canceled", 0)),
+            "cancel_requested": cancel_requested,
+            "active": int(counts.get("queued", 0)) + int(counts.get("running", 0)),
+            "max_workers": self.max_workers,
+        }
+
+    def cancel_all(self) -> dict[str, Any]:
+        with self._lock:
+            job_ids = list(self._jobs.keys())
+        results: list[dict[str, Any]] = []
+        canceled = 0
+        requested = 0
+        for job_id in job_ids:
+            outcome = self.cancel(job_id)
+            if outcome is None:
+                continue
+            results.append(outcome)
+            if bool(outcome.get("canceled")):
+                canceled += 1
+            elif outcome.get("status") in {"queued", "running"}:
+                requested += 1
+        return {
+            "ok": True,
+            "total_jobs": len(job_ids),
+            "canceled_now": canceled,
+            "cancel_requested": requested,
+            "results": results,
+            "stats": self.stats(),
+        }
 
     def shutdown(self, wait: bool = True) -> None:
         self._executor.shutdown(wait=wait)

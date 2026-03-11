@@ -13,6 +13,11 @@ def post_run(
     path: str,
     payload: dict[str, object],
 ) -> int:
+    preflight = getattr(service, "runtime_governance_preflight", None)
+    blocked = preflight() if callable(preflight) else None
+    if blocked:
+        handler._send_json(409, {"error": blocked})
+        return 409
     return handler._respond_idempotent(
         path=path,
         payload=payload,
@@ -29,6 +34,11 @@ def post_run_async(
     path: str,
     payload: dict[str, object],
 ) -> int:
+    preflight = getattr(service, "runtime_governance_preflight", None)
+    blocked = preflight() if callable(preflight) else None
+    if blocked:
+        handler._send_json(409, {"error": blocked})
+        return 409
     return handler._respond_idempotent(
         path=path,
         payload=payload,
@@ -53,6 +63,11 @@ def post_swarm_run(
     path: str,
     payload: dict[str, object],
 ) -> int:
+    preflight = getattr(service, "runtime_governance_preflight", None)
+    blocked = preflight() if callable(preflight) else None
+    if blocked:
+        handler._send_json(409, {"error": blocked})
+        return 409
     objectives = payload.get("objectives")
     if not isinstance(objectives, list):
         raise ValueError("'objectives' must be an array")

@@ -873,6 +873,22 @@ def build_openapi_spec() -> dict:
                     "responses": {"200": {"description": "Mobile status"}},
                 }
             },
+            "/runtime/governance": {
+                "get": {
+                    "summary": "Get runtime governance state, usage telemetry, and job pressure",
+                    "responses": {"200": {"description": "Runtime governance status"}},
+                },
+                "post": {
+                    "summary": "Update runtime pause, budget ceiling, concurrency limit, or reset usage counters",
+                    "responses": {"200": {"description": "Updated runtime governance state"}},
+                },
+            },
+            "/runtime/jobs/cancel_all": {
+                "post": {
+                    "summary": "Cancel all queued or running jobs, optionally pausing the runtime first",
+                    "responses": {"200": {"description": "Global job cancellation result"}},
+                }
+            },
             "/iot/homeassistant/entities": {
                 "get": {
                     "summary": "Discover Home Assistant entities with optional domain or prefix filters",
