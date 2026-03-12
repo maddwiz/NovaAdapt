@@ -137,6 +137,40 @@ class _StubBrowserExecutor:
         return BrowserExecutionResult(status="ok", output="browser session closed")
 
 
+class _StubHomeAssistantExecutor:
+    def status(self):
+        return {
+            "ok": True,
+            "transport": "homeassistant-http",
+            "base_url": "http://stub-homeassistant.local",
+            "mqtt_direct": {
+                "ok": True,
+                "configured": True,
+                "transport": "mqtt-direct",
+                "broker_url": "mqtt://stub-broker.local:1883",
+            },
+        }
+
+    def discover(self, *, domain="", entity_id_prefix="", limit=250):
+        _ = (entity_id_prefix, limit)
+        entities = [{"entity_id": "light.office", "state": "on", "attributes": {}}]
+        if domain and domain != "light":
+            entities = []
+        return {"ok": True, "count": len(entities), "entities": entities}
+
+    def execute_action(self, action, *, dry_run=True):
+        return type(
+            "_Result",
+            (),
+            {
+                "status": "preview" if dry_run else "ok",
+                "output": "simulated",
+                "action": dict(action),
+                "data": {"transport": "mqtt-direct" if action.get("type") == "mqtt_publish" else "homeassistant-http"},
+            },
+        )()
+
+
 class ServerTests(unittest.TestCase):
     def test_http_endpoints(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -147,6 +181,7 @@ class ServerTests(unittest.TestCase):
                 router_loader=lambda _path: _StubRouter(),
                 directshell_factory=_StubDirectShell,
                 browser_executor_factory=_StubBrowserExecutor,
+                homeassistant_executor_factory=_StubHomeAssistantExecutor,
             )
             server = create_server(
                 "127.0.0.1",
@@ -193,6 +228,15 @@ class ServerTests(unittest.TestCase):
                 self.assertIn("NovaAdapt Core Dashboard", dashboard_html)
                 self.assertIn("Approve Async", dashboard_html)
                 self.assertIn("cancel-job", dashboard_html)
+                self.assertIn("Run Async", dashboard_html)
+                self.assertIn("Auto Repair Attempts", dashboard_html)
+                self.assertIn("Runtime Trends", dashboard_html)
+                self.assertIn("Runtime Governance", dashboard_html)
+                self.assertIn("Live: Off", dashboard_html)
+                self.assertIn("Pause Runtime", dashboard_html)
+                self.assertIn("Agent Marketplace", dashboard_html)
+                self.assertIn("Terminal Control", dashboard_html)
+                self.assertIn("Control Anything", dashboard_html)
 
                 with self.assertRaises(error.HTTPError) as err:
                     _get_text(f"http://{host}:{port}/dashboard/canvas-workflows")
@@ -203,8 +247,52 @@ class ServerTests(unittest.TestCase):
                 self.assertTrue(dashboard_data["health"]["ok"])
                 self.assertIn("metrics", dashboard_data)
                 self.assertIn("jobs", dashboard_data)
+                self.assertIn("governance", dashboard_data)
                 self.assertIn("plans", dashboard_data)
                 self.assertIn("events", dashboard_data)
+                self.assertIn("control", dashboard_data)
+                self.assertIn("mobile", dashboard_data["control"])
+                self.assertIn("homeassistant", dashboard_data["control"])
+                self.assertIn("observability", dashboard_data)
+                self.assertIn("runtime", dashboard_data["observability"])
+                self.assertIn("repairs", dashboard_data["observability"])
+                self.assertIn("collaboration", dashboard_data["observability"])
+
+                runtime_governance, _ = _get_json_with_headers(f"http://{host}:{port}/runtime/governance")
+                self.assertIn("paused", runtime_governance)
+                self.assertIn("jobs", runtime_governance)
+
+                runtime_update, _ = _post_json_with_headers(
+                    f"http://{host}:{port}/runtime/governance",
+                    {"paused": True, "pause_reason": "ops freeze", "reset_usage": True},
+                )
+                self.assertTrue(runtime_update["paused"])
+                self.assertEqual(runtime_update["llm_calls_total"], 0)
+
+                cancel_all, _ = _post_json_with_headers(
+                    f"http://{host}:{port}/runtime/jobs/cancel_all",
+                    {"pause": True, "pause_reason": "ops freeze"},
+                )
+                self.assertTrue(cancel_all["ok"])
+                self.assertIn("governance", cancel_all)
+                _post_json_with_headers(
+                    f"http://{host}:{port}/runtime/governance",
+                    {"paused": False, "pause_reason": ""},
+                )
+
+                mobile_status, _ = _get_json_with_headers(f"http://{host}:{port}/mobile/status")
+                self.assertIn("ok", mobile_status)
+                self.assertIn("android", mobile_status)
+
+                homeassistant_status, _ = _get_json_with_headers(f"http://{host}:{port}/iot/homeassistant/status")
+                self.assertIn("ok", homeassistant_status)
+                self.assertIn("mqtt_direct", homeassistant_status)
+
+                mqtt_status, _ = _get_json_with_headers(f"http://{host}:{port}/iot/mqtt/status")
+                self.assertIn("ok", mqtt_status)
+
+                entities, _ = _get_json_with_headers(f"http://{host}:{port}/iot/homeassistant/entities?limit=5")
+                self.assertIn("ok", entities)
 
                 openapi, _ = _get_json_with_headers(f"http://{host}:{port}/openapi.json")
                 self.assertEqual(openapi["openapi"], "3.1.0")
@@ -222,6 +310,17 @@ class ServerTests(unittest.TestCase):
                 self.assertIn("/dashboard/data", openapi["paths"])
                 self.assertIn("/events", openapi["paths"])
                 self.assertIn("/events/stream", openapi["paths"])
+                self.assertIn("/mobile/status", openapi["paths"])
+                self.assertIn("/runtime/governance", openapi["paths"])
+                self.assertIn("/runtime/jobs/cancel_all", openapi["paths"])
+                self.assertIn("/execute/vision", openapi["paths"])
+                self.assertIn("/mobile/action", openapi["paths"])
+                self.assertIn("/iot/homeassistant/entities", openapi["paths"])
+                self.assertIn("/iot/homeassistant/status", openapi["paths"])
+                self.assertIn("/iot/homeassistant/action", openapi["paths"])
+                self.assertIn("/iot/mqtt/status", openapi["paths"])
+                self.assertIn("/iot/mqtt/publish", openapi["paths"])
+                self.assertIn("/iot/mqtt/subscribe", openapi["paths"])
                 self.assertIn("/plugins", openapi["paths"])
                 self.assertIn("/plugins/{name}/health", openapi["paths"])
                 self.assertIn("/plugins/{name}/call", openapi["paths"])
@@ -1425,6 +1524,12 @@ class ServerTests(unittest.TestCase):
                 dashboard_html = _get_text(f"http://{host}:{port}/dashboard", token="secret")
                 self.assertIn("NovaAdapt Core Dashboard", dashboard_html)
                 self.assertIn("Approve Async", dashboard_html)
+                self.assertIn("Run Async", dashboard_html)
+                self.assertIn("Runtime Trends", dashboard_html)
+                self.assertIn("Runtime Governance", dashboard_html)
+                self.assertIn("Agent Marketplace", dashboard_html)
+                self.assertIn("Terminal Control", dashboard_html)
+                self.assertIn("Control Anything", dashboard_html)
 
                 dashboard_with_query = _get_text(f"http://{host}:{port}/dashboard?token=secret")
                 self.assertIn("NovaAdapt Core Dashboard", dashboard_with_query)
@@ -1433,6 +1538,7 @@ class ServerTests(unittest.TestCase):
                 self.assertTrue(dashboard_data["health"]["ok"])
                 self.assertIn("metrics", dashboard_data)
                 self.assertIn("events", dashboard_data)
+                self.assertIn("observability", dashboard_data)
 
                 with self.assertRaises(error.HTTPError) as err:
                     _get_json(f"http://{host}:{port}/events")

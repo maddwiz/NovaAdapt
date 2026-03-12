@@ -11,23 +11,102 @@ const rememberTokenInput = document.querySelector("#rememberToken");
 const autoRefreshInput = document.querySelector("#autoRefresh");
 const testConnectionBtn = document.querySelector("#testConnectionBtn");
 const refreshBtn = document.querySelector("#refreshBtn");
+const liveStreamBtn = document.querySelector("#liveStreamBtn");
 const objectiveInput = document.querySelector("#objectiveInput");
 const strategySelect = document.querySelector("#strategySelect");
 const candidatesInput = document.querySelector("#candidatesInput");
 const executeToggle = document.querySelector("#executeToggle");
+const autoRepairAttemptsInput = document.querySelector("#autoRepairAttemptsInput");
+const repairStrategySelect = document.querySelector("#repairStrategySelect");
+const repairModelInput = document.querySelector("#repairModelInput");
+const repairCandidatesInput = document.querySelector("#repairCandidatesInput");
+const repairFallbacksInput = document.querySelector("#repairFallbacksInput");
 const runAsyncBtn = document.querySelector("#runAsyncBtn");
 const createPlanBtn = document.querySelector("#createPlanBtn");
 const plansEl = document.querySelector("#plans");
 const jobsEl = document.querySelector("#jobs");
+const terminalStatusEl = document.querySelector("#terminalStatus");
+const terminalCommandInput = document.querySelector("#terminalCommandInput");
+const terminalCwdInput = document.querySelector("#terminalCwdInput");
+const terminalShellInput = document.querySelector("#terminalShellInput");
+const terminalRefreshBtn = document.querySelector("#terminalRefreshBtn");
+const terminalStartBtn = document.querySelector("#terminalStartBtn");
+const terminalCloseBtn = document.querySelector("#terminalCloseBtn");
+const terminalSessionsEl = document.querySelector("#terminalSessions");
+const terminalInputBox = document.querySelector("#terminalInputBox");
+const terminalSendBtn = document.querySelector("#terminalSendBtn");
+const terminalCtrlCBtn = document.querySelector("#terminalCtrlCBtn");
+const terminalOutputEl = document.querySelector("#terminalOutput");
 const eventsEl = document.querySelector("#events");
+const controlArtifactsEl = document.querySelector("#controlArtifacts");
 const summaryEl = document.querySelector("#summary");
 const actionStatusEl = document.querySelector("#actionStatus");
 const planCountEl = document.querySelector("#planCount");
 const jobCountEl = document.querySelector("#jobCount");
 const eventCountEl = document.querySelector("#eventCount");
+const artifactCountEl = document.querySelector("#artifactCount");
 const connectionStatusEl = document.querySelector("#connectionStatus");
+const liveStreamStatusEl = document.querySelector("#liveStreamStatus");
+const governanceStatusEl = document.querySelector("#governanceStatus");
+const budgetLimitInput = document.querySelector("#budgetLimitInput");
+const maxActiveRunsInput = document.querySelector("#maxActiveRunsInput");
+const refreshGovernanceBtn = document.querySelector("#refreshGovernanceBtn");
+const applyGovernanceBtn = document.querySelector("#applyGovernanceBtn");
+const pauseRuntimeBtn = document.querySelector("#pauseRuntimeBtn");
+const resumeRuntimeBtn = document.querySelector("#resumeRuntimeBtn");
+const resetUsageBtn = document.querySelector("#resetUsageBtn");
+const cancelAllJobsBtn = document.querySelector("#cancelAllJobsBtn");
+const governanceOutputEl = document.querySelector("#governanceOutput");
+const iotStatusEl = document.querySelector("#iotStatus");
+const entityDomainInput = document.querySelector("#entityDomainInput");
+const entityPrefixInput = document.querySelector("#entityPrefixInput");
+const refreshEntitiesBtn = document.querySelector("#refreshEntitiesBtn");
+const refreshMqttStatusBtn = document.querySelector("#refreshMqttStatusBtn");
+const iotEntitiesEl = document.querySelector("#iotEntities");
+const mqttTopicInput = document.querySelector("#mqttTopicInput");
+const mqttPayloadInput = document.querySelector("#mqttPayloadInput");
+const mqttRetainInput = document.querySelector("#mqttRetainInput");
+const mqttPublishBtn = document.querySelector("#mqttPublishBtn");
+const mqttSubscribeBtn = document.querySelector("#mqttSubscribeBtn");
+const mqttOutputEl = document.querySelector("#mqttOutput");
+const controlStatusEl = document.querySelector("#controlStatus");
+const visionGoalInput = document.querySelector("#visionGoalInput");
+const visionAppNameInput = document.querySelector("#visionAppNameInput");
+const controlAllowDangerousInput = document.querySelector("#controlAllowDangerousInput");
+const refreshMobileStatusBtn = document.querySelector("#refreshMobileStatusBtn");
+const previewVisionBtn = document.querySelector("#previewVisionBtn");
+const executeVisionBtn = document.querySelector("#executeVisionBtn");
+const mobileGoalInput = document.querySelector("#mobileGoalInput");
+const mobilePlatformSelect = document.querySelector("#mobilePlatformSelect");
+const mobilePreferAppiumInput = document.querySelector("#mobilePreferAppiumInput");
+const mobileActionInput = document.querySelector("#mobileActionInput");
+const previewMobileBtn = document.querySelector("#previewMobileBtn");
+const executeMobileBtn = document.querySelector("#executeMobileBtn");
+const controlOutputEl = document.querySelector("#controlOutput");
+const templateStatusEl = document.querySelector("#templateStatus");
+const templateTagInput = document.querySelector("#templateTagInput");
+const templateManifestInput = document.querySelector("#templateManifestInput");
+const refreshTemplatesBtn = document.querySelector("#refreshTemplatesBtn");
+const exportTemplateBtn = document.querySelector("#exportTemplateBtn");
+const importTemplateBtn = document.querySelector("#importTemplateBtn");
+const templateLibraryEl = document.querySelector("#templateLibrary");
+const templateGalleryEl = document.querySelector("#templateGallery");
+const templateOutputEl = document.querySelector("#templateOutput");
 
 let refreshTimer = null;
+let liveRefreshTimer = null;
+let refreshInFlight = false;
+let queuedRefresh = false;
+let scheduledRefreshTimer = null;
+let terminalPollTimer = null;
+let terminalActiveSessionId = "";
+let terminalNextSeq = 0;
+const liveState = {
+  enabled: false,
+  connected: false,
+  lastAuditId: 0,
+  consecutiveErrors: 0,
+};
 
 function normalizeBaseUrl(value) {
   const raw = String(value || "").trim();
@@ -72,7 +151,32 @@ function saveConfig() {
   localStorage.setItem("novaadapt.desktop.strategy", strategySelect?.value || "single");
   localStorage.setItem("novaadapt.desktop.candidates", (candidatesInput?.value || "").trim());
   localStorage.setItem("novaadapt.desktop.execute", executeToggle?.checked ? "1" : "0");
+  localStorage.setItem("novaadapt.desktop.autoRepairAttempts", (autoRepairAttemptsInput?.value || "").trim());
+  localStorage.setItem("novaadapt.desktop.repairStrategy", repairStrategySelect?.value || "decompose");
+  localStorage.setItem("novaadapt.desktop.repairModel", (repairModelInput?.value || "").trim());
+  localStorage.setItem("novaadapt.desktop.repairCandidates", (repairCandidatesInput?.value || "").trim());
+  localStorage.setItem("novaadapt.desktop.repairFallbacks", (repairFallbacksInput?.value || "").trim());
+  localStorage.setItem("novaadapt.desktop.terminalCommand", (terminalCommandInput?.value || "").trim());
+  localStorage.setItem("novaadapt.desktop.terminalCwd", (terminalCwdInput?.value || "").trim());
+  localStorage.setItem("novaadapt.desktop.terminalShell", (terminalShellInput?.value || "").trim());
   localStorage.setItem("novaadapt.desktop.autoRefresh", autoRefreshInput?.checked ? "1" : "0");
+  localStorage.setItem("novaadapt.desktop.liveStream", liveState.enabled ? "1" : "0");
+  localStorage.setItem("novaadapt.desktop.budgetLimit", (budgetLimitInput?.value || "").trim());
+  localStorage.setItem("novaadapt.desktop.maxActiveRuns", (maxActiveRunsInput?.value || "").trim());
+  localStorage.setItem("novaadapt.desktop.iotDomain", (entityDomainInput?.value || "").trim());
+  localStorage.setItem("novaadapt.desktop.iotPrefix", (entityPrefixInput?.value || "").trim());
+  localStorage.setItem("novaadapt.desktop.mqttTopic", (mqttTopicInput?.value || "").trim());
+  localStorage.setItem("novaadapt.desktop.mqttPayload", mqttPayloadInput?.value || "");
+  localStorage.setItem("novaadapt.desktop.mqttRetain", mqttRetainInput?.checked ? "1" : "0");
+  localStorage.setItem("novaadapt.desktop.visionGoal", visionGoalInput?.value || "");
+  localStorage.setItem("novaadapt.desktop.visionAppName", (visionAppNameInput?.value || "").trim());
+  localStorage.setItem("novaadapt.desktop.controlAllowDangerous", controlAllowDangerousInput?.checked ? "1" : "0");
+  localStorage.setItem("novaadapt.desktop.mobileGoal", (mobileGoalInput?.value || "").trim());
+  localStorage.setItem("novaadapt.desktop.mobilePlatform", mobilePlatformSelect?.value || "android");
+  localStorage.setItem("novaadapt.desktop.mobilePreferAppium", mobilePreferAppiumInput?.checked ? "1" : "0");
+  localStorage.setItem("novaadapt.desktop.mobileAction", mobileActionInput?.value || "");
+  localStorage.setItem("novaadapt.desktop.templateTag", (templateTagInput?.value || "").trim());
+  localStorage.setItem("novaadapt.desktop.templateManifest", templateManifestInput?.value || "");
 }
 
 function loadConfig() {
@@ -89,7 +193,32 @@ function loadConfig() {
   strategySelect.value = localStorage.getItem("novaadapt.desktop.strategy") || "single";
   candidatesInput.value = localStorage.getItem("novaadapt.desktop.candidates") || "";
   executeToggle.checked = (localStorage.getItem("novaadapt.desktop.execute") || "0") === "1";
+  autoRepairAttemptsInput.value = localStorage.getItem("novaadapt.desktop.autoRepairAttempts") || "0";
+  repairStrategySelect.value = localStorage.getItem("novaadapt.desktop.repairStrategy") || "decompose";
+  repairModelInput.value = localStorage.getItem("novaadapt.desktop.repairModel") || "";
+  repairCandidatesInput.value = localStorage.getItem("novaadapt.desktop.repairCandidates") || "";
+  repairFallbacksInput.value = localStorage.getItem("novaadapt.desktop.repairFallbacks") || "";
+  terminalCommandInput.value = localStorage.getItem("novaadapt.desktop.terminalCommand") || "";
+  terminalCwdInput.value = localStorage.getItem("novaadapt.desktop.terminalCwd") || "";
+  terminalShellInput.value = localStorage.getItem("novaadapt.desktop.terminalShell") || "";
   autoRefreshInput.checked = (localStorage.getItem("novaadapt.desktop.autoRefresh") || "1") !== "0";
+  liveState.enabled = (localStorage.getItem("novaadapt.desktop.liveStream") || "0") === "1";
+  budgetLimitInput.value = localStorage.getItem("novaadapt.desktop.budgetLimit") || "";
+  maxActiveRunsInput.value = localStorage.getItem("novaadapt.desktop.maxActiveRuns") || "";
+  entityDomainInput.value = localStorage.getItem("novaadapt.desktop.iotDomain") || "";
+  entityPrefixInput.value = localStorage.getItem("novaadapt.desktop.iotPrefix") || "";
+  mqttTopicInput.value = localStorage.getItem("novaadapt.desktop.mqttTopic") || "";
+  mqttPayloadInput.value = localStorage.getItem("novaadapt.desktop.mqttPayload") || "";
+  mqttRetainInput.checked = (localStorage.getItem("novaadapt.desktop.mqttRetain") || "0") === "1";
+  visionGoalInput.value = localStorage.getItem("novaadapt.desktop.visionGoal") || "";
+  visionAppNameInput.value = localStorage.getItem("novaadapt.desktop.visionAppName") || "";
+  controlAllowDangerousInput.checked = (localStorage.getItem("novaadapt.desktop.controlAllowDangerous") || "0") === "1";
+  mobileGoalInput.value = localStorage.getItem("novaadapt.desktop.mobileGoal") || "";
+  mobilePlatformSelect.value = localStorage.getItem("novaadapt.desktop.mobilePlatform") || "android";
+  mobilePreferAppiumInput.checked = (localStorage.getItem("novaadapt.desktop.mobilePreferAppium") || "0") === "1";
+  mobileActionInput.value = localStorage.getItem("novaadapt.desktop.mobileAction") || "{\"type\":\"open_app\",\"package\":\"com.android.settings\"}";
+  templateTagInput.value = localStorage.getItem("novaadapt.desktop.templateTag") || "";
+  templateManifestInput.value = localStorage.getItem("novaadapt.desktop.templateManifest") || "";
 }
 
 async function coreRequest(method, path, payload = null) {
@@ -179,6 +308,31 @@ function parseCandidates(value) {
     .filter(Boolean);
 }
 
+function buildRepairOptions() {
+  const payload = {};
+  const attempts = Number.parseInt(String(autoRepairAttemptsInput?.value || "0").trim() || "0", 10);
+  if (Number.isFinite(attempts) && attempts > 0) {
+    payload.auto_repair_attempts = attempts;
+  }
+  const repairStrategy = String(repairStrategySelect?.value || "decompose").trim();
+  if (repairStrategy) {
+    payload.repair_strategy = repairStrategy;
+  }
+  const repairModel = String(repairModelInput?.value || "").trim();
+  if (repairModel) {
+    payload.repair_model = repairModel;
+  }
+  const repairCandidates = parseCandidates(repairCandidatesInput?.value || "");
+  if (repairCandidates.length > 0) {
+    payload.repair_candidates = repairCandidates;
+  }
+  const repairFallbacks = parseCandidates(repairFallbacksInput?.value || "");
+  if (repairFallbacks.length > 0) {
+    payload.repair_fallbacks = repairFallbacks;
+  }
+  return payload;
+}
+
 function buildObjectivePayload() {
   const objective = (objectiveInput?.value || "").trim();
   if (!objective) throw new Error("Objective is required");
@@ -192,10 +346,11 @@ function buildObjectivePayload() {
       source: "desktop-tauri",
       created_at: new Date().toISOString(),
     },
+    ...buildRepairOptions(),
   };
 
   const candidates = parseCandidates(candidatesInput?.value || "");
-  if (strategy === "vote" && candidates.length > 0) {
+  if (candidates.length > 0) {
     payload.candidates = candidates;
   }
   return payload;
@@ -246,15 +401,100 @@ function setConnectionStatus(message, kind = "neutral") {
   connectionStatusEl.className = `badge ${kind}`;
 }
 
+function setTerminalStatus(message, kind = "neutral") {
+  if (!terminalStatusEl) return;
+  const text = String(message || "").trim() || "Idle";
+  terminalStatusEl.textContent = text;
+  terminalStatusEl.className = `badge ${kind}`;
+}
+
+function setGovernanceStatus(message, kind = "neutral") {
+  if (!governanceStatusEl) return;
+  const text = String(message || "").trim() || "Unknown";
+  governanceStatusEl.textContent = text;
+  governanceStatusEl.className = `badge ${kind}`;
+}
+
+function setLiveStatus(message, kind = "neutral") {
+  if (!liveStreamStatusEl) return;
+  const text = String(message || "").trim() || "Live idle";
+  liveStreamStatusEl.textContent = text;
+  liveStreamStatusEl.className = `badge ${kind}`;
+}
+
+function setIoTStatus(message, kind = "neutral") {
+  if (!iotStatusEl) return;
+  const text = String(message || "").trim() || "Idle";
+  iotStatusEl.textContent = text;
+  iotStatusEl.className = `badge ${kind}`;
+}
+
+function setControlStatus(message, kind = "neutral") {
+  if (!controlStatusEl) return;
+  const text = String(message || "").trim() || "Idle";
+  controlStatusEl.textContent = text;
+  controlStatusEl.className = `badge ${kind}`;
+}
+
+function setTemplateStatus(message, kind = "neutral") {
+  if (!templateStatusEl) return;
+  const text = String(message || "").trim() || "Idle";
+  templateStatusEl.textContent = text;
+  templateStatusEl.className = `badge ${kind}`;
+}
+
+function updateLiveButton() {
+  if (!liveStreamBtn) return;
+  liveStreamBtn.textContent = liveState.enabled ? "Live On" : "Live Off";
+  liveStreamBtn.className = liveState.enabled ? "primary" : "secondary";
+}
+
 function setBusy(value) {
   const busy = Boolean(value);
   refreshBtn.disabled = busy;
   testConnectionBtn.disabled = busy;
   runAsyncBtn.disabled = busy;
   createPlanBtn.disabled = busy;
+  if (refreshGovernanceBtn) refreshGovernanceBtn.disabled = busy;
+  if (applyGovernanceBtn) applyGovernanceBtn.disabled = busy;
+  if (pauseRuntimeBtn) pauseRuntimeBtn.disabled = busy;
+  if (resumeRuntimeBtn) resumeRuntimeBtn.disabled = busy;
+  if (resetUsageBtn) resetUsageBtn.disabled = busy;
+  if (cancelAllJobsBtn) cancelAllJobsBtn.disabled = busy;
+  if (refreshEntitiesBtn) refreshEntitiesBtn.disabled = busy;
+  if (refreshMqttStatusBtn) refreshMqttStatusBtn.disabled = busy;
+  if (mqttPublishBtn) mqttPublishBtn.disabled = busy;
+  if (mqttSubscribeBtn) mqttSubscribeBtn.disabled = busy;
+  if (refreshMobileStatusBtn) refreshMobileStatusBtn.disabled = busy;
+  if (previewVisionBtn) previewVisionBtn.disabled = busy;
+  if (executeVisionBtn) executeVisionBtn.disabled = busy;
+  if (previewMobileBtn) previewMobileBtn.disabled = busy;
+  if (executeMobileBtn) executeMobileBtn.disabled = busy;
   for (const btn of document.querySelectorAll("[data-mutate='1']")) {
     btn.disabled = busy;
   }
+}
+
+function extractMaxAuditId(items) {
+  let maxId = liveState.lastAuditId;
+  for (const item of Array.isArray(items) ? items : []) {
+    const value = Number.parseInt(String(item?.id ?? "").trim(), 10);
+    if (Number.isFinite(value)) {
+      maxId = Math.max(maxId, value);
+    }
+  }
+  return maxId;
+}
+
+function scheduleRefresh(delayMs = 150) {
+  if (scheduledRefreshTimer) window.clearTimeout(scheduledRefreshTimer);
+  scheduledRefreshTimer = window.setTimeout(() => {
+    scheduledRefreshTimer = null;
+    refresh().catch((err) => {
+      setActionStatus("Live refresh failed", "error");
+      summaryEl.textContent = String(err?.message || err);
+    });
+  }, Math.max(0, Number(delayMs || 0)));
 }
 
 async function runAction(label, fn, refreshAfter = true) {
@@ -294,6 +534,123 @@ function sortPlans(plans) {
   });
 }
 
+function countResultsByStatus(results) {
+  const counts = {};
+  for (const item of Array.isArray(results) ? results : []) {
+    const status = String(item?.status || "unknown").toLowerCase();
+    counts[status] = (counts[status] || 0) + 1;
+  }
+  return counts;
+}
+
+function summarizeRepair(repair, results) {
+  const counts = countResultsByStatus(results);
+  const repairedCount = Number(counts.repaired || 0);
+  if (!repair || typeof repair !== "object") {
+    return repairedCount > 0 ? `${repairedCount} repaired action${repairedCount === 1 ? "" : "s"}` : "";
+  }
+  const attempts = Number(repair.attempts || 0);
+  const unresolved = Array.isArray(repair.failed_indexes) ? repair.failed_indexes.length : 0;
+  const healed = Boolean(repair.healed);
+  const parts = [];
+  if (healed) {
+    parts.push("auto-repair healed");
+  } else if (attempts > 0) {
+    parts.push("auto-repair attempted");
+  }
+  if (repairedCount > 0) parts.push(`${repairedCount} repaired`);
+  if (attempts > 0) parts.push(`${attempts} attempt${attempts === 1 ? "" : "s"}`);
+  if (unresolved > 0 && !healed) parts.push(`${unresolved} unresolved`);
+  if (repair.last_error && !healed) parts.push(String(repair.last_error));
+  return parts.join(" • ");
+}
+
+function summarizeCollaboration(voteSummary, collaboration, fallbackStrategy) {
+  const vote = voteSummary && typeof voteSummary === "object" ? voteSummary : {};
+  const collab = collaboration && typeof collaboration === "object" ? collaboration : {};
+  const mode = String(collab.mode || fallbackStrategy || "").toLowerCase();
+  if (vote.subtasks_total !== undefined || mode === "decompose") {
+    const total = Number(vote.subtasks_total || 0);
+    const succeeded = Number(vote.subtasks_succeeded || 0);
+    const reviewed = Number(vote.reviewed_subtasks || 0);
+    const batches = Number(vote.parallel_batches || 0);
+    const parts = ["decompose"];
+    if (total > 0) parts.push(`${succeeded}/${total} subtasks`);
+    if (reviewed > 0) parts.push(`${reviewed} reviewed`);
+    if (batches > 0) parts.push(`${batches} batches`);
+    if (vote.reason) parts.push(String(vote.reason).replaceAll("_", " "));
+    return parts.join(" • ");
+  }
+  if (vote.winner_votes !== undefined || mode === "vote") {
+    const winnerVotes = Number(vote.winner_votes || 0);
+    const totalVotes = Number(vote.total_votes || 0);
+    const parts = ["vote"];
+    if (totalVotes > 0) parts.push(`${winnerVotes}/${totalVotes} votes`);
+    if (vote.quorum_met) parts.push("quorum");
+    return parts.join(" • ");
+  }
+  return "";
+}
+
+function transcriptPreviewLines(collaboration, limit = 3) {
+  const collab = collaboration && typeof collaboration === "object" ? collaboration : {};
+  const transcript = Array.isArray(collab.transcript) ? collab.transcript : [];
+  return transcript
+    .map((item) => {
+      const type = String(item?.type || "").toLowerCase();
+      if (type === "subtask_started") {
+        const subtaskId = String(item?.subtask_id || "subtask");
+        const model = String(item?.model || "");
+        return `started ${subtaskId}${model ? ` with ${model}` : ""}`;
+      }
+      if (type === "subtask_output") {
+        const subtaskId = String(item?.subtask_id || "subtask");
+        const model = String(item?.model || "model");
+        const attempt = Number(item?.attempt || 1);
+        return `output ${subtaskId} • ${model} • attempt ${attempt}`;
+      }
+      if (type === "subtask_review") {
+        const reviewer = String(item?.reviewer_model || "reviewer");
+        const subtaskId = String(item?.subtask_id || "subtask");
+        return `${reviewer} ${item?.approved ? "approved" : "rejected"} ${subtaskId}`;
+      }
+      if (type === "subtask_failed") {
+        const subtaskId = String(item?.subtask_id || "subtask");
+        const error = String(item?.error || "failed");
+        return `${subtaskId} failed • ${error}`;
+      }
+      if (type === "synthesis") {
+        return `synthesis by ${String(item?.model || "model")}`;
+      }
+      return "";
+    })
+    .filter(Boolean)
+    .slice(0, limit);
+}
+
+function summarizeJobResult(result, fallbackKind = "run") {
+  const payload = result && typeof result === "object" ? result : null;
+  if (!payload) return "";
+  const counts = countResultsByStatus(payload.results);
+  const parts = [];
+  const strategy = String(payload.strategy || "");
+  const model = String(payload.model || "");
+  if (strategy) parts.push(strategy);
+  if (model) parts.push(model);
+  const total = Array.isArray(payload.results) ? payload.results.length : 0;
+  if (total > 0) {
+    parts.push(`${total} actions`);
+    if (counts.ok) parts.push(`${counts.ok} ok`);
+    if (counts.preview) parts.push(`${counts.preview} preview`);
+    if (counts.repaired) parts.push(`${counts.repaired} repaired`);
+    const failed = Number(counts.failed || 0) + Number(counts.blocked || 0);
+    if (failed > 0) parts.push(`${failed} failed`);
+  } else if (fallbackKind) {
+    parts.push(String(fallbackKind));
+  }
+  return parts.join(" • ");
+}
+
 function renderPlans(plans) {
   const items = sortPlans(Array.isArray(plans) ? plans : []);
   const pending = items.filter((item) => String(item.status || "").toLowerCase() === "pending");
@@ -308,6 +665,9 @@ function renderPlans(plans) {
   for (const plan of items.slice(0, 20)) {
     const status = String(plan.status || "").toLowerCase();
     const actionLogCount = Array.isArray(plan.action_log_ids) ? plan.action_log_ids.length : 0;
+    const repairSummary = summarizeRepair(plan.repair, plan.execution_results);
+    const collaborationSummary = summarizeCollaboration(plan.vote_summary, plan.collaboration, plan.strategy);
+    const transcriptLines = transcriptPreviewLines(plan.collaboration);
     const card = document.createElement("article");
     card.className = "plan";
     card.innerHTML = `
@@ -322,6 +682,9 @@ function renderPlans(plans) {
         • Progress: ${Number(plan.progress_completed || 0)}/${Number(plan.progress_total || 0)}
       </p>
       ${plan.execution_error ? `<p class="plan-meta">Error: ${escapeHTML(plan.execution_error)}</p>` : ""}
+      ${repairSummary ? `<p class="plan-meta">Repair: ${escapeHTML(repairSummary)}</p>` : ""}
+      ${collaborationSummary ? `<p class="plan-meta">Collab: ${escapeHTML(collaborationSummary)}</p>` : ""}
+      ${transcriptLines.length ? `<div class="plan-meta">${transcriptLines.map((line) => `• ${escapeHTML(line)}`).join("<br />")}</div>` : ""}
       <div class="row"></div>
     `;
 
@@ -329,7 +692,7 @@ function renderPlans(plans) {
     if (status === "pending") {
       actionRow.appendChild(
         actionButton("Approve + Execute", "secondary", async () => {
-          await runAction("Approving plan", () => approvePlan(plan.id, { execute: true }));
+          await runAction("Approving plan", () => approvePlan(plan.id, { execute: true, ...buildRepairOptions() }));
         }),
       );
       actionRow.appendChild(
@@ -353,6 +716,7 @@ function renderPlans(plans) {
               allow_dangerous: true,
               action_retry_attempts: 2,
               action_retry_backoff_seconds: 0.2,
+              ...buildRepairOptions(),
             }),
           );
         }),
@@ -402,14 +766,28 @@ function renderJobs(jobs) {
 
   for (const job of sorted.slice(0, 20)) {
     const status = String(job.status || "unknown").toLowerCase();
+    const metadata = job.metadata && typeof job.metadata === "object" ? job.metadata : {};
+    const kind = String(job.kind || metadata.kind || "run");
+    const objective = String(job.objective || metadata.objective || "");
+    const result = job.result && typeof job.result === "object" ? job.result : null;
+    const resultSummary = summarizeJobResult(result, kind);
+    const repairSummary = summarizeRepair(result?.repair, result?.results);
+    const collaborationSummary = summarizeCollaboration(result?.vote_summary, result?.collaboration, result?.strategy || kind);
+    const transcriptLines = transcriptPreviewLines(result?.collaboration);
     const card = document.createElement("article");
     card.className = "plan";
     card.innerHTML = `
       <div class="plan-head">
-        <strong>${escapeHTML(job.kind || "run")}</strong>
+        <strong>${escapeHTML(kind)}</strong>
         <span class="plan-id">${escapeHTML(job.id || "")}</span>
       </div>
       <p class="plan-meta"><span class="status">${escapeHTML(status)}</span></p>
+      ${objective ? `<p class="plan-meta">${escapeHTML(objective)}</p>` : ""}
+      ${resultSummary ? `<p class="plan-meta">${escapeHTML(resultSummary)}</p>` : ""}
+      ${job.error ? `<p class="plan-meta">Error: ${escapeHTML(job.error)}</p>` : ""}
+      ${repairSummary ? `<p class="plan-meta">Repair: ${escapeHTML(repairSummary)}</p>` : ""}
+      ${collaborationSummary ? `<p class="plan-meta">Collab: ${escapeHTML(collaborationSummary)}</p>` : ""}
+      ${transcriptLines.length ? `<div class="plan-meta">${transcriptLines.map((line) => `• ${escapeHTML(line)}`).join("<br />")}</div>` : ""}
       <div class="row"></div>
     `;
     const row = card.querySelector(".row");
@@ -446,10 +824,822 @@ function renderEvents(events) {
   }
 }
 
+function artifactPreviewUrl(path) {
+  if (!path) return "";
+  const { baseUrl, token } = currentConfig();
+  const normalizedPath = String(path).startsWith("/") ? String(path) : `/${String(path)}`;
+  const prefix = baseUrl.replace(/\/$/, "");
+  if (!token) return `${prefix}${normalizedPath}`;
+  const sep = normalizedPath.includes("?") ? "&" : "?";
+  return `${prefix}${normalizedPath}${sep}token=${encodeURIComponent(token)}`;
+}
+
+function renderControlArtifacts(items) {
+  const artifacts = Array.isArray(items) ? items : [];
+  artifactCountEl.textContent = String(artifacts.length);
+  if (!artifacts.length) {
+    controlArtifactsEl.innerHTML = "<p>No control artifacts available.</p>";
+    return;
+  }
+  controlArtifactsEl.innerHTML = "";
+  for (const artifact of artifacts.slice(0, 8)) {
+    const card = document.createElement("article");
+    card.className = "event";
+    const preview = artifact.preview_available && artifact.preview_path
+      ? `<img class="artifact-preview" src="${escapeHTML(artifactPreviewUrl(artifact.preview_path))}" alt="artifact preview" loading="lazy" />`
+      : "";
+    card.innerHTML = `
+      ${preview}
+      <div class="event-head">
+        <strong>${escapeHTML([artifact.control_type || "control", artifact.platform || artifact.transport || artifact.action_type || "preview"].filter(Boolean).join(" / "))}</strong>
+        <span>${escapeHTML(formatTimestamp(artifact.created_at))}</span>
+      </div>
+      <p class="event-meta">Status: ${escapeHTML(artifact.status || "unknown")} • Goal: ${escapeHTML(artifact.goal || artifact.output_preview || "(no goal)")}</p>
+      <p class="event-meta">Action: ${escapeHTML(artifact.action_type || "unknown")}${artifact.target ? ` • ${escapeHTML(artifact.target)}` : ""}</p>
+      <p class="event-meta">Model: ${escapeHTML(artifact.model || "n/a")}${artifact.dangerous ? " • dangerous" : ""}</p>
+    `;
+    controlArtifactsEl.appendChild(card);
+  }
+}
+
+function renderGovernance(governance) {
+  const data = governance && typeof governance === "object" ? governance : {};
+  const paused = Boolean(data.paused);
+  setGovernanceStatus(paused ? "Paused" : "Active", paused ? "error" : "ok");
+  if (budgetLimitInput && !document.activeElement?.isSameNode(budgetLimitInput)) {
+    const budget = data.budget_limit_usd;
+    budgetLimitInput.value = budget === null || budget === undefined ? "" : String(budget);
+  }
+  if (maxActiveRunsInput && !document.activeElement?.isSameNode(maxActiveRunsInput)) {
+    const maxActiveRuns = data.max_active_runs;
+    maxActiveRunsInput.value = maxActiveRuns === null || maxActiveRuns === undefined ? "" : String(maxActiveRuns);
+  }
+  if (!governanceOutputEl) return;
+  governanceOutputEl.textContent = JSON.stringify(
+    {
+      paused,
+      pause_reason: data.pause_reason || "",
+      active_runs: data.active_runs || 0,
+      jobs: data.jobs || {},
+      llm_calls_total: data.llm_calls_total || 0,
+      runs_total: data.runs_total || 0,
+      spend_estimate_usd: data.spend_estimate_usd || 0,
+      budget_limit_usd: data.budget_limit_usd,
+      max_active_runs: data.max_active_runs,
+      per_model: data.per_model || {},
+      last_strategy: data.last_strategy || "",
+      last_objective_preview: data.last_objective_preview || "",
+      last_run_at: data.last_run_at || "",
+      updated_at: data.updated_at || "",
+    },
+    null,
+    2,
+  );
+}
+
+async function refreshGovernance() {
+  saveConfig();
+  const result = await coreRequest("GET", "/runtime/governance");
+  renderGovernance(result);
+  return result;
+}
+
+async function applyGovernanceLimits() {
+  saveConfig();
+  const payload = {};
+  const budgetRaw = String(budgetLimitInput?.value || "").trim();
+  const maxRaw = String(maxActiveRunsInput?.value || "").trim();
+  payload.budget_limit_usd = budgetRaw ? Number(budgetRaw) : null;
+  payload.max_active_runs = maxRaw ? Number(maxRaw) : null;
+  const result = await coreRequest("POST", "/runtime/governance", payload);
+  renderGovernance(result);
+  return result;
+}
+
+async function pauseRuntime() {
+  const reason = window.prompt("Pause reason", "Operator pause") || "Operator pause";
+  const result = await coreRequest("POST", "/runtime/governance", {
+    paused: true,
+    pause_reason: reason,
+  });
+  renderGovernance(result);
+  return result;
+}
+
+async function resumeRuntime() {
+  const result = await coreRequest("POST", "/runtime/governance", {
+    paused: false,
+    pause_reason: "",
+  });
+  renderGovernance(result);
+  return result;
+}
+
+async function resetGovernanceUsage() {
+  const result = await coreRequest("POST", "/runtime/governance", { reset_usage: true });
+  renderGovernance(result);
+  return result;
+}
+
+async function cancelAllJobs() {
+  const confirmed = window.confirm("Cancel all queued/running jobs and pause the runtime first?");
+  if (!confirmed) return null;
+  const result = await coreRequest("POST", "/runtime/jobs/cancel_all", {
+    pause: true,
+    pause_reason: "Operator cancel all",
+  });
+  if (result?.governance) {
+    renderGovernance(result.governance);
+  }
+  return result;
+}
+
+function quickActionsForEntity(entity) {
+  const entityId = String(entity?.entity_id || "");
+  const domain = entityId.split(".", 1)[0] || "";
+  const state = String(entity?.state || "").toLowerCase();
+  if (domain === "light" || domain === "switch" || domain === "input_boolean") {
+    return [
+      { label: "Turn On", service: "turn_on" },
+      { label: state === "on" ? "Turn Off" : "Turn Off", service: "turn_off" },
+      { label: "Toggle", service: "toggle" },
+    ];
+  }
+  if (domain === "cover") {
+    return [
+      { label: "Open", service: "open_cover" },
+      { label: "Close", service: "close_cover" },
+      { label: "Stop", service: "stop_cover" },
+    ];
+  }
+  if (domain === "vacuum") {
+    return [
+      { label: "Start", service: "start" },
+      { label: "Pause", service: "pause" },
+      { label: "Dock", service: "return_to_base" },
+    ];
+  }
+  if (domain === "script" || domain === "scene") {
+    return [{ label: "Run", service: "turn_on" }];
+  }
+  return [{ label: "Execute", service: "turn_on" }];
+}
+
+function renderMQTTOutput(payload, fallback = "No MQTT activity yet.") {
+  if (!mqttOutputEl) return;
+  if (payload === null || payload === undefined || payload === "") {
+    mqttOutputEl.textContent = fallback;
+    return;
+  }
+  if (typeof payload === "string") {
+    mqttOutputEl.textContent = payload;
+    return;
+  }
+  mqttOutputEl.textContent = JSON.stringify(payload, null, 2);
+}
+
+function renderControlOutput(payload, fallback = "No control-anything activity yet.") {
+  if (!controlOutputEl) return;
+  if (payload === null || payload === undefined || payload === "") {
+    controlOutputEl.textContent = fallback;
+    return;
+  }
+  if (typeof payload === "string") {
+    controlOutputEl.textContent = payload;
+    return;
+  }
+  controlOutputEl.textContent = JSON.stringify(payload, null, 2);
+}
+
+function renderTemplateOutput(payload, fallback = "No template activity yet.") {
+  if (!templateOutputEl) return;
+  if (payload === null || payload === undefined || payload === "") {
+    templateOutputEl.textContent = fallback;
+    return;
+  }
+  if (typeof payload === "string") {
+    templateOutputEl.textContent = payload;
+    return;
+  }
+  templateOutputEl.textContent = JSON.stringify(payload, null, 2);
+}
+
+function renderTerminalOutput(text) {
+  if (!terminalOutputEl) return;
+  terminalOutputEl.textContent = String(text || "No terminal session attached.");
+}
+
+function renderIoTEntities(result) {
+  const entities = Array.isArray(result?.entities) ? result.entities : [];
+  if (!iotEntitiesEl) return;
+  if (!entities.length) {
+    iotEntitiesEl.innerHTML = "<p>No entities matched the current filters.</p>";
+    return;
+  }
+  iotEntitiesEl.innerHTML = "";
+  for (const entity of entities.slice(0, 18)) {
+    const entityId = String(entity?.entity_id || "");
+    const domain = entityId.split(".", 1)[0] || "";
+    const attrs = entity?.attributes && typeof entity.attributes === "object" ? entity.attributes : {};
+    const friendlyName = String(attrs.friendly_name || entityId || "Entity");
+    const card = document.createElement("article");
+    card.className = "iot-entity";
+    card.innerHTML = `
+      <div class="event-head">
+        <strong>${escapeHTML(friendlyName)}</strong>
+        <span>${escapeHTML(String(entity?.state ?? "unknown"))}</span>
+      </div>
+      <p class="event-meta">${escapeHTML(entityId)}</p>
+      <p class="event-meta">${escapeHTML(summarizeEntityAttributes(attrs))}</p>
+      <div class="row"></div>
+    `;
+    const row = card.querySelector(".row");
+    for (const action of quickActionsForEntity(entity)) {
+      row.appendChild(
+        actionButton(action.label, "secondary", async () => {
+          const confirmed = window.confirm(`Execute ${domain}.${action.service} for ${entityId}?`);
+          if (!confirmed) return;
+          await runAction(`Executing ${domain}.${action.service}`, async () => {
+            const response = await coreRequest("POST", "/iot/homeassistant/action", {
+              action: {
+                type: "ha_service",
+                domain,
+                service: action.service,
+                entity_id: entityId,
+              },
+              execute: true,
+            });
+            renderMQTTOutput(response, "Service executed.");
+            await refreshIoTEntities();
+          }, false);
+        }),
+      );
+    }
+    iotEntitiesEl.appendChild(card);
+  }
+}
+
+function summarizeEntityAttributes(attributes) {
+  const entries = [];
+  const friendly = String(attributes?.friendly_name || "").trim();
+  if (friendly) entries.push(`Name: ${friendly}`);
+  for (const key of ["device_class", "unit_of_measurement", "brightness", "temperature", "current_position"]) {
+    const value = attributes?.[key];
+    if (value !== undefined && value !== null && `${value}`.trim() !== "") {
+      entries.push(`${key}: ${value}`);
+    }
+    if (entries.length >= 4) break;
+  }
+  return entries.length ? entries.join(" • ") : "No additional attributes";
+}
+
+async function refreshIoTEntities() {
+  saveConfig();
+  const domain = encodeURIComponent((entityDomainInput?.value || "").trim());
+  const prefix = encodeURIComponent((entityPrefixInput?.value || "").trim());
+  const query = [`limit=24`];
+  if (domain) query.push(`domain=${domain}`);
+  if (prefix) query.push(`entity_id_prefix=${prefix}`);
+  const result = await coreRequest("GET", `/iot/homeassistant/entities?${query.join("&")}`);
+  renderIoTEntities(result);
+  setIoTStatus(`Loaded ${Number(result?.count || 0)} entities`, "ok");
+  return result;
+}
+
+async function refreshMQTTStatus() {
+  saveConfig();
+  const result = await coreRequest("GET", "/iot/mqtt/status");
+  const host = String(result?.host || result?.broker || "broker");
+  const kind = result?.ok ? "ok" : "error";
+  setIoTStatus(result?.ok ? `MQTT ${host}` : "MQTT unavailable", kind);
+  renderMQTTOutput(result, "MQTT status unavailable.");
+  return result;
+}
+
+async function publishMQTT() {
+  const topic = String(mqttTopicInput?.value || "").trim();
+  if (!topic) throw new Error("MQTT topic is required");
+  saveConfig();
+  const confirmed = window.confirm(`Publish to MQTT topic ${topic}?`);
+  if (!confirmed) return null;
+  const result = await coreRequest("POST", "/iot/mqtt/publish", {
+    topic,
+    payload: mqttPayloadInput?.value || "",
+    retain: Boolean(mqttRetainInput?.checked),
+    execute: true,
+  });
+  renderMQTTOutput(result, "MQTT publish complete.");
+  setIoTStatus(`Published ${topic}`, "ok");
+  return result;
+}
+
+async function subscribeMQTTSnapshot() {
+  const topic = String(mqttTopicInput?.value || "").trim();
+  if (!topic) throw new Error("MQTT topic is required");
+  saveConfig();
+  const result = await coreRequest("POST", "/iot/mqtt/subscribe", {
+    topic,
+    timeout_seconds: 1.5,
+    max_messages: 6,
+    qos: 0,
+  });
+  renderMQTTOutput(result, "No MQTT messages received.");
+  setIoTStatus(`Subscribed ${topic}`, "ok");
+  return result;
+}
+
+function buildVisionPayload(execute) {
+  const goal = String(visionGoalInput?.value || "").trim();
+  if (!goal) throw new Error("Vision goal is required");
+  const payload = {
+    goal,
+    execute: Boolean(execute),
+    strategy: String(strategySelect?.value || "single").trim() || "single",
+    allow_dangerous: Boolean(controlAllowDangerousInput?.checked),
+  };
+  const appName = String(visionAppNameInput?.value || "").trim();
+  if (appName) payload.app_name = appName;
+  const candidates = parseCandidates(candidatesInput?.value || "");
+  if (candidates.length > 0) payload.candidates = candidates;
+  return payload;
+}
+
+function formatMobileRuntimeStatus(payload) {
+  const status = payload && typeof payload === "object" ? payload : {};
+  const android = status.android && typeof status.android === "object" ? status.android : {};
+  const ios = status.ios && typeof status.ios === "object" ? status.ios : {};
+  const androidText = android.ok ? "android ready" : `android ${android.error || "degraded"}`;
+  const iosTransport = String(ios.transport || (ios.ok ? "vision" : "unavailable"));
+  const iosText = ios.ok ? `ios ${iosTransport}` : `ios ${ios.error || "degraded"}`;
+  return `${androidText} • ${iosText}`;
+}
+
+async function refreshMobileStatus() {
+  saveConfig();
+  const result = await coreRequest("GET", "/mobile/status");
+  setControlStatus(result?.ok ? formatMobileRuntimeStatus(result) : "Mobile runtime unavailable", result?.ok ? "ok" : "error");
+  renderControlOutput(result, "Mobile runtime status unavailable.");
+  return result;
+}
+
+async function previewVisionAction() {
+  saveConfig();
+  const result = await coreRequest("POST", "/execute/vision", buildVisionPayload(false));
+  renderControlOutput(result, "Vision preview complete.");
+  setControlStatus(
+    `Vision ${String(result?.status || "preview")}`,
+    result?.status === "failed" || result?.status === "blocked" ? "error" : "ok",
+  );
+  return result;
+}
+
+async function executeVisionAction() {
+  const goal = String(visionGoalInput?.value || "").trim();
+  const confirmed = window.confirm(`Execute vision-grounded desktop action for: ${goal || "this goal"}?`);
+  if (!confirmed) return null;
+  saveConfig();
+  const result = await coreRequest("POST", "/execute/vision", buildVisionPayload(true));
+  renderControlOutput(result, "Vision execution complete.");
+  setControlStatus(`Vision ${String(result?.status || "unknown")}`, result?.status === "ok" ? "ok" : "error");
+  return result;
+}
+
+function parseMobileActionJSON() {
+  const raw = String(mobileActionInput?.value || "").trim();
+  if (!raw) throw new Error("Mobile action JSON is required");
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    throw new Error(`Mobile action JSON is invalid: ${String(error?.message || error)}`);
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("Mobile action JSON must be an object");
+  }
+  return parsed;
+}
+
+function buildMobilePayload(execute) {
+  const platform = String(mobilePlatformSelect?.value || "android").trim().toLowerCase() || "android";
+  const payload = {
+    platform,
+    action: parseMobileActionJSON(),
+    execute: Boolean(execute),
+    allow_dangerous: Boolean(controlAllowDangerousInput?.checked),
+    strategy: String(strategySelect?.value || "single").trim() || "single",
+  };
+  const goal = String(mobileGoalInput?.value || "").trim();
+  if (goal) payload.goal = goal;
+  const candidates = parseCandidates(candidatesInput?.value || "");
+  if (candidates.length > 0) payload.candidates = candidates;
+  if (platform === "ios" && mobilePreferAppiumInput?.checked) {
+    payload.prefer_appium = true;
+  }
+  return payload;
+}
+
+async function previewMobileAction() {
+  saveConfig();
+  const result = await coreRequest("POST", "/mobile/action", buildMobilePayload(false));
+  renderControlOutput(result, "Mobile preview complete.");
+  setControlStatus(
+    `Mobile ${String(result?.platform || "")} ${String(result?.status || "preview")}`.trim(),
+    result?.status === "failed" || result?.status === "blocked" ? "error" : "ok",
+  );
+  return result;
+}
+
+async function executeMobileAction() {
+  const platform = String(mobilePlatformSelect?.value || "android").trim().toLowerCase() || "android";
+  const goal = String(mobileGoalInput?.value || "").trim();
+  const confirmed = window.confirm(`Execute ${platform} mobile action${goal ? ` for \"${goal}\"` : ""}?`);
+  if (!confirmed) return null;
+  saveConfig();
+  const result = await coreRequest("POST", "/mobile/action", buildMobilePayload(true));
+  renderControlOutput(result, "Mobile execution complete.");
+  setControlStatus(`Mobile ${String(result?.platform || platform)} ${String(result?.status || "unknown")}`, result?.status === "ok" ? "ok" : "error");
+  return result;
+}
+
+function stopTerminalPolling() {
+  if (terminalPollTimer) {
+    window.clearTimeout(terminalPollTimer);
+    terminalPollTimer = null;
+  }
+}
+
+function attachTerminalSession(sessionId, options = {}) {
+  const normalized = String(sessionId || "").trim();
+  terminalActiveSessionId = normalized;
+  terminalNextSeq = Number(options.nextSeq || 0);
+  stopTerminalPolling();
+  if (!normalized) {
+    renderTerminalOutput("No terminal session attached.");
+    setTerminalStatus("Idle", "neutral");
+    return;
+  }
+  const sessionLabel = String(options.command || normalized);
+  setTerminalStatus(`Attached ${sessionLabel}`, "ok");
+  pollTerminalOutput().catch((err) => {
+    setTerminalStatus(String(err?.message || err), "error");
+  });
+}
+
+function renderTerminalSessions(items) {
+  const sessions = Array.isArray(items) ? items : [];
+  if (!terminalSessionsEl) return;
+  if (!sessions.length) {
+    terminalSessionsEl.innerHTML = "<p>No terminal sessions available.</p>";
+    if (!terminalActiveSessionId) {
+      renderTerminalOutput("No terminal session attached.");
+    }
+    return;
+  }
+  terminalSessionsEl.innerHTML = "";
+  for (const session of sessions) {
+    const sessionId = String(session?.id || "");
+    const command = Array.isArray(session?.command) ? session.command.join(" ") : "";
+    const card = document.createElement("article");
+    card.className = "plan";
+    card.innerHTML = `
+      <div class="plan-head">
+        <strong>${escapeHTML(command || sessionId || "terminal")}</strong>
+        <span>${escapeHTML(String(session?.open ? "open" : `exit ${session?.exit_code ?? "-"}`))}</span>
+      </div>
+      <p class="plan-meta">${escapeHTML(String(session?.cwd || "(default cwd)"))}</p>
+      <p class="plan-meta">pid ${escapeHTML(String(session?.pid ?? "-"))} • seq ${escapeHTML(String(session?.last_seq ?? 0))}</p>
+      <div class="row"></div>
+    `;
+    const row = card.querySelector(".row");
+    row.appendChild(
+      actionButton("Attach", terminalActiveSessionId === sessionId ? "primary" : "secondary", async () => {
+        attachTerminalSession(sessionId, {
+          nextSeq: 0,
+          command,
+        });
+      }),
+    );
+    row.appendChild(
+      actionButton("Close", "secondary", async () => {
+        const confirmed = window.confirm(`Close terminal session ${command || sessionId}?`);
+        if (!confirmed) return;
+        await runAction(`Closing terminal ${sessionId}`, async () => {
+          await coreRequest("POST", `/terminal/sessions/${encodeURIComponent(sessionId)}/close`, {});
+          if (terminalActiveSessionId === sessionId) {
+            attachTerminalSession("", {});
+          }
+          await refreshTerminalSessions();
+        }, false);
+      }),
+    );
+    terminalSessionsEl.appendChild(card);
+  }
+}
+
+async function refreshTerminalSessions() {
+  saveConfig();
+  const sessions = await coreRequest("GET", "/terminal/sessions");
+  renderTerminalSessions(sessions);
+  const items = Array.isArray(sessions) ? sessions : [];
+  const active = items.find((item) => String(item?.id || "") === terminalActiveSessionId);
+  if (active) {
+    setTerminalStatus("Attached", "ok");
+  } else if (terminalActiveSessionId) {
+    attachTerminalSession("", {});
+  }
+  return sessions;
+}
+
+async function startTerminalSession() {
+  saveConfig();
+  const payload = {
+    command: String(terminalCommandInput?.value || "").trim() || null,
+    cwd: String(terminalCwdInput?.value || "").trim() || null,
+    shell: String(terminalShellInput?.value || "").trim() || null,
+  };
+  const session = await coreRequest("POST", "/terminal/sessions", payload);
+  await refreshTerminalSessions();
+  attachTerminalSession(session?.id, {
+    nextSeq: 0,
+    command: Array.isArray(session?.command) ? session.command.join(" ") : "",
+  });
+  return session;
+}
+
+async function pollTerminalOutput() {
+  if (!terminalActiveSessionId) return;
+  try {
+    const result = await coreRequest(
+      "GET",
+      `/terminal/sessions/${encodeURIComponent(terminalActiveSessionId)}/output?since_seq=${Math.max(0, terminalNextSeq)}&limit=400`,
+    );
+    const chunks = Array.isArray(result?.chunks) ? result.chunks : [];
+    if (chunks.length > 0) {
+      let existing = String(terminalOutputEl?.textContent || "");
+      if (existing === "No terminal session attached.") existing = "";
+      for (const chunk of chunks) {
+        terminalNextSeq = Math.max(terminalNextSeq, Number(chunk?.seq || terminalNextSeq));
+        existing += String(chunk?.data || "");
+      }
+      renderTerminalOutput(existing || "No terminal output yet.");
+      if (terminalOutputEl) terminalOutputEl.scrollTop = terminalOutputEl.scrollHeight;
+    }
+    const open = Boolean(result?.open);
+    if (open) {
+      stopTerminalPolling();
+      terminalPollTimer = window.setTimeout(() => {
+        terminalPollTimer = null;
+        pollTerminalOutput().catch((err) => {
+          setTerminalStatus(String(err?.message || err), "error");
+        });
+      }, 300);
+      setTerminalStatus("Streaming", "ok");
+    } else {
+      stopTerminalPolling();
+      setTerminalStatus(`Closed (${String(result?.exit_code ?? "-")})`, "neutral");
+    }
+    return result;
+  } catch (error) {
+    stopTerminalPolling();
+    throw error;
+  }
+}
+
+async function sendTerminalInput() {
+  if (!terminalActiveSessionId) throw new Error("Attach a terminal session first");
+  const input = String(terminalInputBox?.value || "");
+  if (!input.trim()) throw new Error("Terminal input is empty");
+  await coreRequest("POST", `/terminal/sessions/${encodeURIComponent(terminalActiveSessionId)}/input`, {
+    input: `${input}\n`,
+  });
+  terminalInputBox.value = "";
+  saveConfig();
+  await pollTerminalOutput();
+}
+
+async function sendTerminalCtrlC() {
+  if (!terminalActiveSessionId) throw new Error("Attach a terminal session first");
+  await coreRequest("POST", `/terminal/sessions/${encodeURIComponent(terminalActiveSessionId)}/input`, {
+    input: "\u0003",
+  });
+  await pollTerminalOutput();
+}
+
+function templateTagQuery() {
+  const tag = String(templateTagInput?.value || "").trim();
+  return tag ? `?tag=${encodeURIComponent(tag)}` : "";
+}
+
+function summarizeTemplate(template) {
+  const tags = Array.isArray(template?.tags) ? template.tags.filter(Boolean).join(", ") : "";
+  const strategy = String(template?.strategy || "single");
+  const source = String(template?.source || "local");
+  const memory = Array.isArray(template?.memory_snapshot) ? template.memory_snapshot.length : 0;
+  const parts = [`strategy ${strategy}`, `source ${source}`];
+  if (tags) parts.push(`tags ${tags}`);
+  if (memory > 0) parts.push(`memory ${memory}`);
+  return parts.join(" • ");
+}
+
+function renderTemplateCards(container, templates, actionsFactory, emptyMessage) {
+  if (!container) return;
+  const items = Array.isArray(templates) ? templates : [];
+  if (!items.length) {
+    container.innerHTML = `<p>${escapeHTML(emptyMessage)}</p>`;
+    return;
+  }
+  container.innerHTML = "";
+  for (const template of items) {
+    const templateId = String(template?.template_id || template?.id || "");
+    const card = document.createElement("article");
+    card.className = "plan";
+    card.innerHTML = `
+      <div class="plan-head">
+        <strong>${escapeHTML(String(template?.name || templateId || "Template"))}</strong>
+        <span>${escapeHTML(String(template?.updated_at || template?.created_at || templateId || ""))}</span>
+      </div>
+      <p class="plan-meta">${escapeHTML(String(template?.description || template?.objective || "(no description)"))}</p>
+      <p class="plan-meta">${escapeHTML(summarizeTemplate(template))}</p>
+      <p class="plan-meta">${escapeHTML(String(template?.objective || "(no objective)"))}</p>
+      <div class="row"></div>
+    `;
+    const actionRow = card.querySelector(".row");
+    for (const action of actionsFactory(template)) {
+      actionRow.appendChild(
+        actionButton(action.label, action.kind || "secondary", async () => {
+          await action.onClick(template);
+        }),
+      );
+    }
+    container.appendChild(card);
+  }
+}
+
+function renderTemplateLibrary(payload) {
+  renderTemplateCards(
+    templateLibraryEl,
+    payload?.templates || [],
+    (template) => [
+      {
+        label: "Plan",
+        kind: "secondary",
+        onClick: async () => {
+          await runAction(`Launching template ${template.name} as plan`, async () => {
+            const result = await coreRequest("POST", `/agents/templates/${encodeURIComponent(template.template_id)}/launch`, {
+              mode: "plan",
+              execute: false,
+              context: "desktop-tauri",
+            });
+            renderTemplateOutput(result, "Template plan launch complete.");
+            await refresh();
+          }, true);
+        },
+      },
+      {
+        label: "Run",
+        kind: "primary",
+        onClick: async () => {
+          const confirmed = window.confirm(`Launch ${template.name} as an immediate run?`);
+          if (!confirmed) return;
+          await runAction(`Launching template ${template.name} as run`, async () => {
+            const result = await coreRequest("POST", `/agents/templates/${encodeURIComponent(template.template_id)}/launch`, {
+              mode: "run",
+              execute: true,
+              context: "desktop-tauri",
+            });
+            renderTemplateOutput(result, "Template run launch complete.");
+            await refresh();
+          }, true);
+        },
+      },
+      {
+        label: "Share",
+        kind: "secondary",
+        onClick: async () => {
+          await runAction(`Sharing template ${template.name}`, async () => {
+            const result = await coreRequest("POST", `/agents/templates/${encodeURIComponent(template.template_id)}/share`, {
+              shared: true,
+              rotate: false,
+            });
+            renderTemplateOutput(result, "Template share metadata ready.");
+            const shareUrl = result?.share?.share_url || result?.share?.share_uri || result?.share?.share_path;
+            if (shareUrl && navigator.clipboard?.writeText) {
+              try {
+                await navigator.clipboard.writeText(String(shareUrl));
+              } catch {
+                // clipboard failure is non-fatal
+              }
+            }
+            await refreshTemplates();
+          }, false);
+        },
+      },
+    ],
+    "No local templates yet.",
+  );
+}
+
+function renderTemplateGallery(payload) {
+  renderTemplateCards(
+    templateGalleryEl,
+    payload?.templates || [],
+    (template) => [
+      {
+        label: "Import",
+        kind: "secondary",
+        onClick: async () => {
+          await runAction(`Importing gallery template ${template.name}`, async () => {
+            const result = await coreRequest("POST", "/agents/templates/import", {
+              manifest: template,
+              source: "gallery",
+            });
+            renderTemplateOutput(result, "Gallery template imported.");
+            templateManifestInput.value = JSON.stringify(result?.manifest || template, null, 2);
+            saveConfig();
+            await refreshTemplates();
+          }, false);
+        },
+      },
+      {
+        label: "Use Objective",
+        kind: "secondary",
+        onClick: async () => {
+          objectiveInput.value = String(template?.objective || "");
+          strategySelect.value = String(template?.strategy || "single");
+          candidatesInput.value = Array.isArray(template?.candidates) ? template.candidates.join(",") : "";
+          saveConfig();
+          setTemplateStatus(`Loaded ${template.name} into the objective console`, "ok");
+        },
+      },
+    ],
+    "No gallery templates matched the current tag filter.",
+  );
+}
+
+async function refreshTemplates() {
+  saveConfig();
+  const query = templateTagQuery();
+  const [library, gallery] = await Promise.all([
+    coreRequest("GET", `/agents/templates?limit=24${query ? `&${query.slice(1)}` : ""}`),
+    coreRequest("GET", `/agents/gallery${query}`),
+  ]);
+  renderTemplateLibrary(library);
+  renderTemplateGallery(gallery);
+  setTemplateStatus(
+    `Templates ${Number(library?.count || 0)} local • ${Number(gallery?.count || 0)} gallery`,
+    "ok",
+  );
+  return { library, gallery };
+}
+
+async function exportCurrentTemplate() {
+  const objective = String(objectiveInput?.value || "").trim();
+  if (!objective) throw new Error("Objective is required before exporting a template");
+  const name = (window.prompt("Template name", objective.slice(0, 60)) || "").trim();
+  if (!name) return null;
+  const description = (window.prompt("Template description", `Exported operator template for ${name}`) || "").trim();
+  const tags = (window.prompt("Template tags (CSV)", String(templateTagInput?.value || "").trim()) || "").trim();
+  const result = await coreRequest("POST", "/agents/templates/export", {
+    name,
+    description,
+    objective,
+    strategy: String(strategySelect?.value || "single"),
+    candidates: parseCandidates(candidatesInput?.value || ""),
+    tags: parseCandidates(tags),
+    metadata: {
+      source: "desktop-tauri",
+      exported_at: new Date().toISOString(),
+    },
+    include_memory: true,
+    source: "desktop",
+  });
+  renderTemplateOutput(result, "Template exported.");
+  templateManifestInput.value = JSON.stringify(result?.manifest || {}, null, 2);
+  saveConfig();
+  await refreshTemplates();
+  return result;
+}
+
+async function importTemplateManifest() {
+  const raw = String(templateManifestInput?.value || "").trim();
+  if (!raw) throw new Error("Paste a template manifest JSON payload first");
+  let manifest;
+  try {
+    manifest = JSON.parse(raw);
+  } catch {
+    throw new Error("Template manifest must be valid JSON");
+  }
+  const result = await coreRequest("POST", "/agents/templates/import", { manifest });
+  renderTemplateOutput(result, "Template imported.");
+  await refreshTemplates();
+  return result;
+}
+
 function renderSummary(data) {
   const plans = Array.isArray(data?.plans) ? data.plans : [];
   const jobs = Array.isArray(data?.jobs) ? data.jobs : [];
   const events = Array.isArray(data?.events) ? data.events : [];
+  const control = data?.control || {};
 
   const out = {
     health: data?.health,
@@ -457,7 +1647,9 @@ function renderSummary(data) {
     pending_plans: plans.filter((item) => String(item.status || "").toLowerCase() === "pending").length,
     active_jobs: jobs.filter((item) => ["queued", "running"].includes(String(item.status || "").toLowerCase()))
       .length,
+    governance: data?.governance || {},
     events_loaded: events.length,
+    mqtt_status: control.mqtt || {},
     metrics: data?.metrics || {},
   };
   summaryEl.textContent = JSON.stringify(out, null, 2);
@@ -466,12 +1658,21 @@ function renderSummary(data) {
 function render(data) {
   renderPlans(data?.plans || []);
   renderJobs(data?.jobs || []);
-  renderEvents(data?.events || []);
+  const events = data?.events || [];
+  renderEvents(events);
+  renderControlArtifacts(data?.control_artifacts || data?.control?.artifacts || []);
+  renderGovernance(data?.governance || {});
   renderSummary(data || {});
+  liveState.lastAuditId = extractMaxAuditId(events);
 }
 
 async function refresh() {
+  if (refreshInFlight) {
+    queuedRefresh = true;
+    return;
+  }
   saveConfig();
+  refreshInFlight = true;
   try {
     const data = await dashboardData();
     render(data);
@@ -479,6 +1680,17 @@ async function refresh() {
   } catch (error) {
     setConnectionStatus("Connection failed", "error");
     throw error;
+  } finally {
+    refreshInFlight = false;
+    if (queuedRefresh) {
+      queuedRefresh = false;
+      window.setTimeout(() => {
+        refresh().catch((err) => {
+          setActionStatus("Refresh failed", "error");
+          summaryEl.textContent = String(err?.message || err);
+        });
+      }, 25);
+    }
   }
 }
 
@@ -499,6 +1711,71 @@ function startAutoRefresh() {
       summaryEl.textContent = String(err?.message || err);
     });
   }, DEFAULT_REFRESH_INTERVAL_MS);
+}
+
+async function pollLiveEvents() {
+  if (!liveState.enabled) return;
+  try {
+    const query = new URLSearchParams();
+    query.set("limit", "25");
+    if (liveState.lastAuditId > 0) {
+      query.set("since_id", String(liveState.lastAuditId));
+    }
+    const events = await coreRequest("GET", `/events?${query.toString()}`);
+    const items = Array.isArray(events) ? events : [];
+    liveState.connected = true;
+    liveState.consecutiveErrors = 0;
+    if (items.length > 0) {
+      liveState.lastAuditId = extractMaxAuditId(items);
+      const latest = items[items.length - 1] || {};
+      const category = String(latest?.category || "audit");
+      const action = String(latest?.action || "update");
+      setLiveStatus(`Live • ${items.length} event${items.length === 1 ? "" : "s"} • ${category}:${action}`, "ok");
+      scheduleRefresh(80);
+    } else {
+      setLiveStatus("Live • watching audit feed", "ok");
+    }
+  } catch (error) {
+    liveState.connected = false;
+    liveState.consecutiveErrors += 1;
+    const backoff = Math.min(4000, 750 + (liveState.consecutiveErrors - 1) * 500);
+    setLiveStatus(`Live reconnecting • ${String(error?.message || error)}`, "error");
+    if (liveRefreshTimer) window.clearTimeout(liveRefreshTimer);
+    liveRefreshTimer = window.setTimeout(() => {
+      liveRefreshTimer = null;
+      pollLiveEvents().catch(() => {});
+    }, backoff);
+    return;
+  }
+  if (!liveState.enabled) return;
+  if (liveRefreshTimer) window.clearTimeout(liveRefreshTimer);
+  liveRefreshTimer = window.setTimeout(() => {
+    liveRefreshTimer = null;
+    pollLiveEvents().catch(() => {});
+  }, 750);
+}
+
+function stopLivePolling() {
+  liveState.connected = false;
+  if (liveRefreshTimer) {
+    window.clearTimeout(liveRefreshTimer);
+    liveRefreshTimer = null;
+  }
+}
+
+function syncLivePolling() {
+  updateLiveButton();
+  saveConfig();
+  if (!liveState.enabled) {
+    stopLivePolling();
+    setLiveStatus("Live idle", "neutral");
+    return;
+  }
+  stopLivePolling();
+  setLiveStatus("Live starting", "neutral");
+  pollLiveEvents().catch((err) => {
+    setLiveStatus(String(err?.message || err), "error");
+  });
 }
 
 function actionButton(label, kind, onClick) {
@@ -553,21 +1830,146 @@ objectiveInput.addEventListener("change", saveConfig);
 strategySelect.addEventListener("change", saveConfig);
 candidatesInput.addEventListener("change", saveConfig);
 executeToggle.addEventListener("change", saveConfig);
+autoRepairAttemptsInput?.addEventListener("change", saveConfig);
+repairStrategySelect?.addEventListener("change", saveConfig);
+repairModelInput?.addEventListener("change", saveConfig);
+repairCandidatesInput?.addEventListener("change", saveConfig);
+repairFallbacksInput?.addEventListener("change", saveConfig);
+terminalCommandInput?.addEventListener("change", saveConfig);
+terminalCwdInput?.addEventListener("change", saveConfig);
+terminalShellInput?.addEventListener("change", saveConfig);
+terminalInputBox?.addEventListener("change", saveConfig);
+budgetLimitInput?.addEventListener("change", saveConfig);
+maxActiveRunsInput?.addEventListener("change", saveConfig);
+entityDomainInput?.addEventListener("change", saveConfig);
+entityPrefixInput?.addEventListener("change", saveConfig);
+mqttTopicInput?.addEventListener("change", saveConfig);
+mqttPayloadInput?.addEventListener("change", saveConfig);
+mqttRetainInput?.addEventListener("change", saveConfig);
+visionGoalInput?.addEventListener("change", saveConfig);
+visionAppNameInput?.addEventListener("change", saveConfig);
+controlAllowDangerousInput?.addEventListener("change", saveConfig);
+mobileGoalInput?.addEventListener("change", saveConfig);
+mobilePlatformSelect?.addEventListener("change", saveConfig);
+mobilePreferAppiumInput?.addEventListener("change", saveConfig);
+mobileActionInput?.addEventListener("change", saveConfig);
+templateTagInput?.addEventListener("change", saveConfig);
+templateManifestInput?.addEventListener("change", saveConfig);
 autoRefreshInput.addEventListener("change", () => {
   saveConfig();
   startAutoRefresh();
+});
+liveStreamBtn?.addEventListener("click", () => {
+  liveState.enabled = !liveState.enabled;
+  syncLivePolling();
+});
+terminalRefreshBtn?.addEventListener("click", () => {
+  runAction("Refreshing terminal sessions", () => refreshTerminalSessions(), false).catch(() => {});
+});
+terminalStartBtn?.addEventListener("click", () => {
+  runAction("Starting terminal session", () => startTerminalSession(), false).catch(() => {});
+});
+terminalCloseBtn?.addEventListener("click", () => {
+  runAction("Closing active terminal session", async () => {
+    if (!terminalActiveSessionId) throw new Error("No active terminal session attached");
+    await coreRequest("POST", `/terminal/sessions/${encodeURIComponent(terminalActiveSessionId)}/close`, {});
+    attachTerminalSession("", {});
+    await refreshTerminalSessions();
+  }, false).catch(() => {});
+});
+terminalSendBtn?.addEventListener("click", () => {
+  runAction("Sending terminal input", () => sendTerminalInput(), false).catch(() => {});
+});
+terminalCtrlCBtn?.addEventListener("click", () => {
+  runAction("Sending Ctrl+C", () => sendTerminalCtrlC(), false).catch(() => {});
+});
+refreshEntitiesBtn?.addEventListener("click", () => {
+  runAction("Refreshing IoT entities", () => refreshIoTEntities(), false).catch(() => {});
+});
+refreshGovernanceBtn?.addEventListener("click", () => {
+  runAction("Refreshing runtime governance", () => refreshGovernance(), false).catch(() => {});
+});
+applyGovernanceBtn?.addEventListener("click", () => {
+  runAction("Applying runtime limits", () => applyGovernanceLimits(), false).catch(() => {});
+});
+pauseRuntimeBtn?.addEventListener("click", () => {
+  runAction("Pausing runtime", () => pauseRuntime(), false).catch(() => {});
+});
+resumeRuntimeBtn?.addEventListener("click", () => {
+  runAction("Resuming runtime", () => resumeRuntime(), false).catch(() => {});
+});
+resetUsageBtn?.addEventListener("click", () => {
+  runAction("Resetting governance usage", () => resetGovernanceUsage(), false).catch(() => {});
+});
+cancelAllJobsBtn?.addEventListener("click", () => {
+  runAction("Canceling all jobs", () => cancelAllJobs(), true).catch(() => {});
+});
+refreshMqttStatusBtn?.addEventListener("click", () => {
+  runAction("Refreshing MQTT status", () => refreshMQTTStatus(), false).catch(() => {});
+});
+mqttPublishBtn?.addEventListener("click", () => {
+  runAction("Publishing MQTT message", () => publishMQTT(), false).catch(() => {});
+});
+mqttSubscribeBtn?.addEventListener("click", () => {
+  runAction("Subscribing to MQTT snapshot", () => subscribeMQTTSnapshot(), false).catch(() => {});
+});
+refreshMobileStatusBtn?.addEventListener("click", () => {
+  runAction("Refreshing mobile runtime", () => refreshMobileStatus(), false).catch(() => {});
+});
+previewVisionBtn?.addEventListener("click", () => {
+  runAction("Previewing vision control", () => previewVisionAction(), false).catch(() => {});
+});
+executeVisionBtn?.addEventListener("click", () => {
+  runAction("Executing vision control", () => executeVisionAction(), true).catch(() => {});
+});
+previewMobileBtn?.addEventListener("click", () => {
+  runAction("Previewing mobile control", () => previewMobileAction(), false).catch(() => {});
+});
+executeMobileBtn?.addEventListener("click", () => {
+  runAction("Executing mobile control", () => executeMobileAction(), true).catch(() => {});
+});
+refreshTemplatesBtn?.addEventListener("click", () => {
+  runAction("Refreshing templates", () => refreshTemplates(), false).catch(() => {});
+});
+exportTemplateBtn?.addEventListener("click", () => {
+  runAction("Exporting template", () => exportCurrentTemplate(), false).catch(() => {});
+});
+importTemplateBtn?.addEventListener("click", () => {
+  runAction("Importing template manifest", () => importTemplateManifest(), false).catch(() => {});
 });
 
 loadConfig();
 setActionStatus("Idle", "neutral");
 setConnectionStatus("Not connected", "neutral");
+updateLiveButton();
+setLiveStatus(liveState.enabled ? "Live waiting for first event" : "Live idle", "neutral");
+setTerminalStatus("Idle", "neutral");
+setGovernanceStatus("Unknown", "neutral");
+setIoTStatus("Idle", "neutral");
+setControlStatus("Idle", "neutral");
+setTemplateStatus("Idle", "neutral");
+renderMQTTOutput(null);
+renderControlOutput(null);
+renderTemplateOutput(null);
+renderTerminalOutput(null);
 refresh()
   .catch((err) => {
     setActionStatus("Initial refresh failed", "error");
     summaryEl.textContent = String(err?.message || err);
   })
-  .finally(() => startAutoRefresh());
+  .finally(() => {
+    refreshTerminalSessions().catch(() => {});
+    refreshGovernance().catch(() => {});
+    refreshMQTTStatus().catch(() => {});
+    refreshMobileStatus().catch(() => {});
+    refreshTemplates().catch(() => {});
+    startAutoRefresh();
+    syncLivePolling();
+  });
 
 window.addEventListener("beforeunload", () => {
   if (refreshTimer) window.clearInterval(refreshTimer);
+  if (scheduledRefreshTimer) window.clearTimeout(scheduledRefreshTimer);
+  stopTerminalPolling();
+  stopLivePolling();
 });

@@ -70,6 +70,8 @@ def run_probe(
     ]
     if transport == "http":
         cmd.extend(["--http-token", token])
+    elif transport == "grpc":
+        cmd.extend(["--grpc-token", token])
     elif transport == "daemon":
         cmd.extend(["--daemon-token", token])
     try:
@@ -114,7 +116,9 @@ def tail_text(path: Path, max_lines: int = 40) -> str:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Cross-platform smoke test for native runtime HTTP+daemon transports")
+    parser = argparse.ArgumentParser(
+        description="Cross-platform smoke test for native runtime HTTP, daemon, and optional gRPC transports"
+    )
     parser.add_argument("--http-port", type=int, default=int(os.getenv("NOVAADAPT_SMOKE_RUNTIME_HTTP_PORT", "0") or "0"))
     parser.add_argument("--http-token", default=os.getenv("NOVAADAPT_SMOKE_RUNTIME_HTTP_TOKEN", "runtime-http-smoke-token"))
     parser.add_argument(
@@ -126,10 +130,24 @@ def main() -> int:
         "--daemon-token",
         default=os.getenv("NOVAADAPT_SMOKE_RUNTIME_DAEMON_TOKEN", "runtime-daemon-smoke-token"),
     )
+    parser.add_argument(
+        "--grpc-host",
+        default=os.getenv("NOVAADAPT_SMOKE_RUNTIME_GRPC_HOST", "127.0.0.1"),
+    )
+    parser.add_argument(
+        "--grpc-port",
+        type=int,
+        default=int(os.getenv("NOVAADAPT_SMOKE_RUNTIME_GRPC_PORT", "0") or "0"),
+    )
+    parser.add_argument(
+        "--grpc-token",
+        default=os.getenv("NOVAADAPT_SMOKE_RUNTIME_GRPC_TOKEN", "runtime-grpc-smoke-token"),
+    )
     args = parser.parse_args()
 
     http_port = int(args.http_port or pick_free_port())
     daemon_port = int(args.daemon_port or pick_free_port())
+    grpc_port = int(args.grpc_port or pick_free_port())
 
     base_env = dict(os.environ)
     base_env["PYTHONPATH"] = merged_pythonpath(base_env.get("PYTHONPATH"))
@@ -137,11 +155,14 @@ def main() -> int:
     log_dir = Path(tempfile.gettempdir())
     http_log_path = log_dir / "novaadapt-runtime-http-smoke.log"
     daemon_log_path = log_dir / "novaadapt-runtime-daemon-smoke.log"
+    grpc_log_path = log_dir / "novaadapt-runtime-grpc-smoke.log"
 
     http_log: TextIO | None = None
     daemon_log: TextIO | None = None
+    grpc_log: TextIO | None = None
     http_proc: subprocess.Popen[str] | None = None
     daemon_proc: subprocess.Popen[str] | None = None
+    grpc_proc: subprocess.Popen[str] | None = None
 
     try:
         print("Starting runtime native-http...", flush=True)
@@ -261,7 +282,74 @@ def main() -> int:
             print(f"Daemon runtime execute failed: {daemon_result.output}", file=sys.stderr)
             return 1
 
-        print("Smoke test passed: native runtime HTTP and daemon transports are working.")
+        grpc_available, grpc_probe = run_probe(
+            "grpc",
+            str(args.grpc_token),
+            env=base_env,
+            timeout_seconds=5.0,
+            check_timeout_seconds=2,
+        )
+        grpc_dependency_missing = "requires 'grpcio'" in grpc_probe.lower()
+        if grpc_dependency_missing:
+            print("Skipping native gRPC smoke: grpcio is not installed in this environment.", flush=True)
+        else:
+            print("Starting runtime native-grpc...", flush=True)
+            grpc_log = grpc_log_path.open("w", encoding="utf-8")
+            grpc_proc = subprocess.Popen(
+                [
+                    sys.executable,
+                    "-m",
+                    "novaadapt_core.cli",
+                    "native-grpc",
+                    "--host",
+                    str(args.grpc_host),
+                    "--port",
+                    str(grpc_port),
+                    "--grpc-token",
+                    str(args.grpc_token),
+                ],
+                cwd=ROOT_DIR,
+                env=base_env,
+                stdout=grpc_log,
+                stderr=subprocess.STDOUT,
+                text=True,
+            )
+
+            grpc_env = dict(base_env)
+            grpc_env["DIRECTSHELL_GRPC_TARGET"] = f"{args.grpc_host}:{grpc_port}"
+            grpc_env["DIRECTSHELL_GRPC_TOKEN"] = str(args.grpc_token)
+            deadline = time.monotonic() + 18.0
+            probe_ok = False
+            probe_out = ""
+            while time.monotonic() < deadline:
+                probe_ok, probe_out = run_probe(
+                    "grpc",
+                    str(args.grpc_token),
+                    env=grpc_env,
+                    timeout_seconds=8.0,
+                    check_timeout_seconds=3,
+                )
+                if probe_ok:
+                    break
+                time.sleep(0.1)
+            if not probe_ok:
+                print(f"Runtime native-grpc failed readiness probe; see {grpc_log_path}", file=sys.stderr)
+                print(probe_out, file=sys.stderr)
+                print(tail_text(grpc_log_path), file=sys.stderr)
+                return 1
+
+            grpc_client = DirectShellClient(
+                transport="grpc",
+                grpc_target=f"{args.grpc_host}:{grpc_port}",
+                grpc_token=str(args.grpc_token),
+                timeout_seconds=3,
+            )
+            grpc_result = grpc_client.execute_action({"type": "note", "value": "runtime-grpc-smoke"}, dry_run=False)
+            if str(grpc_result.status).lower() != "ok":
+                print(f"gRPC runtime execute failed: {grpc_result.output}", file=sys.stderr)
+                return 1
+
+        print("Smoke test passed: native runtime HTTP, daemon, and optional gRPC transports are working.")
         return 0
 
     except KeyboardInterrupt:
@@ -270,8 +358,11 @@ def main() -> int:
         print(f"Smoke test transport error: {exc}", file=sys.stderr)
         return 1
     finally:
+        terminate_process(grpc_proc)
         terminate_process(daemon_proc)
         terminate_process(http_proc)
+        if grpc_log is not None:
+            grpc_log.close()
         if daemon_log is not None:
             daemon_log.close()
         if http_log is not None:

@@ -55,7 +55,141 @@ def render_dashboard_html() -> str:
     .ok { color: var(--ok); }
     .warn { color: var(--warn); }
     .bad { color: var(--bad); }
-    .toolbar { margin: 14px 0; display: flex; gap: 8px; }
+    .toolbar { margin: 14px 0; display: flex; gap: 8px; flex-wrap: wrap; }
+    .operator-panel { margin-bottom: 12px; }
+    .governance-panel { margin-bottom: 12px; }
+    .control-grid {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    }
+    .control-grid .full { grid-column: 1 / -1; }
+    .control-field label {
+      display: block;
+      margin-bottom: 4px;
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+    }
+    .control-field input,
+    .control-field select,
+    .control-field textarea {
+      width: 100%;
+      border: 1px solid var(--border);
+      background: #0f141b;
+      color: var(--text);
+      border-radius: 8px;
+      padding: 8px 10px;
+      font: inherit;
+    }
+    .control-field textarea {
+      min-height: 92px;
+      resize: vertical;
+    }
+    .control-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 12px;
+    }
+    .control-status {
+      min-height: 18px;
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .control-status.ok { color: var(--ok); }
+    .control-status.bad { color: var(--bad); }
+    .obs-grid {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      margin-bottom: 12px;
+    }
+    .surface-grid {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(auto-fit, minmax(330px, 1fr));
+      margin-bottom: 12px;
+    }
+    .surface-list {
+      display: grid;
+      gap: 10px;
+      max-height: 360px;
+      overflow: auto;
+    }
+    .surface-item {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px;
+    }
+    .surface-item-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: baseline;
+      margin-bottom: 8px;
+    }
+    .surface-meta {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+      margin: 6px 0 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .surface-output {
+      margin-top: 10px;
+      border: 1px solid var(--border);
+      background: #0f141b;
+      color: var(--text);
+      border-radius: 10px;
+      padding: 10px;
+      min-height: 88px;
+      max-height: 260px;
+      overflow: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+    .surface-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 10px;
+    }
+    .obs-list {
+      display: grid;
+      gap: 6px;
+    }
+    .obs-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      font-size: 13px;
+    }
+    .obs-row .mono {
+      color: var(--muted);
+      min-width: 92px;
+    }
+    .obs-pills {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      margin-top: 8px;
+    }
+    .obs-pill {
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 4px 8px;
+      font-size: 12px;
+      color: var(--muted);
+      background: #0f141b;
+    }
     button {
       border: 1px solid var(--border);
       background: #21262d;
@@ -88,6 +222,41 @@ def render_dashboard_html() -> str:
       gap: 12px;
       grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
     }
+    .artifact-list {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      margin-top: 12px;
+    }
+    .artifact {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px;
+    }
+    .artifact-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: baseline;
+      margin-bottom: 8px;
+    }
+    .artifact-media {
+      width: 100%;
+      max-height: 200px;
+      object-fit: cover;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      margin-bottom: 8px;
+      background: #0b0f14;
+    }
+    .artifact-meta {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+      margin: 6px 0 0;
+      white-space: pre-wrap;
+    }
     table {
       width: 100%; border-collapse: collapse;
       background: var(--panel); border: 1px solid var(--border); border-radius: 12px; overflow: hidden;
@@ -105,6 +274,14 @@ def render_dashboard_html() -> str:
     th { color: var(--muted); font-weight: 600; }
     tr:last-child td { border-bottom: none; }
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .detail {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.4;
+      margin-top: 4px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
   </style>
 </head>
 <body>
@@ -117,8 +294,252 @@ def render_dashboard_html() -> str:
     <div class=\"toolbar\">
       <button id=\"refresh\">Refresh</button>
       <button id=\"auto\">Auto: Off</button>
+      <button id=\"live\">Live: Off</button>
     </div>
     <div class=\"action-status\" id=\"action-status\"></div>
+
+    <div class=\"card operator-panel\">
+      <div class=\"section-title\">Operator Console</div>
+      <div class=\"control-grid\">
+        <div class=\"control-field full\">
+          <label for=\"operator-objective\">Objective</label>
+          <textarea id=\"operator-objective\" placeholder=\"Describe the run or plan you want NovaAdapt to execute.\"></textarea>
+        </div>
+        <div class=\"control-field\">
+          <label for=\"operator-strategy\">Strategy</label>
+          <select id=\"operator-strategy\">
+            <option value=\"single\">single</option>
+            <option value=\"vote\">vote</option>
+            <option value=\"decompose\">decompose</option>
+          </select>
+        </div>
+        <div class=\"control-field\">
+          <label for=\"operator-model\">Model</label>
+          <input id=\"operator-model\" placeholder=\"default model\" />
+        </div>
+        <div class=\"control-field\">
+          <label for=\"operator-candidates\">Candidates</label>
+          <input id=\"operator-candidates\" placeholder=\"model-a, model-b\" />
+        </div>
+        <div class=\"control-field\">
+          <label for=\"operator-fallbacks\">Fallbacks</label>
+          <input id=\"operator-fallbacks\" placeholder=\"model-c, model-d\" />
+        </div>
+        <div class=\"control-field\">
+          <label for=\"operator-execute\">Run Mode</label>
+          <select id=\"operator-execute\">
+            <option value=\"true\">execute</option>
+            <option value=\"false\">preview</option>
+          </select>
+        </div>
+        <div class=\"control-field\">
+          <label for=\"operator-allow-dangerous\">Dangerous Actions</label>
+          <select id=\"operator-allow-dangerous\">
+            <option value=\"false\">block</option>
+            <option value=\"true\">allow</option>
+          </select>
+        </div>
+        <div class=\"control-field\">
+          <label for=\"operator-max-actions\">Max Actions</label>
+          <input id=\"operator-max-actions\" type=\"number\" min=\"1\" value=\"25\" />
+        </div>
+        <div class=\"control-field\">
+          <label for=\"operator-action-retries\">Action Retries</label>
+          <input id=\"operator-action-retries\" type=\"number\" min=\"0\" value=\"2\" />
+        </div>
+        <div class=\"control-field\">
+          <label for=\"operator-action-backoff\">Retry Backoff Seconds</label>
+          <input id=\"operator-action-backoff\" type=\"number\" min=\"0\" step=\"0.1\" value=\"0.2\" />
+        </div>
+        <div class=\"control-field\">
+          <label for=\"operator-auto-repair\">Auto Repair Attempts</label>
+          <input id=\"operator-auto-repair\" type=\"number\" min=\"0\" value=\"1\" />
+        </div>
+        <div class=\"control-field\">
+          <label for=\"operator-repair-strategy\">Repair Strategy</label>
+          <select id=\"operator-repair-strategy\">
+            <option value=\"single\">single</option>
+            <option value=\"vote\">vote</option>
+            <option value=\"decompose\">decompose</option>
+          </select>
+        </div>
+        <div class=\"control-field\">
+          <label for=\"operator-repair-model\">Repair Model</label>
+          <input id=\"operator-repair-model\" placeholder=\"default repair model\" />
+        </div>
+        <div class=\"control-field\">
+          <label for=\"operator-repair-candidates\">Repair Candidates</label>
+          <input id=\"operator-repair-candidates\" placeholder=\"model-a, model-b\" />
+        </div>
+        <div class=\"control-field\">
+          <label for=\"operator-repair-fallbacks\">Repair Fallbacks</label>
+          <input id=\"operator-repair-fallbacks\" placeholder=\"model-c, model-d\" />
+        </div>
+      </div>
+      <div class=\"control-actions\">
+        <button id=\"run-async\">Run Async</button>
+        <button id=\"create-plan\">Create Plan</button>
+      </div>
+    </div>
+
+    <div class=\"card governance-panel\">
+      <div class=\"section-title\">Runtime Governance</div>
+      <div class=\"control-grid\">
+        <div class=\"control-field\">
+          <label for=\"governance-paused\">Paused</label>
+          <select id=\"governance-paused\">
+            <option value=\"false\">running</option>
+            <option value=\"true\">paused</option>
+          </select>
+        </div>
+        <div class=\"control-field\">
+          <label for=\"governance-pause-reason\">Pause Reason</label>
+          <input id=\"governance-pause-reason\" placeholder=\"ops freeze\" />
+        </div>
+        <div class=\"control-field\">
+          <label for=\"governance-budget-limit\">Budget Limit USD</label>
+          <input id=\"governance-budget-limit\" type=\"number\" min=\"0\" step=\"0.01\" placeholder=\"unlimited\" />
+        </div>
+        <div class=\"control-field\">
+          <label for=\"governance-max-runs\">Max Active Runs</label>
+          <input id=\"governance-max-runs\" type=\"number\" min=\"1\" placeholder=\"unlimited\" />
+        </div>
+      </div>
+      <div class=\"control-actions\">
+        <button id=\"apply-governance\">Apply Governance</button>
+        <button id=\"toggle-pause\">Pause Runtime</button>
+        <button id=\"reset-usage\">Reset Usage</button>
+        <button id=\"cancel-all-jobs\" class=\"warn\">Cancel All Jobs</button>
+      </div>
+      <div class=\"control-status\" id=\"governance-status\"></div>
+    </div>
+
+    <div class=\"surface-grid\">
+      <div class=\"card\">
+        <div class=\"section-title\">Terminal Control</div>
+        <div class=\"control-grid\">
+          <div class=\"control-field\">
+            <label for=\"terminal-command\">Command</label>
+            <input id=\"terminal-command\" placeholder=\"npm test\" />
+          </div>
+          <div class=\"control-field\">
+            <label for=\"terminal-cwd\">Working Directory</label>
+            <input id=\"terminal-cwd\" placeholder=\"/workspace/project\" />
+          </div>
+          <div class=\"control-field\">
+            <label for=\"terminal-shell\">Shell Override</label>
+            <input id=\"terminal-shell\" placeholder=\"/bin/zsh\" />
+          </div>
+        </div>
+        <div class=\"control-actions\">
+          <button id=\"terminal-refresh\">Refresh Sessions</button>
+          <button id=\"terminal-start\">Start Session</button>
+          <button id=\"terminal-close\" class=\"warn\">Close Session</button>
+        </div>
+        <div class=\"control-status\" id=\"terminal-status\"></div>
+        <div id=\"terminal-sessions\" class=\"surface-list\"></div>
+        <div class=\"control-grid\" style=\"margin-top: 10px;\">
+          <div class=\"control-field full\">
+            <label for=\"terminal-input\">Terminal Input</label>
+            <textarea id=\"terminal-input\" placeholder=\"ls -la\"></textarea>
+          </div>
+        </div>
+        <div class=\"control-actions\">
+          <button id=\"terminal-send\">Send Input</button>
+          <button id=\"terminal-ctrlc\">Send Ctrl+C</button>
+        </div>
+        <pre id=\"terminal-output\" class=\"surface-output\">No terminal session attached.</pre>
+      </div>
+
+      <div class=\"card\">
+        <div class=\"section-title\">Control Anything</div>
+        <div class=\"control-grid\">
+          <div class=\"control-field full\">
+            <label for=\"vision-goal\">Vision Goal</label>
+            <textarea id=\"vision-goal\" placeholder=\"Click the visible Continue button and save the current file.\"></textarea>
+          </div>
+          <div class=\"control-field\">
+            <label for=\"vision-app-name\">Vision App Name</label>
+            <input id=\"vision-app-name\" placeholder=\"Photoshop\" />
+          </div>
+          <div class=\"control-field\">
+            <label for=\"control-allow-dangerous\">Dangerous Actions</label>
+            <select id=\"control-allow-dangerous\">
+              <option value=\"false\">block</option>
+              <option value=\"true\">allow</option>
+            </select>
+          </div>
+        </div>
+        <div class=\"control-actions\">
+          <button id=\"refresh-mobile-status\">Mobile Status</button>
+          <button id=\"preview-vision\">Preview Vision</button>
+          <button id=\"execute-vision\">Execute Vision</button>
+        </div>
+        <div class=\"control-grid\" style=\"margin-top: 10px;\">
+          <div class=\"control-field\">
+            <label for=\"mobile-goal\">Mobile Goal</label>
+            <input id=\"mobile-goal\" placeholder=\"Open Settings and enable Wi-Fi\" />
+          </div>
+          <div class=\"control-field\">
+            <label for=\"mobile-platform\">Platform</label>
+            <select id=\"mobile-platform\">
+              <option value=\"android\">android</option>
+              <option value=\"ios\">ios</option>
+            </select>
+          </div>
+          <div class=\"control-field\">
+            <label for=\"mobile-prefer-appium\">Prefer Appium</label>
+            <select id=\"mobile-prefer-appium\">
+              <option value=\"false\">vision default</option>
+              <option value=\"true\">appium when available</option>
+            </select>
+          </div>
+          <div class=\"control-field full\">
+            <label for=\"mobile-action-json\">Mobile Action JSON</label>
+            <textarea id=\"mobile-action-json\" placeholder='{"type":"open_app","package":"com.android.settings"}'>{"type":"open_app","package":"com.android.settings"}</textarea>
+          </div>
+        </div>
+        <div class=\"control-actions\">
+          <button id=\"preview-mobile\">Preview Mobile</button>
+          <button id=\"execute-mobile\">Execute Mobile</button>
+        </div>
+        <div class=\"control-status\" id=\"control-status\"></div>
+        <pre id=\"control-output\" class=\"surface-output\">No control-anything activity yet.</pre>
+      </div>
+
+      <div class=\"card\">
+        <div class=\"section-title\">Agent Marketplace</div>
+        <div class=\"control-grid\">
+          <div class=\"control-field\">
+            <label for=\"template-tag\">Tag Filter</label>
+            <input id=\"template-tag\" placeholder=\"mobile, ops, iot\" />
+          </div>
+          <div class=\"control-field full\">
+            <label for=\"template-manifest\">Import Manifest JSON</label>
+            <textarea id=\"template-manifest\" placeholder='{"name":"My agent","objective":"..."}'></textarea>
+          </div>
+        </div>
+        <div class=\"control-actions\">
+          <button id=\"template-refresh\">Refresh Templates</button>
+          <button id=\"template-export\">Export Current Objective</button>
+          <button id=\"template-import\">Import Manifest</button>
+        </div>
+        <div class=\"control-status\" id=\"template-status\"></div>
+        <div class=\"surface-grid\" style=\"margin-top: 10px;\">
+          <div>
+            <div class=\"label\">Local Templates</div>
+            <div id=\"template-library\" class=\"surface-list\"></div>
+          </div>
+          <div>
+            <div class=\"label\">Gallery</div>
+            <div id=\"template-gallery\" class=\"surface-list\"></div>
+          </div>
+        </div>
+        <pre id=\"template-output\" class=\"surface-output\">No template activity yet.</pre>
+      </div>
+    </div>
+
+    <div class=\"obs-grid\" id=\"observability\"></div>
 
     <div class=\"tables\">
       <div>
@@ -127,10 +548,10 @@ def render_dashboard_html() -> str:
           <thead>
             <tr>
               <th>Job ID</th>
-              <th>Status</th>
+              <th>Status / Kind</th>
+              <th>Objective / Summary</th>
               <th>Created</th>
               <th>Finished</th>
-              <th>Cancel Req</th>
               <th>Actions</th>
             </tr>
           </thead>
@@ -145,7 +566,7 @@ def render_dashboard_html() -> str:
               <th>Plan ID</th>
               <th>Status</th>
               <th>Progress</th>
-              <th>Objective</th>
+              <th>Objective / Summary</th>
               <th>Created</th>
               <th>Actions</th>
             </tr>
@@ -170,14 +591,63 @@ def render_dashboard_html() -> str:
         </table>
       </div>
     </div>
+
+    <div>
+      <div class=\"section-title\">Control Artifacts</div>
+      <div id=\"artifacts\" class=\"artifact-list\"></div>
+    </div>
   </div>
 
   <script>
-    const state = { auto: false, timer: null };
+    const state = {
+      auto: false,
+      timer: null,
+      live: false,
+      eventSource: null,
+      lastAuditId: 0,
+      refreshScheduled: null,
+      refreshInFlight: false,
+      terminalSessionId: '',
+      terminalNextSeq: 0,
+      terminalPollTimer: null,
+    };
     const authToken = new URLSearchParams(window.location.search).get('token');
     const actionStatus = document.getElementById('action-status');
+    const governanceStatus = document.getElementById('governance-status');
+    const terminalStatus = document.getElementById('terminal-status');
+    const controlStatus = document.getElementById('control-status');
+    const templateStatus = document.getElementById('template-status');
     const jobsTbody = document.getElementById('jobs');
     const plansTbody = document.getElementById('plans');
+    const artifactsEl = document.getElementById('artifacts');
+    const observabilityEl = document.getElementById('observability');
+    const terminalSessionsEl = document.getElementById('terminal-sessions');
+    const terminalOutputEl = document.getElementById('terminal-output');
+    const controlOutputEl = document.getElementById('control-output');
+    const templateLibraryEl = document.getElementById('template-library');
+    const templateGalleryEl = document.getElementById('template-gallery');
+    const templateOutputEl = document.getElementById('template-output');
+    const operatorObjective = document.getElementById('operator-objective');
+    const runAsyncButton = document.getElementById('run-async');
+    const createPlanButton = document.getElementById('create-plan');
+    const liveButton = document.getElementById('live');
+    const applyGovernanceButton = document.getElementById('apply-governance');
+    const togglePauseButton = document.getElementById('toggle-pause');
+    const resetUsageButton = document.getElementById('reset-usage');
+    const cancelAllJobsButton = document.getElementById('cancel-all-jobs');
+    const terminalRefreshButton = document.getElementById('terminal-refresh');
+    const terminalStartButton = document.getElementById('terminal-start');
+    const terminalCloseButton = document.getElementById('terminal-close');
+    const terminalSendButton = document.getElementById('terminal-send');
+    const terminalCtrlCButton = document.getElementById('terminal-ctrlc');
+    const refreshMobileStatusButton = document.getElementById('refresh-mobile-status');
+    const previewVisionButton = document.getElementById('preview-vision');
+    const executeVisionButton = document.getElementById('execute-vision');
+    const previewMobileButton = document.getElementById('preview-mobile');
+    const executeMobileButton = document.getElementById('execute-mobile');
+    const templateRefreshButton = document.getElementById('template-refresh');
+    const templateExportButton = document.getElementById('template-export');
+    const templateImportButton = document.getElementById('template-import');
 
     function metricColor(v, ok=0){
       if (Number(v) <= ok) return 'ok';
@@ -203,6 +673,26 @@ def render_dashboard_html() -> str:
       actionStatus.className = `action-status ${ok ? 'ok' : 'bad'}`;
     }
 
+    function setGovernanceStatus(message, ok=true){
+      governanceStatus.textContent = String(message || '');
+      governanceStatus.className = `control-status ${ok ? 'ok' : 'bad'}`;
+    }
+
+    function setTerminalStatus(message, ok=true){
+      terminalStatus.textContent = String(message || '');
+      terminalStatus.className = `control-status ${ok ? 'ok' : 'bad'}`;
+    }
+
+    function setControlStatus(message, ok=true){
+      controlStatus.textContent = String(message || '');
+      controlStatus.className = `control-status ${ok ? 'ok' : 'bad'}`;
+    }
+
+    function setTemplateStatus(message, ok=true){
+      templateStatus.textContent = String(message || '');
+      templateStatus.className = `control-status ${ok ? 'ok' : 'bad'}`;
+    }
+
     function escapeHTML(value){
       return String(value ?? '')
         .replaceAll('&', '&amp;')
@@ -210,6 +700,969 @@ def render_dashboard_html() -> str:
         .replaceAll('>', '&gt;')
         .replaceAll('"', '&quot;')
         .replaceAll("'", '&#39;');
+    }
+
+    function parseNameList(value){
+      return String(value || '')
+        .split(',')
+        .map(item => item.trim())
+        .filter(Boolean);
+    }
+
+    function formatMoney(value){
+      const amount = Number(value || 0);
+      return `$${amount.toFixed(4)}`;
+    }
+
+    function renderSurfaceOutput(target, payload, fallback){
+      if (!target) return;
+      if (payload == null || payload === '') {
+        target.textContent = String(fallback || '');
+        return;
+      }
+      if (typeof payload === 'string') {
+        target.textContent = payload;
+        return;
+      }
+      target.textContent = JSON.stringify(payload, null, 2);
+    }
+
+    function controlAllowDangerous(){
+      return document.getElementById('control-allow-dangerous').value === 'true';
+    }
+
+    function controlSharedPayload(){
+      const payload = {
+        strategy: document.getElementById('operator-strategy').value || 'single',
+        allow_dangerous: controlAllowDangerous(),
+      };
+      const model = document.getElementById('operator-model').value.trim();
+      const candidates = parseNameList(document.getElementById('operator-candidates').value);
+      const fallbacks = parseNameList(document.getElementById('operator-fallbacks').value);
+      if (model) payload.model = model;
+      if (candidates.length) payload.candidates = candidates;
+      if (fallbacks.length) payload.fallbacks = fallbacks;
+      return payload;
+    }
+
+    function readInteger(id, fallback){
+      const value = Number.parseInt(document.getElementById(id).value, 10);
+      return Number.isFinite(value) ? value : fallback;
+    }
+
+    function readFloat(id, fallback){
+      const value = Number.parseFloat(document.getElementById(id).value);
+      return Number.isFinite(value) ? value : fallback;
+    }
+
+    function syncControlValue(id, value){
+      const element = document.getElementById(id);
+      if (!element) return;
+      if (document.activeElement === element) return;
+      const normalized = value == null ? '' : String(value);
+      if (element.value !== normalized) {
+        element.value = normalized;
+      }
+    }
+
+    function operatorControlPayload(includeObjective=true){
+      const payload = {
+        strategy: document.getElementById('operator-strategy').value || 'single',
+        allow_dangerous: document.getElementById('operator-allow-dangerous').value === 'true',
+        max_actions: Math.max(1, readInteger('operator-max-actions', 25)),
+        action_retry_attempts: Math.max(0, readInteger('operator-action-retries', 2)),
+        action_retry_backoff_seconds: Math.max(0, readFloat('operator-action-backoff', 0.2)),
+        auto_repair_attempts: Math.max(0, readInteger('operator-auto-repair', 1)),
+        repair_strategy: document.getElementById('operator-repair-strategy').value || 'single',
+      };
+      const model = document.getElementById('operator-model').value.trim();
+      const candidates = parseNameList(document.getElementById('operator-candidates').value);
+      const fallbacks = parseNameList(document.getElementById('operator-fallbacks').value);
+      const repairModel = document.getElementById('operator-repair-model').value.trim();
+      const repairCandidates = parseNameList(document.getElementById('operator-repair-candidates').value);
+      const repairFallbacks = parseNameList(document.getElementById('operator-repair-fallbacks').value);
+      if (includeObjective) {
+        payload.objective = operatorObjective.value.trim();
+      }
+      if (model) payload.model = model;
+      if (candidates.length) payload.candidates = candidates;
+      if (fallbacks.length) payload.fallbacks = fallbacks;
+      if (repairModel) payload.repair_model = repairModel;
+      if (repairCandidates.length) payload.repair_candidates = repairCandidates;
+      if (repairFallbacks.length) payload.repair_fallbacks = repairFallbacks;
+      return payload;
+    }
+
+    function operatorExecutionPayload(){
+      return {
+        ...operatorControlPayload(false),
+        execute: true,
+      };
+    }
+
+    function governancePayload(options={}){
+      const pausedValue = document.getElementById('governance-paused').value === 'true';
+      const pauseReason = document.getElementById('governance-pause-reason').value.trim();
+      const budgetRaw = document.getElementById('governance-budget-limit').value.trim();
+      const maxRunsRaw = document.getElementById('governance-max-runs').value.trim();
+      const payload = {};
+      if (options.includePaused !== false) payload.paused = pausedValue;
+      if (options.includePauseReason !== false) payload.pause_reason = pauseReason;
+      if (options.includeBudget !== false) {
+        payload.budget_limit_usd = budgetRaw === '' ? null : Math.max(0, Number.parseFloat(budgetRaw) || 0);
+      }
+      if (options.includeMaxRuns !== false) {
+        payload.max_active_runs = maxRunsRaw === '' ? null : Math.max(1, Number.parseInt(maxRunsRaw, 10) || 1);
+      }
+      if (options.resetUsage) payload.reset_usage = true;
+      return payload;
+    }
+
+    function countResultsByStatus(results){
+      const counts = {};
+      for (const item of Array.isArray(results) ? results : []) {
+        const status = String(item?.status || 'unknown').toLowerCase();
+        counts[status] = (counts[status] || 0) + 1;
+      }
+      return counts;
+    }
+
+    function summarizeRepair(repair, results){
+      const counts = countResultsByStatus(results);
+      const repairedCount = Number(counts.repaired || 0);
+      if (!repair || typeof repair !== 'object') {
+        return repairedCount > 0 ? `${repairedCount} repaired action${repairedCount === 1 ? '' : 's'}` : '';
+      }
+      const attempts = Number(repair.attempts || 0);
+      const unresolved = Array.isArray(repair.failed_indexes) ? repair.failed_indexes.length : 0;
+      const healed = Boolean(repair.healed);
+      const parts = [];
+      if (healed) parts.push('auto-repair healed');
+      else if (attempts > 0) parts.push('auto-repair attempted');
+      if (repairedCount > 0) parts.push(`${repairedCount} repaired`);
+      if (attempts > 0) parts.push(`${attempts} attempt${attempts === 1 ? '' : 's'}`);
+      if (unresolved > 0 && !healed) parts.push(`${unresolved} unresolved`);
+      if (repair.last_error && !healed) parts.push(String(repair.last_error));
+      return parts.join(' • ');
+    }
+
+    function summarizeCollaboration(voteSummary, collaboration, fallbackStrategy){
+      const vote = voteSummary && typeof voteSummary === 'object' ? voteSummary : {};
+      const collab = collaboration && typeof collaboration === 'object' ? collaboration : {};
+      const mode = String(collab.mode || fallbackStrategy || '').toLowerCase();
+      if (vote.subtasks_total !== undefined || mode === 'decompose') {
+        const total = Number(vote.subtasks_total || 0);
+        const succeeded = Number(vote.subtasks_succeeded || 0);
+        const reviewed = Number(vote.reviewed_subtasks || 0);
+        const batches = Number(vote.parallel_batches || 0);
+        const parts = ['decompose'];
+        if (total > 0) parts.push(`${succeeded}/${total} subtasks`);
+        if (reviewed > 0) parts.push(`${reviewed} reviewed`);
+        if (batches > 0) parts.push(`${batches} batches`);
+        if (vote.reason) parts.push(String(vote.reason).replaceAll('_', ' '));
+        return parts.join(' • ');
+      }
+      if (vote.winner_votes !== undefined || mode === 'vote') {
+        const winnerVotes = Number(vote.winner_votes || 0);
+        const totalVotes = Number(vote.total_votes || 0);
+        const parts = ['vote'];
+        if (totalVotes > 0) parts.push(`${winnerVotes}/${totalVotes} votes`);
+        if (vote.quorum_met) parts.push('quorum');
+        return parts.join(' • ');
+      }
+      return '';
+    }
+
+    function transcriptPreviewLines(collaboration, limit=3){
+      const collab = collaboration && typeof collaboration === 'object' ? collaboration : {};
+      const transcript = Array.isArray(collab.transcript) ? collab.transcript : [];
+      return transcript.map(item => {
+        const type = String(item?.type || '').toLowerCase();
+        if (type === 'subtask_started') {
+          const subtaskId = String(item?.subtask_id || 'subtask');
+          const model = String(item?.model || '');
+          return `started ${subtaskId}${model ? ` with ${model}` : ''}`;
+        }
+        if (type === 'subtask_output') {
+          const subtaskId = String(item?.subtask_id || 'subtask');
+          const model = String(item?.model || 'model');
+          const attempt = Number(item?.attempt || 1);
+          return `output ${subtaskId} • ${model} • attempt ${attempt}`;
+        }
+        if (type === 'subtask_review') {
+          const reviewer = String(item?.reviewer_model || 'reviewer');
+          const subtaskId = String(item?.subtask_id || 'subtask');
+          return `${reviewer} ${item?.approved ? 'approved' : 'rejected'} ${subtaskId}`;
+        }
+        if (type === 'subtask_failed') {
+          const subtaskId = String(item?.subtask_id || 'subtask');
+          const error = String(item?.error || 'failed');
+          return `${subtaskId} failed • ${error}`;
+        }
+        if (type === 'synthesis') {
+          return `synthesis by ${String(item?.model || 'model')}`;
+        }
+        return '';
+      }).filter(Boolean).slice(0, limit);
+    }
+
+    function summarizeJobResult(result, fallbackKind='run'){
+      const payload = result && typeof result === 'object' ? result : null;
+      if (!payload) return '';
+      const counts = countResultsByStatus(payload.results);
+      const parts = [];
+      const strategy = String(payload.strategy || '');
+      const model = String(payload.model || '');
+      if (strategy) parts.push(strategy);
+      if (model) parts.push(model);
+      const total = Array.isArray(payload.results) ? payload.results.length : 0;
+      if (total > 0) {
+        parts.push(`${total} actions`);
+        if (counts.ok) parts.push(`${counts.ok} ok`);
+        if (counts.preview) parts.push(`${counts.preview} preview`);
+        if (counts.repaired) parts.push(`${counts.repaired} repaired`);
+        const failed = Number(counts.failed || 0) + Number(counts.blocked || 0);
+        if (failed > 0) parts.push(`${failed} failed`);
+      } else if (fallbackKind) {
+        parts.push(String(fallbackKind));
+      }
+      return parts.join(' • ');
+    }
+
+    function renderObservability(observability){
+      const payload = observability && typeof observability === 'object' ? observability : {};
+      const runtime = payload.runtime && typeof payload.runtime === 'object' ? payload.runtime : {};
+      const repairs = payload.repairs && typeof payload.repairs === 'object' ? payload.repairs : {};
+      const collaboration = payload.collaboration && typeof payload.collaboration === 'object' ? payload.collaboration : {};
+      const events = payload.events && typeof payload.events === 'object' ? payload.events : {};
+      const runtimeTotals = runtime.totals && typeof runtime.totals === 'object' ? runtime.totals : {};
+      const runtimeRecent = runtime.recent && typeof runtime.recent === 'object' ? runtime.recent : {};
+      const perModel = Array.isArray(runtime.per_model) ? runtime.per_model : [];
+      const runtimeTimeline = Array.isArray(runtime.timeline) ? runtime.timeline : [];
+      const repairTimeline = Array.isArray(repairs.timeline) ? repairs.timeline : [];
+      const collaborationTimeline = Array.isArray(collaboration.timeline) ? collaboration.timeline : [];
+      const repairDomains = Array.isArray(repairs.domains) ? repairs.domains : [];
+      const eventCategories = Array.isArray(events.categories) ? events.categories : [];
+      const failureCategories = Array.isArray(events.failure_categories) ? events.failure_categories : [];
+
+      function rows(items, formatter){
+        return `<div class="obs-list">${items.map(item => formatter(item)).join('')}</div>`;
+      }
+
+      function timelineRows(items, formatter){
+        if (!items.length) return '<div class="detail">No recent timeline data</div>';
+        return rows(items, formatter);
+      }
+
+      observabilityEl.innerHTML = `
+        <div class="card">
+          <div class="section-title">Runtime Trends</div>
+          ${rows([
+            ['Runs total', runtimeTotals.runs_total ?? 0],
+            ['LLM calls', runtimeTotals.llm_calls_total ?? 0],
+            ['Spend', formatMoney(runtimeTotals.spend_estimate_usd ?? 0)],
+            ['Active runs', runtimeTotals.active_runs ?? 0],
+            ['Recent runs', runtimeRecent.runs ?? 0],
+            ['Recent failures', runtimeRecent.failed_runs ?? 0],
+          ], ([label, value]) => `<div class="obs-row"><span>${escapeHTML(label)}</span><strong>${escapeHTML(value)}</strong></div>`)}
+          <div class="detail">${escapeHTML(runtimeTotals.paused ? `Paused: ${runtimeTotals.pause_reason || 'operator pause'}` : `Last strategy: ${runtimeTotals.last_strategy || 'n/a'}`)}</div>
+          <div class="detail">Per-model usage</div>
+          ${perModel.length ? rows(perModel.slice(0, 5), item => `
+            <div class="obs-row">
+              <span>${escapeHTML(item.name || 'model')}</span>
+              <span class="mono">${escapeHTML(`${item.calls || 0} calls • ${formatMoney(item.estimated_cost_usd || 0)}`)}</span>
+            </div>
+          `) : '<div class="detail">No per-model usage yet</div>'}
+          <div class="detail">Recent runtime timeline</div>
+          ${timelineRows(runtimeTimeline, item => `
+            <div class="obs-row">
+              <span>${escapeHTML(item.bucket || 'unknown')}</span>
+              <span class="mono">${escapeHTML(`${item.runs || 0} runs • ${item.llm_calls || 0} calls • ${formatMoney(item.estimated_cost_usd || 0)}`)}</span>
+            </div>
+          `)}
+        </div>
+        <div class="card">
+          <div class="section-title">Repair Activity</div>
+          ${rows([
+            ['Attempts', repairs.attempted ?? 0],
+            ['Healed', repairs.healed ?? 0],
+            ['Failed', repairs.failed ?? 0],
+            ['Repaired actions', repairs.repaired_actions ?? 0],
+            ['Failed actions', repairs.failed_actions ?? 0],
+          ], ([label, value]) => `<div class="obs-row"><span>${escapeHTML(label)}</span><strong>${escapeHTML(value)}</strong></div>`)}
+          <div class="obs-pills">
+            ${(repairDomains.length ? repairDomains : [{ label: 'none', count: 0 }]).map(item => `<span class="obs-pill">${escapeHTML(`${item.label}: ${item.count}`)}</span>`).join('')}
+          </div>
+          <div class="detail">Repair timeline</div>
+          ${timelineRows(repairTimeline, item => `
+            <div class="obs-row">
+              <span>${escapeHTML(item.bucket || 'unknown')}</span>
+              <span class="mono">${escapeHTML(`${item.attempted || 0} attempts • ${item.healed || 0} healed • ${item.failed || 0} failed`)}</span>
+            </div>
+          `)}
+        </div>
+        <div class="card">
+          <div class="section-title">Collaboration</div>
+          ${rows([
+            ['Decompose runs', collaboration.decompose_runs ?? 0],
+            ['Vote runs', collaboration.vote_runs ?? 0],
+            ['Transcript events', collaboration.transcript_events ?? 0],
+            ['Review events', collaboration.review_events ?? 0],
+            ['Parallel batches', collaboration.parallel_batches ?? 0],
+            ['Subtasks', collaboration.subtasks_total ?? 0],
+          ], ([label, value]) => `<div class="obs-row"><span>${escapeHTML(label)}</span><strong>${escapeHTML(value)}</strong></div>`)}
+          <div class="detail">Collaboration timeline</div>
+          ${timelineRows(collaborationTimeline, item => `
+            <div class="obs-row">
+              <span>${escapeHTML(item.bucket || 'unknown')}</span>
+              <span class="mono">${escapeHTML(`${item.decompose_runs || 0} dec • ${item.vote_runs || 0} vote • ${item.transcript_events || 0} events`)}</span>
+            </div>
+          `)}
+        </div>
+        <div class="card">
+          <div class="section-title">Failure Hotspots</div>
+          <div class="detail">Event categories</div>
+          ${eventCategories.length ? rows(eventCategories, item => `
+            <div class="obs-row">
+              <span>${escapeHTML(item.label || 'unknown')}</span>
+              <span class="mono">${escapeHTML(item.count || 0)}</span>
+            </div>
+          `) : '<div class="detail">No event categories yet</div>'}
+          <div class="detail">Failure categories</div>
+          ${failureCategories.length ? rows(failureCategories, item => `
+            <div class="obs-row">
+              <span>${escapeHTML(item.label || 'unknown')}</span>
+              <span class="mono">${escapeHTML(item.count || 0)}</span>
+            </div>
+          `) : '<div class="detail">No failing categories yet</div>'}
+        </div>
+      `;
+    }
+
+    function renderArtifacts(items){
+      const artifacts = Array.isArray(items) ? items : [];
+      if (!artifacts.length) {
+        artifactsEl.innerHTML = '<div class=\"card\"><div class=\"label\">Artifacts</div><div class=\"value\">No control artifacts yet</div></div>';
+        return;
+      }
+      artifactsEl.innerHTML = artifacts.slice(0, 8).map(item => {
+        const preview = item.preview_available && item.preview_path
+          ? `<img class=\"artifact-media\" src=\"${escapeHTML(withToken(item.preview_path))}\" alt=\"artifact preview\" loading=\"lazy\" />`
+          : '';
+        const heading = [item.control_type || 'control', item.platform || item.transport || item.action_type || 'preview']
+          .filter(Boolean)
+          .join(' / ');
+        return `
+          <div class=\"artifact\">
+            <div class=\"artifact-head\">
+              <strong>${escapeHTML(heading)}</strong>
+              <span class=\"mono\">${escapeHTML(item.status || 'unknown')}</span>
+            </div>
+            ${preview}
+            <p class=\"artifact-meta\">${escapeHTML(item.goal || item.output_preview || '(no goal)')}</p>
+            <p class=\"artifact-meta\">Action: ${escapeHTML(item.action_type || 'unknown')}${item.target ? ` • ${escapeHTML(item.target)}` : ''}</p>
+            <p class=\"artifact-meta\">Model: ${escapeHTML(item.model || 'n/a')}${item.model_id ? ` • ${escapeHTML(item.model_id)}` : ''}</p>
+            <p class=\"artifact-meta\">${escapeHTML(item.created_at || '')}${item.dangerous ? ' • dangerous' : ''}</p>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function terminalCommandPayload(){
+      const command = document.getElementById('terminal-command').value.trim();
+      const cwd = document.getElementById('terminal-cwd').value.trim();
+      const shell = document.getElementById('terminal-shell').value.trim();
+      return {
+        command: command || null,
+        cwd: cwd || null,
+        shell: shell || null,
+      };
+    }
+
+    function stopTerminalPolling(){
+      if (state.terminalPollTimer) {
+        clearTimeout(state.terminalPollTimer);
+        state.terminalPollTimer = null;
+      }
+    }
+
+    function attachTerminalSession(sessionId, options={}){
+      state.terminalSessionId = String(sessionId || '').trim();
+      state.terminalNextSeq = Number(options.nextSeq || 0);
+      stopTerminalPolling();
+      if (!state.terminalSessionId) {
+        renderSurfaceOutput(terminalOutputEl, null, 'No terminal session attached.');
+        setTerminalStatus('Idle', true);
+        return;
+      }
+      renderSurfaceOutput(terminalOutputEl, '', 'No terminal output yet.');
+      setTerminalStatus(`Attached ${options.command || state.terminalSessionId}`, true);
+      refreshTerminalOutput();
+    }
+
+    function renderTerminalSessions(items){
+      const sessions = Array.isArray(items) ? items : [];
+      if (!sessions.length) {
+        terminalSessionsEl.innerHTML = '<div class=\"surface-item\"><div class=\"surface-meta\">No terminal sessions available.</div></div>';
+        if (!state.terminalSessionId) {
+          renderSurfaceOutput(terminalOutputEl, null, 'No terminal session attached.');
+        }
+        return;
+      }
+      terminalSessionsEl.innerHTML = '';
+      for (const session of sessions) {
+        const card = document.createElement('div');
+        card.className = 'surface-item';
+        const sessionId = String(session?.id || '');
+        const command = Array.isArray(session?.command) ? session.command.join(' ') : '';
+        const open = Boolean(session?.open);
+        card.innerHTML = `
+          <div class=\"surface-item-head\">
+            <strong>${escapeHTML(command || sessionId || 'terminal')}</strong>
+            <span class=\"mono\">${escapeHTML(open ? 'open' : `exit ${session?.exit_code ?? '-'}`)}</span>
+          </div>
+          <div class=\"surface-meta\">${escapeHTML(String(session?.cwd || '(default cwd)'))}</div>
+          <div class=\"surface-meta\">pid ${escapeHTML(String(session?.pid ?? '-'))} • seq ${escapeHTML(String(session?.last_seq ?? 0))}</div>
+        `;
+        const actions = document.createElement('div');
+        actions.className = 'surface-actions';
+
+        const attachButton = document.createElement('button');
+        attachButton.className = state.terminalSessionId === sessionId ? 'mini' : 'mini';
+        attachButton.textContent = state.terminalSessionId === sessionId ? 'Attached' : 'Attach';
+        attachButton.disabled = state.terminalSessionId === sessionId;
+        attachButton.addEventListener('click', () => {
+          attachTerminalSession(sessionId, { nextSeq: 0, command });
+        });
+        actions.appendChild(attachButton);
+
+        const closeButton = document.createElement('button');
+        closeButton.className = 'mini warn';
+        closeButton.textContent = 'Close';
+        closeButton.addEventListener('click', async () => {
+          if (!confirm(`Close terminal session ${command || sessionId}?`)) return;
+          try {
+            await postJSON(`/terminal/sessions/${encodeURIComponent(sessionId)}/close`, {});
+            if (state.terminalSessionId === sessionId) attachTerminalSession('');
+            await refreshTerminalSessions();
+          } catch (err) {
+            setTerminalStatus(String(err), false);
+          }
+        });
+        actions.appendChild(closeButton);
+        card.appendChild(actions);
+        terminalSessionsEl.appendChild(card);
+      }
+    }
+
+    async function refreshTerminalSessions(){
+      const items = await fetchJSON('/terminal/sessions');
+      renderTerminalSessions(items);
+      const active = (Array.isArray(items) ? items : []).find(item => String(item?.id || '') === state.terminalSessionId);
+      if (!active && state.terminalSessionId) {
+        attachTerminalSession('');
+      }
+      return items;
+    }
+
+    async function refreshTerminalOutput(){
+      if (!state.terminalSessionId) return;
+      try {
+        const result = await fetchJSON(
+          `/terminal/sessions/${encodeURIComponent(state.terminalSessionId)}/output?since_seq=${Math.max(0, state.terminalNextSeq)}&limit=400`
+        );
+        const chunks = Array.isArray(result?.chunks) ? result.chunks : [];
+        if (chunks.length) {
+          let existing = terminalOutputEl.textContent || '';
+          if (existing === 'No terminal session attached.') existing = '';
+          if (existing === 'No terminal output yet.') existing = '';
+          for (const chunk of chunks) {
+            state.terminalNextSeq = Math.max(state.terminalNextSeq, Number(chunk?.seq || state.terminalNextSeq));
+            existing += String(chunk?.data || '');
+          }
+          renderSurfaceOutput(terminalOutputEl, existing, 'No terminal output yet.');
+          terminalOutputEl.scrollTop = terminalOutputEl.scrollHeight;
+        }
+        stopTerminalPolling();
+        if (result?.open) {
+          setTerminalStatus('Streaming', true);
+          state.terminalPollTimer = setTimeout(refreshTerminalOutput, 300);
+        } else {
+          setTerminalStatus(`Closed (${String(result?.exit_code ?? '-')})`, true);
+        }
+      } catch (err) {
+        stopTerminalPolling();
+        setTerminalStatus(String(err), false);
+      }
+    }
+
+    async function handleTerminalAction(kind){
+      const buttonMap = {
+        refresh: terminalRefreshButton,
+        start: terminalStartButton,
+        close: terminalCloseButton,
+        send: terminalSendButton,
+        ctrlc: terminalCtrlCButton,
+      };
+      const button = buttonMap[kind];
+      if (!button) return;
+      button.disabled = true;
+      try {
+        if (kind === 'refresh') {
+          await refreshTerminalSessions();
+          setTerminalStatus('Terminal sessions refreshed', true);
+        } else if (kind === 'start') {
+          const session = await postJSON('/terminal/sessions', terminalCommandPayload());
+          await refreshTerminalSessions();
+          attachTerminalSession(session?.id, {
+            nextSeq: 0,
+            command: Array.isArray(session?.command) ? session.command.join(' ') : '',
+          });
+        } else if (kind === 'close') {
+          if (!state.terminalSessionId) throw new Error('No terminal session attached');
+          await postJSON(`/terminal/sessions/${encodeURIComponent(state.terminalSessionId)}/close`, {});
+          attachTerminalSession('');
+          await refreshTerminalSessions();
+        } else if (kind === 'send') {
+          if (!state.terminalSessionId) throw new Error('No terminal session attached');
+          const input = document.getElementById('terminal-input').value;
+          if (!String(input || '').trim()) throw new Error('Terminal input is required');
+          await postJSON(`/terminal/sessions/${encodeURIComponent(state.terminalSessionId)}/input`, { input: `${input}\n` });
+          document.getElementById('terminal-input').value = '';
+          await refreshTerminalOutput();
+        } else if (kind === 'ctrlc') {
+          if (!state.terminalSessionId) throw new Error('No terminal session attached');
+          await postJSON(`/terminal/sessions/${encodeURIComponent(state.terminalSessionId)}/input`, { input: '\\u0003' });
+          await refreshTerminalOutput();
+        }
+      } catch (err) {
+        setTerminalStatus(String(err), false);
+      } finally {
+        button.disabled = false;
+      }
+    }
+
+    function templateTagQuery(){
+      const tag = document.getElementById('template-tag').value.trim();
+      return tag ? `?tag=${encodeURIComponent(tag)}` : '';
+    }
+
+    function summarizeTemplate(template){
+      const tags = Array.isArray(template?.tags) ? template.tags.filter(Boolean).join(', ') : '';
+      const strategy = String(template?.strategy || 'single');
+      const source = String(template?.source || 'local');
+      const memory = Array.isArray(template?.memory_snapshot) ? template.memory_snapshot.length : 0;
+      const parts = [`strategy ${strategy}`, `source ${source}`];
+      if (tags) parts.push(`tags ${tags}`);
+      if (memory > 0) parts.push(`memory ${memory}`);
+      return parts.join(' • ');
+    }
+
+    function renderTemplateCards(target, templates, actionsFactory, emptyMessage){
+      const items = Array.isArray(templates) ? templates : [];
+      if (!items.length) {
+        target.innerHTML = `<div class=\"surface-item\"><div class=\"surface-meta\">${escapeHTML(emptyMessage)}</div></div>`;
+        return;
+      }
+      target.innerHTML = '';
+      for (const template of items) {
+        const card = document.createElement('div');
+        card.className = 'surface-item';
+        const share = template?.share && typeof template.share === 'object' ? template.share : {};
+        card.innerHTML = `
+          <div class=\"surface-item-head\">
+            <strong>${escapeHTML(String(template?.name || template?.template_id || 'Template'))}</strong>
+            <span class=\"mono\">${escapeHTML(String(template?.updated_at || template?.created_at || template?.source || ''))}</span>
+          </div>
+          <div class=\"surface-meta\">${escapeHTML(String(template?.description || template?.objective || '(no description)'))}</div>
+          <div class=\"surface-meta\">${escapeHTML(summarizeTemplate(template))}</div>
+          <div class=\"surface-meta\">${escapeHTML(String(template?.objective || '(no objective)'))}</div>
+          ${share?.share_url ? `<div class=\"surface-meta mono\">${escapeHTML(String(share.share_url))}</div>` : ''}
+        `;
+        const actions = document.createElement('div');
+        actions.className = 'surface-actions';
+        for (const action of actionsFactory(template)) {
+          const button = document.createElement('button');
+          button.className = action.className || '';
+          button.textContent = action.label;
+          button.addEventListener('click', action.onClick);
+          actions.appendChild(button);
+        }
+        card.appendChild(actions);
+        target.appendChild(card);
+      }
+    }
+
+    function renderTemplateLibrary(payload){
+      renderTemplateCards(
+        templateLibraryEl,
+        payload?.templates || [],
+        (template) => [
+          {
+            label: 'Plan',
+            onClick: async () => {
+              try {
+                const out = await postJSON(`/agents/templates/${encodeURIComponent(template.template_id)}/launch`, {
+                  mode: 'plan',
+                  execute: false,
+                  context: 'dashboard',
+                });
+                renderSurfaceOutput(templateOutputEl, out, 'Template plan launch complete.');
+                setTemplateStatus(`Created plan from ${template.name}`, true);
+                await refresh();
+              } catch (err) {
+                setTemplateStatus(String(err), false);
+              }
+            },
+          },
+          {
+            label: 'Run',
+            onClick: async () => {
+              if (!confirm(`Launch ${template.name} as an immediate run?`)) return;
+              try {
+                const out = await postJSON(`/agents/templates/${encodeURIComponent(template.template_id)}/launch`, {
+                  mode: 'run',
+                  execute: true,
+                  context: 'dashboard',
+                });
+                renderSurfaceOutput(templateOutputEl, out, 'Template run launch complete.');
+                setTemplateStatus(`Queued run from ${template.name}`, true);
+                await refresh();
+              } catch (err) {
+                setTemplateStatus(String(err), false);
+              }
+            },
+          },
+          {
+            label: 'Share',
+            onClick: async () => {
+              try {
+                const out = await postJSON(`/agents/templates/${encodeURIComponent(template.template_id)}/share`, {
+                  shared: true,
+                  rotate: false,
+                });
+                renderSurfaceOutput(templateOutputEl, out, 'Template share metadata ready.');
+                setTemplateStatus(`Shared ${template.name}`, true);
+                await refreshTemplates();
+              } catch (err) {
+                setTemplateStatus(String(err), false);
+              }
+            },
+          },
+        ],
+        'No local templates yet.',
+      );
+    }
+
+    function renderTemplateGallery(payload){
+      renderTemplateCards(
+        templateGalleryEl,
+        payload?.templates || [],
+        (template) => [
+          {
+            label: 'Import',
+            onClick: async () => {
+              try {
+                const out = await postJSON('/agents/templates/import', {
+                  manifest: template,
+                  source: 'gallery',
+                });
+                document.getElementById('template-manifest').value = JSON.stringify(out?.manifest || template, null, 2);
+                renderSurfaceOutput(templateOutputEl, out, 'Gallery template imported.');
+                setTemplateStatus(`Imported ${template.name}`, true);
+                await refreshTemplates();
+              } catch (err) {
+                setTemplateStatus(String(err), false);
+              }
+            },
+          },
+          {
+            label: 'Use Objective',
+            onClick: () => {
+              operatorObjective.value = String(template?.objective || '');
+              document.getElementById('operator-strategy').value = String(template?.strategy || 'single');
+              document.getElementById('operator-candidates').value = Array.isArray(template?.candidates) ? template.candidates.join(', ') : '';
+              setTemplateStatus(`Loaded ${template.name} into the operator console`, true);
+            },
+          },
+        ],
+        'No gallery templates matched the current tag filter.',
+      );
+    }
+
+    async function refreshTemplates(){
+      const query = templateTagQuery();
+      const [library, gallery] = await Promise.all([
+        fetchJSON(`/agents/templates?limit=24${query ? `&${query.slice(1)}` : ''}`),
+        fetchJSON(`/agents/gallery${query}`),
+      ]);
+      renderTemplateLibrary(library);
+      renderTemplateGallery(gallery);
+      setTemplateStatus(
+        `Templates ${Number(library?.count || 0)} local • ${Number(gallery?.count || 0)} gallery`,
+        true,
+      );
+      return { library, gallery };
+    }
+
+    async function handleTemplateAction(kind){
+      const buttonMap = {
+        refresh: templateRefreshButton,
+        export: templateExportButton,
+        import: templateImportButton,
+      };
+      const button = buttonMap[kind];
+      if (!button) return;
+      button.disabled = true;
+      try {
+        if (kind === 'refresh') {
+          await refreshTemplates();
+        } else if (kind === 'export') {
+          const objective = operatorObjective.value.trim();
+          if (!objective) throw new Error('Objective is required before exporting a template');
+          const name = (prompt('Template name', objective.slice(0, 60)) || '').trim();
+          if (!name) return;
+          const description = (prompt('Template description', `Exported operator template for ${name}`) || '').trim();
+          const tags = (prompt('Template tags (CSV)', document.getElementById('template-tag').value.trim()) || '').trim();
+          const out = await postJSON('/agents/templates/export', {
+            name,
+            description,
+            objective,
+            strategy: document.getElementById('operator-strategy').value || 'single',
+            candidates: parseNameList(document.getElementById('operator-candidates').value),
+            tags: parseNameList(tags),
+            metadata: {
+              source: 'dashboard',
+              exported_at: new Date().toISOString(),
+            },
+            include_memory: true,
+            source: 'dashboard',
+          });
+          document.getElementById('template-manifest').value = JSON.stringify(out?.manifest || {}, null, 2);
+          renderSurfaceOutput(templateOutputEl, out, 'Template exported.');
+          setTemplateStatus(`Exported ${name}`, true);
+          await refreshTemplates();
+        } else if (kind === 'import') {
+          const raw = document.getElementById('template-manifest').value.trim();
+          if (!raw) throw new Error('Paste a template manifest JSON payload first');
+          let manifest = null;
+          try {
+            manifest = JSON.parse(raw);
+          } catch {
+            throw new Error('Template manifest must be valid JSON');
+          }
+          const out = await postJSON('/agents/templates/import', { manifest });
+          renderSurfaceOutput(templateOutputEl, out, 'Template imported.');
+          setTemplateStatus(`Imported ${out?.name || out?.template_id || 'template'}`, true);
+          await refreshTemplates();
+        }
+      } catch (err) {
+        setTemplateStatus(String(err), false);
+      } finally {
+        button.disabled = false;
+      }
+    }
+
+    function formatMobileRuntimeStatus(payload){
+      const status = payload && typeof payload === 'object' ? payload : {};
+      const android = status.android && typeof status.android === 'object' ? status.android : {};
+      const ios = status.ios && typeof status.ios === 'object' ? status.ios : {};
+      const androidText = android.ok ? 'android ready' : `android ${android.error || 'degraded'}`;
+      const iosTransport = String(ios.transport || (ios.ok ? 'vision' : 'unavailable'));
+      const iosText = ios.ok ? `ios ${iosTransport}` : `ios ${ios.error || 'degraded'}`;
+      return `${androidText} • ${iosText}`;
+    }
+
+    function buildVisionPayload(execute){
+      const goal = document.getElementById('vision-goal').value.trim();
+      if (!goal) throw new Error('Vision goal is required');
+      const payload = {
+        ...controlSharedPayload(),
+        goal,
+        execute: Boolean(execute),
+      };
+      const appName = document.getElementById('vision-app-name').value.trim();
+      if (appName) payload.app_name = appName;
+      return payload;
+    }
+
+    function parseMobileActionJSON(){
+      const raw = document.getElementById('mobile-action-json').value.trim();
+      if (!raw) throw new Error('Mobile action JSON is required');
+      try {
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+          throw new Error('Mobile action JSON must be an object');
+        }
+        return parsed;
+      } catch (err) {
+        throw new Error(`Mobile action JSON is invalid: ${String(err?.message || err)}`);
+      }
+    }
+
+    function buildMobilePayload(execute){
+      const platform = (document.getElementById('mobile-platform').value || 'android').trim().toLowerCase();
+      const payload = {
+        ...controlSharedPayload(),
+        platform: platform || 'android',
+        action: parseMobileActionJSON(),
+        execute: Boolean(execute),
+      };
+      const goal = document.getElementById('mobile-goal').value.trim();
+      if (goal) payload.goal = goal;
+      if (payload.platform === 'ios' && document.getElementById('mobile-prefer-appium').value === 'true') {
+        payload.prefer_appium = true;
+      }
+      return payload;
+    }
+
+    async function refreshMobileStatus(){
+      const out = await fetchJSON('/mobile/status');
+      setControlStatus(out?.ok ? formatMobileRuntimeStatus(out) : 'Mobile runtime unavailable', Boolean(out?.ok));
+      renderSurfaceOutput(controlOutputEl, out, 'Mobile runtime status unavailable.');
+      return out;
+    }
+
+    async function handleControlAction(kind){
+      const buttonMap = {
+        refresh_mobile: refreshMobileStatusButton,
+        preview_vision: previewVisionButton,
+        execute_vision: executeVisionButton,
+        preview_mobile: previewMobileButton,
+        execute_mobile: executeMobileButton,
+      };
+      const button = buttonMap[kind];
+      if (!button) return;
+      button.disabled = true;
+      try {
+        if (kind === 'refresh_mobile') {
+          await refreshMobileStatus();
+        } else if (kind === 'preview_vision') {
+          const out = await postJSON('/execute/vision', buildVisionPayload(false));
+          renderSurfaceOutput(controlOutputEl, out, 'Vision preview complete.');
+          setControlStatus(`Vision ${String(out?.status || 'preview')}`, !['failed', 'blocked'].includes(String(out?.status || '').toLowerCase()));
+          await refresh();
+        } else if (kind === 'execute_vision') {
+          const goal = document.getElementById('vision-goal').value.trim() || 'this goal';
+          if (!confirm(`Execute vision-grounded desktop action for: ${goal}?`)) return;
+          const out = await postJSON('/execute/vision', buildVisionPayload(true));
+          renderSurfaceOutput(controlOutputEl, out, 'Vision execution complete.');
+          setControlStatus(`Vision ${String(out?.status || 'unknown')}`, String(out?.status || '').toLowerCase() === 'ok');
+          await refresh();
+        } else if (kind === 'preview_mobile') {
+          const out = await postJSON('/mobile/action', buildMobilePayload(false));
+          renderSurfaceOutput(controlOutputEl, out, 'Mobile preview complete.');
+          setControlStatus(
+            `Mobile ${String(out?.platform || '')} ${String(out?.status || 'preview')}`.trim(),
+            !['failed', 'blocked'].includes(String(out?.status || '').toLowerCase()),
+          );
+          await refresh();
+        } else if (kind === 'execute_mobile') {
+          const platform = document.getElementById('mobile-platform').value || 'android';
+          const goal = document.getElementById('mobile-goal').value.trim();
+          if (!confirm(`Execute ${platform} mobile action${goal ? ` for "${goal}"` : ''}?`)) return;
+          const out = await postJSON('/mobile/action', buildMobilePayload(true));
+          renderSurfaceOutput(controlOutputEl, out, 'Mobile execution complete.');
+          setControlStatus(
+            `Mobile ${String(out?.platform || platform)} ${String(out?.status || 'unknown')}`.trim(),
+            String(out?.status || '').toLowerCase() === 'ok',
+          );
+          await refresh();
+        }
+      } catch (err) {
+        setControlStatus(String(err), false);
+      } finally {
+        button.disabled = false;
+      }
+    }
+
+    function syncGovernanceInputs(governance){
+      const payload = governance && typeof governance === 'object' ? governance : {};
+      const paused = Boolean(payload.paused);
+      syncControlValue('governance-paused', paused ? 'true' : 'false');
+      syncControlValue('governance-pause-reason', payload.pause_reason || '');
+      syncControlValue(
+        'governance-budget-limit',
+        payload.budget_limit_usd == null ? '' : Number(payload.budget_limit_usd).toString()
+      );
+      syncControlValue(
+        'governance-max-runs',
+        payload.max_active_runs == null ? '' : Number(payload.max_active_runs).toString()
+      );
+      togglePauseButton.textContent = paused ? 'Resume Runtime' : 'Pause Runtime';
+    }
+
+    function updateLiveButton(){
+      liveButton.textContent = `Live: ${state.live ? 'On' : 'Off'}`;
+    }
+
+    function scheduleRefresh(delayMs=150){
+      if (state.refreshScheduled) clearTimeout(state.refreshScheduled);
+      state.refreshScheduled = setTimeout(() => {
+        state.refreshScheduled = null;
+        refresh();
+      }, Math.max(0, Number(delayMs || 0)));
+    }
+
+    function closeLiveStream(){
+      if (state.eventSource) {
+        state.eventSource.close();
+        state.eventSource = null;
+      }
+    }
+
+    function connectLiveStream(){
+      closeLiveStream();
+      if (!state.live) return;
+      if (!authToken) {
+        state.live = false;
+        updateLiveButton();
+        setActionStatus('Live stream requires the dashboard token in the URL query', false);
+        return;
+      }
+      const streamUrl = withToken(`/events/stream?timeout=300&interval=0.25&since_id=${encodeURIComponent(state.lastAuditId)}`);
+      try {
+        const source = new EventSource(streamUrl);
+        state.eventSource = source;
+        source.addEventListener('audit', (event) => {
+          try {
+            const payload = JSON.parse(event.data || '{}');
+            if (payload && payload.id != null) {
+              state.lastAuditId = Math.max(state.lastAuditId, Number(payload.id || 0));
+            }
+            setActionStatus(`Live event • ${payload.category || 'audit'}:${payload.action || 'update'}`, true);
+          } catch {
+            setActionStatus('Live event received', true);
+          }
+          scheduleRefresh(100);
+        });
+        source.addEventListener('timeout', () => {
+          if (!state.live) return;
+          closeLiveStream();
+          setTimeout(connectLiveStream, 250);
+        });
+        source.onerror = () => {
+          if (!state.live) return;
+          closeLiveStream();
+          setTimeout(connectLiveStream, 1000);
+        };
+      } catch (err) {
+        state.live = false;
+        updateLiveButton();
+        setActionStatus(String(err), false);
+      }
+    }
+
+    function toggleLiveStream(){
+      state.live = !state.live;
+      updateLiveButton();
+      if (state.live) {
+        setActionStatus('Live stream enabled', true);
+        connectLiveStream();
+      } else {
+        closeLiveStream();
+        setActionStatus('Live stream disabled', true);
+      }
     }
 
     async function fetchJSON(path){
@@ -241,6 +1694,91 @@ def render_dashboard_html() -> str:
       return payload;
     }
 
+    async function handleOperatorAction(kind){
+      const payload = operatorControlPayload(true);
+      if (!payload.objective) {
+        setActionStatus('Objective is required', false);
+        operatorObjective.focus();
+        return;
+      }
+
+      if (kind === 'run') {
+        payload.execute = document.getElementById('operator-execute').value === 'true';
+      }
+
+      const button = kind === 'run' ? runAsyncButton : createPlanButton;
+      button.disabled = true;
+      try {
+        if (kind === 'run') {
+          const out = await postJSON('/run_async', payload);
+          setActionStatus(`Queued objective run (job ${out.job_id || 'n/a'})`, true);
+        } else {
+          const out = await postJSON('/plans', payload);
+          setActionStatus(`Created plan ${out.id || 'n/a'}`, true);
+        }
+        await refresh();
+      } catch (err) {
+        setActionStatus(String(err), false);
+      } finally {
+        button.disabled = false;
+      }
+    }
+
+    async function handleGovernanceAction(kind){
+      const buttonMap = {
+        apply: applyGovernanceButton,
+        togglePause: togglePauseButton,
+        resetUsage: resetUsageButton,
+        cancelAll: cancelAllJobsButton,
+      };
+      const button = buttonMap[kind];
+      if (!button) return;
+      button.disabled = true;
+      try {
+        if (kind === 'apply') {
+          const payload = governancePayload();
+          const out = await postJSON('/runtime/governance', payload);
+          syncGovernanceInputs(out);
+          setGovernanceStatus(`Governance updated • paused=${Boolean(out.paused)}`, true);
+        } else if (kind === 'togglePause') {
+          const shouldPause = document.getElementById('governance-paused').value !== 'true';
+          const payload = governancePayload({
+            includeBudget: false,
+            includeMaxRuns: false,
+          });
+          payload.paused = shouldPause;
+          payload.pause_reason = shouldPause
+            ? (payload.pause_reason || 'Operator paused runtime')
+            : '';
+          const out = await postJSON('/runtime/governance', payload);
+          syncGovernanceInputs(out);
+          setGovernanceStatus(shouldPause ? 'Runtime paused' : 'Runtime resumed', true);
+        } else if (kind === 'resetUsage') {
+          const out = await postJSON('/runtime/governance', {
+            reset_usage: true,
+          });
+          syncGovernanceInputs(out);
+          setGovernanceStatus('Runtime usage counters reset', true);
+        } else if (kind === 'cancelAll') {
+          const pause = document.getElementById('governance-paused').value === 'true';
+          const pauseReason = document.getElementById('governance-pause-reason').value.trim() || 'Runtime paused during cancel-all';
+          const out = await postJSON('/runtime/jobs/cancel_all', {
+            pause,
+            pause_reason: pauseReason,
+          });
+          if (out.governance) {
+            syncGovernanceInputs(out.governance);
+          }
+          setGovernanceStatus(`Cancel-all requested • canceled=${out.canceled ?? out.ok ?? true}`, true);
+        }
+        await refresh();
+      } catch (err) {
+        setGovernanceStatus(String(err), false);
+      } finally {
+        button.disabled = false;
+      }
+    }
+
     async function handleTableAction(event){
       const button = event.target.closest('button[data-action]');
       if (!button) return;
@@ -255,7 +1793,7 @@ def render_dashboard_html() -> str:
           await postJSON(`/jobs/${encodeURIComponent(id)}/cancel`, {});
           setActionStatus(`Requested cancel for job ${id}`, true);
         } else if (action === 'approve-plan') {
-          const out = await postJSON(`/plans/${encodeURIComponent(id)}/approve_async`, { execute: true });
+          const out = await postJSON(`/plans/${encodeURIComponent(id)}/approve_async`, operatorExecutionPayload());
           setActionStatus(`Queued approval for plan ${id} (job ${out.job_id || 'n/a'})`, true);
         } else if (action === 'reject-plan') {
           const reason = prompt(`Reject plan ${id}. Optional reason:`, 'Operator rejected');
@@ -265,11 +1803,7 @@ def render_dashboard_html() -> str:
           await postJSON(`/plans/${encodeURIComponent(id)}/undo`, { mark_only: true });
           setActionStatus(`Marked plan ${id} action logs as undone`, true);
         } else if (action === 'retry-failed-plan') {
-          const out = await postJSON(`/plans/${encodeURIComponent(id)}/retry_failed_async`, {
-            allow_dangerous: true,
-            action_retry_attempts: 2,
-            action_retry_backoff_seconds: 0.2,
-          });
+          const out = await postJSON(`/plans/${encodeURIComponent(id)}/retry_failed_async`, operatorExecutionPayload());
           setActionStatus(`Queued failed-action retry for plan ${id} (job ${out.job_id || 'n/a'})`, true);
         }
         await refresh();
@@ -281,21 +1815,46 @@ def render_dashboard_html() -> str:
     }
 
     async function refresh(){
+      if (state.refreshInFlight) return;
+      state.refreshInFlight = true;
       try {
-        const data = await fetchJSON('/dashboard/data?jobs_limit=25&plans_limit=25&events_limit=25');
+        const [data, terminalResult, templateResult] = await Promise.all([
+          fetchJSON('/dashboard/data?jobs_limit=25&plans_limit=25&events_limit=25'),
+          refreshTerminalSessions().catch(err => ({ __error: String(err) })),
+          refreshTemplates().catch(err => ({ __error: String(err) })),
+        ]);
         const health = data.health || {};
         const jobs = data.jobs || [];
         const plans = data.plans || [];
         const events = data.events || [];
         const metrics = data.metrics || {};
+        const observability = data.observability || {};
         const modelsCount = Number(data.models_count || 0);
+        const control = data.control || {};
+        const controlArtifacts = data.control_artifacts || control.artifacts || [];
+        const governance = data.governance || {};
+        const browser = control.browser || {};
+        const mobile = control.mobile || {};
+        const homeassistant = control.homeassistant || {};
+        const mqtt = control.mqtt || {};
         const pendingPlans = plans.filter(item => item.status === 'pending').length;
         const runningJobs = jobs.filter(item => item.status === 'running').length;
         const failedAudits = events.filter(item => item.status === 'error' || item.status === 'failed').length;
+        const auditIds = events.map(item => Number(item?.id || 0)).filter(value => Number.isFinite(value));
+        if (auditIds.length) {
+          state.lastAuditId = Math.max(state.lastAuditId, ...auditIds);
+        }
+        const mobilePlatforms = [];
+        if (mobile.android) mobilePlatforms.push(`android:${mobile.android.ok ? 'ready' : 'degraded'}`);
+        if (mobile.ios) mobilePlatforms.push(`ios:${mobile.ios.ok ? 'ready' : 'degraded'}`);
 
         const summary = [
           { label: 'Service', value: health.ok ? 'Healthy' : 'Unhealthy', cls: health.ok ? 'ok' : 'bad' },
           { label: 'Configured Models', value: modelsCount, cls: '' },
+          { label: 'Browser Runtime', value: browser.ok ? 'Ready' : 'Degraded', cls: browser.ok ? 'ok' : 'warn' },
+          { label: 'Mobile Runtime', value: mobilePlatforms.join(' | ') || (mobile.ok ? 'Ready' : 'Degraded'), cls: mobile.ok ? 'ok' : 'warn' },
+          { label: 'IoT Runtime', value: homeassistant.ok ? 'Ready' : 'Degraded', cls: homeassistant.ok ? 'ok' : 'warn' },
+          { label: 'MQTT Runtime', value: mqtt.ok ? 'Ready' : (mqtt.configured ? 'Degraded' : 'Not Configured'), cls: mqtt.ok ? 'ok' : (mqtt.configured ? 'warn' : '') },
           { label: 'Running Jobs', value: runningJobs, cls: runningJobs > 0 ? 'warn' : 'ok' },
           { label: 'Pending Plans', value: pendingPlans, cls: pendingPlans > 0 ? 'warn' : 'ok' },
           { label: 'Failed Audits', value: failedAudits, cls: metricColor(failedAudits, 0) },
@@ -314,6 +1873,14 @@ def render_dashboard_html() -> str:
 
         jobsTbody.innerHTML = (jobs || []).map(job => {
           const status = String(job.status || '');
+          const metadata = job.metadata && typeof job.metadata === 'object' ? job.metadata : {};
+          const kind = String(job.kind || metadata.kind || 'run');
+          const objective = String(job.objective || metadata.objective || '');
+          const result = job.result && typeof job.result === 'object' ? job.result : null;
+          const resultSummary = summarizeJobResult(result, kind);
+          const repairSummary = summarizeRepair(result?.repair, result?.results);
+          const collaborationSummary = summarizeCollaboration(result?.vote_summary, result?.collaboration, result?.strategy || kind);
+          const transcriptLines = transcriptPreviewLines(result?.collaboration);
           const canCancel = status === 'running' || status === 'queued';
           const actionCell = canCancel
             ? `<button class="mini warn" data-action="cancel-job" data-id="${escapeHTML(job.id)}">Cancel</button>`
@@ -321,10 +1888,20 @@ def render_dashboard_html() -> str:
           return `
           <tr>
             <td class=\"mono\">${escapeHTML(job.id)}</td>
-            <td>${escapeHTML(status)}</td>
+            <td>
+              <div>${escapeHTML(status)}</div>
+              <div class=\"detail\">${escapeHTML(kind)}</div>
+            </td>
+            <td>
+              <div>${escapeHTML(objective || '(no objective)')}</div>
+              ${resultSummary ? `<div class=\"detail\">${escapeHTML(resultSummary)}</div>` : ''}
+              ${job.error ? `<div class=\"detail\">Error: ${escapeHTML(job.error)}</div>` : ''}
+              ${repairSummary ? `<div class=\"detail\">Repair: ${escapeHTML(repairSummary)}</div>` : ''}
+              ${collaborationSummary ? `<div class=\"detail\">Collab: ${escapeHTML(collaborationSummary)}</div>` : ''}
+              ${transcriptLines.length ? `<div class=\"detail\">${transcriptLines.map(line => `• ${escapeHTML(line)}`).join('<br />')}</div>` : ''}
+            </td>
             <td>${escapeHTML(job.created_at || '')}</td>
             <td>${escapeHTML(job.finished_at || '')}</td>
-            <td>${job.cancel_requested ? 'yes' : 'no'}</td>
             <td>${actionCell}</td>
           </tr>
         `;
@@ -332,6 +1909,9 @@ def render_dashboard_html() -> str:
 
         plansTbody.innerHTML = (plans || []).map(plan => {
           const status = String(plan.status || '');
+          const repairSummary = summarizeRepair(plan.repair, plan.execution_results);
+          const collaborationSummary = summarizeCollaboration(plan.vote_summary, plan.collaboration, plan.strategy);
+          const transcriptLines = transcriptPreviewLines(plan.collaboration);
           let actionCell = '';
           if (status === 'pending') {
             actionCell = `
@@ -352,7 +1932,13 @@ def render_dashboard_html() -> str:
             <td class=\"mono\">${escapeHTML(plan.id)}</td>
             <td>${escapeHTML(status)}</td>
             <td>${Number(plan.progress_completed || 0)}/${Number(plan.progress_total || 0)}</td>
-            <td>${escapeHTML(String(plan.objective || '').slice(0, 80))}</td>
+            <td>
+              <div>${escapeHTML(String(plan.objective || '').slice(0, 120))}</div>
+              ${plan.execution_error ? `<div class=\"detail\">Error: ${escapeHTML(plan.execution_error)}</div>` : ''}
+              ${repairSummary ? `<div class=\"detail\">Repair: ${escapeHTML(repairSummary)}</div>` : ''}
+              ${collaborationSummary ? `<div class=\"detail\">Collab: ${escapeHTML(collaborationSummary)}</div>` : ''}
+              ${transcriptLines.length ? `<div class=\"detail\">${transcriptLines.map(line => `• ${escapeHTML(line)}`).join('<br />')}</div>` : ''}
+            </td>
             <td>${escapeHTML(plan.created_at || '')}</td>
             <td>${actionCell}</td>
           </tr>
@@ -369,6 +1955,15 @@ def render_dashboard_html() -> str:
             <td>${escapeHTML(event.created_at || '')}</td>
           </tr>
         `).join('');
+        renderObservability(observability);
+        renderArtifacts(controlArtifacts);
+        syncGovernanceInputs(governance);
+        if (terminalResult && terminalResult.__error) {
+          setTerminalStatus(terminalResult.__error, false);
+        }
+        if (templateResult && templateResult.__error) {
+          setTemplateStatus(templateResult.__error, false);
+        }
       } catch (err) {
         document.getElementById('summary').innerHTML = `
           <div class=\"card\">
@@ -379,20 +1974,61 @@ def render_dashboard_html() -> str:
         jobsTbody.innerHTML = '';
         plansTbody.innerHTML = '';
         document.getElementById('events').innerHTML = '';
+        observabilityEl.innerHTML = '';
+        artifactsEl.innerHTML = '';
+        terminalSessionsEl.innerHTML = '';
+        templateLibraryEl.innerHTML = '';
+        templateGalleryEl.innerHTML = '';
+      } finally {
+        state.refreshInFlight = false;
       }
     }
 
     document.getElementById('refresh').addEventListener('click', refresh);
+    runAsyncButton.addEventListener('click', () => handleOperatorAction('run'));
+    createPlanButton.addEventListener('click', () => handleOperatorAction('plan'));
+    applyGovernanceButton.addEventListener('click', () => handleGovernanceAction('apply'));
+    togglePauseButton.addEventListener('click', () => handleGovernanceAction('togglePause'));
+    resetUsageButton.addEventListener('click', () => handleGovernanceAction('resetUsage'));
+    cancelAllJobsButton.addEventListener('click', () => handleGovernanceAction('cancelAll'));
+    terminalRefreshButton.addEventListener('click', () => handleTerminalAction('refresh'));
+    terminalStartButton.addEventListener('click', () => handleTerminalAction('start'));
+    terminalCloseButton.addEventListener('click', () => handleTerminalAction('close'));
+    terminalSendButton.addEventListener('click', () => handleTerminalAction('send'));
+    terminalCtrlCButton.addEventListener('click', () => handleTerminalAction('ctrlc'));
+    refreshMobileStatusButton.addEventListener('click', () => handleControlAction('refresh_mobile'));
+    previewVisionButton.addEventListener('click', () => handleControlAction('preview_vision'));
+    executeVisionButton.addEventListener('click', () => handleControlAction('execute_vision'));
+    previewMobileButton.addEventListener('click', () => handleControlAction('preview_mobile'));
+    executeMobileButton.addEventListener('click', () => handleControlAction('execute_mobile'));
+    templateRefreshButton.addEventListener('click', () => handleTemplateAction('refresh'));
+    templateExportButton.addEventListener('click', () => handleTemplateAction('export'));
+    templateImportButton.addEventListener('click', () => handleTemplateAction('import'));
     document.getElementById('auto').addEventListener('click', () => {
       state.auto = !state.auto;
       document.getElementById('auto').textContent = `Auto: ${state.auto ? 'On' : 'Off'}`;
       if (state.timer) clearInterval(state.timer);
       if (state.auto) state.timer = setInterval(refresh, 3000);
     });
+    liveButton.addEventListener('click', toggleLiveStream);
     jobsTbody.addEventListener('click', handleTableAction);
     plansTbody.addEventListener('click', handleTableAction);
 
+    updateLiveButton();
+    setTerminalStatus('Idle', true);
+    setControlStatus('Idle', true);
+    setTemplateStatus('Idle', true);
+    renderSurfaceOutput(terminalOutputEl, null, 'No terminal session attached.');
+    renderSurfaceOutput(controlOutputEl, null, 'No control-anything activity yet.');
+    renderSurfaceOutput(templateOutputEl, null, 'No template activity yet.');
     refresh();
+    refreshMobileStatus().catch(err => setControlStatus(String(err), false));
+    window.addEventListener('beforeunload', () => {
+      if (state.timer) clearInterval(state.timer);
+      if (state.refreshScheduled) clearTimeout(state.refreshScheduled);
+      stopTerminalPolling();
+      closeLiveStream();
+    });
   </script>
 </body>
 </html>

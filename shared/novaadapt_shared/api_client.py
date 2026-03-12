@@ -1063,6 +1063,163 @@ class NovaAdaptAPIClient:
             return payload
         raise APIClientError("Expected object payload from /workflows/resume")
 
+    def agent_templates_list(
+        self,
+        *,
+        limit: int = 50,
+        source: str = "",
+        tag: str = "",
+    ) -> dict[str, Any]:
+        query = f"/agents/templates?limit={max(1, int(limit))}"
+        if str(source or "").strip():
+            query += f"&source={quote(str(source).strip(), safe='')}"
+        if str(tag or "").strip():
+            query += f"&tag={quote(str(tag).strip(), safe='')}"
+        payload = self._get_json(query)
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /agents/templates")
+
+    def agent_templates_gallery(self, *, tag: str = "") -> dict[str, Any]:
+        query = "/agents/gallery"
+        if str(tag or "").strip():
+            query += f"?tag={quote(str(tag).strip(), safe='')}"
+        payload = self._get_json(query)
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /agents/gallery")
+
+    def agent_template_get(self, template_id: str) -> dict[str, Any]:
+        normalized_id = str(template_id or "").strip()
+        if not normalized_id:
+            raise ValueError("'template_id' is required")
+        payload = self._get_json(f"/agents/templates/{quote(normalized_id, safe='')}")
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /agents/templates/{template_id}")
+
+    def agent_template_shared(self, share_token: str) -> dict[str, Any]:
+        normalized_token = str(share_token or "").strip()
+        if not normalized_token:
+            raise ValueError("'share_token' is required")
+        payload = self._get_json(f"/agents/templates/shared/{quote(normalized_token, safe='')}")
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /agents/templates/shared/{share_token}")
+
+    def agent_template_export(
+        self,
+        *,
+        name: str = "",
+        description: str = "",
+        objective: str = "",
+        strategy: str = "single",
+        candidates: list[str] | None = None,
+        steps: list[dict[str, Any]] | None = None,
+        metadata: dict[str, Any] | None = None,
+        tags: list[str] | None = None,
+        workflow_id: str = "",
+        template_id: str = "",
+        include_memory: bool = True,
+        memory_query: str = "",
+        memory_top_k: int = 5,
+        source: str = "local",
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {
+            "name": str(name or ""),
+            "description": str(description or ""),
+            "objective": str(objective or ""),
+            "strategy": str(strategy or "single"),
+            "candidates": list(candidates or []),
+            "steps": list(steps or []),
+            "workflow_id": str(workflow_id or ""),
+            "template_id": str(template_id or ""),
+            "include_memory": bool(include_memory),
+            "memory_query": str(memory_query or ""),
+            "memory_top_k": max(1, int(memory_top_k)),
+            "source": str(source or "local"),
+        }
+        if isinstance(metadata, dict):
+            body["metadata"] = metadata
+        if isinstance(tags, list):
+            body["tags"] = list(tags)
+        payload = self._post_json("/agents/templates/export", body, idempotency_key=idempotency_key)
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /agents/templates/export")
+
+    def agent_template_import(
+        self,
+        manifest: dict[str, Any],
+        *,
+        source: str = "",
+        template_id: str = "",
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        if not isinstance(manifest, dict):
+            raise ValueError("'manifest' must be an object")
+        body: dict[str, Any] = {"manifest": manifest}
+        if str(source or "").strip():
+            body["source"] = str(source).strip()
+        if str(template_id or "").strip():
+            body["template_id"] = str(template_id).strip()
+        payload = self._post_json("/agents/templates/import", body, idempotency_key=idempotency_key)
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /agents/templates/import")
+
+    def agent_template_share(
+        self,
+        template_id: str,
+        *,
+        rotate: bool = False,
+        shared: bool = True,
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        normalized_id = str(template_id or "").strip()
+        if not normalized_id:
+            raise ValueError("'template_id' is required")
+        payload = self._post_json(
+            f"/agents/templates/{quote(normalized_id, safe='')}/share",
+            {"rotate": bool(rotate), "shared": bool(shared)},
+            idempotency_key=idempotency_key,
+        )
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /agents/templates/{template_id}/share")
+
+    def agent_template_launch(
+        self,
+        template_id: str,
+        *,
+        mode: str = "plan",
+        execute: bool = False,
+        allow_dangerous: bool = False,
+        context: str = "api",
+        overrides: dict[str, Any] | None = None,
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        normalized_id = str(template_id or "").strip()
+        if not normalized_id:
+            raise ValueError("'template_id' is required")
+        body: dict[str, Any] = {
+            "mode": str(mode or "plan"),
+            "execute": bool(execute),
+            "allow_dangerous": bool(allow_dangerous),
+            "context": str(context or "api"),
+        }
+        if isinstance(overrides, dict):
+            body["overrides"] = overrides
+        payload = self._post_json(
+            f"/agents/templates/{quote(normalized_id, safe='')}/launch",
+            body,
+            idempotency_key=idempotency_key,
+        )
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /agents/templates/{template_id}/launch")
+
     def memory_recall(self, query: str, top_k: int = 10) -> dict[str, Any]:
         payload = self._post_json(
             "/memory/recall",
@@ -1090,6 +1247,208 @@ class NovaAdaptAPIClient:
         if isinstance(payload, dict):
             return payload
         raise APIClientError("Expected object payload from /memory/ingest")
+
+    def vision_execute(
+        self,
+        goal: str,
+        *,
+        execute: bool = False,
+        idempotency_key: str | None = None,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        payload = self._post_json(
+            "/execute/vision",
+            {"goal": str(goal or ""), "execute": bool(execute), **kwargs},
+            idempotency_key=idempotency_key,
+        )
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /execute/vision")
+
+    def mobile_action(
+        self,
+        platform: str,
+        action: dict[str, Any] | None = None,
+        *,
+        execute: bool = False,
+        idempotency_key: str | None = None,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {"platform": str(platform or ""), "execute": bool(execute), **kwargs}
+        if action is not None:
+            body["action"] = action
+        payload = self._post_json("/mobile/action", body, idempotency_key=idempotency_key)
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /mobile/action")
+
+    def mobile_status(self) -> dict[str, Any]:
+        payload = self._get_json("/mobile/status")
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /mobile/status")
+
+    def runtime_governance(self) -> dict[str, Any]:
+        payload = self._get_json("/runtime/governance")
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /runtime/governance")
+
+    def update_runtime_governance(
+        self,
+        *,
+        paused: bool | None = None,
+        pause_reason: str | None = None,
+        budget_limit_usd: float | None | object = ...,
+        max_active_runs: int | None | object = ...,
+        reset_usage: bool = False,
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {}
+        if paused is not None:
+            body["paused"] = bool(paused)
+        if pause_reason is not None:
+            body["pause_reason"] = str(pause_reason)
+        if budget_limit_usd is not ...:
+            body["budget_limit_usd"] = None if budget_limit_usd is None else float(budget_limit_usd)
+        if max_active_runs is not ...:
+            body["max_active_runs"] = None if max_active_runs is None else int(max_active_runs)
+        if reset_usage:
+            body["reset_usage"] = True
+        payload = self._post_json("/runtime/governance", body, idempotency_key=idempotency_key)
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /runtime/governance")
+
+    def cancel_all_jobs(
+        self,
+        *,
+        pause: bool = False,
+        pause_reason: str = "",
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        payload = self._post_json(
+            "/runtime/jobs/cancel_all",
+            {
+                "pause": bool(pause),
+                "pause_reason": str(pause_reason or ""),
+            },
+            idempotency_key=idempotency_key,
+        )
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /runtime/jobs/cancel_all")
+
+    def control_artifacts(self, *, limit: int = 10, control_type: str | None = None) -> list[dict[str, Any]]:
+        query = f"limit={max(1, int(limit))}"
+        if control_type:
+            query = f"{query}&control_type={quote(str(control_type), safe='')}"
+        payload = self._get_json(f"/control/artifacts?{query}")
+        if isinstance(payload, list):
+            return payload
+        raise APIClientError("Expected list payload from /control/artifacts")
+
+    def control_artifact(self, artifact_id: str) -> dict[str, Any]:
+        payload = self._get_json(f"/control/artifacts/{quote(str(artifact_id or ''), safe='')}")
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /control/artifacts/{artifact_id}")
+
+    def homeassistant_status(self) -> dict[str, Any]:
+        payload = self._get_json("/iot/homeassistant/status")
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /iot/homeassistant/status")
+
+    def homeassistant_entities(
+        self,
+        *,
+        domain: str = "",
+        entity_id_prefix: str = "",
+        limit: int = 250,
+    ) -> dict[str, Any]:
+        query = f"limit={max(1, int(limit))}"
+        if domain:
+            query = f"{query}&domain={quote(str(domain), safe='')}"
+        if entity_id_prefix:
+            query = f"{query}&entity_id_prefix={quote(str(entity_id_prefix), safe='')}"
+        payload = self._get_json(f"/iot/homeassistant/entities?{query}")
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /iot/homeassistant/entities")
+
+    def mqtt_status(self) -> dict[str, Any]:
+        payload = self._get_json("/iot/mqtt/status")
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /iot/mqtt/status")
+
+    def homeassistant_action(
+        self,
+        action: dict[str, Any],
+        *,
+        execute: bool = False,
+        idempotency_key: str | None = None,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        payload = self._post_json(
+            "/iot/homeassistant/action",
+            {"action": action, "execute": bool(execute), **kwargs},
+            idempotency_key=idempotency_key,
+        )
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /iot/homeassistant/action")
+
+    def mqtt_publish(
+        self,
+        topic: str,
+        payload_text: str,
+        *,
+        qos: int = 0,
+        retain: bool = False,
+        execute: bool = False,
+        idempotency_key: str | None = None,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        payload = self._post_json(
+            "/iot/mqtt/publish",
+            {
+                "topic": str(topic or ""),
+                "payload": str(payload_text or ""),
+                "qos": int(qos),
+                "retain": bool(retain),
+                "execute": bool(execute),
+                **kwargs,
+            },
+            idempotency_key=idempotency_key,
+        )
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /iot/mqtt/publish")
+
+    def mqtt_subscribe(
+        self,
+        topic: str,
+        *,
+        timeout_seconds: float = 3.0,
+        max_messages: int = 10,
+        qos: int = 0,
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        payload = self._post_json(
+            "/iot/mqtt/subscribe",
+            {
+                "topic": str(topic or ""),
+                "timeout_seconds": float(timeout_seconds),
+                "max_messages": max(1, int(max_messages)),
+                "qos": int(qos),
+            },
+            idempotency_key=idempotency_key,
+        )
+        if isinstance(payload, dict):
+            return payload
+        raise APIClientError("Expected object payload from /iot/mqtt/subscribe")
 
     def browser_status(self) -> dict[str, Any]:
         payload = self._get_json("/browser/status")

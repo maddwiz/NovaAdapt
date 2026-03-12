@@ -197,6 +197,22 @@
       max-height: 220px;
     }
 
+    .artifact-preview {
+      margin-top: 10px;
+      width: 100%;
+      max-height: 320px;
+      object-fit: contain;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fffdf8;
+      padding: 8px;
+      display: block;
+    }
+
+    .artifact-preview[hidden] {
+      display: none;
+    }
+
     .hint {
       margin-top: 8px;
       color: var(--muted);
@@ -376,7 +392,7 @@
           <button class="brand" id="send-command-btn">Send Command</button>
           <button id="set-since-btn">Set Cursor</button>
         </div>
-        <div class="hint">Forwarded routes include `/run*`, `/plans/*`, `/jobs/*`, `/plugins/*`, `/memory/*`, `/terminal/sessions*`, and `/browser/*`.</div>
+        <div class="hint">Forwarded routes include `/run*`, `/plans/*`, `/jobs/*`, `/plugins/*`, `/memory/*`, `/terminal/sessions*`, `/browser/*`, `/execute/vision`, `/mobile/*`, and `/iot/*`.</div>
       </section>
 
       <section class="card span2">
@@ -472,6 +488,234 @@
         </div>
         <div class="status" id="browser-status">Browser idle</div>
         <div class="log mini" id="browser-output"></div>
+      </section>
+
+      <section class="card span2">
+        <h2>Control Anything</h2>
+        <div class="row single">
+          <div>
+            <label for="vision-goal">Vision Goal</label>
+            <textarea id="vision-goal">Click the visible Continue button and save the current file.</textarea>
+          </div>
+        </div>
+        <div class="row triple">
+          <div>
+            <label for="vision-app-name">Vision App Name</label>
+            <input id="vision-app-name" placeholder="Photoshop" />
+          </div>
+          <div>
+            <label for="control-model">Model Override (optional)</label>
+            <input id="control-model" placeholder="local-qwen-vl" />
+          </div>
+          <div>
+            <label for="control-allow-dangerous">Dangerous Actions</label>
+            <select id="control-allow-dangerous">
+              <option value="false">block</option>
+              <option value="true">allow</option>
+            </select>
+          </div>
+        </div>
+        <div class="row single">
+          <div>
+            <label for="control-candidates">Candidate Models (CSV, optional)</label>
+            <input id="control-candidates" placeholder="local-qwen-vl,claude-sonnet,gemini-pro" />
+          </div>
+        </div>
+        <div class="controls">
+          <button id="mobile-status-btn">Mobile Status</button>
+          <button id="vision-preview-btn">Preview Vision</button>
+          <button class="brand" id="vision-execute-btn">Execute Vision</button>
+        </div>
+
+        <div class="row triple" style="margin-top: 12px;">
+          <div>
+            <label for="mobile-goal">Mobile Goal</label>
+            <input id="mobile-goal" placeholder="Open Settings and enable Wi-Fi" />
+          </div>
+          <div>
+            <label for="mobile-platform">Platform</label>
+            <select id="mobile-platform">
+              <option value="android">android</option>
+              <option value="ios">ios</option>
+            </select>
+          </div>
+          <div>
+            <label for="mobile-prefer-appium">Prefer Appium</label>
+            <select id="mobile-prefer-appium">
+              <option value="false">vision default</option>
+              <option value="true">appium when available</option>
+            </select>
+          </div>
+        </div>
+        <div class="row single">
+          <div>
+            <label for="mobile-action-json">Mobile Action JSON</label>
+            <textarea id="mobile-action-json">{"type":"open_app","package":"com.android.settings"}</textarea>
+          </div>
+        </div>
+        <div class="controls">
+          <button id="mobile-preview-btn">Preview Mobile</button>
+          <button class="brand" id="mobile-execute-btn">Execute Mobile</button>
+        </div>
+        <div class="status" id="control-status">Control-anything idle</div>
+        <div class="log mini" id="control-output"></div>
+      </section>
+
+      <section class="card">
+        <h2>IoT Control</h2>
+        <div class="row">
+          <div>
+            <label for="iot-domain-filter">Entity Domain</label>
+            <input id="iot-domain-filter" placeholder="light" />
+          </div>
+          <div>
+            <label for="iot-prefix-filter">Entity Prefix</label>
+            <input id="iot-prefix-filter" placeholder="light.office" />
+          </div>
+        </div>
+        <div class="controls">
+          <button id="iot-entities-btn">Refresh Entities</button>
+          <button id="iot-mqtt-status-btn">MQTT Status</button>
+        </div>
+        <div class="row single">
+          <div>
+            <label for="ha-action-json">Home Assistant Action JSON</label>
+            <textarea id="ha-action-json">{"type":"ha_service","domain":"light","service":"turn_on","entity_id":"light.office"}</textarea>
+          </div>
+        </div>
+        <div class="controls">
+          <button id="ha-preview-btn">Preview HA Action</button>
+          <button class="brand" id="ha-execute-btn">Execute HA Action</button>
+        </div>
+        <div class="status" id="iot-status">IoT idle</div>
+        <div class="log mini" id="iot-output"></div>
+      </section>
+
+      <section class="card">
+        <h2>MQTT</h2>
+        <div class="row">
+          <div>
+            <label for="mqtt-topic">Topic</label>
+            <input id="mqtt-topic" placeholder="novaadapt/test" />
+          </div>
+          <div>
+            <label for="mqtt-retain">Retain</label>
+            <select id="mqtt-retain">
+              <option value="false">false</option>
+              <option value="true">true</option>
+            </select>
+          </div>
+        </div>
+        <div class="row single">
+          <div>
+            <label for="mqtt-payload">Payload</label>
+            <textarea id="mqtt-payload">{"hello":"world"}</textarea>
+          </div>
+        </div>
+        <div class="controls">
+          <button class="brand" id="mqtt-publish-btn">Publish MQTT</button>
+          <button id="mqtt-subscribe-btn">Subscribe Snapshot</button>
+        </div>
+        <div class="status" id="mqtt-status">MQTT idle</div>
+        <div class="log mini" id="mqtt-output"></div>
+      </section>
+
+      <section class="card span2">
+        <h2>Agent Marketplace</h2>
+        <div class="row triple">
+          <div>
+            <label for="template-name">Template Name</label>
+            <input id="template-name" placeholder="novaadapt-mobile-ops" />
+          </div>
+          <div>
+            <label for="template-strategy">Strategy</label>
+            <select id="template-strategy">
+              <option value="single">single</option>
+              <option value="vote">vote</option>
+              <option value="decompose">decompose</option>
+            </select>
+          </div>
+          <div>
+            <label for="template-tag-filter">Tag Filter / Tags (CSV)</label>
+            <input id="template-tag-filter" placeholder="mobile, ops, iot" />
+          </div>
+        </div>
+        <div class="row single">
+          <div>
+            <label for="template-objective">Template Objective</label>
+            <textarea id="template-objective">Open the Android settings app and verify Wi-Fi is enabled.</textarea>
+          </div>
+        </div>
+        <div class="row single">
+          <div>
+            <label for="template-candidates">Candidate Models (CSV, optional)</label>
+            <input id="template-candidates" placeholder="local-qwen,claude-sonnet,gemini-pro" />
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label for="template-id">Selected Local Template ID</label>
+            <input id="template-id" placeholder="auto-filled from latest local refresh" />
+          </div>
+          <div>
+            <label for="template-share-token">Share Token</label>
+            <input id="template-share-token" placeholder="paste token to resolve shared template" />
+          </div>
+        </div>
+        <div class="row single">
+          <div>
+            <label for="template-manifest-json">Template Manifest JSON</label>
+            <textarea id="template-manifest-json">{"name":"My agent","objective":"..."}</textarea>
+          </div>
+        </div>
+        <div class="controls">
+          <button id="templates-refresh-btn">Refresh Local</button>
+          <button id="templates-gallery-btn">Refresh Gallery</button>
+          <button class="brand" id="template-export-btn">Export Template</button>
+          <button id="template-import-btn">Import Manifest</button>
+        </div>
+        <div class="controls">
+          <button id="template-load-btn">Load Selected</button>
+          <button id="template-share-btn">Share Selected</button>
+          <button id="template-plan-btn">Launch Plan</button>
+          <button class="brand" id="template-run-btn">Launch Run</button>
+          <button id="template-resolve-share-btn">Resolve Share</button>
+        </div>
+        <div class="status" id="template-status">Marketplace idle</div>
+        <div class="log mini" id="template-output"></div>
+      </section>
+
+      <section class="card span2">
+        <h2>Control Artifacts</h2>
+        <div class="row triple">
+          <div>
+            <label for="artifact-limit">Limit</label>
+            <input id="artifact-limit" type="number" min="1" max="50" value="12" />
+          </div>
+          <div>
+            <label for="artifact-type">Control Type</label>
+            <select id="artifact-type">
+              <option value="">all</option>
+              <option value="vision">vision</option>
+              <option value="mobile">mobile</option>
+              <option value="iot">iot</option>
+            </select>
+          </div>
+          <div>
+            <label for="artifact-id">Artifact ID</label>
+            <input id="artifact-id" placeholder="auto-filled from latest refresh" />
+          </div>
+        </div>
+        <div class="controls">
+          <button id="artifacts-refresh-btn">Refresh Artifacts</button>
+          <button id="artifact-detail-btn">Load Detail</button>
+          <button id="artifact-preview-btn">Load Preview</button>
+          <button id="artifact-use-latest-btn">Use Latest</button>
+        </div>
+        <div class="status" id="artifact-status">Artifacts idle</div>
+        <div class="log mini" id="artifact-output"></div>
+        <div class="hint" id="artifact-preview-meta">No control preview loaded.</div>
+        <img class="artifact-preview" id="artifact-preview-image" alt="Control artifact preview" hidden />
       </section>
     </div>
 
@@ -585,6 +829,40 @@
     const statusEl = $("status");
     const terminalStatusEl = $("terminal-status");
     const browserStatusEl = $("browser-status");
+    const controlStatusEl = $("control-status");
+    const controlOutputEl = $("control-output");
+    const iotStatusEl = $("iot-status");
+    const iotOutputEl = $("iot-output");
+    const mqttStatusEl = $("mqtt-status");
+    const mqttOutputEl = $("mqtt-output");
+    const templateStatusEl = $("template-status");
+    const templateOutputEl = $("template-output");
+    const artifactStatusEl = $("artifact-status");
+    const artifactOutputEl = $("artifact-output");
+    const artifactPreviewMetaEl = $("artifact-preview-meta");
+    const artifactPreviewImageEl = $("artifact-preview-image");
+    const bootstrapStorageKey = "novaadapt.realtime_console.bootstrap.v1";
+    const persistedBootstrapFields = [
+      "ws-url",
+      "bridge-http-url",
+      "device-id",
+      "session-scopes",
+      "session-ttl",
+      "since-id",
+      "poll-timeout",
+      "allowlist-device-id",
+    ];
+    const bootstrapQueryMap = {
+      ws_url: "ws-url",
+      bridge_http_url: "bridge-http-url",
+      token: "token",
+      admin_token: "admin-token",
+      device_id: "device-id",
+      session_scopes: "session-scopes",
+      session_ttl: "session-ttl",
+      since_id: "since-id",
+      poll_timeout: "poll-timeout",
+    };
 
     function nowTime() {
       return new Date().toISOString().replace("T", " ").replace("Z", "");
@@ -611,11 +889,150 @@
       browserStatusEl.className = `status ${cls}`.trim();
     }
 
+    function setControlStatus(text, cls = "") {
+      controlStatusEl.textContent = text;
+      controlStatusEl.className = `status ${cls}`.trim();
+    }
+
+    function setIoTStatus(text, cls = "") {
+      iotStatusEl.textContent = text;
+      iotStatusEl.className = `status ${cls}`.trim();
+    }
+
+    function setMQTTStatus(text, cls = "") {
+      mqttStatusEl.textContent = text;
+      mqttStatusEl.className = `status ${cls}`.trim();
+    }
+
+    function setTemplateStatus(text, cls = "") {
+      templateStatusEl.textContent = text;
+      templateStatusEl.className = `status ${cls}`.trim();
+    }
+
+    function setArtifactStatus(text, cls = "") {
+      artifactStatusEl.textContent = text;
+      artifactStatusEl.className = `status ${cls}`.trim();
+    }
+
     function setBrowserOutput(payload) {
       const outputEl = $("browser-output");
       const text = typeof payload === "string" ? payload : JSON.stringify(payload, null, 2);
       outputEl.textContent = text;
       outputEl.scrollTop = outputEl.scrollHeight;
+    }
+
+    function setControlOutput(payload) {
+      const text = typeof payload === "string" ? payload : JSON.stringify(payload, null, 2);
+      controlOutputEl.textContent = text;
+      controlOutputEl.scrollTop = controlOutputEl.scrollHeight;
+    }
+
+    function setIoTOutput(payload) {
+      const text = typeof payload === "string" ? payload : JSON.stringify(payload, null, 2);
+      iotOutputEl.textContent = text;
+      iotOutputEl.scrollTop = iotOutputEl.scrollHeight;
+    }
+
+    function setMQTTOutput(payload) {
+      const text = typeof payload === "string" ? payload : JSON.stringify(payload, null, 2);
+      mqttOutputEl.textContent = text;
+      mqttOutputEl.scrollTop = mqttOutputEl.scrollHeight;
+    }
+
+    function setTemplateOutput(payload) {
+      const text = typeof payload === "string" ? payload : JSON.stringify(payload, null, 2);
+      templateOutputEl.textContent = text;
+      templateOutputEl.scrollTop = templateOutputEl.scrollHeight;
+    }
+
+    function setArtifactOutput(payload) {
+      const text = typeof payload === "string" ? payload : JSON.stringify(payload, null, 2);
+      artifactOutputEl.textContent = text;
+      artifactOutputEl.scrollTop = artifactOutputEl.scrollHeight;
+    }
+
+    function setArtifactPreview(meta, bodyBase64 = "", contentType = "") {
+      artifactPreviewMetaEl.textContent = meta;
+      if (bodyBase64 && contentType) {
+        artifactPreviewImageEl.src = `data:${contentType};base64,${bodyBase64}`;
+        artifactPreviewImageEl.hidden = false;
+        return;
+      }
+      artifactPreviewImageEl.hidden = true;
+      artifactPreviewImageEl.removeAttribute("src");
+    }
+
+    function loadPersistedBootstrap() {
+      try {
+        const raw = window.localStorage.getItem(bootstrapStorageKey);
+        if (!raw) {
+          return {};
+        }
+        const parsed = JSON.parse(raw);
+        return parsed && typeof parsed === "object" ? parsed : {};
+      } catch {
+        return {};
+      }
+    }
+
+    function persistBootstrap() {
+      try {
+        const payload = {};
+        persistedBootstrapFields.forEach((id) => {
+          const el = $(id);
+          if (!el) {
+            return;
+          }
+          const value = String(el.value || "").trim();
+          if (value) {
+            payload[id] = value;
+          }
+        });
+        window.localStorage.setItem(bootstrapStorageKey, JSON.stringify(payload));
+      } catch {
+        // Ignore storage failures for static operator environments.
+      }
+    }
+
+    function bindBootstrapPersistence() {
+      persistedBootstrapFields.forEach((id) => {
+        const el = $(id);
+        if (!el) {
+          return;
+        }
+        el.addEventListener("change", persistBootstrap);
+        el.addEventListener("blur", persistBootstrap);
+      });
+    }
+
+    function applyBootstrapConfig() {
+      const stored = loadPersistedBootstrap();
+      Object.entries(stored).forEach(([id, value]) => {
+        const el = $(id);
+        if (el && !String(el.value || "").trim()) {
+          el.value = String(value || "");
+        }
+      });
+
+      const params = new URLSearchParams(window.location.search);
+      Object.entries(bootstrapQueryMap).forEach(([queryKey, id]) => {
+        const value = params.get(queryKey);
+        if (value !== null) {
+          const el = $(id);
+          if (el) {
+            el.value = value;
+          }
+        }
+      });
+
+      if (!$("bridge-http-url").value.trim()) {
+        const guessed = guessBridgeHTTPURLFromWS($("ws-url").value.trim());
+        if (guessed) {
+          $("bridge-http-url").value = guessed;
+        }
+      }
+      persistBootstrap();
+      return ["1", "true", "yes", "on"].includes(String(params.get("auto_connect") || "").toLowerCase());
     }
 
     function isWSOpen() {
@@ -1355,6 +1772,227 @@
       return parsed;
     }
 
+    function parseCSV(raw) {
+      return String(raw || "")
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean);
+    }
+
+    async function sendCoreRoute(path, { method = "GET", body = null, timeoutMs = 15000 } = {}) {
+      if (!isWSOpen()) {
+        throw new Error("websocket is not connected");
+      }
+      const response = await sendCommand(
+        {
+          type: "command",
+          id: `route-${Date.now()}`,
+          method,
+          path,
+          ...(body !== null ? { body } : {}),
+        },
+        { log: true, silentResponse: true, timeoutMs }
+      );
+      if (response.status < 200 || response.status >= 300) {
+        const message = response?.payload?.error || `status ${response.status}`;
+        const err = new Error(message);
+        err.response = response;
+        throw err;
+      }
+      return response.payload ?? {};
+    }
+
+    async function sendCoreBinaryRoute(path, { timeoutMs = 15000 } = {}) {
+      if (!isWSOpen()) {
+        throw new Error("websocket is not connected");
+      }
+      const response = await sendCommand(
+        {
+          type: "command",
+          id: `route-bin-${Date.now()}`,
+          method: "GET",
+          path,
+          accept_binary: true,
+        },
+        { log: true, silentResponse: true, timeoutMs }
+      );
+      if (response.status < 200 || response.status >= 300) {
+        const message = response?.payload?.error || `status ${response.status}`;
+        const err = new Error(message);
+        err.response = response;
+        throw err;
+      }
+      return response.payload ?? {};
+    }
+
+    function controlSharedPayload() {
+      const payload = {
+        allow_dangerous: $("control-allow-dangerous").value === "true",
+      };
+      const model = $("control-model").value.trim();
+      const candidates = parseCSV($("control-candidates").value);
+      if (model) payload.model = model;
+      if (candidates.length) payload.candidates = candidates;
+      return payload;
+    }
+
+    function buildVisionPayload(execute) {
+      const goal = $("vision-goal").value.trim();
+      if (!goal) {
+        throw new Error("vision goal is required");
+      }
+      const payload = {
+        ...controlSharedPayload(),
+        goal,
+        execute: Boolean(execute),
+      };
+      const appName = $("vision-app-name").value.trim();
+      if (appName) {
+        payload.app_name = appName;
+      }
+      return payload;
+    }
+
+    function buildMobilePayload(execute) {
+      const raw = $("mobile-action-json").value.trim();
+      if (!raw) {
+        throw new Error("mobile action json is required");
+      }
+      let action = null;
+      try {
+        action = JSON.parse(raw);
+      } catch (err) {
+        throw new Error(`invalid mobile action json: ${String(err)}`);
+      }
+      if (!action || Array.isArray(action) || typeof action !== "object") {
+        throw new Error("mobile action json must be an object");
+      }
+      const platform = $("mobile-platform").value.trim() || "android";
+      const payload = {
+        ...controlSharedPayload(),
+        platform,
+        action,
+        execute: Boolean(execute),
+      };
+      const goal = $("mobile-goal").value.trim();
+      if (goal) {
+        payload.goal = goal;
+      }
+      if (platform === "ios" && $("mobile-prefer-appium").value === "true") {
+        payload.prefer_appium = true;
+      }
+      return payload;
+    }
+
+    function formatMobileStatus(payload) {
+      const android = payload?.android && typeof payload.android === "object" ? payload.android : {};
+      const ios = payload?.ios && typeof payload.ios === "object" ? payload.ios : {};
+      const androidText = android.ok ? "android ready" : `android ${android.error || "degraded"}`;
+      const iosTransport = String(ios.transport || (ios.ok ? "vision" : "unavailable"));
+      const iosText = ios.ok ? `ios ${iosTransport}` : `ios ${ios.error || "degraded"}`;
+      return `${androidText} • ${iosText}`;
+    }
+
+    function parseRequiredJSONObject(raw, label) {
+      const trimmed = String(raw || "").trim();
+      if (!trimmed) {
+        throw new Error(`${label} is required`);
+      }
+      let parsed = null;
+      try {
+        parsed = JSON.parse(trimmed);
+      } catch (err) {
+        throw new Error(`invalid ${label}: ${String(err)}`);
+      }
+      if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") {
+        throw new Error(`${label} must be a JSON object`);
+      }
+      return parsed;
+    }
+
+    function buildHomeAssistantPayload(execute) {
+      return {
+        action: parseRequiredJSONObject($("ha-action-json").value, "home assistant action json"),
+        execute: Boolean(execute),
+        allow_dangerous: $("control-allow-dangerous").value === "true",
+      };
+    }
+
+    function buildTemplateExportPayload() {
+      const name = $("template-name").value.trim();
+      const objective = $("template-objective").value.trim();
+      if (!name) {
+        throw new Error("template name is required");
+      }
+      if (!objective) {
+        throw new Error("template objective is required");
+      }
+      const payload = {
+        name,
+        objective,
+        strategy: $("template-strategy").value || "single",
+        tags: parseCSV($("template-tag-filter").value),
+        candidates: parseCSV($("template-candidates").value),
+        include_memory: true,
+        source: "realtime-console",
+        metadata: {
+          source: "realtime-console",
+          exported_at: new Date().toISOString(),
+        },
+      };
+      return payload;
+    }
+
+    function selectedTemplateID() {
+      const templateID = $("template-id").value.trim();
+      if (!templateID) {
+        throw new Error("selected local template id is required");
+      }
+      return templateID;
+    }
+
+    function templateLaunchOverrides() {
+      const overrides = {};
+      const objective = $("template-objective").value.trim();
+      if (objective) {
+        overrides.objective = objective;
+      }
+      const strategy = $("template-strategy").value || "single";
+      if (strategy) {
+        overrides.strategy = strategy;
+      }
+      const candidates = parseCSV($("template-candidates").value);
+      if (candidates.length) {
+        overrides.candidates = candidates;
+      }
+      const tags = parseCSV($("template-tag-filter").value);
+      if (tags.length) {
+        overrides.metadata = { tags };
+      }
+      return overrides;
+    }
+
+    function syncTemplateSelection(payload) {
+      const templates = Array.isArray(payload?.templates) ? payload.templates : [];
+      if (!templates.length) {
+        return null;
+      }
+      const idInput = $("template-id");
+      const tokenInput = $("template-share-token");
+      const currentID = idInput.value.trim();
+      const selected =
+        templates.find((item) => String(item?.template_id || "").trim() === currentID) || templates[0];
+      const templateID = String(selected?.template_id || "").trim();
+      if (templateID) {
+        idInput.value = templateID;
+      }
+      const share = selected?.share && typeof selected.share === "object" ? selected.share : {};
+      if (share?.share_token) {
+        tokenInput.value = String(share.share_token);
+      }
+      return selected;
+    }
+
     function maybeAttachPageID(body) {
       const pageID = $("browser-page-id").value.trim();
       if (pageID) {
@@ -1475,6 +2113,457 @@
       } catch (err) {
         appendLog("browser_error", String(err));
         setBrowserStatus(String(err), "bad");
+      }
+    }
+
+    async function refreshMobileStatus() {
+      try {
+        const payload = await sendCoreRoute("/mobile/status", { method: "GET", timeoutMs: 12000 });
+        setControlOutput(payload);
+        setControlStatus(formatMobileStatus(payload), payload?.ok ? "ok" : "bad");
+        appendLog("mobile_status", payload);
+      } catch (err) {
+        appendLog("mobile_status_error", String(err));
+        setControlStatus(String(err), "bad");
+      }
+    }
+
+    async function runVisionControl(execute) {
+      try {
+        const payload = buildVisionPayload(execute);
+        if (execute && !window.confirm(`Execute vision-grounded desktop action for: ${payload.goal}?`)) {
+          return;
+        }
+        const result = await sendCoreRoute("/execute/vision", {
+          method: "POST",
+          body: payload,
+          timeoutMs: 30000,
+        });
+        setControlOutput(result);
+        const cls = ["failed", "blocked"].includes(String(result?.status || "").toLowerCase()) ? "bad" : "ok";
+        setControlStatus(`vision ${String(result?.status || "done")}`, cls);
+        appendLog(execute ? "vision_execute" : "vision_preview", result);
+      } catch (err) {
+        appendLog("vision_control_error", String(err));
+        setControlStatus(String(err), "bad");
+      }
+    }
+
+    async function runMobileControl(execute) {
+      try {
+        const payload = buildMobilePayload(execute);
+        if (
+          execute &&
+          !window.confirm(
+            `Execute ${payload.platform} mobile action${payload.goal ? ` for "${payload.goal}"` : ""}?`
+          )
+        ) {
+          return;
+        }
+        const result = await sendCoreRoute("/mobile/action", {
+          method: "POST",
+          body: payload,
+          timeoutMs: 30000,
+        });
+        setControlOutput(result);
+        const cls = ["failed", "blocked"].includes(String(result?.status || "").toLowerCase()) ? "bad" : "ok";
+        setControlStatus(
+          `mobile ${String(result?.platform || payload.platform)} ${String(result?.status || "done")}`,
+          cls
+        );
+        appendLog(execute ? "mobile_execute" : "mobile_preview", result);
+      } catch (err) {
+        appendLog("mobile_control_error", String(err));
+        setControlStatus(String(err), "bad");
+      }
+    }
+
+    async function refreshIoTEntities() {
+      try {
+        const domain = $("iot-domain-filter").value.trim();
+        const prefix = $("iot-prefix-filter").value.trim();
+        const params = new URLSearchParams();
+        params.set("limit", "24");
+        if (domain) params.set("domain", domain);
+        if (prefix) params.set("entity_id_prefix", prefix);
+        const payload = await sendCoreRoute(`/iot/homeassistant/entities?${params.toString()}`, {
+          method: "GET",
+          timeoutMs: 15000,
+        });
+        setIoTOutput(payload);
+        setIoTStatus(`Loaded ${Number(payload?.count || 0)} entities`, "ok");
+        appendLog("iot_entities", payload);
+      } catch (err) {
+        appendLog("iot_entities_error", String(err));
+        setIoTStatus(String(err), "bad");
+      }
+    }
+
+    async function runHomeAssistantAction(execute) {
+      try {
+        const payload = buildHomeAssistantPayload(execute);
+        if (
+          execute &&
+          !window.confirm(`Execute Home Assistant action ${payload.action?.domain || ""}.${payload.action?.service || ""}?`)
+        ) {
+          return;
+        }
+        const result = await sendCoreRoute("/iot/homeassistant/action", {
+          method: "POST",
+          body: payload,
+          timeoutMs: 30000,
+        });
+        setIoTOutput(result);
+        const cls = ["failed", "blocked"].includes(String(result?.status || "").toLowerCase()) ? "bad" : "ok";
+        setIoTStatus(`homeassistant ${String(result?.status || "done")}`, cls);
+        appendLog(execute ? "ha_execute" : "ha_preview", result);
+      } catch (err) {
+        appendLog("ha_action_error", String(err));
+        setIoTStatus(String(err), "bad");
+      }
+    }
+
+    async function refreshMQTTStatus() {
+      try {
+        const payload = await sendCoreRoute("/iot/mqtt/status", { method: "GET", timeoutMs: 12000 });
+        setMQTTOutput(payload);
+        const host = String(payload?.host || payload?.broker || "broker");
+        setMQTTStatus(payload?.ok ? `MQTT ${host}` : "MQTT unavailable", payload?.ok ? "ok" : "bad");
+        appendLog("mqtt_status", payload);
+      } catch (err) {
+        appendLog("mqtt_status_error", String(err));
+        setMQTTStatus(String(err), "bad");
+      }
+    }
+
+    async function publishMQTT() {
+      try {
+        const topic = $("mqtt-topic").value.trim();
+        if (!topic) {
+          throw new Error("mqtt topic is required");
+        }
+        if (!window.confirm(`Publish to MQTT topic ${topic}?`)) {
+          return;
+        }
+        const payload = await sendCoreRoute("/iot/mqtt/publish", {
+          method: "POST",
+          body: {
+            topic,
+            payload: $("mqtt-payload").value,
+            retain: $("mqtt-retain").value === "true",
+            execute: true,
+          },
+          timeoutMs: 20000,
+        });
+        setMQTTOutput(payload);
+        setMQTTStatus(`Published ${topic}`, "ok");
+        appendLog("mqtt_publish", payload);
+      } catch (err) {
+        appendLog("mqtt_publish_error", String(err));
+        setMQTTStatus(String(err), "bad");
+      }
+    }
+
+    async function subscribeMQTT() {
+      try {
+        const topic = $("mqtt-topic").value.trim();
+        if (!topic) {
+          throw new Error("mqtt topic is required");
+        }
+        const payload = await sendCoreRoute("/iot/mqtt/subscribe", {
+          method: "POST",
+          body: {
+            topic,
+            timeout_seconds: 1.5,
+            max_messages: 6,
+            qos: 0,
+          },
+          timeoutMs: 20000,
+        });
+        setMQTTOutput(payload);
+        setMQTTStatus(`Subscribed ${topic}`, "ok");
+        appendLog("mqtt_subscribe", payload);
+      } catch (err) {
+        appendLog("mqtt_subscribe_error", String(err));
+        setMQTTStatus(String(err), "bad");
+      }
+    }
+
+    async function refreshTemplates(kind) {
+      try {
+        const tag = $("template-tag-filter").value.trim();
+        const query = tag ? `?tag=${encodeURIComponent(tag)}` : "";
+        const path = kind === "gallery" ? `/agents/gallery${query}` : `/agents/templates?limit=24${query ? `&${query.slice(1)}` : ""}`;
+        const payload = await sendCoreRoute(path, { method: "GET", timeoutMs: 20000 });
+        setTemplateOutput(payload);
+        if (kind === "local") {
+          syncTemplateSelection(payload);
+        } else {
+          const templates = Array.isArray(payload?.templates) ? payload.templates : [];
+          if (templates.length) {
+            $("template-manifest-json").value = JSON.stringify(templates[0], null, 2);
+          }
+        }
+        const count = Number(payload?.count || 0);
+        setTemplateStatus(`${kind === "gallery" ? "gallery" : "local"} templates ${count}`, "ok");
+        appendLog(kind === "gallery" ? "templates_gallery" : "templates_local", payload);
+      } catch (err) {
+        appendLog("templates_refresh_error", String(err));
+        setTemplateStatus(String(err), "bad");
+      }
+    }
+
+    async function exportTemplate() {
+      try {
+        const payload = buildTemplateExportPayload();
+        const result = await sendCoreRoute("/agents/templates/export", {
+          method: "POST",
+          body: payload,
+          timeoutMs: 30000,
+        });
+        if (result?.template_id) {
+          $("template-id").value = String(result.template_id);
+        }
+        if (result?.share?.share_token) {
+          $("template-share-token").value = String(result.share.share_token);
+        }
+        $("template-manifest-json").value = JSON.stringify(result?.manifest || {}, null, 2);
+        setTemplateOutput(result);
+        setTemplateStatus(`exported ${payload.name}`, "ok");
+        appendLog("template_export", result);
+      } catch (err) {
+        appendLog("template_export_error", String(err));
+        setTemplateStatus(String(err), "bad");
+      }
+    }
+
+    async function importTemplate() {
+      try {
+        const manifest = parseRequiredJSONObject($("template-manifest-json").value, "template manifest json");
+        const result = await sendCoreRoute("/agents/templates/import", {
+          method: "POST",
+          body: { manifest },
+          timeoutMs: 30000,
+        });
+        if (result?.template_id) {
+          $("template-id").value = String(result.template_id);
+        }
+        if (result?.share?.share_token) {
+          $("template-share-token").value = String(result.share.share_token);
+        }
+        setTemplateOutput(result);
+        setTemplateStatus(`imported ${result?.name || result?.template_id || "template"}`, "ok");
+        appendLog("template_import", result);
+      } catch (err) {
+        appendLog("template_import_error", String(err));
+        setTemplateStatus(String(err), "bad");
+      }
+    }
+
+    async function loadTemplateDetail() {
+      try {
+        const templateID = selectedTemplateID();
+        const result = await sendCoreRoute(`/agents/templates/${encodeURIComponent(templateID)}`, {
+          method: "GET",
+          timeoutMs: 20000,
+        });
+        if (result?.template_id) {
+          $("template-id").value = String(result.template_id);
+        }
+        if (result?.share?.share_token) {
+          $("template-share-token").value = String(result.share.share_token);
+        }
+        if (result?.manifest) {
+          $("template-manifest-json").value = JSON.stringify(result.manifest, null, 2);
+        }
+        setTemplateOutput(result);
+        setTemplateStatus(`loaded ${result?.name || templateID}`, "ok");
+        appendLog("template_detail", result);
+      } catch (err) {
+        appendLog("template_detail_error", String(err));
+        setTemplateStatus(String(err), "bad");
+      }
+    }
+
+    async function shareTemplate() {
+      try {
+        const templateID = selectedTemplateID();
+        const result = await sendCoreRoute(`/agents/templates/${encodeURIComponent(templateID)}/share`, {
+          method: "POST",
+          body: { shared: true, rotate: false },
+          timeoutMs: 20000,
+        });
+        if (result?.share?.share_token) {
+          $("template-share-token").value = String(result.share.share_token);
+        }
+        setTemplateOutput(result);
+        const shareLabel = result?.share?.share_url || result?.share?.share_uri || result?.share?.share_path || templateID;
+        setTemplateStatus(`shared ${shareLabel}`, "ok");
+        appendLog("template_share", result);
+      } catch (err) {
+        appendLog("template_share_error", String(err));
+        setTemplateStatus(String(err), "bad");
+      }
+    }
+
+    async function launchTemplate(mode) {
+      try {
+        const templateID = selectedTemplateID();
+        const execute = mode === "run";
+        if (execute && !window.confirm(`Launch template ${templateID} as an immediate run?`)) {
+          return;
+        }
+        const result = await sendCoreRoute(`/agents/templates/${encodeURIComponent(templateID)}/launch`, {
+          method: "POST",
+          body: {
+            mode,
+            execute,
+            allow_dangerous: $("control-allow-dangerous").value === "true",
+            context: "realtime-console",
+            overrides: templateLaunchOverrides(),
+          },
+          timeoutMs: 30000,
+        });
+        setTemplateOutput(result);
+        const launchID =
+          result?.launch?.plan_id ||
+          result?.launch?.job_id ||
+          result?.launch?.workflow_id ||
+          result?.launch?.id ||
+          templateID;
+        setTemplateStatus(`${mode} launch ${launchID}`, "ok");
+        appendLog(mode === "run" ? "template_run" : "template_plan", result);
+      } catch (err) {
+        appendLog("template_launch_error", String(err));
+        setTemplateStatus(String(err), "bad");
+      }
+    }
+
+    async function resolveSharedTemplate() {
+      try {
+        const shareToken = $("template-share-token").value.trim();
+        if (!shareToken) {
+          throw new Error("share token is required");
+        }
+        const result = await sendCoreRoute(`/agents/templates/shared/${encodeURIComponent(shareToken)}`, {
+          method: "GET",
+          timeoutMs: 20000,
+        });
+        if (result?.manifest) {
+          $("template-manifest-json").value = JSON.stringify(result.manifest, null, 2);
+        }
+        setTemplateOutput(result);
+        setTemplateStatus(`resolved shared template ${result?.name || shareToken}`, "ok");
+        appendLog("template_resolve_share", result);
+      } catch (err) {
+        appendLog("template_resolve_share_error", String(err));
+        setTemplateStatus(String(err), "bad");
+      }
+    }
+
+    async function refreshArtifacts() {
+      try {
+        const limit = Math.max(1, Math.min(50, Number($("artifact-limit").value || 12)));
+        const controlType = $("artifact-type").value.trim();
+        const params = new URLSearchParams();
+        params.set("limit", String(limit));
+        if (controlType) {
+          params.set("control_type", controlType);
+        }
+        const payload = await sendCoreRoute(`/control/artifacts?${params.toString()}`, {
+          method: "GET",
+          timeoutMs: 15000,
+        });
+        const items = Array.isArray(payload) ? payload : [];
+        const currentID = $("artifact-id").value.trim();
+        const selected =
+          items.find((item) => String(item?.artifact_id || "").trim() === currentID) || items[0] || null;
+        if (selected?.artifact_id) {
+          $("artifact-id").value = String(selected.artifact_id);
+        }
+        setArtifactOutput(items);
+        setArtifactStatus(`artifacts ${items.length}`, items.length ? "ok" : "");
+        appendLog("artifacts_refresh", items);
+      } catch (err) {
+        appendLog("artifacts_refresh_error", String(err));
+        setArtifactStatus(String(err), "bad");
+      }
+    }
+
+    async function loadArtifactDetail() {
+      try {
+        const artifactID = $("artifact-id").value.trim();
+        if (!artifactID) {
+          throw new Error("artifact id is required");
+        }
+        const result = await sendCoreRoute(`/control/artifacts/${encodeURIComponent(artifactID)}`, {
+          method: "GET",
+          timeoutMs: 15000,
+        });
+        setArtifactOutput(result);
+        const summary = [result?.control_type, result?.status, result?.action_type].filter(Boolean).join(" ");
+        setArtifactStatus(summary || `artifact ${artifactID}`, "ok");
+        if (result?.preview_available) {
+          await loadArtifactPreview(artifactID, { updateStatus: false });
+        } else {
+          setArtifactPreview("This artifact has no stored preview.");
+        }
+        appendLog("artifact_detail", result);
+      } catch (err) {
+        appendLog("artifact_detail_error", String(err));
+        setArtifactStatus(String(err), "bad");
+      }
+    }
+
+    async function loadArtifactPreview(artifactID = "", { updateStatus = true } = {}) {
+      try {
+        const targetID = String(artifactID || $("artifact-id").value || "").trim();
+        if (!targetID) {
+          throw new Error("artifact id is required");
+        }
+        const result = await sendCoreBinaryRoute(`/control/artifacts/${encodeURIComponent(targetID)}/preview`, {
+          timeoutMs: 20000,
+        });
+        const bodyBase64 = String(result?.body_base64 || "");
+        const contentType = String(result?.content_type || "image/png");
+        if (!bodyBase64) {
+          throw new Error("artifact preview payload was empty");
+        }
+        setArtifactPreview(`Loaded ${targetID} preview (${Number(result?.size_bytes || 0)} bytes).`, bodyBase64, contentType);
+        if (updateStatus) {
+          setArtifactStatus(`artifact preview ${targetID}`, "ok");
+        }
+        appendLog("artifact_preview", {
+          artifact_id: targetID,
+          content_type: contentType,
+          size_bytes: result?.size_bytes,
+        });
+      } catch (err) {
+        setArtifactPreview(`Preview unavailable: ${String(err)}`);
+        if (updateStatus) {
+          setArtifactStatus(String(err), "bad");
+        }
+        appendLog("artifact_preview_error", String(err));
+      }
+    }
+
+    async function useLatestArtifact() {
+      try {
+        const payload = await sendCoreRoute("/control/artifacts?limit=1", {
+          method: "GET",
+          timeoutMs: 12000,
+        });
+        const latest = Array.isArray(payload) ? payload[0] : null;
+        if (!latest?.artifact_id) {
+          throw new Error("no control artifacts found");
+        }
+        $("artifact-id").value = String(latest.artifact_id);
+        setArtifactOutput(latest);
+        setArtifactStatus(`latest ${latest.control_type || "artifact"} ${latest.artifact_id}`, "ok");
+        appendLog("artifact_latest", latest);
+      } catch (err) {
+        appendLog("artifact_latest_error", String(err));
+        setArtifactStatus(String(err), "bad");
       }
     }
 
@@ -1611,6 +2700,102 @@
       runSelectedBrowserCommand();
     });
 
+    $("mobile-status-btn").addEventListener("click", () => {
+      refreshMobileStatus();
+    });
+
+    $("vision-preview-btn").addEventListener("click", () => {
+      runVisionControl(false);
+    });
+
+    $("vision-execute-btn").addEventListener("click", () => {
+      runVisionControl(true);
+    });
+
+    $("mobile-preview-btn").addEventListener("click", () => {
+      runMobileControl(false);
+    });
+
+    $("mobile-execute-btn").addEventListener("click", () => {
+      runMobileControl(true);
+    });
+
+    $("iot-entities-btn").addEventListener("click", () => {
+      refreshIoTEntities();
+    });
+
+    $("ha-preview-btn").addEventListener("click", () => {
+      runHomeAssistantAction(false);
+    });
+
+    $("ha-execute-btn").addEventListener("click", () => {
+      runHomeAssistantAction(true);
+    });
+
+    $("iot-mqtt-status-btn").addEventListener("click", () => {
+      refreshMQTTStatus();
+    });
+
+    $("mqtt-publish-btn").addEventListener("click", () => {
+      publishMQTT();
+    });
+
+    $("mqtt-subscribe-btn").addEventListener("click", () => {
+      subscribeMQTT();
+    });
+
+    $("templates-refresh-btn").addEventListener("click", () => {
+      refreshTemplates("local");
+    });
+
+    $("templates-gallery-btn").addEventListener("click", () => {
+      refreshTemplates("gallery");
+    });
+
+    $("template-export-btn").addEventListener("click", () => {
+      exportTemplate();
+    });
+
+    $("template-import-btn").addEventListener("click", () => {
+      importTemplate();
+    });
+
+    $("template-load-btn").addEventListener("click", () => {
+      loadTemplateDetail();
+    });
+
+    $("template-share-btn").addEventListener("click", () => {
+      shareTemplate();
+    });
+
+    $("template-plan-btn").addEventListener("click", () => {
+      launchTemplate("plan");
+    });
+
+    $("template-run-btn").addEventListener("click", () => {
+      launchTemplate("run");
+    });
+
+    $("template-resolve-share-btn").addEventListener("click", () => {
+      resolveSharedTemplate();
+    });
+
+    $("artifacts-refresh-btn").addEventListener("click", () => {
+      refreshArtifacts();
+    });
+
+    $("artifact-detail-btn").addEventListener("click", () => {
+      loadArtifactDetail();
+    });
+
+    $("artifact-preview-btn").addEventListener("click", () => {
+      loadArtifactPreview();
+    });
+
+    $("artifact-use-latest-btn").addEventListener("click", () => {
+      useLatestArtifact();
+    });
+
     $("terminal-poll-ms").addEventListener("change", () => {
       if (terminalSessionID) {
         startTerminalPolling(false);
@@ -1630,8 +2815,30 @@
       });
     }
 
+    const autoConnect = applyBootstrapConfig();
+    bindBootstrapPersistence();
     initTerminal();
+    setControlStatus("Control-anything idle");
+    setControlOutput("No control-anything activity yet.");
+    setIoTStatus("IoT idle");
+    setIoTOutput("No IoT activity yet.");
+    setMQTTStatus("MQTT idle");
+    setMQTTOutput("No MQTT activity yet.");
+    setTemplateStatus("Marketplace idle");
+    setTemplateOutput("No marketplace activity yet.");
+    setArtifactStatus("Artifacts idle");
+    setArtifactOutput("No control artifact activity yet.");
+    setArtifactPreview("No control preview loaded.");
     appendLog("ready", "Console loaded");
+    if (autoConnect) {
+      setTimeout(() => {
+        try {
+          connect();
+        } catch (err) {
+          appendLog("auto_connect_error", String(err));
+        }
+      }, 150);
+    }
   </script>
 </body>
 </html>

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import base64
 import json
 import os
+import secrets
 import time
 import uuid
 from datetime import datetime, timezone
@@ -11,14 +13,18 @@ from typing import Any, Callable
 from novaadapt_shared import ModelRouter, UndoQueue
 
 from .adapt import AdaptBondCache, AdaptPersonaEngine, AdaptToggleStore
+from .agent_templates import AgentTemplateRecord, AgentTemplateStore
 from .audit_store import AuditStore
 from .agent import NovaAdaptAgent
 from .browser_executor import BrowserExecutor
 from .channels import ChannelRegistry, build_channel_registry
 from .canvas import CanvasRenderResult, CanvasRenderer, CanvasSessionStore, canvas_enabled
+from .control_artifacts import ControlArtifactStore
 from .directshell import DirectShellClient
 from .flags import coerce_bool
+from .homeassistant_executor import HomeAssistantExecutor
 from .memory import MemoryBackend, build_memory_backend
+from .mobile_executor import AndroidMaestroExecutor, IOSAppiumExecutor, IOSVisionExecutor, UnifiedMobileExecutor
 from .novaprime import (
     NovaPrimeBackend,
     build_novaprime_client,
@@ -29,9 +35,21 @@ from .novaprime import (
 from .plan_store import PlanStore
 from .policy import ActionPolicy
 from .plugins import PluginRegistry, SIBBridge, build_plugin_registry
+from .runtime_governance import RuntimeGovernance, _UNSET as _RUNTIME_UNSET
 from .voice import build_stt_backend, build_tts_backend
+from .vision_grounding import VisionGroundingExecutor
 from .workflows import WorkflowCheckpointStore, WorkflowEngine, WorkflowRecord, WorkflowStore, workflows_enabled
 
+
+def _result_payload(status: str, output: str, action: dict[str, Any], data: dict[str, Any] | None) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "status": str(status),
+        "output": str(output),
+        "action": dict(action),
+    }
+    if data is not None:
+        payload["data"] = dict(data)
+    return payload
 
 class NovaAdaptService:
     """Shared application service used by CLI and HTTP server."""
@@ -45,6 +63,9 @@ class NovaAdaptService:
         router_loader: Callable[[Path], ModelRouter] | None = None,
         directshell_factory: Callable[[], DirectShellClient] | None = None,
         browser_executor_factory: Callable[[], BrowserExecutor] | None = None,
+        vision_executor_factory: Callable[[], VisionGroundingExecutor] | None = None,
+        mobile_executor_factory: Callable[[], UnifiedMobileExecutor] | None = None,
+        homeassistant_executor_factory: Callable[[], HomeAssistantExecutor] | None = None,
         memory_backend: MemoryBackend | None = None,
         novaprime_client: NovaPrimeBackend | None = None,
         adapt_toggle_store: AdaptToggleStore | None = None,
@@ -52,6 +73,7 @@ class NovaAdaptService:
         adapt_persona: AdaptPersonaEngine | None = None,
         channel_registry: ChannelRegistry | None = None,
         plugin_registry: PluginRegistry | None = None,
+        runtime_governance: RuntimeGovernance | None = None,
     ) -> None:
         self.default_config = default_config
         self.db_path = db_path
@@ -60,6 +82,9 @@ class NovaAdaptService:
         self.router_loader = router_loader or ModelRouter.from_config_file
         self.directshell_factory = directshell_factory or DirectShellClient
         self.browser_executor_factory = browser_executor_factory or BrowserExecutor
+        self.vision_executor_factory = vision_executor_factory
+        self.mobile_executor_factory = mobile_executor_factory
+        self.homeassistant_executor_factory = homeassistant_executor_factory or HomeAssistantExecutor
         self.memory_backend = memory_backend or build_memory_backend()
         self.novaprime_client = novaprime_client or build_novaprime_client()
         self.adapt_toggle_store = adapt_toggle_store or AdaptToggleStore()
@@ -67,27 +92,40 @@ class NovaAdaptService:
         self.adapt_persona = adapt_persona or AdaptPersonaEngine()
         self.channel_registry = channel_registry or build_channel_registry()
         self.plugin_registry = plugin_registry or build_plugin_registry()
+        self.runtime_governance = runtime_governance or RuntimeGovernance(self._runtime_governance_state_path())
         self._plan_store: PlanStore | None = None
         self._audit_store: AuditStore | None = None
         self._browser_executor: BrowserExecutor | None = None
+        self._vision_executor: VisionGroundingExecutor | None = None
+        self._mobile_executor: UnifiedMobileExecutor | None = None
+        self._homeassistant_executor: HomeAssistantExecutor | None = None
         self._sib_bridge: SIBBridge | None = None
         self._canvas_renderer: CanvasRenderer | None = None
         self._canvas_sessions: CanvasSessionStore | None = None
         self._workflow_store: WorkflowStore | None = None
         self._workflow_checkpoints: WorkflowCheckpointStore | None = None
         self._workflow_engine: WorkflowEngine | None = None
+        self._control_artifact_store: ControlArtifactStore | None = None
+        self._agent_template_store: AgentTemplateStore | None = None
 
     def close(self) -> None:
         browser = self._browser_executor
         self._browser_executor = None
+        vision = self._vision_executor
+        self._vision_executor = None
+        mobile = self._mobile_executor
+        self._mobile_executor = None
+        homeassistant = self._homeassistant_executor
+        self._homeassistant_executor = None
         if browser is None:
-            return
-        close_fn = getattr(browser, "close", None)
-        if callable(close_fn):
-            try:
-                close_fn()
-            except Exception:
-                pass
+            browser = None
+        for runtime in (browser, vision, mobile, homeassistant):
+            close_fn = getattr(runtime, "close", None)
+            if callable(close_fn):
+                try:
+                    close_fn()
+                except Exception:
+                    pass
 
     def models(self, config_path: Path | None = None) -> list[dict[str, Any]]:
         router = self.router_loader(config_path or self.default_config)
@@ -172,6 +210,378 @@ class NovaAdaptService:
             "status": str(result.status),
             "output": str(result.output),
         }
+
+    def vision_execute(self, payload: dict[str, Any]) -> dict[str, Any]:
+        config_path = Path(payload.get("config") or self.default_config)
+        goal = str(payload.get("goal") or payload.get("objective") or "").strip()
+        if not goal:
+            raise ValueError("'goal' or 'objective' is required")
+
+        strategy = str(payload.get("strategy", "single") or "single")
+        model_name = str(payload.get("model") or "").strip() or None
+        candidate_models = self._as_name_list(payload.get("candidates"))
+        fallback_models = self._as_name_list(payload.get("fallbacks"))
+        execute = coerce_bool(payload.get("execute"), default=False)
+        allow_dangerous = coerce_bool(payload.get("allow_dangerous"), default=False)
+        screenshot_png = self._decode_base64_image(payload.get("screenshot_base64"))
+        app_name = str(payload.get("app_name") or "").strip()
+        context = payload.get("context") if isinstance(payload.get("context"), dict) else {}
+        grounded = self._vision().ground(
+            goal=goal,
+            config_path=config_path,
+            screenshot_png=screenshot_png,
+            app_name=app_name,
+            model_name=model_name,
+            strategy=strategy,
+            candidate_models=candidate_models or None,
+            fallback_models=fallback_models or None,
+            context=context,
+            ocr_text=str(payload.get("ocr_text") or ""),
+            accessibility_tree=str(payload.get("accessibility_tree") or ""),
+        )
+        policy = ActionPolicy()
+        decision = policy.evaluate(grounded.action, allow_dangerous=allow_dangerous)
+        runtime_result = self._execute_routed_action(
+            grounded.action,
+            execute=(execute and decision.allowed),
+            config_path=config_path,
+        )
+        out: dict[str, Any] = {
+            "goal": goal,
+            "status": "blocked" if execute and not decision.allowed else runtime_result["status"],
+            "output": decision.reason if execute and not decision.allowed else runtime_result["output"],
+            "action": runtime_result["action"],
+            "dangerous": decision.dangerous,
+            "vision": {
+                "confidence": grounded.confidence,
+                "reason": grounded.reason,
+                "model": grounded.model_name,
+                "model_id": grounded.model_id,
+                "strategy": grounded.strategy,
+                "vote_summary": grounded.vote_summary,
+                "attempted_models": grounded.attempted_models,
+                "model_errors": grounded.model_errors,
+                "ocr_text": grounded.ocr_text,
+                "accessibility_tree": grounded.accessibility_tree,
+                "screenshot_base64": grounded.screenshot_base64,
+            },
+        }
+        if runtime_result.get("data") is not None:
+            out["data"] = runtime_result.get("data")
+        artifact = self._store_control_artifact(
+            control_type="vision",
+            result=out,
+            goal=goal,
+            transport="vision-grounding",
+            preview_png=self._decode_base64_image(grounded.screenshot_base64),
+            model=grounded.model_name,
+            model_id=grounded.model_id,
+            metadata={
+                "app_name": app_name,
+                "context": context,
+                "vision": self._vision_metadata_without_screenshot(out.get("vision")),
+            },
+        )
+        if artifact is not None:
+            out["artifact"] = artifact
+        self._ingest_control_memory(
+            control_type="vision",
+            payload={
+                "goal": goal,
+                "result": out,
+                "context": context,
+            },
+            event_names=["control.vision", f"control.vision.{out['status']}"],
+        )
+        return out
+
+    def mobile_action(self, payload: dict[str, Any]) -> dict[str, Any]:
+        platform_name = str(payload.get("platform") or "").strip().lower()
+        if platform_name not in {"android", "ios"}:
+            raise ValueError("'platform' must be 'android' or 'ios'")
+        execute = coerce_bool(payload.get("execute"), default=False)
+        allow_dangerous = coerce_bool(payload.get("allow_dangerous"), default=False)
+        config_path = Path(payload.get("config") or self.default_config)
+        strategy = str(payload.get("strategy", "single") or "single")
+        model_name = str(payload.get("model") or "").strip() or None
+        candidate_models = self._as_name_list(payload.get("candidates"))
+        fallback_models = self._as_name_list(payload.get("fallbacks"))
+
+        raw_action = payload.get("action")
+        has_direct_mobile_action = isinstance(raw_action, dict) or payload.get("type") is not None
+        prefer_appium = coerce_bool(payload.get("prefer_appium"), default=False)
+
+        if platform_name == "ios" and prefer_appium and has_direct_mobile_action and self._mobile().ios_appium_executor.available():
+            if isinstance(raw_action, dict):
+                action = dict(raw_action)
+            else:
+                action = {key: value for key, value in payload.items() if key not in {"action", "config"}}
+            action["platform"] = "ios"
+            policy = ActionPolicy()
+            decision = policy.evaluate(action, allow_dangerous=allow_dangerous)
+            runtime_result = self._mobile().execute_action(
+                action,
+                dry_run=not (execute and decision.allowed),
+            )
+            out = {
+                "platform": "ios",
+                "transport": "appium",
+                "status": "blocked" if execute and not decision.allowed else runtime_result.status,
+                "output": decision.reason if execute and not decision.allowed else runtime_result.output,
+                "action": runtime_result.action,
+                "dangerous": decision.dangerous,
+            }
+            if runtime_result.data is not None:
+                out["data"] = runtime_result.data
+            artifact = self._store_control_artifact(
+                control_type="mobile",
+                result=out,
+                goal=str(payload.get("goal") or payload.get("objective") or ""),
+                platform="ios",
+                transport="appium",
+                preview_png=self._decode_base64_image(payload.get("screenshot_base64")),
+                metadata={
+                    "prefer_appium": True,
+                    "executor": "ios-appium",
+                },
+            )
+            if artifact is not None:
+                out["artifact"] = artifact
+        elif platform_name == "ios":
+            grounded, routed_action = self._mobile().ios_executor.execute(
+                payload,
+                config_path=config_path,
+                execute=execute,
+                strategy=strategy,
+                model_name=model_name,
+                candidate_models=candidate_models or None,
+                fallback_models=fallback_models or None,
+            )
+            policy = ActionPolicy()
+            decision = policy.evaluate(routed_action, allow_dangerous=allow_dangerous)
+            runtime_result = self._execute_routed_action(
+                routed_action,
+                execute=(execute and decision.allowed),
+                config_path=config_path,
+            )
+            out: dict[str, Any] = {
+                "platform": "ios",
+                "goal": str(payload.get("goal") or payload.get("objective") or ""),
+                "status": "blocked" if execute and not decision.allowed else runtime_result["status"],
+                "output": decision.reason if execute and not decision.allowed else runtime_result["output"],
+                "action": runtime_result["action"],
+                "dangerous": decision.dangerous,
+                "vision": {
+                    "confidence": grounded.confidence,
+                    "reason": grounded.reason,
+                    "model": grounded.model_name,
+                    "model_id": grounded.model_id,
+                    "screenshot_base64": grounded.screenshot_base64,
+                },
+            }
+            if runtime_result.get("data") is not None:
+                out["data"] = runtime_result.get("data")
+            artifact = self._store_control_artifact(
+                control_type="mobile",
+                result=out,
+                goal=str(payload.get("goal") or payload.get("objective") or ""),
+                platform="ios",
+                transport="vision",
+                preview_png=self._decode_base64_image(grounded.screenshot_base64),
+                model=grounded.model_name,
+                model_id=grounded.model_id,
+                metadata={
+                    "app_name": str(payload.get("app_name") or "iPhone").strip(),
+                    "vision": self._vision_metadata_without_screenshot(out.get("vision")),
+                },
+            )
+            if artifact is not None:
+                out["artifact"] = artifact
+        else:
+            raw_action = payload.get("action")
+            if isinstance(raw_action, dict):
+                action = dict(raw_action)
+            else:
+                action = {key: value for key, value in payload.items() if key not in {"action", "config"}}
+            action["platform"] = "android"
+            policy = ActionPolicy()
+            decision = policy.evaluate(action, allow_dangerous=allow_dangerous)
+            runtime_result = self._execute_routed_action(
+                action,
+                execute=(execute and decision.allowed),
+                config_path=config_path,
+            )
+            out = {
+                "platform": "android",
+                "status": "blocked" if execute and not decision.allowed else runtime_result["status"],
+                "output": decision.reason if execute and not decision.allowed else runtime_result["output"],
+                "action": runtime_result["action"],
+                "dangerous": decision.dangerous,
+            }
+            if runtime_result.get("data") is not None:
+                out["data"] = runtime_result.get("data")
+            artifact = self._store_control_artifact(
+                control_type="mobile",
+                result=out,
+                goal=str(payload.get("goal") or payload.get("objective") or ""),
+                platform="android",
+                transport="android-maestro",
+                preview_png=self._decode_base64_image(payload.get("screenshot_base64")),
+                metadata={
+                    "executor": "android-maestro",
+                },
+            )
+            if artifact is not None:
+                out["artifact"] = artifact
+
+        self._ingest_control_memory(
+            control_type="mobile",
+            payload=out,
+            event_names=["control.mobile", f"control.mobile.{platform_name}", f"control.mobile.{out['status']}"],
+        )
+        return out
+
+    def mobile_status(self) -> dict[str, Any]:
+        return self._mobile().status()
+
+    def list_control_artifacts(self, *, limit: int = 10, control_type: str | None = None) -> list[dict[str, Any]]:
+        return self._control_artifact_store_obj().list(limit=max(1, int(limit)), control_type=control_type)
+
+    def get_control_artifact(self, artifact_id: str) -> dict[str, Any] | None:
+        return self._control_artifact_store_obj().get(artifact_id)
+
+    def control_artifact_preview(self, artifact_id: str) -> tuple[bytes, str] | None:
+        return self._control_artifact_store_obj().read_preview(artifact_id)
+
+    def runtime_governance_status(self, *, job_stats: dict[str, Any] | None = None) -> dict[str, Any]:
+        return self.runtime_governance.snapshot(job_stats=job_stats)
+
+    def runtime_governance_preflight(self) -> str | None:
+        return self.runtime_governance.preflight_error()
+
+    def runtime_governance_update(
+        self,
+        *,
+        paused: bool | None = None,
+        pause_reason: str | None = None,
+        budget_limit_usd: float | None | object = _RUNTIME_UNSET,
+        max_active_runs: int | None | object = _RUNTIME_UNSET,
+        reset_usage: bool = False,
+        job_stats: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        budget_value = (
+            budget_limit_usd
+            if budget_limit_usd is _RUNTIME_UNSET or budget_limit_usd is None or isinstance(budget_limit_usd, (int, float))
+            else _RUNTIME_UNSET
+        )
+        max_active_value = (
+            max_active_runs
+            if max_active_runs is _RUNTIME_UNSET or max_active_runs is None or isinstance(max_active_runs, int)
+            else _RUNTIME_UNSET
+        )
+        state = self.runtime_governance.update(
+            paused=paused,
+            pause_reason=pause_reason,
+            budget_limit_usd=budget_value,
+            max_active_runs=max_active_value,
+        )
+        if reset_usage:
+            state = self.runtime_governance.reset_usage()
+        if isinstance(job_stats, dict):
+            state["jobs"] = job_stats
+        return state
+
+    def homeassistant_status(self) -> dict[str, Any]:
+        return self._homeassistant().status()
+
+    def mqtt_status(self) -> dict[str, Any]:
+        status = self._homeassistant().status()
+        mqtt_status = status.get("mqtt_direct") if isinstance(status, dict) else None
+        if isinstance(mqtt_status, dict):
+            return mqtt_status
+        return {
+            "ok": False,
+            "configured": False,
+            "transport": "mqtt-direct",
+            "error": "MQTT status unavailable",
+        }
+
+    def homeassistant_discover(
+        self,
+        *,
+        domain: str = "",
+        entity_id_prefix: str = "",
+        limit: int = 250,
+    ) -> dict[str, Any]:
+        return self._homeassistant().discover(
+            domain=domain,
+            entity_id_prefix=entity_id_prefix,
+            limit=max(1, int(limit)),
+        )
+
+    def mqtt_subscribe(
+        self,
+        *,
+        topic: str,
+        timeout_seconds: float = 3.0,
+        max_messages: int = 10,
+        qos: int = 0,
+    ) -> dict[str, Any]:
+        out = self.homeassistant_action(
+            {
+                "action": {
+                    "type": "mqtt_subscribe",
+                    "topic": str(topic or ""),
+                    "timeout_seconds": float(timeout_seconds),
+                    "max_messages": max(1, int(max_messages)),
+                    "qos": int(qos),
+                    "transport": "mqtt-direct",
+                },
+                "execute": True,
+                "allow_dangerous": False,
+            }
+        )
+        return out
+
+    def homeassistant_action(self, payload: dict[str, Any]) -> dict[str, Any]:
+        raw_action = payload.get("action")
+        if isinstance(raw_action, dict):
+            action = dict(raw_action)
+        else:
+            action = {key: value for key, value in payload.items() if key != "action"}
+        execute = coerce_bool(payload.get("execute"), default=False)
+        allow_dangerous = coerce_bool(payload.get("allow_dangerous"), default=False)
+        policy = ActionPolicy()
+        decision = policy.evaluate(action, allow_dangerous=allow_dangerous)
+        runtime_result = self._execute_routed_action(action, execute=(execute and decision.allowed))
+        out: dict[str, Any] = {
+            "status": "blocked" if execute and not decision.allowed else runtime_result["status"],
+            "output": decision.reason if execute and not decision.allowed else runtime_result["output"],
+            "action": runtime_result["action"],
+            "dangerous": decision.dangerous,
+        }
+        if runtime_result.get("data") is not None:
+            out["data"] = runtime_result.get("data")
+        runtime_transport = ""
+        if isinstance(runtime_result.get("data"), dict):
+            runtime_transport = str(runtime_result["data"].get("transport") or "").strip()
+        artifact = self._store_control_artifact(
+            control_type="iot",
+            result=out,
+            goal=str(payload.get("goal") or payload.get("objective") or ""),
+            transport=runtime_transport or "homeassistant",
+            metadata={
+                "executor": "homeassistant",
+            },
+        )
+        if artifact is not None:
+            out["artifact"] = artifact
+        self._ingest_control_memory(
+            control_type="iot",
+            payload=out,
+            event_names=["control.iot", f"control.iot.{out['status']}"],
+        )
+        return out
 
     def memory_status(self) -> dict[str, Any]:
         status = self.memory_backend.status()
@@ -1253,6 +1663,257 @@ class NovaAdaptService:
             "context": normalized_context,
         }
 
+    def agent_templates_list(
+        self,
+        *,
+        limit: int = 50,
+        source: str = "",
+        tag: str = "",
+    ) -> dict[str, Any]:
+        rows = self._agent_template_store_obj().list(
+            limit=max(1, min(500, int(limit))),
+            source=str(source or "").strip(),
+            tag=str(tag or "").strip(),
+        )
+        return {
+            "ok": True,
+            "count": len(rows),
+            "templates": [self._agent_template_payload(item) for item in rows],
+        }
+
+    def agent_templates_gallery(self, *, tag: str = "") -> dict[str, Any]:
+        normalized_tag = str(tag or "").strip().lower()
+        items = []
+        for item in self._load_agent_gallery():
+            tags = [str(tag_item).strip().lower() for tag_item in item.get("tags", []) if str(tag_item).strip()]
+            if normalized_tag and normalized_tag not in tags:
+                continue
+            items.append(dict(item))
+        return {
+            "ok": True,
+            "count": len(items),
+            "templates": items,
+        }
+
+    def agent_template_get(self, template_id: str) -> dict[str, Any]:
+        normalized_id = str(template_id or "").strip()
+        if not normalized_id:
+            raise ValueError("'template_id' is required")
+        record = self._agent_template_store_obj().get(normalized_id)
+        if record is None:
+            return {"ok": False, "error": "agent template not found", "template_id": normalized_id}
+        out = self._agent_template_payload(record)
+        out["ok"] = True
+        out["manifest"] = self._agent_template_manifest(record)
+        return out
+
+    def agent_template_shared(self, share_token: str) -> dict[str, Any]:
+        normalized_token = str(share_token or "").strip()
+        if not normalized_token:
+            raise ValueError("'share_token' is required")
+        record = self._agent_template_store_obj().get_by_share_token(normalized_token)
+        if record is None:
+            return {"ok": False, "error": "shared agent template not found", "share_token": normalized_token}
+        out = self._agent_template_payload(record)
+        out["ok"] = True
+        out["manifest"] = self._agent_template_manifest(record)
+        out["shared"] = True
+        return out
+
+    def agent_template_export(
+        self,
+        *,
+        name: str = "",
+        description: str = "",
+        objective: str = "",
+        strategy: str = "single",
+        candidates: list[str] | None = None,
+        steps: list[dict[str, Any]] | None = None,
+        metadata: dict[str, Any] | None = None,
+        tags: list[str] | None = None,
+        workflow_id: str = "",
+        template_id: str = "",
+        include_memory: bool = True,
+        memory_query: str = "",
+        memory_top_k: int = 5,
+        source: str = "local",
+    ) -> dict[str, Any]:
+        normalized_objective = str(objective or "").strip()
+        normalized_name = str(name or "").strip()
+        normalized_description = str(description or "").strip()
+        normalized_strategy = str(strategy or "single").strip() or "single"
+        normalized_steps = [dict(item) for item in (steps or []) if isinstance(item, dict)]
+        normalized_metadata = dict(metadata or {})
+        normalized_workflow = str(workflow_id or "").strip()
+
+        workflow_record: WorkflowRecord | None = None
+        if normalized_workflow:
+            workflow_record = self._workflow_store_obj().get(normalized_workflow)
+            if workflow_record is None:
+                raise ValueError("workflow not found")
+            if not normalized_objective:
+                normalized_objective = workflow_record.objective
+            if not normalized_steps:
+                normalized_steps = [dict(item) for item in workflow_record.steps]
+            normalized_metadata.setdefault("workflow_id", workflow_record.workflow_id)
+            normalized_metadata.setdefault("workflow_status", workflow_record.status)
+
+        if not normalized_objective:
+            raise ValueError("'objective' is required")
+        if not normalized_name:
+            normalized_name = normalized_objective[:72]
+        if not normalized_description:
+            normalized_description = f"Exported agent template for {normalized_name}"
+
+        memory_snapshot: list[dict[str, Any]] = []
+        if include_memory:
+            query = str(memory_query or normalized_objective).strip() or normalized_objective
+            memory_snapshot = self.memory_backend.recall(query, top_k=max(1, min(20, int(memory_top_k))))
+            normalized_metadata.setdefault("memory_query", query)
+        if workflow_record is not None:
+            normalized_metadata.setdefault("workflow", self._workflow_payload(workflow_record))
+
+        record = self._agent_template_store_obj().create_or_update(
+            name=normalized_name,
+            description=normalized_description,
+            objective=normalized_objective,
+            strategy=normalized_strategy,
+            candidates=[str(item).strip() for item in (candidates or []) if str(item).strip()],
+            steps=normalized_steps,
+            metadata=normalized_metadata,
+            memory_snapshot=memory_snapshot,
+            tags=[str(item).strip() for item in (tags or []) if str(item).strip()],
+            source=str(source or "local").strip() or "local",
+            template_id=str(template_id or "").strip(),
+        )
+        self._remember_agent_template_event("agent_template_export", record)
+        out = self._agent_template_payload(record)
+        out["ok"] = True
+        out["manifest"] = self._agent_template_manifest(record)
+        return out
+
+    def agent_template_import(self, payload: dict[str, Any]) -> dict[str, Any]:
+        manifest = payload.get("manifest") if isinstance(payload.get("manifest"), dict) else payload
+        normalized = dict(manifest if isinstance(manifest, dict) else {})
+        record = self._agent_template_store_obj().create_or_update(
+            name=str(normalized.get("name") or normalized.get("title") or "").strip(),
+            description=str(normalized.get("description") or "").strip(),
+            objective=str(normalized.get("objective") or "").strip(),
+            strategy=str(normalized.get("strategy") or "single").strip() or "single",
+            candidates=self._as_name_list(normalized.get("candidates")),
+            steps=[dict(item) for item in normalized.get("steps", []) if isinstance(item, dict)]
+            if isinstance(normalized.get("steps"), list)
+            else [],
+            metadata=normalized.get("metadata") if isinstance(normalized.get("metadata"), dict) else {},
+            memory_snapshot=[
+                dict(item) for item in normalized.get("memory_snapshot", []) if isinstance(item, dict)
+            ]
+            if isinstance(normalized.get("memory_snapshot"), list)
+            else [],
+            tags=[str(item).strip() for item in normalized.get("tags", []) if str(item).strip()]
+            if isinstance(normalized.get("tags"), list)
+            else [],
+            source=str(normalized.get("source") or payload.get("source") or "import").strip() or "import",
+            template_id=str(normalized.get("template_id") or payload.get("template_id") or "").strip(),
+            share_token=str(normalized.get("share_token") or "").strip(),
+            shared=coerce_bool(normalized.get("shared"), default=False),
+        )
+        self._remember_agent_template_event("agent_template_import", record)
+        out = self._agent_template_payload(record)
+        out["ok"] = True
+        out["manifest"] = self._agent_template_manifest(record)
+        return out
+
+    def agent_template_share(
+        self,
+        template_id: str,
+        *,
+        rotate: bool = False,
+        shared: bool = True,
+    ) -> dict[str, Any]:
+        normalized_id = str(template_id or "").strip()
+        if not normalized_id:
+            raise ValueError("'template_id' is required")
+        record = self._agent_template_store_obj().get(normalized_id)
+        if record is None:
+            return {"ok": False, "error": "agent template not found", "template_id": normalized_id}
+        share_token = record.share_token
+        if shared:
+            if rotate or not share_token:
+                share_token = secrets.token_urlsafe(18)
+        else:
+            share_token = ""
+        updated = self._agent_template_store_obj().update_share(
+            normalized_id,
+            share_token=share_token,
+            shared=bool(shared),
+        )
+        if updated is None:
+            return {"ok": False, "error": "agent template not found", "template_id": normalized_id}
+        self._remember_agent_template_event("agent_template_share", updated)
+        out = self._agent_template_payload(updated)
+        out["ok"] = True
+        out["manifest"] = self._agent_template_manifest(updated)
+        out["share"] = self._agent_template_share_descriptor(updated)
+        return out
+
+    def agent_template_launch(
+        self,
+        template_id: str,
+        *,
+        mode: str = "plan",
+        execute: bool = False,
+        allow_dangerous: bool = False,
+        context: str = "api",
+        overrides: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        normalized_id = str(template_id or "").strip()
+        if not normalized_id:
+            raise ValueError("'template_id' is required")
+        record = self._agent_template_store_obj().get(normalized_id)
+        if record is None:
+            return {"ok": False, "error": "agent template not found", "template_id": normalized_id}
+        override_map = dict(overrides or {})
+        objective = str(override_map.get("objective") or record.objective).strip()
+        if not objective:
+            raise ValueError("'objective' is required")
+        strategy = str(override_map.get("strategy") or record.strategy or "single").strip() or "single"
+        candidates = self._as_name_list(override_map.get("candidates")) or list(record.candidates)
+        metadata = dict(record.metadata)
+        incoming_metadata = override_map.get("metadata")
+        if isinstance(incoming_metadata, dict):
+            metadata.update(incoming_metadata)
+        metadata.setdefault("template_id", record.template_id)
+        metadata.setdefault("template_name", record.name)
+
+        if str(mode or "plan").strip().lower() == "workflow":
+            launch = self.workflows_start(
+                objective,
+                steps=[dict(item) for item in record.steps],
+                metadata=metadata,
+                context=context,
+            )
+        else:
+            run_payload: dict[str, Any] = {
+                "objective": objective,
+                "strategy": strategy,
+                "execute": bool(execute),
+                "metadata": metadata,
+            }
+            if candidates:
+                run_payload["candidates"] = candidates
+            if allow_dangerous:
+                run_payload["allow_dangerous"] = True
+            launch = self.run(run_payload) if str(mode or "plan").strip().lower() == "run" else self.create_plan(run_payload)
+        self._remember_agent_template_event("agent_template_launch", record)
+        return {
+            "ok": True,
+            "template_id": record.template_id,
+            "mode": str(mode or "plan").strip().lower() or "plan",
+            "template": self._agent_template_payload(record),
+            "launch": launch,
+        }
+
     def channels(self) -> list[dict[str, Any]]:
         return self.channel_registry.list_channels()
 
@@ -1749,6 +2410,12 @@ class NovaAdaptService:
                 "objective": objective[:240],
             },
         )
+        self._finalize_memory_events(
+            ["feedback.recorded"],
+            session_id=f"feedback:{feedback_id}",
+            consolidate=True,
+            dream=rating >= 9 or rating <= 3,
+        )
         return {
             "ok": True,
             "id": feedback_id,
@@ -1918,6 +2585,12 @@ class NovaAdaptService:
         record_history = coerce_bool(payload.get("record_history"), default=True)
         allow_dangerous = coerce_bool(payload.get("allow_dangerous"), default=False)
         max_actions = int(payload.get("max_actions", 25))
+        auto_repair_attempts = max(0, int(payload.get("auto_repair_attempts", 0)))
+        repair_strategy = str(payload.get("repair_strategy") or strategy or "decompose").strip() or "decompose"
+        repair_model = str(payload.get("repair_model") or model_name or "").strip() or None
+        repair_candidates = self._as_name_list(payload.get("repair_candidates")) or list(candidate_models)
+        repair_fallbacks = self._as_name_list(payload.get("repair_fallbacks")) or list(fallback_models)
+        memory_session_id = str(payload.get("memory_session_id") or "").strip() or f"run:{uuid.uuid4().hex[:12]}"
         adapt_id = str(payload.get("adapt_id") or "").strip()
         player_id = str(payload.get("player_id") or "").strip()
         realm = str(payload.get("realm") or "").strip()
@@ -2013,47 +2686,62 @@ class NovaAdaptService:
             else:
                 planning_identity_profile = {"persona": persona_context}
 
-        router = self.router_loader(config_path)
-        queue = UndoQueue(db_path=self.db_path)
-        agent = NovaAdaptAgent(
-            router=router,
-            directshell=self.directshell_factory(),
-            undo_queue=queue,
-            memory_backend=self.memory_backend,
-        )
-        kernel_context: dict[str, Any] | None = None
-        if should_use_kernel(payload):
-            novaprime_context["enabled"] = True
-            kernel_response = run_with_kernel(
-                payload=payload,
-                objective=objective,
-                strategy=strategy,
-                model_name=str(model_name or "").strip() or None,
+        with self.runtime_governance.run_guard():
+            router = self.router_loader(config_path)
+            queue = UndoQueue(db_path=self.db_path)
+            agent = NovaAdaptAgent(
                 router=router,
-                agent=agent,
-                execute=execute,
-                record_history=record_history,
-                allow_dangerous=allow_dangerous,
-                max_actions=max(1, max_actions),
-                adapt_id=adapt_id,
-                player_id=player_id,
-                identity_profile=planning_identity_profile,
+                directshell=self.directshell_factory(),
+                undo_queue=queue,
+                memory_backend=self.memory_backend,
             )
-            raw_kernel_context = kernel_response.get("kernel")
-            if isinstance(raw_kernel_context, dict):
-                kernel_context = dict(raw_kernel_context)
-            if bool(kernel_response.get("ok", False)) and isinstance(kernel_response.get("result"), dict):
-                result = dict(kernel_response.get("result", {}))
-            else:
-                kernel_error = str(kernel_response.get("error") or "novaprime kernel execution failed")
-                if kernel_context is None:
-                    kernel_context = {"ok": False, "error": kernel_error}
+            kernel_context: dict[str, Any] | None = None
+            if should_use_kernel(payload):
+                novaprime_context["enabled"] = True
+                kernel_response = run_with_kernel(
+                    payload=payload,
+                    objective=objective,
+                    strategy=strategy,
+                    model_name=str(model_name or "").strip() or None,
+                    router=router,
+                    agent=agent,
+                    execute=execute,
+                    record_history=record_history,
+                    allow_dangerous=allow_dangerous,
+                    max_actions=max(1, max_actions),
+                    adapt_id=adapt_id,
+                    player_id=player_id,
+                    identity_profile=planning_identity_profile,
+                )
+                raw_kernel_context = kernel_response.get("kernel")
+                if isinstance(raw_kernel_context, dict):
+                    kernel_context = dict(raw_kernel_context)
+                if bool(kernel_response.get("ok", False)) and isinstance(kernel_response.get("result"), dict):
+                    result = dict(kernel_response.get("result", {}))
                 else:
-                    kernel_context.setdefault("ok", False)
-                    kernel_context.setdefault("error", kernel_error)
-                if kernel_required(payload):
-                    raise RuntimeError(kernel_error)
-                kernel_context["fallback"] = "legacy_agent"
+                    kernel_error = str(kernel_response.get("error") or "novaprime kernel execution failed")
+                    if kernel_context is None:
+                        kernel_context = {"ok": False, "error": kernel_error}
+                    else:
+                        kernel_context.setdefault("ok", False)
+                        kernel_context.setdefault("error", kernel_error)
+                    if kernel_required(payload):
+                        raise RuntimeError(kernel_error)
+                    kernel_context["fallback"] = "legacy_agent"
+                    result = agent.run_objective(
+                        objective=objective,
+                        strategy=strategy,
+                        model_name=model_name,
+                        candidate_models=candidate_models or None,
+                        fallback_models=fallback_models or None,
+                        dry_run=not execute,
+                        record_history=record_history,
+                        allow_dangerous=allow_dangerous,
+                        max_actions=max(1, max_actions),
+                        identity_profile=planning_identity_profile,
+                        bond_verified=bond_verified,
+                )
+            else:
                 result = agent.run_objective(
                     objective=objective,
                     strategy=strategy,
@@ -2067,19 +2755,46 @@ class NovaAdaptService:
                     identity_profile=planning_identity_profile,
                     bond_verified=bond_verified,
                 )
-        else:
-            result = agent.run_objective(
-                objective=objective,
+            repair_summary: dict[str, Any] | None = None
+            if execute and isinstance(result, dict) and auto_repair_attempts > 0:
+                execution_results = [
+                    dict(item) for item in result.get("results", []) if isinstance(item, dict)
+                ]
+                action_log_ids = []
+                for item in result.get("action_log_ids", []):
+                    try:
+                        action_log_ids.append(int(item))
+                    except (TypeError, ValueError):
+                        continue
+                failed_actions = [
+                    item
+                    for item in execution_results
+                    if str(item.get("status", "")).lower() in {"failed", "blocked"}
+                ]
+                if failed_actions:
+                    repaired_results, repaired_action_log_ids, repair_summary = self._attempt_execution_self_heal(
+                        objective=objective,
+                        actions=[dict(item) for item in result.get("actions", []) if isinstance(item, dict)],
+                        execution_results=execution_results,
+                        action_log_ids=action_log_ids,
+                        allow_dangerous=allow_dangerous,
+                        max_actions=max_actions,
+                        repair_attempts=auto_repair_attempts,
+                        repair_strategy=repair_strategy,
+                        repair_model=repair_model,
+                        repair_candidates=repair_candidates,
+                        repair_fallbacks=repair_fallbacks,
+                        config_path=config_path,
+                        identity_profile=planning_identity_profile,
+                        bond_verified=bond_verified,
+                    )
+                    result["results"] = repaired_results
+                    result["action_log_ids"] = repaired_action_log_ids
+                    result["repair"] = repair_summary
+            self.runtime_governance.record_model_usage(
+                usage=result.get("model_usage") if isinstance(result, dict) else None,
                 strategy=strategy,
-                model_name=model_name,
-                candidate_models=candidate_models or None,
-                fallback_models=fallback_models or None,
-                dry_run=not execute,
-                record_history=record_history,
-                allow_dangerous=allow_dangerous,
-                max_actions=max(1, max_actions),
-                identity_profile=planning_identity_profile,
-                bond_verified=bond_verified,
+                objective=objective,
             )
         if isinstance(kernel_context, dict):
             novaprime_context["kernel"] = kernel_context
@@ -2116,6 +2831,27 @@ class NovaAdaptService:
             result["novaprime"] = novaprime_context
         if adapt_context:
             result["adapt"] = adapt_context
+        run_event_names = ["run.executed" if execute else "run.preview"]
+        failed_after_run = any(
+            str(item.get("status", "")).lower() in {"failed", "blocked"}
+            for item in result.get("results", [])
+            if isinstance(item, dict)
+        )
+        repair_summary = result.get("repair") if isinstance(result.get("repair"), dict) else None
+        if repair_summary is not None:
+            run_event_names.append("run.auto_repair_attempted")
+            if bool(repair_summary.get("healed", False)):
+                run_event_names.append("run.auto_repaired")
+            else:
+                run_event_names.append("run.auto_repair_failed")
+        if failed_after_run:
+            run_event_names.append("run.failed_actions")
+        self._finalize_memory_events(
+            run_event_names,
+            session_id=memory_session_id,
+            consolidate=True,
+            dream=bool(repair_summary and repair_summary.get("healed", False)),
+        )
         return result
 
     def create_plan(self, payload: dict[str, Any]) -> dict[str, Any]:
@@ -2137,8 +2873,10 @@ class NovaAdaptService:
                 "model_id": plan_preview.get("model_id"),
                 "actions": plan_preview.get("actions", []),
                 "votes": plan_preview.get("votes", {}),
+                "vote_summary": plan_preview.get("vote_summary", {}),
                 "model_errors": plan_preview.get("model_errors", {}),
                 "attempted_models": plan_preview.get("attempted_models", []),
+                "collaboration": plan_preview.get("collaboration", {}),
                 "status": "pending",
             }
         )
@@ -2172,6 +2910,13 @@ class NovaAdaptService:
         action_retry_attempts = max(0, int(payload.get("action_retry_attempts", 0)))
         action_retry_backoff_seconds = max(0.0, float(payload.get("action_retry_backoff_seconds", 0.25)))
         retry_failed_only = coerce_bool(payload.get("retry_failed_only"), default=False)
+        auto_repair_attempts = max(0, int(payload.get("auto_repair_attempts", 0)))
+        repair_strategy = str(
+            payload.get("repair_strategy") or (plan.get("strategy") if str(plan.get("strategy") or "").strip() else "decompose")
+        ).strip() or "decompose"
+        repair_model = str(payload.get("repair_model") or plan.get("model") or "").strip() or None
+        repair_candidates = self._as_name_list(payload.get("repair_candidates")) or self._as_name_list(plan.get("attempted_models"))
+        repair_fallbacks = self._as_name_list(payload.get("repair_fallbacks"))
 
         if plan["status"] == "executed":
             if retry_failed_only:
@@ -2219,11 +2964,11 @@ class NovaAdaptService:
 
         policy = ActionPolicy()
         queue = UndoQueue(db_path=self.db_path)
-        directshell = self.directshell_factory()
         self._plans().mark_executing(plan_id=plan_id, total_actions=len(actions))
 
         execution_results: list[dict[str, Any]] = []
         action_log_ids: list[int] = list(preserved_action_log_ids)
+        repair_summary: dict[str, Any] | None = None
         try:
             for idx, action in enumerate(actions, start=1):
                 if callable(cancel_requested) and bool(cancel_requested()):
@@ -2256,28 +3001,29 @@ class NovaAdaptService:
                     )
                     continue
 
-                run_result = directshell.execute_action(action=action, dry_run=False)
+                routed = self._execute_routed_action(action, execute=True)
                 attempts = 1
-                while str(run_result.status).lower() != "ok" and attempts <= action_retry_attempts:
+                while str(routed["status"]).lower() != "ok" and attempts <= action_retry_attempts:
                     if callable(cancel_requested) and bool(cancel_requested()):
                         raise RuntimeError("execution canceled by operator")
                     if action_retry_backoff_seconds > 0:
                         time.sleep(action_retry_backoff_seconds * (2 ** (attempts - 1)))
-                    run_result = directshell.execute_action(action=action, dry_run=False)
+                    routed = self._execute_routed_action(action, execute=True)
                     attempts += 1
                 execution_results.append(
                     {
-                        "status": run_result.status,
-                        "output": run_result.output,
-                        "action": run_result.action,
+                        "status": routed["status"],
+                        "output": routed["output"],
+                        "action": routed["action"],
                         "dangerous": decision.dangerous,
                         "attempts": attempts,
+                        "data": routed.get("data"),
                     }
                 )
                 action_log_ids.append(
                     queue.record(
-                        action=run_result.action,
-                        status=run_result.status,
+                        action=routed["action"],
+                        status=routed["status"],
                         undo_action=undo_action,
                     )
                 )
@@ -2312,6 +3058,52 @@ class NovaAdaptService:
             for item in execution_results
             if str(item.get("status", "")).lower() in {"failed", "blocked"}
         ]
+        if failed_actions and auto_repair_attempts > 0:
+            execution_results, action_log_ids, repair_summary = self._attempt_execution_self_heal(
+                objective=str(plan.get("objective", "")),
+                actions=actions,
+                execution_results=execution_results,
+                action_log_ids=action_log_ids,
+                allow_dangerous=allow_dangerous,
+                max_actions=max_actions,
+                repair_attempts=auto_repair_attempts,
+                repair_strategy=repair_strategy,
+                repair_model=repair_model,
+                repair_candidates=repair_candidates,
+                repair_fallbacks=repair_fallbacks,
+                cancel_requested=cancel_requested,
+            )
+            failed_actions = [
+                item
+                for item in execution_results
+                if str(item.get("status", "")).lower() in {"failed", "blocked"}
+            ]
+            if repair_summary and bool(repair_summary.get("healed")) and not failed_actions:
+                approved = self._plans().approve(
+                    plan_id=plan_id,
+                    execution_results=execution_results,
+                    action_log_ids=action_log_ids,
+                    status="executed",
+                    repair_summary=repair_summary,
+                )
+                if approved is None:
+                    raise ValueError("Plan not found")
+                self._persist_plan_memory(
+                    plan_id=plan_id,
+                    objective=str(plan.get("objective", "")),
+                    status="executed",
+                    actions=actions,
+                    execution_results=execution_results,
+                    execution_error="",
+                )
+                self._finalize_memory_events(
+                    ["plan.executed", "plan.auto_repaired"],
+                    session_id=f"plan:{plan_id}",
+                    consolidate=True,
+                    dream=True,
+                )
+                return approved
+
         if failed_actions:
             failed = self._plans().fail_execution(
                 plan_id=plan_id,
@@ -2320,6 +3112,7 @@ class NovaAdaptService:
                 action_log_ids=action_log_ids,
                 progress_completed=len(execution_results),
                 progress_total=len(actions),
+                repair_summary=repair_summary,
             )
             if failed is None:
                 raise ValueError("Plan not found")
@@ -2331,6 +3124,12 @@ class NovaAdaptService:
                 execution_results=execution_results,
                 execution_error=str(failed.get("execution_error", "")),
             )
+            self._finalize_memory_events(
+                ["plan.failed", "plan.failed_actions"],
+                session_id=f"plan:{plan_id}",
+                consolidate=True,
+                dream=bool(repair_summary and repair_summary.get("attempts")),
+            )
             return failed
 
         approved = self._plans().approve(
@@ -2338,6 +3137,7 @@ class NovaAdaptService:
             execution_results=execution_results,
             action_log_ids=action_log_ids,
             status="executed",
+            repair_summary=repair_summary,
         )
         if approved is None:
             raise ValueError("Plan not found")
@@ -2349,7 +3149,406 @@ class NovaAdaptService:
             execution_results=execution_results,
             execution_error="",
         )
+        self._finalize_memory_events(
+            ["plan.executed"],
+            session_id=f"plan:{plan_id}",
+            consolidate=True,
+            dream=False,
+        )
         return approved
+
+    def _attempt_execution_self_heal(
+        self,
+        *,
+        objective: str,
+        actions: list[dict[str, Any]],
+        execution_results: list[dict[str, Any]],
+        action_log_ids: list[int],
+        allow_dangerous: bool,
+        max_actions: int,
+        repair_attempts: int,
+        repair_strategy: str,
+        repair_model: str | None,
+        repair_candidates: list[str] | None,
+        repair_fallbacks: list[str] | None,
+        config_path: Path | None = None,
+        identity_profile: dict[str, Any] | None = None,
+        bond_verified: bool | None = None,
+        cancel_requested: Callable[[], bool] | None = None,
+    ) -> tuple[list[dict[str, Any]], list[int], dict[str, Any]]:
+        repaired_results = [dict(item) for item in execution_results]
+        repaired_log_ids = list(action_log_ids)
+        summary: dict[str, Any] = {
+            "healed": False,
+            "attempts": [],
+            "failed_indexes": [
+                idx + 1
+                for idx, item in enumerate(repaired_results)
+                if str(item.get("status", "")).lower() in {"failed", "blocked"}
+            ],
+        }
+        failed_indexes = list(summary["failed_indexes"])
+        if not failed_indexes:
+            summary["healed"] = True
+            return repaired_results, repaired_log_ids, summary
+
+        for attempt in range(1, max(1, repair_attempts) + 1):
+            if callable(cancel_requested) and bool(cancel_requested()):
+                raise RuntimeError("execution canceled by operator")
+            failed_payload = [
+                {
+                    "index": idx,
+                    "action": dict(actions[idx - 1]) if idx - 1 < len(actions) else {},
+                    "result": dict(repaired_results[idx - 1]) if idx - 1 < len(repaired_results) else {},
+                }
+                for idx in failed_indexes
+            ]
+            repair_objective = self._build_plan_repair_objective(
+                objective=objective,
+                failed_items=failed_payload,
+            )
+            repair_run = self._run_repair_objective(
+                objective=repair_objective,
+                failed_items=failed_payload,
+                strategy=repair_strategy,
+                model_name=repair_model,
+                candidate_models=repair_candidates,
+                fallback_models=repair_fallbacks,
+                allow_dangerous=allow_dangerous,
+                max_actions=max_actions,
+                config_path=config_path,
+                identity_profile=identity_profile,
+                bond_verified=bond_verified,
+            )
+            repair_results = [
+                dict(item) for item in repair_run.get("results", []) if isinstance(item, dict)
+            ]
+            repaired_log_ids.extend(
+                int(item)
+                for item in repair_run.get("action_log_ids", [])
+                if isinstance(item, int) or (isinstance(item, str) and str(item).isdigit())
+            )
+            attempt_summary = {
+                "attempt": attempt,
+                "objective": repair_objective,
+                "domain": repair_run.get("repair_domain"),
+                "model": repair_run.get("model"),
+                "strategy": repair_run.get("strategy"),
+                "actions": [dict(item) for item in repair_run.get("actions", []) if isinstance(item, dict)],
+                "results": repair_results,
+                "failed_indexes": list(failed_indexes),
+            }
+            summary["attempts"].append(attempt_summary)
+            attempt_failed = any(
+                str(item.get("status", "")).lower() in {"failed", "blocked"} for item in repair_results
+            ) or not repair_results
+            if attempt_failed:
+                continue
+            replacement_summary = self._summarize_repair_results(repair_results)
+            for idx in failed_indexes:
+                original = dict(repaired_results[idx - 1]) if idx - 1 < len(repaired_results) else {}
+                original["status"] = "repaired"
+                original["output"] = replacement_summary
+                original["repair"] = {
+                    "healed": True,
+                    "attempt": attempt,
+                    "replacement_actions": attempt_summary["actions"],
+                    "replacement_results": repair_results,
+                }
+                repaired_results[idx - 1] = original
+            summary["healed"] = True
+            return repaired_results, repaired_log_ids, summary
+
+        for idx in failed_indexes:
+            if idx - 1 >= len(repaired_results):
+                continue
+            original = dict(repaired_results[idx - 1])
+            original["repair"] = {
+                "healed": False,
+                "attempts": [
+                    {
+                        "attempt": int(item.get("attempt", 0) or 0),
+                        "model": item.get("model"),
+                        "strategy": item.get("strategy"),
+                        "result_statuses": [
+                            str(result.get("status", "")) for result in item.get("results", []) if isinstance(result, dict)
+                        ],
+                    }
+                    for item in summary["attempts"]
+                    if isinstance(item, dict)
+                ],
+            }
+            repaired_results[idx - 1] = original
+        return repaired_results, repaired_log_ids, summary
+
+    def _build_plan_repair_objective(
+        self,
+        *,
+        objective: str,
+        failed_items: list[dict[str, Any]],
+    ) -> str:
+        repair_domain = self._infer_repair_domain(failed_items)
+        guidance = self._repair_domain_user_guidance(repair_domain)
+        return (
+            "Repair only the failed or blocked parts of this plan. "
+            "Do not repeat already successful steps.\n\n"
+            f"Original objective:\n{objective}\n\n"
+            "Failed plan items (JSON):\n"
+            f"{json.dumps(failed_items, ensure_ascii=True)}\n\n"
+            f"Repair domain: {repair_domain}.\n"
+            f"{guidance}\n\n"
+            "Return only the replacement actions needed to complete the failed work."
+        )
+
+    def _run_repair_objective(
+        self,
+        *,
+        objective: str,
+        failed_items: list[dict[str, Any]],
+        strategy: str,
+        model_name: str | None,
+        candidate_models: list[str] | None,
+        fallback_models: list[str] | None,
+        allow_dangerous: bool,
+        max_actions: int,
+        config_path: Path | None = None,
+        identity_profile: dict[str, Any] | None = None,
+        bond_verified: bool | None = None,
+    ) -> dict[str, Any]:
+        router = self.router_loader(Path(config_path or self.default_config))
+        repair_domain = self._infer_repair_domain(failed_items)
+        messages = [{"role": "system", "content": self._repair_domain_system_prompt(repair_domain)}]
+        memory_context = self.memory_backend.augment(
+            query=objective,
+            top_k=5,
+            min_score=0.005,
+            format_name="xml",
+        )
+        if memory_context:
+            messages.append(
+                {
+                    "role": "system",
+                    "content": (
+                        "Relevant long-term memory context for this repair:\n"
+                        f"{memory_context}"
+                    ),
+                }
+            )
+        if isinstance(identity_profile, dict) and identity_profile:
+            messages.append(
+                {
+                    "role": "system",
+                    "content": (
+                        "Adapt identity profile context for repair:\n"
+                        f"{json.dumps(identity_profile, ensure_ascii=True)}"
+                    ),
+                }
+            )
+        if bond_verified is not None:
+            messages.append(
+                {
+                    "role": "system",
+                    "content": (
+                        "Soulbond verification status with active player: "
+                        f"{'verified' if bond_verified else 'unverified'}."
+                    ),
+                }
+            )
+        messages.append({"role": "user", "content": objective})
+
+        router_result = router.chat(
+            messages=messages,
+            model_name=model_name,
+            strategy=str(strategy or "decompose").strip() or "decompose",
+            candidate_models=list(candidate_models or []) or None,
+            fallback_models=list(fallback_models or []) or None,
+        )
+        queue = UndoQueue(db_path=self.db_path)
+        policy = ActionPolicy()
+        actions = NovaAdaptAgent._parse_actions(router_result.content, max_actions=max(1, int(max_actions)))
+        execution: list[dict[str, Any]] = []
+        action_log_ids: list[int] = []
+        for action in actions:
+            decision = policy.evaluate(action, allow_dangerous=allow_dangerous)
+            undo_action = action.get("undo") if isinstance(action.get("undo"), dict) else None
+            if not decision.allowed:
+                execution.append(
+                    {
+                        "status": "blocked",
+                        "output": decision.reason,
+                        "action": action,
+                        "dangerous": decision.dangerous,
+                    }
+                )
+                action_log_ids.append(
+                    queue.record(
+                        action=action,
+                        status="blocked",
+                        undo_action=undo_action,
+                    )
+                )
+                continue
+
+            routed = self._execute_routed_action(action, execute=True, config_path=config_path)
+            execution.append(
+                {
+                    "status": routed["status"],
+                    "output": routed["output"],
+                    "action": routed["action"],
+                    "dangerous": decision.dangerous,
+                    "data": routed.get("data"),
+                }
+            )
+            action_log_ids.append(
+                queue.record(
+                    action=routed["action"],
+                    status=routed["status"],
+                    undo_action=undo_action,
+                )
+            )
+        self.runtime_governance.record_model_usage(
+            usage=router_result.usage,
+            strategy=router_result.strategy,
+            objective=objective,
+        )
+        output = {
+            "model": router_result.model_name,
+            "model_id": router_result.model_id,
+            "strategy": router_result.strategy,
+            "votes": router_result.votes,
+            "vote_summary": router_result.vote_summary,
+            "collaboration": router_result.collaboration,
+            "model_errors": router_result.errors,
+            "attempted_models": router_result.attempted_models,
+            "model_usage": router_result.usage,
+            "estimated_cost_usd": router_result.estimated_cost_usd,
+            "actions": actions,
+            "results": execution,
+            "action_log_ids": action_log_ids,
+            "repair_domain": repair_domain,
+        }
+        if memory_context:
+            output["memory_context"] = memory_context
+        return output
+
+    @staticmethod
+    def _infer_action_domain(action: dict[str, Any]) -> str:
+        normalized_action = dict(action or {})
+        action_type = str(normalized_action.get("type") or "").strip().lower()
+        executor_name = str(normalized_action.get("executor") or "").strip().lower()
+        platform_name = str(normalized_action.get("platform") or "").strip().lower()
+
+        if platform_name == "ios" or action_type.startswith("ios_"):
+            return "mobile_ios"
+        if platform_name == "android" or action_type.startswith("android_"):
+            return "mobile_android"
+        if executor_name == "mobile":
+            return "mobile"
+        if executor_name == "vision" or action_type == "vision_goal":
+            return "vision"
+        if action_type in {"ha_service", "mqtt_publish", "mqtt_subscribe", "discover", "discover_entities", "list_entities"} or executor_name in {"homeassistant", "iot"}:
+            return "iot"
+        if action_type in set(BrowserExecutor.capabilities()) or executor_name == "browser":
+            return "browser"
+        return "desktop"
+
+    @classmethod
+    def _infer_repair_domain(cls, failed_items: list[dict[str, Any]]) -> str:
+        domains = []
+        for item in failed_items:
+            if not isinstance(item, dict):
+                continue
+            action = item.get("action")
+            if isinstance(action, dict):
+                domains.append(cls._infer_action_domain(action))
+        unique_domains = {item for item in domains if item}
+        if not unique_domains:
+            return "desktop"
+        if len(unique_domains) == 1:
+            return next(iter(unique_domains))
+        if unique_domains.issubset({"mobile", "mobile_android", "mobile_ios"}):
+            return "mobile"
+        return "mixed"
+
+    @staticmethod
+    def _repair_domain_user_guidance(domain: str) -> str:
+        guidance = {
+            "browser": (
+                "Use browser-native actions only and keep browser selectors or URLs in target. "
+                "Set executor='browser' for replacement steps."
+            ),
+            "mobile_android": (
+                "Use Android mobile actions only. Set platform='android' and keep coordinates or selectors in target."
+            ),
+            "mobile_ios": (
+                "Use iOS mobile actions only. Set platform='ios' and keep coordinates, selectors, bundle IDs, or URLs in target."
+            ),
+            "mobile": (
+                "Use mobile actions only and include platform='android' or platform='ios' on every replacement step."
+            ),
+            "iot": (
+                "Use IoT actions only. Prefer ha_service or mqtt_publish and keep entity IDs or topics in target."
+            ),
+            "vision": (
+                "Use vision or concrete desktop actions only. Prefer the smallest corrective step."
+            ),
+        }
+        return guidance.get(domain, "Use native desktop actions only and keep every action deterministic.")
+
+    @classmethod
+    def _repair_domain_system_prompt(cls, domain: str) -> str:
+        base = (
+            "You are NovaAdapt Repair Planner. "
+            "Repair only failed automation steps. "
+            "Return strict JSON only using schema: "
+            "{\"actions\":[{\"type\":str,\"target\":str,\"value\":str?,\"executor\":str?,\"platform\":str?,"
+            "\"selector\":str?,\"url\":str?,\"text\":str?,\"key\":str?,\"bundle_id\":str?,\"package\":str?,"
+            "\"x\":int?,\"y\":int?,\"to_x\":int?,\"to_y\":int?,\"direction\":str?,\"domain\":str?,"
+            "\"service\":str?,\"entity_id\":str?,\"topic\":str?,\"payload\":str?}]}. "
+            "Every action must include a non-empty target string. "
+            "Do not repeat already successful steps."
+        )
+        domain_prompts = {
+            "browser": (
+                "Use browser-native actions only: navigate, click_selector, fill, extract_text, screenshot, "
+                "wait_for_selector, evaluate_js, new_page, switch_page, close_page. "
+                "Set executor='browser'. Use target for the selector or URL."
+            ),
+            "mobile_android": (
+                "Use Android mobile actions only: open_app, open_url, tap, type, key, swipe, scroll, wait, screenshot, run_adb. "
+                "Set platform='android'. For taps use target as 'x,y' or a selector/text. For swipes include x, y, to_x, to_y."
+            ),
+            "mobile_ios": (
+                "Use iOS mobile actions only: open_app, open_url, tap, type, key, swipe, drag, scroll, wait, note. "
+                "Set platform='ios'. Use target for coordinates, element selectors, bundle IDs, or URLs."
+            ),
+            "mobile": (
+                "Use mobile actions only and include platform='android' or platform='ios' on every action. "
+                "Allowed actions: open_app, open_url, tap, type, key, swipe, drag, scroll, wait, screenshot, note."
+            ),
+            "iot": (
+                "Use IoT actions only: ha_service, mqtt_publish, mqtt_subscribe, discover_entities. "
+                "Keep entity IDs or topics in target and include domain/service/entity_id or payload when needed."
+            ),
+            "vision": (
+                "Use vision-driven or concrete desktop actions only: vision_goal, click, type, hotkey, key, wait, scroll, drag, open_app, open_url, note."
+            ),
+            "mixed": (
+                "The failed steps span multiple executors. Preserve the original executor per step and return the smallest corrective actions."
+            ),
+            "desktop": (
+                "Use native desktop actions only: open_app, open_url, type, hotkey, key, wait, click, scroll, drag, run_shell, note."
+            ),
+        }
+        return f"{base} {domain_prompts.get(domain, domain_prompts['desktop'])}"
+
+    @staticmethod
+    def _summarize_repair_results(results: list[dict[str, Any]]) -> str:
+        for item in results:
+            output = str(item.get("output") or "").strip()
+            if output:
+                return output
+        return "Repaired via generated replacement actions."
 
     def reject_plan(self, plan_id: str, reason: str | None = None) -> dict[str, Any]:
         plan = self._plans().get(plan_id)
@@ -2360,6 +3559,11 @@ class NovaAdaptService:
         rejected = self._plans().reject(plan_id, reason=reason)
         if rejected is None:
             raise ValueError("Plan not found")
+        self._ingest_control_memory(
+            control_type="plan_reject",
+            payload={"plan_id": plan_id, "reason": str(reason or ""), "status": "rejected"},
+            event_names=["plan.reject"],
+        )
         return rejected
 
     def undo_plan(self, plan_id: str, payload: dict[str, Any]) -> dict[str, Any]:
@@ -2386,12 +3590,18 @@ class NovaAdaptService:
             except ValueError as exc:
                 results.append({"id": int(action_id), "ok": False, "error": str(exc)})
 
-        return {
+        payload = {
             "plan_id": plan_id,
             "executed": execute,
             "mark_only": mark_only,
             "results": results,
         }
+        self._ingest_control_memory(
+            control_type="plan_undo",
+            payload=payload,
+            event_names=["plan.undo"],
+        )
+        return payload
 
     def history(self, limit: int = 20) -> list[dict[str, Any]]:
         queue = UndoQueue(db_path=self.db_path)
@@ -2420,21 +3630,26 @@ class NovaAdaptService:
             queue.mark_undone(item["id"])
             return {"id": item["id"], "status": "marked_undone", "mode": "mark_only"}
 
-        directshell = self.directshell_factory()
-        result = directshell.execute_action(action=undo_action, dry_run=not execute)
-        marked = bool(execute and result.status == "ok")
+        result = self._execute_routed_action(undo_action, execute=execute)
+        marked = bool(execute and result["status"] == "ok")
         if marked:
             queue.mark_undone(item["id"])
-        return {
+        payload = {
             "id": item["id"],
             "executed": execute,
             "undo_result": {
-                "status": result.status,
-                "output": result.output,
-                "action": result.action,
+                "status": result["status"],
+                "output": result["output"],
+                "action": result["action"],
             },
             "marked_undone": marked,
         }
+        self._ingest_control_memory(
+            control_type="undo",
+            payload=payload,
+            event_names=["undo.executed" if marked else "undo.preview"],
+        )
+        return payload
 
     def events(
         self,
@@ -2482,6 +3697,189 @@ class NovaAdaptService:
             if time.monotonic() >= deadline:
                 return []
             time.sleep(interval)
+
+    def _execute_routed_action(
+        self,
+        action: dict[str, Any],
+        *,
+        execute: bool,
+        config_path: Path | None = None,
+    ) -> dict[str, Any]:
+        normalized_action = self._normalize_routed_action(action)
+        action_type = str(normalized_action.get("type") or "").strip().lower()
+        executor_name = str(normalized_action.get("executor") or "").strip().lower()
+        platform_name = str(normalized_action.get("platform") or "").strip().lower()
+
+        if executor_name == "vision" or action_type == "vision_goal":
+            goal = str(normalized_action.get("goal") or normalized_action.get("target") or normalized_action.get("value") or "").strip()
+            grounded = self._vision().ground(
+                goal=goal,
+                config_path=config_path or self.default_config,
+                screenshot_png=self._decode_base64_image(normalized_action.get("screenshot_base64")),
+                app_name=str(normalized_action.get("app_name") or "").strip(),
+                model_name=str(normalized_action.get("model") or "").strip() or None,
+                strategy=str(normalized_action.get("strategy") or "single"),
+                candidate_models=self._as_name_list(normalized_action.get("candidates")) or None,
+                fallback_models=self._as_name_list(normalized_action.get("fallbacks")) or None,
+                context=normalized_action.get("context") if isinstance(normalized_action.get("context"), dict) else None,
+                ocr_text=str(normalized_action.get("ocr_text") or ""),
+                accessibility_tree=str(normalized_action.get("accessibility_tree") or ""),
+            )
+            inner_action = dict(grounded.action)
+            result = self._execute_routed_action(inner_action, execute=execute, config_path=config_path)
+            result.setdefault("data", {})
+            if isinstance(result["data"], dict):
+                result["data"]["vision"] = {
+                    "confidence": grounded.confidence,
+                    "reason": grounded.reason,
+                    "model": grounded.model_name,
+                    "model_id": grounded.model_id,
+                }
+            return result
+
+        if (
+            platform_name in {"android", "ios"}
+            or executor_name == "mobile"
+            or action_type.startswith("android_")
+            or action_type.startswith("ios_")
+        ):
+            if action_type.startswith("android_"):
+                normalized_action["type"] = action_type.removeprefix("android_")
+                normalized_action["platform"] = "android"
+            elif action_type.startswith("ios_"):
+                normalized_action["type"] = action_type.removeprefix("ios_")
+                normalized_action["platform"] = "ios"
+            elif platform_name in {"android", "ios"}:
+                normalized_action["platform"] = platform_name
+            else:
+                normalized_action.setdefault("platform", "android")
+            result = self._mobile().execute_action(normalized_action, dry_run=not execute)
+            return _result_payload(result.status, result.output, result.action, result.data)
+
+        if action_type in {"ha_service", "mqtt_publish", "mqtt_subscribe", "discover", "discover_entities", "list_entities"} or executor_name in {"homeassistant", "iot"}:
+            result = self._homeassistant().execute_action(normalized_action, dry_run=not execute)
+            return _result_payload(result.status, result.output, result.action, result.data)
+
+        browser_types = set(BrowserExecutor.capabilities())
+        if action_type in browser_types or executor_name == "browser":
+            if not execute:
+                return _result_payload(
+                    "preview",
+                    f"Preview only: browser {action_type}",
+                    normalized_action,
+                    {"transport": "browser"},
+                )
+            result = self._browser().execute_action(normalized_action)
+            return _result_payload(
+                str(result.status),
+                str(result.output),
+                normalized_action,
+                result.data if isinstance(result.data, dict) else None,
+            )
+
+        result = self.directshell_factory().execute_action(action=normalized_action, dry_run=not execute)
+        return _result_payload(result.status, result.output, result.action, None)
+
+    @staticmethod
+    def _normalize_routed_action(action: dict[str, Any]) -> dict[str, Any]:
+        normalized = dict(action or {})
+        action_type = str(normalized.get("type") or "").strip().lower()
+        if action_type in {"click", "right_click", "double_click"} and not normalized.get("target"):
+            x = normalized.get("x")
+            y = normalized.get("y")
+            if x is not None and y is not None:
+                try:
+                    normalized["target"] = f"{int(x)},{int(y)}"
+                except Exception:
+                    pass
+        if action_type in {"type", "text", "input"} and not normalized.get("value") and normalized.get("text") is not None:
+            normalized["value"] = str(normalized.get("text") or "")
+        if action_type == "hotkey" and not normalized.get("target"):
+            keys = normalized.get("keys")
+            if isinstance(keys, list):
+                normalized["target"] = "+".join(str(item).strip() for item in keys if str(item).strip())
+        return normalized
+
+    def _ingest_control_memory(
+        self,
+        *,
+        control_type: str,
+        payload: dict[str, Any],
+        event_names: list[str] | None = None,
+    ) -> None:
+        normalized_type = str(control_type or "").strip().lower() or "control"
+        created_at = datetime.now(timezone.utc).isoformat()
+        try:
+            self.memory_backend.ingest(
+                text=json.dumps(
+                    {
+                        "type": f"novaadapt_{normalized_type}",
+                        "created_at": created_at,
+                        "payload": payload,
+                    },
+                    ensure_ascii=True,
+                ),
+                source_id=f"novaadapt:{normalized_type}:{uuid.uuid4().hex}",
+                metadata={"type": f"novaadapt_{normalized_type}"},
+            )
+        except Exception:
+            pass
+        self._track_memory_events(event_names or [])
+
+    def _track_memory_events(self, event_names: list[str]) -> None:
+        cleaned = [str(item).strip() for item in event_names if str(item).strip()]
+        if not cleaned:
+            return
+        track_batch = getattr(self.memory_backend, "track_events_batch", None)
+        if callable(track_batch):
+            try:
+                track_batch(cleaned)
+                return
+            except Exception:
+                return
+        track_single = getattr(self.memory_backend, "track_event", None)
+        if callable(track_single):
+            for item in cleaned:
+                try:
+                    track_single(item)
+                except Exception:
+                    return
+
+    def _finalize_memory_events(
+        self,
+        event_names: list[str],
+        *,
+        session_id: str = "",
+        consolidate: bool = False,
+        dream: bool = False,
+    ) -> None:
+        self._track_memory_events(event_names)
+        if consolidate:
+            consolidate_fn = getattr(self.memory_backend, "consolidate", None)
+            if callable(consolidate_fn):
+                try:
+                    consolidate_fn(session_id=str(session_id or ""), max_chunks=32)
+                except Exception:
+                    pass
+        if dream:
+            dream_fn = getattr(self.memory_backend, "dream", None)
+            if callable(dream_fn):
+                try:
+                    dream_fn()
+                except Exception:
+                    pass
+
+    @staticmethod
+    def _decode_base64_image(value: object) -> bytes | None:
+        raw = str(value or "").strip()
+        if not raw:
+            return None
+        if "," in raw and raw.lower().startswith("data:image"):
+            raw = raw.split(",", 1)[1]
+        try:
+            return base64.b64decode(raw, validate=True)
+        except Exception as exc:
+            raise ValueError("invalid screenshot_base64 payload") from exc
 
     @staticmethod
     def _as_name_list(value: object) -> list[str]:
@@ -2578,6 +3976,84 @@ class NovaAdaptService:
             )
         return self._workflow_engine
 
+    def _agent_templates_db_path(self) -> Path:
+        if isinstance(self.db_path, Path):
+            return self.db_path.with_name("novaadapt_agent_templates.sqlite3")
+        base_dir = self.default_config.parent if isinstance(self.default_config, Path) else Path(".")
+        return base_dir / ".novaadapt_agent_templates.sqlite3"
+
+    def _agent_template_store_obj(self) -> AgentTemplateStore:
+        if self._agent_template_store is None:
+            db_path = self._agent_templates_db_path()
+            db_path.parent.mkdir(parents=True, exist_ok=True)
+            self._agent_template_store = AgentTemplateStore(str(db_path))
+        return self._agent_template_store
+
+    def _agent_gallery_path(self) -> Path:
+        if isinstance(self.default_config, Path):
+            return self.default_config.parent / "agent_gallery.json"
+        return Path("config") / "agent_gallery.json"
+
+    def _load_agent_gallery(self) -> list[dict[str, Any]]:
+        path = self._agent_gallery_path()
+        if not path.exists():
+            return []
+        try:
+            loaded = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            return []
+        if not isinstance(loaded, list):
+            return []
+        items: list[dict[str, Any]] = []
+        for raw in loaded:
+            if not isinstance(raw, dict):
+                continue
+            template_id = str(raw.get("template_id") or raw.get("id") or "").strip() or f"gallery-{uuid.uuid4().hex[:10]}"
+            item = {
+                "template_id": template_id,
+                "name": str(raw.get("name") or raw.get("title") or template_id).strip(),
+                "description": str(raw.get("description") or "").strip(),
+                "objective": str(raw.get("objective") or "").strip(),
+                "strategy": str(raw.get("strategy") or "single").strip() or "single",
+                "candidates": self._as_name_list(raw.get("candidates")),
+                "steps": [dict(step) for step in raw.get("steps", []) if isinstance(step, dict)]
+                if isinstance(raw.get("steps"), list)
+                else [],
+                "metadata": raw.get("metadata") if isinstance(raw.get("metadata"), dict) else {},
+                "memory_snapshot": [
+                    dict(item) for item in raw.get("memory_snapshot", []) if isinstance(item, dict)
+                ]
+                if isinstance(raw.get("memory_snapshot"), list)
+                else [],
+                "tags": [str(item).strip() for item in raw.get("tags", []) if str(item).strip()]
+                if isinstance(raw.get("tags"), list)
+                else [],
+                "source": "gallery",
+                "shared": False,
+                "share_token": "",
+            }
+            items.append(item)
+        return items
+
+    def _control_artifact_dir(self) -> Path:
+        if isinstance(self.db_path, Path):
+            return self.db_path.with_name("novaadapt_control_artifacts")
+        base_dir = self.default_config.parent if isinstance(self.default_config, Path) else Path(".")
+        return base_dir / ".novaadapt_control_artifacts"
+
+    def _runtime_governance_state_path(self) -> Path:
+        if isinstance(self.db_path, Path):
+            return self.db_path.with_name("novaadapt_runtime_governance.json")
+        base_dir = self.default_config.parent if isinstance(self.default_config, Path) else Path(".")
+        return base_dir / ".novaadapt_runtime_governance.json"
+
+    def _control_artifact_store_obj(self) -> ControlArtifactStore:
+        if self._control_artifact_store is None:
+            root_dir = self._control_artifact_dir()
+            root_dir.mkdir(parents=True, exist_ok=True)
+            self._control_artifact_store = ControlArtifactStore(root_dir)
+        return self._control_artifact_store
+
     @staticmethod
     def _canvas_frame_payload(frame: CanvasRenderResult) -> dict[str, Any]:
         return {
@@ -2600,6 +4076,77 @@ class NovaAdaptService:
             "last_error": str(record.last_error),
         }
 
+    def _agent_template_payload(self, record: AgentTemplateRecord) -> dict[str, Any]:
+        payload = self._agent_template_manifest(record)
+        payload.update(
+            {
+                "created_at": str(record.created_at),
+                "updated_at": str(record.updated_at),
+                "shared": bool(record.shared),
+            }
+        )
+        if record.shared:
+            payload["share"] = self._agent_template_share_descriptor(record)
+        return payload
+
+    @staticmethod
+    def _agent_template_manifest(record: AgentTemplateRecord) -> dict[str, Any]:
+        return {
+            "template_id": str(record.template_id),
+            "name": str(record.name),
+            "description": str(record.description),
+            "objective": str(record.objective),
+            "strategy": str(record.strategy),
+            "candidates": list(record.candidates),
+            "steps": [dict(item) for item in record.steps],
+            "metadata": dict(record.metadata),
+            "memory_snapshot": [dict(item) for item in record.memory_snapshot],
+            "tags": list(record.tags),
+            "source": str(record.source),
+            "share_token": str(record.share_token),
+            "shared": bool(record.shared),
+            "manifest_version": 1,
+        }
+
+    def _agent_template_share_descriptor(self, record: AgentTemplateRecord) -> dict[str, Any]:
+        share_token = str(record.share_token or "").strip()
+        share_path = f"/agents/templates/shared/{share_token}" if share_token else ""
+        public_base = str(os.getenv("NOVAADAPT_PUBLIC_BASE_URL", "")).rstrip("/")
+        share_url = f"{public_base}{share_path}" if public_base and share_path else ""
+        share_uri = f"novaadapt://agent-template/{share_token}" if share_token else ""
+        return {
+            "share_token": share_token,
+            "share_path": share_path,
+            "share_url": share_url,
+            "share_uri": share_uri,
+            "qr_payload": share_url or share_uri or share_path,
+        }
+
+    def _remember_agent_template_event(self, event_type: str, record: AgentTemplateRecord) -> None:
+        payload = {
+            "type": str(event_type or "agent_template"),
+            "template_id": record.template_id,
+            "name": record.name,
+            "objective": record.objective,
+            "strategy": record.strategy,
+            "tags": list(record.tags),
+            "source": record.source,
+            "shared": bool(record.shared),
+        }
+        try:
+            self.memory_backend.ingest(
+                text=json.dumps(payload, ensure_ascii=True),
+                source_id=f"novaadapt:agent_template:{record.template_id}:{event_type}",
+                metadata={
+                    "type": str(event_type or "agent_template"),
+                    "template_id": record.template_id,
+                    "name": record.name[:120],
+                },
+            )
+        except Exception:
+            pass
+        self._track_memory_events([f"agents.templates.{str(event_type or 'updated').strip().lower()}"])
+
     def _plans(self) -> PlanStore:
         if self._plan_store is None:
             self._plan_store = PlanStore(self.plans_db_path)
@@ -2610,10 +4157,81 @@ class NovaAdaptService:
             self._audit_store = AuditStore(self.audit_db_path)
         return self._audit_store
 
+    def _store_control_artifact(
+        self,
+        *,
+        control_type: str,
+        result: dict[str, Any],
+        goal: str = "",
+        platform: str = "",
+        transport: str = "",
+        preview_png: bytes | None = None,
+        model: str | None = None,
+        model_id: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any] | None:
+        try:
+            action = result.get("action") if isinstance(result.get("action"), dict) else {}
+            return self._control_artifact_store_obj().create(
+                control_type=control_type,
+                status=str(result.get("status") or ""),
+                output=str(result.get("output") or ""),
+                action=action,
+                dangerous=bool(result.get("dangerous", False)),
+                goal=goal,
+                platform=platform or str(result.get("platform") or ""),
+                transport=transport,
+                model=model or str((result.get("vision") or {}).get("model") or ""),
+                model_id=model_id or str((result.get("vision") or {}).get("model_id") or ""),
+                preview_png=preview_png,
+                data=result.get("data") if isinstance(result.get("data"), dict) else None,
+                metadata=metadata,
+            )
+        except Exception:
+            return None
+
+    @staticmethod
+    def _vision_metadata_without_screenshot(value: object) -> dict[str, Any]:
+        if not isinstance(value, dict):
+            return {}
+        return {
+            str(key): item
+            for key, item in value.items()
+            if str(key) != "screenshot_base64"
+        }
+
     def _browser(self) -> BrowserExecutor:
         if self._browser_executor is None:
             self._browser_executor = self.browser_executor_factory()
         return self._browser_executor
+
+    def _vision(self) -> VisionGroundingExecutor:
+        if self._vision_executor is None:
+            if self.vision_executor_factory is not None:
+                self._vision_executor = self.vision_executor_factory()
+            else:
+                self._vision_executor = VisionGroundingExecutor(
+                    router_loader=self.router_loader,
+                    default_config=self.default_config,
+                )
+        return self._vision_executor
+
+    def _mobile(self) -> UnifiedMobileExecutor:
+        if self._mobile_executor is None:
+            if self.mobile_executor_factory is not None:
+                self._mobile_executor = self.mobile_executor_factory()
+            else:
+                self._mobile_executor = UnifiedMobileExecutor(
+                    android_executor=AndroidMaestroExecutor(),
+                    ios_executor=IOSVisionExecutor(self._vision()),
+                    ios_appium_executor=IOSAppiumExecutor(),
+                )
+        return self._mobile_executor
+
+    def _homeassistant(self) -> HomeAssistantExecutor:
+        if self._homeassistant_executor is None:
+            self._homeassistant_executor = self.homeassistant_executor_factory()
+        return self._homeassistant_executor
 
     def _sib(self) -> SIBBridge:
         if self._sib_bridge is None:

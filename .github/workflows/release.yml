@@ -18,6 +18,10 @@ jobs:
     env:
       COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
       COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+      NOVAADAPT_ANDROID_KEYSTORE_BASE64: ${{ secrets.NOVAADAPT_ANDROID_KEYSTORE_BASE64 }}
+      NOVAADAPT_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.NOVAADAPT_ANDROID_KEYSTORE_PASSWORD }}
+      NOVAADAPT_ANDROID_KEY_ALIAS: ${{ secrets.NOVAADAPT_ANDROID_KEY_ALIAS }}
+      NOVAADAPT_ANDROID_KEY_PASSWORD: ${{ secrets.NOVAADAPT_ANDROID_KEY_PASSWORD }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -40,16 +44,57 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install optional gRPC runtime dependency
+        run: |
+          python -m pip install grpcio
+
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
           go-version: "1.22"
           cache-dependency-path: bridge/go.sum
 
+      - name: Setup Java for Android release builds
+        if: ${{ env.NOVAADAPT_ANDROID_KEYSTORE_BASE64 != '' && env.NOVAADAPT_ANDROID_KEYSTORE_PASSWORD != '' && env.NOVAADAPT_ANDROID_KEY_ALIAS != '' && env.NOVAADAPT_ANDROID_KEY_PASSWORD != '' }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Android SDK for signed operator binaries
+        if: ${{ env.NOVAADAPT_ANDROID_KEYSTORE_BASE64 != '' && env.NOVAADAPT_ANDROID_KEYSTORE_PASSWORD != '' && env.NOVAADAPT_ANDROID_KEY_ALIAS != '' && env.NOVAADAPT_ANDROID_KEY_PASSWORD != '' }}
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        if: ${{ env.NOVAADAPT_ANDROID_KEYSTORE_BASE64 != '' && env.NOVAADAPT_ANDROID_KEYSTORE_PASSWORD != '' && env.NOVAADAPT_ANDROID_KEY_ALIAS != '' && env.NOVAADAPT_ANDROID_KEY_PASSWORD != '' }}
+        run: |
+          sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
+
+      - name: Decode Android upload keystore
+        if: ${{ env.NOVAADAPT_ANDROID_KEYSTORE_BASE64 != '' && env.NOVAADAPT_ANDROID_KEYSTORE_PASSWORD != '' && env.NOVAADAPT_ANDROID_KEY_ALIAS != '' && env.NOVAADAPT_ANDROID_KEY_PASSWORD != '' }}
+        run: |
+          python - <<'PY'
+          import base64
+          import os
+          import pathlib
+
+          target = pathlib.Path(os.environ["RUNNER_TEMP"]) / "novaadapt-upload.jks"
+          target.write_bytes(base64.b64decode(os.environ["NOVAADAPT_ANDROID_KEYSTORE_BASE64"]))
+          github_env = pathlib.Path(os.environ["GITHUB_ENV"])
+          with github_env.open("a", encoding="utf-8") as handle:
+              handle.write(f"NOVAADAPT_ANDROID_KEYSTORE_PATH={target}\n")
+          print(f"Wrote Android upload keystore to {target}")
+          PY
+
       - name: Run tests
         run: |
           make test
           make smoke
+
+      - name: Build signed Android operator outputs
+        if: ${{ env.NOVAADAPT_ANDROID_KEYSTORE_BASE64 != '' && env.NOVAADAPT_ANDROID_KEYSTORE_PASSWORD != '' && env.NOVAADAPT_ANDROID_KEY_ALIAS != '' && env.NOVAADAPT_ANDROID_KEY_PASSWORD != '' }}
+        run: |
+          ./scripts/build_android_shell.sh all
 
       - name: Build release artifacts
         run: |

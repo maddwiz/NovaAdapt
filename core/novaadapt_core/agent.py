@@ -155,8 +155,11 @@ class NovaAdaptAgent:
             "strategy": result.strategy,
             "votes": result.votes,
             "vote_summary": result.vote_summary,
+            "collaboration": result.collaboration,
             "model_errors": result.errors,
             "attempted_models": result.attempted_models,
+            "model_usage": result.usage,
+            "estimated_cost_usd": result.estimated_cost_usd,
             "actions": actions,
             "results": execution,
             "action_log_ids": action_log_ids,
@@ -274,5 +277,10 @@ class NovaAdaptAgent:
                 normalized["value"] = str(value)
             if isinstance(undo, dict):
                 normalized["undo"] = undo
+            for key, raw_value in action.items():
+                if key in {"type", "target", "value", "undo"} or raw_value is None:
+                    continue
+                if isinstance(raw_value, (str, int, float, bool, list, dict)):
+                    normalized[key] = raw_value
             clean.append(normalized)
         return clean

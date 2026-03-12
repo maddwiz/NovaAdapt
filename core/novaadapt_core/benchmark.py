@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import json
+import shutil
 from datetime import datetime, timezone
 from dataclasses import dataclass
 from pathlib import Path
+import re
 from statistics import mean
 from typing import Any, Callable
 
@@ -328,3 +330,84 @@ def write_benchmark_comparison_markdown(
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(render_benchmark_comparison_markdown(report, title=title), encoding="utf-8")
     return path
+
+
+def _benchmark_slug(value: str) -> str:
+    text = re.sub(r"[^a-z0-9]+", "-", str(value or "").strip().lower())
+    text = text.strip("-")
+    return text or "benchmark-report"
+
+
+def write_benchmark_publication_bundle(
+    *,
+    primary_name: str,
+    primary_report: dict[str, Any],
+    baselines: dict[str, dict[str, Any]],
+    output_dir: str | Path,
+    title: str = "NovaAdapt Reliability Benchmark",
+    source_paths: dict[str, str | Path] | None = None,
+    notes: str = "",
+) -> dict[str, Any]:
+    report = compare_benchmark_reports(
+        primary_name=primary_name,
+        primary_report=primary_report,
+        baselines=baselines,
+    )
+
+    root = Path(output_dir)
+    root.mkdir(parents=True, exist_ok=True)
+
+    comparison_json_path = root / "benchmark.compare.json"
+    comparison_md_path = root / "benchmark.compare.md"
+    readme_path = root / "README.md"
+    comparison_json_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
+    write_benchmark_comparison_markdown(report, comparison_md_path, title=title)
+
+    copied_sources: dict[str, str] = {}
+    raw_dir = root / "raw"
+    if source_paths:
+        raw_dir.mkdir(parents=True, exist_ok=True)
+        for name, path_like in sorted(source_paths.items()):
+            src = Path(path_like)
+            if not src.exists():
+                continue
+            dest = raw_dir / f"{_benchmark_slug(name)}.json"
+            shutil.copy2(src, dest)
+            copied_sources[name] = str(dest.relative_to(root))
+
+    markdown_body = render_benchmark_comparison_markdown(report, title=title)
+    note_text = str(notes or "").strip()
+    generated_at = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    competitor_names = sorted(baselines.keys())
+    readme_lines = [
+        markdown_body,
+        "",
+        "## Publication Bundle",
+        "",
+        f"- Generated: `{generated_at}`",
+        f"- Primary report: `{primary_name}`",
+        (
+            "- Baselines: " + ", ".join(f"`{name}`" for name in competitor_names)
+            if competitor_names
+            else "- Baselines: none"
+        ),
+        f"- Comparison JSON: `{comparison_json_path.name}`",
+        f"- Comparison Markdown: `{comparison_md_path.name}`",
+    ]
+    if note_text:
+        readme_lines.extend(["", "## Notes", "", note_text])
+    if copied_sources:
+        readme_lines.extend(["", "## Raw Reports", ""])
+        for name, rel_path in copied_sources.items():
+            readme_lines.append(f"- `{name}`: `{rel_path}`")
+    readme_lines.append("")
+    readme_path.write_text("\n".join(readme_lines), encoding="utf-8")
+
+    return {
+        "report": report,
+        "output_dir": str(root),
+        "comparison_json": str(comparison_json_path),
+        "comparison_markdown": str(comparison_md_path),
+        "readme": str(readme_path),
+        "raw_reports": copied_sources,
+    }

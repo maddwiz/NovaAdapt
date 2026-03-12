@@ -91,6 +91,20 @@ class PlanStore:
                             """,
                         ),
                     ),
+                    SQLiteMigration(
+                        migration_id="plan_store_0003_add_runtime_metadata",
+                        statements=(
+                            """
+                            ALTER TABLE plans ADD COLUMN vote_summary_json TEXT
+                            """,
+                            """
+                            ALTER TABLE plans ADD COLUMN collaboration_json TEXT
+                            """,
+                            """
+                            ALTER TABLE plans ADD COLUMN repair_json TEXT
+                            """,
+                        ),
+                    ),
                 ),
             )
             columns = {
@@ -105,6 +119,12 @@ class PlanStore:
                 conn.execute("ALTER TABLE plans ADD COLUMN progress_total INTEGER NOT NULL DEFAULT 0")
             if "execution_error" not in columns:
                 conn.execute("ALTER TABLE plans ADD COLUMN execution_error TEXT")
+            if "vote_summary_json" not in columns:
+                conn.execute("ALTER TABLE plans ADD COLUMN vote_summary_json TEXT")
+            if "collaboration_json" not in columns:
+                conn.execute("ALTER TABLE plans ADD COLUMN collaboration_json TEXT")
+            if "repair_json" not in columns:
+                conn.execute("ALTER TABLE plans ADD COLUMN repair_json TEXT")
             conn.commit()
 
     def create(self, payload: dict[str, Any]) -> dict[str, Any]:
@@ -119,8 +139,10 @@ class PlanStore:
             "model_id": payload.get("model_id"),
             "actions": actions,
             "votes": payload.get("votes", {}),
+            "vote_summary": payload.get("vote_summary", {}),
             "model_errors": payload.get("model_errors", {}),
             "attempted_models": payload.get("attempted_models", []),
+            "collaboration": payload.get("collaboration", {}),
             "status": str(payload.get("status", "pending")),
             "created_at": now,
             "updated_at": now,
@@ -134,17 +156,19 @@ class PlanStore:
             "progress_completed": int(payload.get("progress_completed", 0)),
             "progress_total": int(payload.get("progress_total", len(actions))),
             "execution_error": None,
+            "repair": payload.get("repair"),
         }
         with self._connection() as conn:
             conn.execute(
                 """
                 INSERT INTO plans(
                     id, objective, strategy, model, model_id, actions_json, votes_json,
-                    model_errors_json, attempted_models_json, status, created_at, updated_at,
+                    vote_summary_json, model_errors_json, attempted_models_json, collaboration_json,
+                    status, created_at, updated_at,
                     approved_at, rejected_at, executed_at, execution_started_at, reject_reason,
                     execution_results_json, action_log_ids_json, progress_completed, progress_total,
-                    execution_error
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    execution_error, repair_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     record["id"],
@@ -154,8 +178,10 @@ class PlanStore:
                     record["model_id"],
                     json.dumps(record["actions"]),
                     json.dumps(record["votes"]),
+                    json.dumps(record["vote_summary"]),
                     json.dumps(record["model_errors"]),
                     json.dumps(record["attempted_models"]),
+                    json.dumps(record["collaboration"]),
                     record["status"],
                     record["created_at"],
                     record["updated_at"],
@@ -169,6 +195,7 @@ class PlanStore:
                     record["progress_completed"],
                     record["progress_total"],
                     record["execution_error"],
+                    json.dumps(record["repair"]) if record["repair"] is not None else None,
                 ),
             )
             conn.commit()
@@ -179,10 +206,11 @@ class PlanStore:
             row = conn.execute(
                 """
                 SELECT id, objective, strategy, model, model_id, actions_json, votes_json,
-                       model_errors_json, attempted_models_json, status, created_at, updated_at,
+                       vote_summary_json, model_errors_json, attempted_models_json, collaboration_json,
+                       status, created_at, updated_at,
                        approved_at, rejected_at, executed_at, execution_started_at, reject_reason,
                        execution_results_json, action_log_ids_json,
-                       progress_completed, progress_total, execution_error
+                       progress_completed, progress_total, execution_error, repair_json
                 FROM plans
                 WHERE id = ?
                 """,
@@ -197,10 +225,11 @@ class PlanStore:
             rows = conn.execute(
                 """
                 SELECT id, objective, strategy, model, model_id, actions_json, votes_json,
-                       model_errors_json, attempted_models_json, status, created_at, updated_at,
+                       vote_summary_json, model_errors_json, attempted_models_json, collaboration_json,
+                       status, created_at, updated_at,
                        approved_at, rejected_at, executed_at, execution_started_at, reject_reason,
                        execution_results_json, action_log_ids_json,
-                       progress_completed, progress_total, execution_error
+                       progress_completed, progress_total, execution_error, repair_json
                 FROM plans
                 ORDER BY created_at DESC
                 LIMIT ?
@@ -274,6 +303,7 @@ class PlanStore:
         action_log_ids: list[int] | None = None,
         progress_completed: int | None = None,
         progress_total: int | None = None,
+        repair_summary: dict[str, Any] | None = None,
     ) -> dict[str, Any] | None:
         current = self.get(plan_id)
         if current is None:
@@ -290,7 +320,8 @@ class PlanStore:
                     action_log_ids_json = ?,
                     progress_completed = ?,
                     progress_total = ?,
-                    execution_error = ?
+                    execution_error = ?,
+                    repair_json = ?
                 WHERE id = ?
                 """,
                 (
@@ -310,6 +341,11 @@ class PlanStore:
                         else int(current.get("progress_total") or 0)
                     ),
                     str(error),
+                    (
+                        json.dumps(repair_summary)
+                        if repair_summary is not None
+                        else (json.dumps(current.get("repair")) if current.get("repair") is not None else None)
+                    ),
                     plan_id,
                 ),
             )
@@ -322,6 +358,7 @@ class PlanStore:
         execution_results: list[dict[str, Any]] | None = None,
         action_log_ids: list[int] | None = None,
         status: str = "approved",
+        repair_summary: dict[str, Any] | None = None,
     ) -> dict[str, Any] | None:
         current = self.get(plan_id)
         if current is None:
@@ -349,7 +386,8 @@ class PlanStore:
                     action_log_ids_json = ?,
                     progress_completed = ?,
                     progress_total = ?,
-                    execution_error = NULL
+                    execution_error = NULL,
+                    repair_json = ?
                 WHERE id = ?
                 """,
                 (
@@ -361,6 +399,11 @@ class PlanStore:
                     action_log_ids_json,
                     len(execution_results or []),
                     max(len(current.get("actions") or []), len(execution_results or [])),
+                    (
+                        json.dumps(repair_summary)
+                        if repair_summary is not None
+                        else (json.dumps(current.get("repair")) if current.get("repair") is not None else None)
+                    ),
                     plan_id,
                 ),
             )
@@ -418,21 +461,24 @@ class PlanStore:
             "model_id": row[4],
             "actions": _j(row[5], []),
             "votes": _j(row[6], {}),
-            "model_errors": _j(row[7], {}),
-            "attempted_models": _j(row[8], []),
-            "status": row[9],
-            "created_at": row[10],
-            "updated_at": row[11],
-            "approved_at": row[12],
-            "rejected_at": row[13],
-            "executed_at": row[14],
-            "execution_started_at": row[15],
-            "reject_reason": row[16],
-            "execution_results": _j(row[17], None),
-            "action_log_ids": _j(row[18], None),
-            "progress_completed": int(row[19] or 0),
-            "progress_total": int(row[20] or 0),
-            "execution_error": row[21],
+            "vote_summary": _j(row[7], {}),
+            "model_errors": _j(row[8], {}),
+            "attempted_models": _j(row[9], []),
+            "collaboration": _j(row[10], {}),
+            "status": row[11],
+            "created_at": row[12],
+            "updated_at": row[13],
+            "approved_at": row[14],
+            "rejected_at": row[15],
+            "executed_at": row[16],
+            "execution_started_at": row[17],
+            "reject_reason": row[18],
+            "execution_results": _j(row[19], None),
+            "action_log_ids": _j(row[20], None),
+            "progress_completed": int(row[21] or 0),
+            "progress_total": int(row[22] or 0),
+            "execution_error": row[23],
+            "repair": _j(row[24], None),
         }
 
 

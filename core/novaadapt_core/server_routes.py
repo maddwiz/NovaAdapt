@@ -46,9 +46,17 @@ def build_get_private_routes(handler: Any) -> dict[str, Any]:
         "/workflows/status": handler._get_workflows_status,
         "/workflows/list": handler._get_workflows_list,
         "/workflows/item": handler._get_workflow_item,
+        "/agents/templates": handler._get_agent_templates,
+        "/agents/gallery": handler._get_agent_templates_gallery,
         "/terminal/sessions": handler._get_terminal_sessions,
         "/browser/status": handler._get_browser_status,
         "/browser/pages": handler._get_browser_pages,
+        "/mobile/status": handler._get_mobile_status,
+        "/runtime/governance": handler._get_runtime_governance,
+        "/iot/homeassistant/entities": handler._get_homeassistant_entities,
+        "/iot/homeassistant/status": handler._get_homeassistant_status,
+        "/iot/mqtt/status": handler._get_mqtt_status,
+        "/control/artifacts": handler._get_control_artifacts,
     }
 
 
@@ -63,6 +71,10 @@ def build_get_dynamic_routes(handler: Any) -> tuple[tuple[str, str, Any], ...]:
         ("/plugins/", "/health", handler._get_plugin_health),
         ("/terminal/sessions/", "/output", handler._get_terminal_output),
         ("/terminal/sessions/", "", handler._get_terminal_session_item),
+        ("/agents/templates/shared/", "", handler._get_agent_template_shared),
+        ("/agents/templates/", "", handler._get_agent_template_item),
+        ("/control/artifacts/", "/preview", handler._get_control_artifact_preview),
+        ("/control/artifacts/", "", handler._get_control_artifact_item),
     )
 
 
@@ -143,6 +155,8 @@ def build_post_exact_routes(handler: Any) -> dict[str, Any]:
         "/workflows/start": lambda body: handler._post_workflows_start("/workflows/start", body),
         "/workflows/advance": lambda body: handler._post_workflows_advance("/workflows/advance", body),
         "/workflows/resume": lambda body: handler._post_workflows_resume("/workflows/resume", body),
+        "/agents/templates/export": lambda body: handler._post_agent_template_export("/agents/templates/export", body),
+        "/agents/templates/import": lambda body: handler._post_agent_template_import("/agents/templates/import", body),
         "/memory/recall": lambda body: handler._post_memory_recall("/memory/recall", body),
         "/memory/ingest": lambda body: handler._post_memory_ingest("/memory/ingest", body),
         "/terminal/sessions": lambda body: handler._post_terminal_start("/terminal/sessions", body),
@@ -157,6 +171,13 @@ def build_post_exact_routes(handler: Any) -> dict[str, Any]:
         ),
         "/browser/evaluate_js": lambda body: handler._post_browser_evaluate_js("/browser/evaluate_js", body),
         "/browser/close": lambda body: handler._post_browser_close("/browser/close", body),
+        "/execute/vision": lambda body: handler._post_execute_vision("/execute/vision", body),
+        "/mobile/action": lambda body: handler._post_mobile_action("/mobile/action", body),
+        "/runtime/governance": lambda body: handler._post_runtime_governance("/runtime/governance", body),
+        "/runtime/jobs/cancel_all": lambda body: handler._post_runtime_cancel_all_jobs("/runtime/jobs/cancel_all", body),
+        "/iot/homeassistant/action": lambda body: handler._post_homeassistant_action("/iot/homeassistant/action", body),
+        "/iot/mqtt/publish": lambda body: handler._post_mqtt_publish("/iot/mqtt/publish", body),
+        "/iot/mqtt/subscribe": lambda body: handler._post_mqtt_subscribe("/iot/mqtt/subscribe", body),
     }
 
 
@@ -168,6 +189,8 @@ def build_post_dynamic_routes(handler: Any) -> tuple[tuple[str, str, Any], ...]:
         ("/plugins/", "/call", handler._post_plugin_call),
         ("/terminal/sessions/", "/input", handler._post_terminal_input),
         ("/terminal/sessions/", "/close", handler._post_terminal_close),
+        ("/agents/templates/", "/share", handler._post_agent_template_share),
+        ("/agents/templates/", "/launch", handler._post_agent_template_launch),
         ("/plans/", "/approve_async", handler._post_plan_approve_async),
         ("/plans/", "/retry_failed_async", handler._post_plan_retry_failed_async),
         ("/plans/", "/retry_failed", handler._post_plan_retry_failed),
@@ -217,9 +240,26 @@ def is_idempotent_route(path: str) -> bool:
         return True
     if path in {"/voice/transcribe", "/voice/synthesize"}:
         return True
-    if path in {"/canvas/render", "/workflows/start", "/workflows/advance", "/workflows/resume"}:
+    if path in {
+        "/canvas/render",
+        "/workflows/start",
+        "/workflows/advance",
+        "/workflows/resume",
+        "/agents/templates/export",
+        "/agents/templates/import",
+    }:
         return True
     if path in {"/memory/ingest"}:
+        return True
+    if path in {
+        "/execute/vision",
+        "/mobile/action",
+        "/runtime/governance",
+        "/runtime/jobs/cancel_all",
+        "/iot/homeassistant/action",
+        "/iot/mqtt/publish",
+        "/iot/mqtt/subscribe",
+    }:
         return True
     if path.startswith("/channels/") and (path.endswith("/send") or path.endswith("/inbound")):
         return True
@@ -232,6 +272,8 @@ def is_idempotent_route(path: str) -> bool:
     if path.startswith("/browser/"):
         return True
     if path.startswith("/terminal/sessions/") and path.endswith("/close"):
+        return True
+    if path.startswith("/agents/templates/") and (path.endswith("/share") or path.endswith("/launch")):
         return True
     if path.startswith("/plans/") and (
         path.endswith("/approve")

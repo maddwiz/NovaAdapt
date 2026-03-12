@@ -4,6 +4,22 @@ Native mobile companion applications.
 
 Release track: production-ready.
 
+## Android Operator Paths
+
+`mobile/android` now includes:
+
+- PWA release metadata for the static operator console
+- `NovaAdaptOperatorApp`, a native Android Studio WebView shell for the same control plane
+
+The native shell is source-distributable and intended for operators who want a dedicated Android wrapper around the bundled NovaAdapt console without maintaining a second UI stack.
+
+Build/sign path:
+
+```bash
+cd /Users/desmondpottle/Documents/New project/NovaAdapt
+./scripts/build_android_shell.sh all
+```
+
 ## iOS Companion
 
 `mobile/ios/NovaAdaptCompanion` contains a SwiftUI source module for:

@@ -67,6 +67,7 @@ Optional browser safety env vars:
 - `native` (default): built-in NovaAdapt runtime
 - `subprocess`: invokes `directshell exec --json ...`
 - `http`: posts JSON action payloads to a DirectShell HTTP endpoint
+- `grpc`: sends JSON-framed unary RPCs to a DirectShell-compatible gRPC endpoint
 - `daemon`: framed JSON over Unix socket or TCP
 - `browser`: built-in Playwright browser runtime
 
@@ -83,6 +84,7 @@ Optional browser safety env vars:
 Optional transport auth:
 
 - `DIRECTSHELL_HTTP_TOKEN`: sent as `X-DirectShell-Token` for HTTP transport and probe.
+- `DIRECTSHELL_GRPC_TOKEN`: sent as `x-directshell-token` gRPC metadata for transport and probe.
 - `DIRECTSHELL_DAEMON_TOKEN`: included in daemon payloads and enforceable by `novaadapt native-daemon`.
 
 ## Runtime Readiness Probe
@@ -92,6 +94,7 @@ Use the built-in check before enabling live execution:
 ```bash
 novaadapt directshell-check
 novaadapt directshell-check --transport browser
+novaadapt directshell-check --transport grpc
 ```
 
 Outputs include `ok`, selected transport, and transport-specific diagnostics.
@@ -152,6 +155,34 @@ export DIRECTSHELL_HTTP_URL=http://127.0.0.1:8765/execute
 export DIRECTSHELL_HTTP_TOKEN=YOUR_DS_TOKEN
 ```
 
+## Built-In gRPC Endpoint
+
+Expose native runtime over gRPC:
+
+```bash
+novaadapt native-grpc --host 127.0.0.1 --port 8767
+```
+
+With optional token:
+
+```bash
+novaadapt native-grpc --host 127.0.0.1 --port 8767 --grpc-token YOUR_DS_TOKEN
+```
+
+Then configure core execution transport:
+
+```bash
+export DIRECTSHELL_TRANSPORT=grpc
+export DIRECTSHELL_GRPC_TARGET=127.0.0.1:8767
+export DIRECTSHELL_GRPC_TOKEN=YOUR_DS_TOKEN
+```
+
+Install the optional dependency when using gRPC transport:
+
+```bash
+pip install -e '.[grpc]'
+```
+
 For remote monitoring via core API:
 
 ```text
@@ -160,6 +191,10 @@ GET /health?deep=1&execution=1
 
 This returns `503` when the configured execution backend is not ready.
 
-## Planned
+## Release Validation
 
-- First-party gRPC execution backend for richer deterministic UI control.
+Smoke-test the built-in transport surfaces:
+
+```bash
+python3 scripts/smoke_runtime.py
+```

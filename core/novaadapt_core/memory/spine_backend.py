@@ -33,6 +33,18 @@ class MemoryBackend(Protocol):
     ) -> dict[str, Any] | None:
         ...
 
+    def track_event(self, event_type: str) -> dict[str, Any] | None:
+        ...
+
+    def track_events_batch(self, event_types: list[str]) -> dict[str, Any] | None:
+        ...
+
+    def consolidate(self, *, session_id: str = "", max_chunks: int = 32) -> dict[str, Any] | None:
+        ...
+
+    def dream(self) -> dict[str, Any] | None:
+        ...
+
 
 class NoopMemoryBackend:
     def __init__(self, reason: str = "memory backend disabled") -> None:
@@ -69,6 +81,21 @@ class NoopMemoryBackend:
         metadata: dict[str, Any] | None = None,
     ) -> dict[str, Any] | None:
         _ = (text, source_id, metadata)
+        return None
+
+    def track_event(self, event_type: str) -> dict[str, Any] | None:
+        _ = event_type
+        return None
+
+    def track_events_batch(self, event_types: list[str]) -> dict[str, Any] | None:
+        _ = event_types
+        return None
+
+    def consolidate(self, *, session_id: str = "", max_chunks: int = 32) -> dict[str, Any] | None:
+        _ = (session_id, max_chunks)
+        return None
+
+    def dream(self) -> dict[str, Any] | None:
         return None
 
 
@@ -211,6 +238,51 @@ class NovaSpineHTTPMemoryBackend:
             self._mark_unavailable(exc)
             return None
         return payload
+
+    def track_event(self, event_type: str) -> dict[str, Any] | None:
+        normalized = str(event_type or "").strip()
+        if not normalized or not self._ensure_available():
+            return None
+        try:
+            return self._request_json("POST", "/api/v1/events/track", {"event_type": normalized})
+        except Exception as exc:
+            self._mark_unavailable(exc)
+            return None
+
+    def track_events_batch(self, event_types: list[str]) -> dict[str, Any] | None:
+        cleaned = [str(item).strip() for item in event_types if str(item).strip()]
+        if not cleaned or not self._ensure_available():
+            return None
+        try:
+            return self._request_json("POST", "/api/v1/events/track-batch", {"event_types": cleaned})
+        except Exception as exc:
+            self._mark_unavailable(exc)
+            return None
+
+    def consolidate(self, *, session_id: str = "", max_chunks: int = 32) -> dict[str, Any] | None:
+        if not self._ensure_available():
+            return None
+        try:
+            return self._request_json(
+                "POST",
+                "/api/v1/memory/consolidate",
+                {
+                    "session_id": str(session_id or ""),
+                    "max_chunks": max(1, int(max_chunks)),
+                },
+            )
+        except Exception as exc:
+            self._mark_unavailable(exc)
+            return None
+
+    def dream(self) -> dict[str, Any] | None:
+        if not self._ensure_available():
+            return None
+        try:
+            return self._request_json("POST", "/api/v1/memory/dream", {})
+        except Exception as exc:
+            self._mark_unavailable(exc)
+            return None
 
     def _ensure_available(self) -> bool:
         now = time.monotonic()

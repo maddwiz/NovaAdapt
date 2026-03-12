@@ -843,6 +843,62 @@ def build_openapi_spec() -> dict:
                     "responses": {"200": {"description": "Resumed workflow"}},
                 }
             },
+            "/agents/templates": {
+                "get": {
+                    "summary": "List locally stored agent templates",
+                    "parameters": [
+                        {"name": "limit", "in": "query", "required": False, "schema": {"type": "integer"}},
+                        {"name": "source", "in": "query", "required": False, "schema": {"type": "string"}},
+                        {"name": "tag", "in": "query", "required": False, "schema": {"type": "string"}},
+                    ],
+                    "responses": {"200": {"description": "Agent template list"}},
+                }
+            },
+            "/agents/gallery": {
+                "get": {
+                    "summary": "List built-in local-first gallery templates",
+                    "parameters": [
+                        {"name": "tag", "in": "query", "required": False, "schema": {"type": "string"}}
+                    ],
+                    "responses": {"200": {"description": "Gallery templates"}},
+                }
+            },
+            "/agents/templates/{template_id}": {
+                "get": {
+                    "summary": "Get a stored agent template and its export manifest",
+                    "responses": {"200": {"description": "Agent template detail"}, "404": {"description": "Not found"}},
+                }
+            },
+            "/agents/templates/shared/{share_token}": {
+                "get": {
+                    "summary": "Resolve a shared agent template manifest from its share token",
+                    "responses": {"200": {"description": "Shared agent template"}, "404": {"description": "Not found"}},
+                }
+            },
+            "/agents/templates/export": {
+                "post": {
+                    "summary": "Export an agent template with optional workflow context and memory snapshot",
+                    "responses": {"200": {"description": "Exported agent template"}},
+                }
+            },
+            "/agents/templates/import": {
+                "post": {
+                    "summary": "Import an agent template manifest into the local template store",
+                    "responses": {"200": {"description": "Imported agent template"}},
+                }
+            },
+            "/agents/templates/{template_id}/share": {
+                "post": {
+                    "summary": "Enable, rotate, or revoke share access for an agent template",
+                    "responses": {"200": {"description": "Agent template share metadata"}},
+                }
+            },
+            "/agents/templates/{template_id}/launch": {
+                "post": {
+                    "summary": "Launch an agent template as a plan, run, or workflow",
+                    "responses": {"200": {"description": "Agent template launch result"}},
+                }
+            },
             "/memory/recall": {
                 "post": {
                     "summary": "Recall memory entries relevant to a query",
@@ -853,6 +909,94 @@ def build_openapi_spec() -> dict:
                 "post": {
                     "summary": "Ingest text into long-term memory store",
                     "responses": {"200": {"description": "Memory ingest result"}},
+                }
+            },
+            "/execute/vision": {
+                "post": {
+                    "summary": "Ground and optionally execute the next desktop action from a screenshot and goal",
+                    "responses": {"200": {"description": "Vision grounding and execution result"}},
+                }
+            },
+            "/mobile/action": {
+                "post": {
+                    "summary": "Execute or preview a unified Android or iOS mobile action",
+                    "responses": {"200": {"description": "Mobile action result"}},
+                }
+            },
+            "/mobile/status": {
+                "get": {
+                    "summary": "Get mobile executor status and platform readiness",
+                    "responses": {"200": {"description": "Mobile status"}},
+                }
+            },
+            "/runtime/governance": {
+                "get": {
+                    "summary": "Get runtime governance state, usage telemetry, and job pressure",
+                    "responses": {"200": {"description": "Runtime governance status"}},
+                },
+                "post": {
+                    "summary": "Update runtime pause, budget ceiling, concurrency limit, or reset usage counters",
+                    "responses": {"200": {"description": "Updated runtime governance state"}},
+                },
+            },
+            "/runtime/jobs/cancel_all": {
+                "post": {
+                    "summary": "Cancel all queued or running jobs, optionally pausing the runtime first",
+                    "responses": {"200": {"description": "Global job cancellation result"}},
+                }
+            },
+            "/iot/homeassistant/entities": {
+                "get": {
+                    "summary": "Discover Home Assistant entities with optional domain or prefix filters",
+                    "responses": {"200": {"description": "Entity discovery results"}},
+                }
+            },
+            "/control/artifacts": {
+                "get": {
+                    "summary": "List recent persisted control artifacts for vision, mobile, and IoT actions",
+                    "responses": {"200": {"description": "Control artifact summaries"}},
+                }
+            },
+            "/control/artifacts/{artifact_id}": {
+                "get": {
+                    "summary": "Get a persisted control artifact record",
+                    "responses": {"200": {"description": "Control artifact detail"}, "404": {"description": "Not found"}},
+                }
+            },
+            "/control/artifacts/{artifact_id}/preview": {
+                "get": {
+                    "summary": "Fetch the stored preview image for a control artifact when available",
+                    "responses": {"200": {"description": "Artifact preview image"}, "404": {"description": "Not found"}},
+                }
+            },
+            "/iot/homeassistant/status": {
+                "get": {
+                    "summary": "Get Home Assistant integration status",
+                    "responses": {"200": {"description": "Home Assistant status"}},
+                }
+            },
+            "/iot/mqtt/status": {
+                "get": {
+                    "summary": "Get direct MQTT broker connectivity status",
+                    "responses": {"200": {"description": "MQTT status"}},
+                }
+            },
+            "/iot/homeassistant/action": {
+                "post": {
+                    "summary": "Preview or execute a Home Assistant or MQTT action",
+                    "responses": {"200": {"description": "IoT action result"}},
+                }
+            },
+            "/iot/mqtt/publish": {
+                "post": {
+                    "summary": "Preview or publish a direct MQTT broker message",
+                    "responses": {"200": {"description": "MQTT publish result"}},
+                }
+            },
+            "/iot/mqtt/subscribe": {
+                "post": {
+                    "summary": "Collect a bounded snapshot of MQTT messages for a topic",
+                    "responses": {"200": {"description": "MQTT subscribe snapshot"}},
                 }
             },
             "/browser/status": {

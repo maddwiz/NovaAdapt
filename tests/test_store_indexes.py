@@ -56,6 +56,7 @@ class StoreIndexTests(unittest.TestCase):
             migrations = _migration_ids(db)
             self.assertIn("job_store_0001_create_async_jobs", migrations)
             self.assertIn("job_store_0002_add_hot_path_indexes", migrations)
+            self.assertIn("job_store_0003_add_metadata", migrations)
 
     def test_plan_store_creates_indexes(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -67,6 +68,7 @@ class StoreIndexTests(unittest.TestCase):
             migrations = _migration_ids(db)
             self.assertIn("plan_store_0001_create_plans", migrations)
             self.assertIn("plan_store_0002_add_hot_path_indexes", migrations)
+            self.assertIn("plan_store_0003_add_runtime_metadata", migrations)
 
     def test_undo_queue_creates_indexes(self):
         with tempfile.TemporaryDirectory() as tmp:

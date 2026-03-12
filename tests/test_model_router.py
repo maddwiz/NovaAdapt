@@ -157,8 +157,20 @@ class ModelRouterTests(unittest.TestCase):
                 return json.dumps(
                     {
                         "subtasks": [
-                            {"id": "s1", "objective": "Gather price points", "model": "worker"},
-                            {"id": "s2", "objective": "Draft buyer message", "model": "planner"},
+                            {
+                                "id": "s1",
+                                "objective": "Gather price points",
+                                "model": "worker",
+                                "agent": "researcher",
+                            },
+                            {
+                                "id": "s2",
+                                "objective": "Draft buyer message",
+                                "model": "planner",
+                                "agent": "closer",
+                                "depends_on": ["s1"],
+                                "review_with": "worker",
+                            },
                         ]
                     }
                 )
@@ -168,6 +180,8 @@ class ModelRouterTests(unittest.TestCase):
                 if "Draft buyer message" in user:
                     return "Buyer message draft: Let's proceed with route A."
                 return "Subtask complete."
+            if "Review a collaborator output." in system:
+                return json.dumps({"approved": True, "feedback": ""})
             if "Synthesize final answer from subtask outputs." in system:
                 return "Final plan: use route A and send the buyer message."
             return "Fallback single response."
@@ -188,6 +202,10 @@ class ModelRouterTests(unittest.TestCase):
         self.assertEqual(set(result.votes.keys()), {"s1", "s2"})
         self.assertIn("worker", result.attempted_models)
         self.assertIn("planner", result.attempted_models)
+        self.assertEqual(result.vote_summary["dependency_edges"], 1)
+        self.assertEqual(result.vote_summary["reviewed_subtasks"], 1)
+        self.assertEqual(result.collaboration["agents"], ["researcher", "closer"])
+        self.assertTrue(any(item["type"] == "subtask_review" for item in result.collaboration["transcript"]))
 
     def test_decompose_strategy_falls_back_when_planner_plan_invalid(self):
         endpoints = [ModelEndpoint(name="planner", model="alpha", base_url="http://localhost:1")]
@@ -233,6 +251,64 @@ class ModelRouterTests(unittest.TestCase):
 
         self.assertEqual(result.content, "Use corridor 7.")
         self.assertEqual(fallback_probe["calls"], 0)
+
+    def test_decompose_strategy_retries_subtask_after_review_feedback(self):
+        endpoints = [
+            ModelEndpoint(name="planner", model="alpha", base_url="http://localhost:1"),
+            ModelEndpoint(name="worker", model="beta", base_url="http://localhost:2"),
+            ModelEndpoint(name="reviewer", model="gamma", base_url="http://localhost:3"),
+        ]
+        state = {"worker_calls": 0, "review_calls": 0}
+
+        def transport(endpoint, messages, _temperature, _max_tokens, _timeout):
+            system = str(messages[0].get("content", "")) if messages else ""
+            user = str(messages[-1].get("content", "")) if messages else ""
+            if "Build a concise JSON plan for decomposed execution." in system:
+                return json.dumps(
+                    {
+                        "subtasks": [
+                            {
+                                "id": "s1",
+                                "objective": "Draft the escalation note",
+                                "model": "worker",
+                                "agent": "writer",
+                                "review_with": "reviewer",
+                            }
+                        ]
+                    }
+                )
+            if endpoint.name == "worker" and "You are solving one subtask in a decomposed workflow." in system:
+                state["worker_calls"] += 1
+                if state["worker_calls"] == 1:
+                    return "Draft note: ship it."
+                self.assertIn("Add operator-safe detail", user)
+                return "Draft note: ship it after operator review and rollback prep."
+            if endpoint.name == "reviewer" and "Review a collaborator output." in system:
+                state["review_calls"] += 1
+                if state["review_calls"] == 1:
+                    return json.dumps({"approved": False, "feedback": "Add operator-safe detail."})
+                return json.dumps({"approved": True, "feedback": ""})
+            if "Synthesize final answer from subtask outputs." in system:
+                return "Final note: ship it after operator review and rollback prep."
+            return "Fallback single response."
+
+        router = ModelRouter(
+            endpoints=endpoints,
+            default_model="planner",
+            decompose_review_retries=1,
+            transport=transport,
+        )
+        result = router.chat(
+            messages=[{"role": "user", "content": "Write the escalation note"}],
+            strategy="decompose",
+            candidate_models=["planner", "worker", "reviewer"],
+        )
+
+        self.assertEqual(result.content, "Final note: ship it after operator review and rollback prep.")
+        self.assertEqual(result.votes["s1"], "Draft note: ship it after operator review and rollback prep.")
+        self.assertGreaterEqual(state["worker_calls"], 2)
+        self.assertGreaterEqual(state["review_calls"], 2)
+        self.assertEqual(result.vote_summary["reviewed_subtasks"], 1)
 
     def test_from_config_file_loads_vote_routing_settings(self):
         with TemporaryDirectory() as tmp:

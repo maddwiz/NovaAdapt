@@ -6,6 +6,16 @@ from .jobs import JobManager
 from .service import NovaAdaptService
 
 
+def _submit_job(job_manager: JobManager, fn, *args, job_meta: dict[str, object] | None = None):
+    if isinstance(job_meta, dict):
+        try:
+            return job_manager.submit(fn, *args, job_meta=job_meta)
+        except TypeError as exc:
+            if "job_meta" not in str(exc):
+                raise
+    return job_manager.submit(fn, *args)
+
+
 def get_jobs(
     handler,
     job_manager: JobManager,
@@ -152,7 +162,16 @@ def post_plan_approve_async(
         operation=lambda: (
             202,
             {
-                "job_id": job_manager.submit(service.approve_plan, plan_id, payload),
+                "job_id": _submit_job(
+                    job_manager,
+                    service.approve_plan,
+                    plan_id,
+                    payload,
+                    job_meta={
+                        "kind": "plan_approval",
+                        "plan_id": plan_id,
+                    },
+                ),
                 "status": "queued",
                 "kind": "plan_approval",
             },
@@ -208,7 +227,16 @@ def post_plan_retry_failed_async(
         operation=lambda: (
             202,
             {
-                "job_id": job_manager.submit(service.approve_plan, plan_id, retry_payload),
+                "job_id": _submit_job(
+                    job_manager,
+                    service.approve_plan,
+                    plan_id,
+                    retry_payload,
+                    job_meta={
+                        "kind": "plan_retry_failed",
+                        "plan_id": plan_id,
+                    },
+                ),
                 "status": "queued",
                 "kind": "plan_retry_failed",
             },

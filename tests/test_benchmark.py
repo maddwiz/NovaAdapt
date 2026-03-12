@@ -10,6 +10,7 @@ from novaadapt_core.benchmark import (
     render_benchmark_comparison_markdown,
     run_benchmark,
     write_benchmark_comparison_markdown,
+    write_benchmark_publication_bundle,
 )
 
 
@@ -192,6 +193,60 @@ class BenchmarkTests(unittest.TestCase):
             text = out_path.read_text()
             self.assertIn("Bench Run", text)
             self.assertIn("Delta vs Primary", text)
+
+    def test_write_publication_bundle(self):
+        primary_report = {
+            "summary": {
+                "total": 10,
+                "passed": 9,
+                "failed": 1,
+                "success_rate": 0.9,
+                "first_try_success_rate": 0.9,
+                "avg_action_count": 4.2,
+                "blocked_count": 1,
+            }
+        }
+        baseline_report = {
+            "summary": {
+                "total": 10,
+                "passed": 6,
+                "failed": 4,
+                "success_rate": 0.6,
+                "first_try_success_rate": 0.6,
+                "avg_action_count": 5.0,
+                "blocked_count": 2,
+            }
+        }
+
+        with tempfile.TemporaryDirectory() as tmp:
+            primary_path = Path(tmp) / "novaadapt.json"
+            baseline_path = Path(tmp) / "other-agent.json"
+            primary_path.write_text(json.dumps(primary_report))
+            baseline_path.write_text(json.dumps(baseline_report))
+            out_dir = Path(tmp) / "publication"
+
+            result = write_benchmark_publication_bundle(
+                primary_name="NovaAdapt",
+                primary_report=primary_report,
+                baselines={"OtherAgent": baseline_report},
+                output_dir=out_dir,
+                title="Bench Publish",
+                source_paths={
+                    "NovaAdapt": primary_path,
+                    "OtherAgent": baseline_path,
+                },
+                notes="Operator verified on local fixtures.",
+            )
+
+            self.assertTrue((out_dir / "benchmark.compare.json").exists())
+            self.assertTrue((out_dir / "benchmark.compare.md").exists())
+            self.assertTrue((out_dir / "README.md").exists())
+            self.assertTrue((out_dir / "raw" / "novaadapt.json").exists())
+            self.assertTrue((out_dir / "raw" / "otheragent.json").exists())
+            self.assertEqual(result["raw_reports"]["NovaAdapt"], "raw/novaadapt.json")
+            readme = (out_dir / "README.md").read_text()
+            self.assertIn("Bench Publish", readme)
+            self.assertIn("Operator verified on local fixtures.", readme)
 
 
 if __name__ == "__main__":

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import os
 import time
@@ -13,6 +14,7 @@ from .benchmark import (
     load_benchmark_report,
     run_benchmark,
     write_benchmark_comparison_markdown,
+    write_benchmark_publication_bundle,
 )
 from .agent_gateway import DeliveryManager, GatewayJobQueue, GatewayRouter, GatewayWorker, NovaAgentDaemon
 from .agent_gateway.connectors import build_gateway_connectors
@@ -21,6 +23,7 @@ from .directshell import DirectShellClient
 from .doctor import run_doctor
 from .mcp_server import NovaAdaptMCPServer
 from .native_daemon import NativeExecutionDaemon
+from .native_grpc import NativeExecutionGRPCServer
 from .native_http import NativeExecutionHTTPServer
 from .server import run_server
 from .service import NovaAdaptService
@@ -142,6 +145,29 @@ def _build_parser() -> argparse.ArgumentParser:
         "--mesh-marketplace-buy",
         default="",
         help="Optional JSON object for marketplace buy op (listing_id/buyer)",
+    )
+    run_cmd.add_argument(
+        "--auto-repair-attempts",
+        type=int,
+        default=0,
+        help="Generate and execute replacement actions when execution still fails or blocks",
+    )
+    run_cmd.add_argument(
+        "--repair-strategy",
+        default="decompose",
+        choices=["single", "vote", "decompose"],
+        help="Model routing strategy for auto-repair attempts",
+    )
+    run_cmd.add_argument("--repair-model", default="", help="Optional model endpoint for auto-repair")
+    run_cmd.add_argument(
+        "--repair-candidates",
+        default="",
+        help="Comma-separated candidate models for auto-repair",
+    )
+    run_cmd.add_argument(
+        "--repair-fallbacks",
+        default="",
+        help="Comma-separated fallback models for auto-repair",
     )
 
     history_cmd = sub.add_parser("history", help="Show recent action history")
@@ -282,6 +308,29 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Execute only previously failed/blocked actions for this plan",
     )
+    plan_approve_cmd.add_argument(
+        "--auto-repair-attempts",
+        type=int,
+        default=0,
+        help="Generate and execute replacement actions when plan execution still fails or blocks",
+    )
+    plan_approve_cmd.add_argument(
+        "--repair-strategy",
+        default="decompose",
+        choices=["single", "vote", "decompose"],
+        help="Model routing strategy for auto-repair attempts",
+    )
+    plan_approve_cmd.add_argument("--repair-model", default="", help="Optional model endpoint for auto-repair")
+    plan_approve_cmd.add_argument(
+        "--repair-candidates",
+        default="",
+        help="Comma-separated candidate models for auto-repair",
+    )
+    plan_approve_cmd.add_argument(
+        "--repair-fallbacks",
+        default="",
+        help="Comma-separated fallback models for auto-repair",
+    )
 
     plan_retry_failed_cmd = sub.add_parser(
         "plan-retry-failed",
@@ -312,6 +361,29 @@ def _build_parser() -> argparse.ArgumentParser:
         type=float,
         default=0.2,
         help="Base backoff delay between action retries",
+    )
+    plan_retry_failed_cmd.add_argument(
+        "--auto-repair-attempts",
+        type=int,
+        default=0,
+        help="Generate and execute replacement actions when retry execution still fails or blocks",
+    )
+    plan_retry_failed_cmd.add_argument(
+        "--repair-strategy",
+        default="decompose",
+        choices=["single", "vote", "decompose"],
+        help="Model routing strategy for auto-repair attempts",
+    )
+    plan_retry_failed_cmd.add_argument("--repair-model", default="", help="Optional model endpoint for auto-repair")
+    plan_retry_failed_cmd.add_argument(
+        "--repair-candidates",
+        default="",
+        help="Comma-separated candidate models for auto-repair",
+    )
+    plan_retry_failed_cmd.add_argument(
+        "--repair-fallbacks",
+        default="",
+        help="Comma-separated fallback models for auto-repair",
     )
 
     plan_reject_cmd = sub.add_parser("plan-reject", help="Reject a plan with optional reason")
@@ -711,19 +783,97 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Surface context for flag evaluation",
     )
 
+    agent_templates_list_cmd = sub.add_parser(
+        "agent-templates-list",
+        help="List stored agent templates",
+    )
+    agent_templates_list_cmd.add_argument("--config", type=Path, default=_default_config_path())
+    agent_templates_list_cmd.add_argument("--limit", type=int, default=50)
+    agent_templates_list_cmd.add_argument("--source", default="")
+    agent_templates_list_cmd.add_argument("--tag", default="")
+
+    agent_gallery_cmd = sub.add_parser(
+        "agent-gallery",
+        help="List built-in local agent gallery templates",
+    )
+    agent_gallery_cmd.add_argument("--config", type=Path, default=_default_config_path())
+    agent_gallery_cmd.add_argument("--tag", default="")
+
+    agent_template_get_cmd = sub.add_parser(
+        "agent-template-get",
+        help="Get a stored agent template",
+    )
+    agent_template_get_cmd.add_argument("--config", type=Path, default=_default_config_path())
+    agent_template_get_cmd.add_argument("--template-id", required=True)
+
+    agent_template_export_cmd = sub.add_parser(
+        "agent-template-export",
+        help="Export an agent template with optional memory snapshot",
+    )
+    agent_template_export_cmd.add_argument("--config", type=Path, default=_default_config_path())
+    agent_template_export_cmd.add_argument("--name", default="")
+    agent_template_export_cmd.add_argument("--description", default="")
+    agent_template_export_cmd.add_argument("--objective", default="")
+    agent_template_export_cmd.add_argument("--strategy", default="single")
+    agent_template_export_cmd.add_argument("--candidates", default="")
+    agent_template_export_cmd.add_argument("--steps", default="", help="Optional JSON array of step objects")
+    agent_template_export_cmd.add_argument("--metadata", default="", help="Optional JSON object metadata")
+    agent_template_export_cmd.add_argument("--tags", default="")
+    agent_template_export_cmd.add_argument("--workflow-id", default="")
+    agent_template_export_cmd.add_argument("--template-id", default="")
+    agent_template_export_cmd.add_argument("--include-memory", action="store_true")
+    agent_template_export_cmd.add_argument("--memory-query", default="")
+    agent_template_export_cmd.add_argument("--memory-top-k", type=int, default=5)
+    agent_template_export_cmd.add_argument("--source", default="local")
+
+    agent_template_import_cmd = sub.add_parser(
+        "agent-template-import",
+        help="Import an agent template manifest",
+    )
+    agent_template_import_cmd.add_argument("--config", type=Path, default=_default_config_path())
+    agent_template_import_cmd.add_argument("--manifest", required=True, help="JSON object manifest")
+    agent_template_import_cmd.add_argument("--source", default="")
+    agent_template_import_cmd.add_argument("--template-id", default="")
+
+    agent_template_share_cmd = sub.add_parser(
+        "agent-template-share",
+        help="Enable, rotate, or revoke share access for an agent template",
+    )
+    agent_template_share_cmd.add_argument("--config", type=Path, default=_default_config_path())
+    agent_template_share_cmd.add_argument("--template-id", required=True)
+    agent_template_share_cmd.add_argument("--rotate", action="store_true")
+    agent_template_share_cmd.add_argument("--disable", action="store_true")
+
+    agent_template_launch_cmd = sub.add_parser(
+        "agent-template-launch",
+        help="Launch an agent template as a plan, run, or workflow",
+    )
+    agent_template_launch_cmd.add_argument("--config", type=Path, default=_default_config_path())
+    agent_template_launch_cmd.add_argument("--template-id", required=True)
+    agent_template_launch_cmd.add_argument("--mode", default="plan", choices=["plan", "run", "workflow"])
+    agent_template_launch_cmd.add_argument("--execute", action="store_true")
+    agent_template_launch_cmd.add_argument("--allow-dangerous", action="store_true")
+    agent_template_launch_cmd.add_argument(
+        "--context",
+        default="cli",
+        choices=["cli", "api", "mcp"],
+        help="Surface context for workflow launches",
+    )
+    agent_template_launch_cmd.add_argument("--overrides", default="", help="Optional JSON object overrides")
+
     directshell_check_cmd = sub.add_parser(
         "directshell-check",
         help="Probe DirectShell execution transport readiness",
     )
     directshell_check_cmd.add_argument(
         "--transport",
-        choices=["native", "subprocess", "http", "daemon", "browser"],
+        choices=["native", "subprocess", "http", "grpc", "daemon", "browser"],
         default=None,
         help="Optional DirectShell transport override for probe",
     )
     directshell_check_cmd.add_argument(
         "--native-fallback-transport",
-        choices=["subprocess", "http", "daemon", "browser"],
+        choices=["subprocess", "http", "grpc", "daemon", "browser"],
         default=None,
         help="Fallback transport used when native transport action execution fails",
     )
@@ -731,6 +881,11 @@ def _build_parser() -> argparse.ArgumentParser:
         "--http-token",
         default=None,
         help="Optional DirectShell HTTP token override",
+    )
+    directshell_check_cmd.add_argument(
+        "--grpc-token",
+        default=None,
+        help="Optional DirectShell gRPC token override",
     )
     directshell_check_cmd.add_argument(
         "--daemon-token",
@@ -773,6 +928,95 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     browser_close_cmd.add_argument("--config", type=Path, default=_default_config_path())
 
+    vision_execute_cmd = sub.add_parser(
+        "vision-execute",
+        help="Ground and optionally execute a desktop action from goal plus screenshot",
+    )
+    vision_execute_cmd.add_argument("--config", type=Path, default=_default_config_path())
+    vision_execute_cmd.add_argument("--goal", required=True)
+    vision_execute_cmd.add_argument("--model", default="")
+    vision_execute_cmd.add_argument("--strategy", choices=["single", "vote", "decompose"], default="single")
+    vision_execute_cmd.add_argument("--candidates", default="")
+    vision_execute_cmd.add_argument("--fallbacks", default="")
+    vision_execute_cmd.add_argument("--app-name", default="")
+    vision_execute_cmd.add_argument("--screenshot-path", type=Path, default=None)
+    vision_execute_cmd.add_argument("--execute", action="store_true")
+    vision_execute_cmd.add_argument("--allow-dangerous", action="store_true")
+
+    mobile_status_cmd = sub.add_parser(
+        "mobile-status",
+        help="Get mobile executor readiness and platform status",
+    )
+    mobile_status_cmd.add_argument("--config", type=Path, default=_default_config_path())
+
+    mobile_action_cmd = sub.add_parser(
+        "mobile-action",
+        help="Preview or execute a mobile action payload",
+    )
+    mobile_action_cmd.add_argument("--config", type=Path, default=_default_config_path())
+    mobile_action_cmd.add_argument("--platform", choices=["android", "ios"], required=True)
+    mobile_action_cmd.add_argument("--action-json", default="")
+    mobile_action_cmd.add_argument("--goal", default="")
+    mobile_action_cmd.add_argument("--model", default="")
+    mobile_action_cmd.add_argument("--strategy", choices=["single", "vote", "decompose"], default="single")
+    mobile_action_cmd.add_argument("--candidates", default="")
+    mobile_action_cmd.add_argument("--fallbacks", default="")
+    mobile_action_cmd.add_argument("--screenshot-path", type=Path, default=None)
+    mobile_action_cmd.add_argument("--execute", action="store_true")
+    mobile_action_cmd.add_argument("--allow-dangerous", action="store_true")
+
+    homeassistant_status_cmd = sub.add_parser(
+        "homeassistant-status",
+        help="Get Home Assistant integration readiness",
+    )
+    homeassistant_status_cmd.add_argument("--config", type=Path, default=_default_config_path())
+
+    homeassistant_discover_cmd = sub.add_parser(
+        "homeassistant-discover",
+        help="Discover Home Assistant entities",
+    )
+    homeassistant_discover_cmd.add_argument("--config", type=Path, default=_default_config_path())
+    homeassistant_discover_cmd.add_argument("--domain", default="")
+    homeassistant_discover_cmd.add_argument("--entity-id-prefix", default="")
+    homeassistant_discover_cmd.add_argument("--limit", type=int, default=250)
+
+    homeassistant_action_cmd = sub.add_parser(
+        "homeassistant-action",
+        help="Preview or execute a Home Assistant action payload",
+    )
+    homeassistant_action_cmd.add_argument("--config", type=Path, default=_default_config_path())
+    homeassistant_action_cmd.add_argument("--action-json", required=True)
+    homeassistant_action_cmd.add_argument("--execute", action="store_true")
+    homeassistant_action_cmd.add_argument("--allow-dangerous", action="store_true")
+
+    mqtt_status_cmd = sub.add_parser(
+        "mqtt-status",
+        help="Get direct MQTT broker readiness",
+    )
+    mqtt_status_cmd.add_argument("--config", type=Path, default=_default_config_path())
+
+    mqtt_publish_cmd = sub.add_parser(
+        "mqtt-publish",
+        help="Preview or publish a direct MQTT broker message",
+    )
+    mqtt_publish_cmd.add_argument("--config", type=Path, default=_default_config_path())
+    mqtt_publish_cmd.add_argument("--topic", required=True)
+    mqtt_publish_cmd.add_argument("--payload", required=True)
+    mqtt_publish_cmd.add_argument("--qos", type=int, default=0)
+    mqtt_publish_cmd.add_argument("--retain", action="store_true")
+    mqtt_publish_cmd.add_argument("--execute", action="store_true")
+    mqtt_publish_cmd.add_argument("--allow-dangerous", action="store_true")
+
+    mqtt_subscribe_cmd = sub.add_parser(
+        "mqtt-subscribe",
+        help="Collect a bounded snapshot of MQTT messages for a topic",
+    )
+    mqtt_subscribe_cmd.add_argument("--config", type=Path, default=_default_config_path())
+    mqtt_subscribe_cmd.add_argument("--topic", required=True)
+    mqtt_subscribe_cmd.add_argument("--timeout-seconds", type=float, default=3.0)
+    mqtt_subscribe_cmd.add_argument("--max-messages", type=int, default=10)
+    mqtt_subscribe_cmd.add_argument("--qos", type=int, default=0)
+
     native_daemon_cmd = sub.add_parser(
         "native-daemon",
         help="Run built-in Native DirectShell-compatible daemon",
@@ -803,6 +1047,39 @@ def _build_parser() -> argparse.ArgumentParser:
         type=int,
         default=30,
         help="Per-connection timeout in seconds",
+    )
+
+    native_grpc_cmd = sub.add_parser(
+        "native-grpc",
+        help="Run built-in Native DirectShell-compatible gRPC endpoint",
+    )
+    native_grpc_cmd.add_argument(
+        "--host",
+        default=os.getenv("DIRECTSHELL_GRPC_HOST", "127.0.0.1"),
+        help="Bind host",
+    )
+    native_grpc_cmd.add_argument(
+        "--port",
+        type=int,
+        default=int(os.getenv("DIRECTSHELL_GRPC_PORT", "8767")),
+        help="Bind port",
+    )
+    native_grpc_cmd.add_argument(
+        "--grpc-token",
+        default=os.getenv("DIRECTSHELL_GRPC_TOKEN", ""),
+        help="Optional shared token required by gRPC requests",
+    )
+    native_grpc_cmd.add_argument(
+        "--timeout-seconds",
+        type=int,
+        default=30,
+        help="Request timeout in seconds",
+    )
+    native_grpc_cmd.add_argument(
+        "--max-workers",
+        type=int,
+        default=8,
+        help="Thread pool size for unary gRPC handlers",
     )
 
     gateway_daemon_cmd = sub.add_parser(
@@ -950,6 +1227,44 @@ def _build_parser() -> argparse.ArgumentParser:
         "--md-title",
         default="NovaAdapt Benchmark Comparison",
         help="Markdown report title used with --out-md",
+    )
+
+    bench_publish_cmd = sub.add_parser(
+        "benchmark-publish",
+        help="Build a publication bundle from benchmark reports (compare JSON, markdown, and copied raw inputs)",
+    )
+    bench_publish_cmd.add_argument(
+        "--primary",
+        type=Path,
+        required=True,
+        help="Primary report JSON path (typically NovaAdapt)",
+    )
+    bench_publish_cmd.add_argument(
+        "--primary-name",
+        default="NovaAdapt",
+        help="Display name for primary report",
+    )
+    bench_publish_cmd.add_argument(
+        "--baseline",
+        action="append",
+        default=[],
+        help="Baseline pair formatted as NAME=PATH. Repeat for multiple baselines.",
+    )
+    bench_publish_cmd.add_argument(
+        "--out-dir",
+        type=Path,
+        required=True,
+        help="Directory to write publication assets into",
+    )
+    bench_publish_cmd.add_argument(
+        "--md-title",
+        default="NovaAdapt Reliability Benchmark",
+        help="Publication markdown title",
+    )
+    bench_publish_cmd.add_argument(
+        "--notes",
+        default="",
+        help="Optional operator notes added to the publication README",
     )
 
     backup_cmd = sub.add_parser("backup", help="Create timestamped SQLite backups for local NovaAdapt state")
@@ -1405,6 +1720,11 @@ def main() -> None:
                 "mesh_transfer_amount": args.mesh_transfer_amount,
                 "mesh_marketplace_list": _parse_optional_json_object(args.mesh_marketplace_list, "--mesh-marketplace-list"),
                 "mesh_marketplace_buy": _parse_optional_json_object(args.mesh_marketplace_buy, "--mesh-marketplace-buy"),
+                "auto_repair_attempts": max(0, int(args.auto_repair_attempts)),
+                "repair_strategy": str(args.repair_strategy or "decompose"),
+                "repair_model": str(args.repair_model or "").strip(),
+                "repair_candidates": args.repair_candidates,
+                "repair_fallbacks": args.repair_fallbacks,
             }
             print(json.dumps(service.run(payload), indent=2))
             return
@@ -1473,6 +1793,11 @@ def main() -> None:
                 "action_retry_attempts": max(0, int(args.action_retry_attempts)),
                 "action_retry_backoff_seconds": max(0.0, float(args.action_retry_backoff_seconds)),
                 "retry_failed_only": bool(args.retry_failed_only),
+                "auto_repair_attempts": max(0, int(args.auto_repair_attempts)),
+                "repair_strategy": str(args.repair_strategy or "decompose"),
+                "repair_model": str(args.repair_model or "").strip(),
+                "repair_candidates": args.repair_candidates,
+                "repair_fallbacks": args.repair_fallbacks,
             }
             print(json.dumps(service.approve_plan(args.id, payload), indent=2))
             return
@@ -1490,6 +1815,11 @@ def main() -> None:
                 "max_actions": max(1, args.max_actions),
                 "action_retry_attempts": max(0, int(args.action_retry_attempts)),
                 "action_retry_backoff_seconds": max(0.0, float(args.action_retry_backoff_seconds)),
+                "auto_repair_attempts": max(0, int(args.auto_repair_attempts)),
+                "repair_strategy": str(args.repair_strategy or "decompose"),
+                "repair_model": str(args.repair_model or "").strip(),
+                "repair_candidates": args.repair_candidates,
+                "repair_fallbacks": args.repair_fallbacks,
             }
             print(json.dumps(service.approve_plan(args.id, payload), indent=2))
             return
@@ -1957,10 +2287,113 @@ def main() -> None:
             )
             return
 
+        if args.command == "agent-templates-list":
+            service = NovaAdaptService(default_config=args.config)
+            print(
+                json.dumps(
+                    service.agent_templates_list(
+                        limit=max(1, int(args.limit)),
+                        source=str(args.source or ""),
+                        tag=str(args.tag or ""),
+                    ),
+                    indent=2,
+                )
+            )
+            return
+
+        if args.command == "agent-gallery":
+            service = NovaAdaptService(default_config=args.config)
+            print(json.dumps(service.agent_templates_gallery(tag=str(args.tag or "")), indent=2))
+            return
+
+        if args.command == "agent-template-get":
+            service = NovaAdaptService(default_config=args.config)
+            print(json.dumps(service.agent_template_get(str(args.template_id or "")), indent=2))
+            return
+
+        if args.command == "agent-template-export":
+            service = NovaAdaptService(default_config=args.config)
+            steps = _parse_optional_json_array(args.steps, "--steps")
+            metadata = _parse_optional_json_object(args.metadata, "--metadata")
+            print(
+                json.dumps(
+                    service.agent_template_export(
+                        name=str(args.name or ""),
+                        description=str(args.description or ""),
+                        objective=str(args.objective or ""),
+                        strategy=str(args.strategy or "single"),
+                        candidates=_parse_csv(args.candidates),
+                        steps=[dict(item) for item in steps if isinstance(item, dict)] if steps else [],
+                        metadata=metadata if isinstance(metadata, dict) else {},
+                        tags=_parse_csv(args.tags),
+                        workflow_id=str(args.workflow_id or ""),
+                        template_id=str(args.template_id or ""),
+                        include_memory=bool(args.include_memory),
+                        memory_query=str(args.memory_query or ""),
+                        memory_top_k=max(1, int(args.memory_top_k)),
+                        source=str(args.source or "local"),
+                    ),
+                    indent=2,
+                )
+            )
+            return
+
+        if args.command == "agent-template-import":
+            service = NovaAdaptService(default_config=args.config)
+            manifest = _parse_optional_json_object(args.manifest, "--manifest")
+            if manifest is None:
+                raise ValueError("--manifest must be a JSON object")
+            print(
+                json.dumps(
+                    service.agent_template_import(
+                        {
+                            "manifest": manifest,
+                            "source": str(args.source or ""),
+                            "template_id": str(args.template_id or ""),
+                        }
+                    ),
+                    indent=2,
+                )
+            )
+            return
+
+        if args.command == "agent-template-share":
+            service = NovaAdaptService(default_config=args.config)
+            print(
+                json.dumps(
+                    service.agent_template_share(
+                        str(args.template_id or ""),
+                        rotate=bool(args.rotate),
+                        shared=not bool(args.disable),
+                    ),
+                    indent=2,
+                )
+            )
+            return
+
+        if args.command == "agent-template-launch":
+            service = NovaAdaptService(default_config=args.config)
+            overrides = _parse_optional_json_object(args.overrides, "--overrides")
+            print(
+                json.dumps(
+                    service.agent_template_launch(
+                        str(args.template_id or ""),
+                        mode=str(args.mode or "plan"),
+                        execute=bool(args.execute),
+                        allow_dangerous=bool(args.allow_dangerous),
+                        context=str(args.context or "cli"),
+                        overrides=overrides if isinstance(overrides, dict) else {},
+                    ),
+                    indent=2,
+                )
+            )
+            return
+
         if args.command == "directshell-check":
             client = DirectShellClient(
                 transport=args.transport,
                 http_token=args.http_token,
+                grpc_token=args.grpc_token,
                 daemon_token=args.daemon_token,
                 native_fallback_transport=args.native_fallback_transport,
                 timeout_seconds=max(1, int(args.timeout_seconds)),
@@ -1991,6 +2424,131 @@ def main() -> None:
             print(json.dumps(service.browser_close(), indent=2))
             return
 
+        if args.command == "vision-execute":
+            service = NovaAdaptService(default_config=args.config)
+            payload: dict[str, object] = {
+                "goal": args.goal,
+                "model": str(args.model or ""),
+                "strategy": str(args.strategy or "single"),
+                "candidates": _parse_csv(args.candidates),
+                "fallbacks": _parse_csv(args.fallbacks),
+                "app_name": str(args.app_name or ""),
+                "execute": bool(args.execute),
+                "allow_dangerous": bool(args.allow_dangerous),
+            }
+            screenshot_base64 = _encode_optional_file_base64(args.screenshot_path)
+            if screenshot_base64:
+                payload["screenshot_base64"] = screenshot_base64
+            print(json.dumps(service.vision_execute(payload), indent=2))
+            return
+
+        if args.command == "mobile-status":
+            service = NovaAdaptService(default_config=args.config)
+            print(json.dumps(service.mobile_status(), indent=2))
+            return
+
+        if args.command == "mobile-action":
+            service = NovaAdaptService(default_config=args.config)
+            action = _parse_optional_json_object(args.action_json, "--action-json") if str(args.action_json or "").strip() else None
+            payload = {
+                "platform": str(args.platform),
+                "goal": str(args.goal or ""),
+                "model": str(args.model or ""),
+                "strategy": str(args.strategy or "single"),
+                "candidates": _parse_csv(args.candidates),
+                "fallbacks": _parse_csv(args.fallbacks),
+                "execute": bool(args.execute),
+                "allow_dangerous": bool(args.allow_dangerous),
+            }
+            if action is not None:
+                payload["action"] = action
+            screenshot_base64 = _encode_optional_file_base64(args.screenshot_path)
+            if screenshot_base64:
+                payload["screenshot_base64"] = screenshot_base64
+            print(json.dumps(service.mobile_action(payload), indent=2))
+            return
+
+        if args.command == "homeassistant-status":
+            service = NovaAdaptService(default_config=args.config)
+            print(json.dumps(service.homeassistant_status(), indent=2))
+            return
+
+        if args.command == "homeassistant-discover":
+            service = NovaAdaptService(default_config=args.config)
+            print(
+                json.dumps(
+                    service.homeassistant_discover(
+                        domain=str(args.domain or ""),
+                        entity_id_prefix=str(args.entity_id_prefix or ""),
+                        limit=max(1, int(args.limit)),
+                    ),
+                    indent=2,
+                )
+            )
+            return
+
+        if args.command == "homeassistant-action":
+            service = NovaAdaptService(default_config=args.config)
+            action = _parse_optional_json_object(args.action_json, "--action-json")
+            if action is None:
+                raise ValueError("--action-json must be a JSON object")
+            print(
+                json.dumps(
+                    service.homeassistant_action(
+                        {
+                            "action": action,
+                            "execute": bool(args.execute),
+                            "allow_dangerous": bool(args.allow_dangerous),
+                        }
+                    ),
+                    indent=2,
+                )
+            )
+            return
+
+        if args.command == "mqtt-status":
+            service = NovaAdaptService(default_config=args.config)
+            print(json.dumps(service.mqtt_status(), indent=2))
+            return
+
+        if args.command == "mqtt-publish":
+            service = NovaAdaptService(default_config=args.config)
+            print(
+                json.dumps(
+                    service.homeassistant_action(
+                        {
+                            "action": {
+                                "type": "mqtt_publish",
+                                "topic": str(args.topic or ""),
+                                "payload": str(args.payload or ""),
+                                "qos": int(args.qos),
+                                "retain": bool(args.retain),
+                                "transport": "mqtt-direct",
+                            },
+                            "execute": bool(args.execute),
+                            "allow_dangerous": bool(args.allow_dangerous),
+                        }
+                    ),
+                    indent=2,
+                )
+            )
+            return
+
+        if args.command == "mqtt-subscribe":
+            service = NovaAdaptService(default_config=args.config)
+            print(
+                json.dumps(
+                    service.mqtt_subscribe(
+                        topic=str(args.topic or ""),
+                        timeout_seconds=float(args.timeout_seconds),
+                        max_messages=max(1, int(args.max_messages)),
+                        qos=int(args.qos),
+                    ),
+                    indent=2,
+                )
+            )
+            return
+
         if args.command == "native-daemon":
             daemon = NativeExecutionDaemon(
                 socket_path=str(args.socket or ""),
@@ -2000,6 +2558,17 @@ def main() -> None:
                 timeout_seconds=max(1, int(args.timeout_seconds)),
             )
             daemon.serve_forever()
+            return
+
+        if args.command == "native-grpc":
+            grpc_server = NativeExecutionGRPCServer(
+                host=str(args.host or "127.0.0.1"),
+                port=max(0, int(args.port)),
+                grpc_token=str(args.grpc_token or "").strip() or None,
+                timeout_seconds=max(1, int(args.timeout_seconds)),
+                max_workers=max(1, int(args.max_workers)),
+            )
+            grpc_server.serve_forever()
             return
 
         if args.command == "gateway-daemon":
@@ -2110,6 +2679,38 @@ def main() -> None:
                     args.out_md,
                     title=str(args.md_title).strip() or "NovaAdapt Benchmark Comparison",
                 )
+            print(json.dumps(result, indent=2))
+            return
+
+        if args.command == "benchmark-publish":
+            primary_report = load_benchmark_report(args.primary)
+            baselines: dict[str, dict[str, object]] = {}
+            source_paths: dict[str, Path] = {
+                str(args.primary_name).strip() or "NovaAdapt": args.primary,
+            }
+            for raw in args.baseline:
+                text = str(raw or "").strip()
+                if not text:
+                    continue
+                if "=" not in text:
+                    raise ValueError("--baseline must be NAME=PATH")
+                name, path_text = text.split("=", 1)
+                baseline_name = name.strip()
+                baseline_path = path_text.strip()
+                if not baseline_name or not baseline_path:
+                    raise ValueError("--baseline must be NAME=PATH")
+                baseline_report_path = Path(baseline_path)
+                baselines[baseline_name] = load_benchmark_report(baseline_report_path)
+                source_paths[baseline_name] = baseline_report_path
+            result = write_benchmark_publication_bundle(
+                primary_name=str(args.primary_name).strip() or "NovaAdapt",
+                primary_report=primary_report,
+                baselines=baselines,
+                output_dir=args.out_dir,
+                title=str(args.md_title).strip() or "NovaAdapt Reliability Benchmark",
+                source_paths=source_paths,
+                notes=str(args.notes or "").strip(),
+            )
             print(json.dumps(result, indent=2))
             return
 
@@ -2319,6 +2920,12 @@ def _parse_scopes_csv(raw: object, arg_name: str) -> list[str]:
     if not scopes:
         raise ValueError(f"{arg_name} must contain at least one scope")
     return scopes
+
+
+def _encode_optional_file_base64(path: Path | None) -> str:
+    if path is None:
+        return ""
+    return base64.b64encode(path.read_bytes()).decode("ascii")
 
 
 def _clamp_confidence(value: object) -> float:

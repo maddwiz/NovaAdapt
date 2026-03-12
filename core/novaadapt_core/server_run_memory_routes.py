@@ -7,12 +7,27 @@ from .jobs import JobManager
 from .service import NovaAdaptService
 
 
+def _submit_job(job_manager: JobManager, fn, *args, job_meta: dict[str, object] | None = None):
+    if isinstance(job_meta, dict):
+        try:
+            return job_manager.submit(fn, *args, job_meta=job_meta)
+        except TypeError as exc:
+            if "job_meta" not in str(exc):
+                raise
+    return job_manager.submit(fn, *args)
+
+
 def post_run(
     handler,
     service: NovaAdaptService,
     path: str,
     payload: dict[str, object],
 ) -> int:
+    preflight = getattr(service, "runtime_governance_preflight", None)
+    blocked = preflight() if callable(preflight) else None
+    if blocked:
+        handler._send_json(409, {"error": blocked})
+        return 409
     return handler._respond_idempotent(
         path=path,
         payload=payload,
@@ -29,13 +44,27 @@ def post_run_async(
     path: str,
     payload: dict[str, object],
 ) -> int:
+    preflight = getattr(service, "runtime_governance_preflight", None)
+    blocked = preflight() if callable(preflight) else None
+    if blocked:
+        handler._send_json(409, {"error": blocked})
+        return 409
     return handler._respond_idempotent(
         path=path,
         payload=payload,
         operation=lambda: (
             202,
             {
-                "job_id": job_manager.submit(service.run, payload),
+                "job_id": _submit_job(
+                    job_manager,
+                    service.run,
+                    payload,
+                    job_meta={
+                        "kind": "run",
+                        "objective": str(payload.get("objective") or "").strip(),
+                        "strategy": str(payload.get("strategy") or "single").strip() or "single",
+                    },
+                ),
                 "status": "queued",
             },
         ),
@@ -53,6 +82,11 @@ def post_swarm_run(
     path: str,
     payload: dict[str, object],
 ) -> int:
+    preflight = getattr(service, "runtime_governance_preflight", None)
+    blocked = preflight() if callable(preflight) else None
+    if blocked:
+        handler._send_json(409, {"error": blocked})
+        return 409
     objectives = payload.get("objectives")
     if not isinstance(objectives, list):
         raise ValueError("'objectives' must be an array")
@@ -87,6 +121,11 @@ def post_swarm_run(
         "mesh_transfer_amount": payload.get("mesh_transfer_amount"),
         "mesh_marketplace_list": payload.get("mesh_marketplace_list"),
         "mesh_marketplace_buy": payload.get("mesh_marketplace_buy"),
+        "auto_repair_attempts": int(payload.get("auto_repair_attempts", 0)),
+        "repair_strategy": payload.get("repair_strategy", payload.get("strategy", "single")),
+        "repair_model": payload.get("repair_model"),
+        "repair_candidates": payload.get("repair_candidates"),
+        "repair_fallbacks": payload.get("repair_fallbacks"),
     }
     if "use_kernel" in payload:
         shared_payload["use_kernel"] = coerce_bool(payload.get("use_kernel"), default=False)
@@ -98,7 +137,17 @@ def post_swarm_run(
         for idx, objective in enumerate(selected, start=1):
             run_payload = dict(shared_payload)
             run_payload["objective"] = objective
-            job_id = job_manager.submit(service.run, run_payload)
+            job_id = _submit_job(
+                job_manager,
+                service.run,
+                run_payload,
+                job_meta={
+                    "kind": "swarm_run",
+                    "objective": objective,
+                    "strategy": str(shared_payload.get("strategy") or "single").strip() or "single",
+                    "index": idx,
+                },
+            )
             jobs.append({"index": idx, "objective": objective, "job_id": job_id})
         return (
             202,

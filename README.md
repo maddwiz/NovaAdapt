@@ -18,6 +18,7 @@ Implemented now:
   - OpenAI-compatible endpoint support (Ollama, OpenAI, Anthropic-compatible proxies, vLLM, Together, Fireworks, etc.).
   - Optional LiteLLM execution path when `litellm` is installed.
   - Multi-model voting strategy (`single` or `vote`).
+  - Decompose strategy with planner/worker collaboration, dependency handoffs, and reviewer loops.
   - Deterministic vote winner selection with optional quorum (`min_vote_agreement`).
   - Health probes and resilient fallback for single-model mode.
   - API client SDK for core/bridge (`NovaAdaptAPIClient`).
@@ -32,15 +33,21 @@ Implemented now:
   - Exposes multi-channel messaging adapters (`webchat`, `iMessage`, `WhatsApp`, `Messenger`, `Instagram`, `SMS`, `Telegram`, `Discord`, `Slack`, `Signal`, `Teams`, `Google Chat`, `Matrix`) with normalized inbound + outbound send flows.
   - Exposes first-party plugin adapters (`novabridge`, `nova4d`, `novablox`) for external tool execution.
   - Exposes first-class Playwright browser automation routes/runtime (`/browser/*`) with domain allow/block policy hooks.
+  - Exposes local-first agent template export/import/share/launch flows with a built-in gallery and shareable manifests.
   - Records operator feedback (`/feedback`) into memory for self-improvement loops.
+  - Supports automatic plan self-healing by generating and executing replacement actions for failed steps.
+  - Supports automatic raw-run self-healing plus NovaSpine consolidation/dream hooks after runs, repairs, and strong feedback.
+  - Exposes an optional built-in DirectShell-compatible gRPC runtime (`novaadapt native-grpc`) alongside native, HTTP, daemon, subprocess, and browser transports.
   - Exposes HTTP API with optional bearer auth and async jobs.
 - `bridge` relay service in Go for secure remote forwarding into core API.
   - Includes realtime WebSocket control channel (`/ws`) for events + command relay.
 - `view` static realtime console UI for bridge operations (`view/realtime_console.html`).
-- `view` realtime console now includes xterm.js terminal session streaming, typed websocket browser controls (`browser_*`), bridge session token tooling, runtime device-allowlist controls, and PWA install support for Android.
+- `view` realtime console now includes xterm.js terminal session streaming, typed websocket browser controls (`browser_*`), bridge session token tooling, runtime device-allowlist controls, bootstrap query params, persisted non-sensitive connection defaults, and PWA install support for Android.
+- `mobile/android` Android-ready operator packaging for both the PWA path and a native Android shell project (`mobile/android/NovaAdaptOperatorApp`) with Gradle wrapper, local build/sign script, and CI/Play workflows.
 - `desktop` Tauri operator shell (`desktop/tauri-shell`) for objective queueing, plan approval/rejection/failed-step retry/undo, job cancellation, and event visibility (production-ready).
 - `mobile` iOS SwiftUI companion source (`mobile/ios/NovaAdaptCompanion`) with objective/plan/job controls, websocket feed, remote terminal controls, bridge session issue/revoke flows, and bridge allowlist/device-id controls (production-ready).
 - `wearables` Halo/Omi + XREAL X1 adapters (`wearables/halo_bridge.py`, `wearables/xreal_bridge.py`) with bridge session leasing + optional async wait flow.
+- `wearables/release_manifest.json` release metadata for supported wearable adapter families.
 
 Release posture:
 - Core API/CLI, bridge relay, runtime executors, browser executor, view console, desktop shell, and iOS companion are production-ready for operator deployment.
@@ -49,8 +56,8 @@ Release posture:
 Planned next:
 
 - Harden wearable integrations into signed release artifacts across supported hardware variants.
-- Expand the built-in execution runtime with a richer gRPC backend for deterministic control.
-- Expand native clients with additional platform parity (Android and wearable UX).
+- Expand native clients with deeper wearable UX and additional mobile parity beyond the Android shell/iOS companion.
+- Publish benchmark baselines and recorded demos against the production-track operator stack.
 
 ## Monorepo Layout
 
@@ -114,6 +121,13 @@ novaadapt run \
   --objective "Open a browser and navigate to example.com" \
   --strategy vote \
   --candidates local-qwen,openai-gpt
+
+novaadapt run \
+  --config config/models.local.json \
+  --objective "Complete the cleanup safely" \
+  --execute \
+  --auto-repair-attempts 1 \
+  --repair-strategy decompose
 
 # SIB/NovaPrime-aware run context (identity/presence/mesh probes)
 novaadapt run \
@@ -301,6 +315,10 @@ API endpoints:
 - `GET /adapt/bond?adapt_id=...`
 - `GET /browser/status`
 - `GET /browser/pages`
+- `GET /agents/templates`
+- `GET /agents/gallery`
+- `GET /agents/templates/{template_id}`
+- `GET /agents/templates/shared/{share_token}` (public read-only manifest fetch)
 - `GET /history?limit=20`
 - `GET /metrics` (Prometheus-style counters, auth-protected when token is enabled)
 - `GET /events?limit=100` (audit log filters: `category`, `entity_type`, `entity_id`, `since_id`)
@@ -309,6 +327,7 @@ API endpoints:
 - `GET /terminal/sessions/{id}`
 - `GET /terminal/sessions/{id}/output?since_seq=0&limit=200`
 - `POST /run` with JSON payload
+  Supports optional self-healing controls: `auto_repair_attempts`, `repair_strategy`, `repair_model`, `repair_candidates`, `repair_fallbacks`.
 - Optional NovaPrime runtime context on `/run` and `/swarm/run`: `adapt_id`, `player_id`, `realm`, `activity`, `post_realm`, `post_activity`, `mesh_node_id`, `mesh_probe`, `mesh_probe_marketplace`, `mesh_credit_amount`, `mesh_transfer_to`, `mesh_transfer_amount`, `mesh_marketplace_list`, `mesh_marketplace_buy` (adds `novaprime` metadata in response when Adapt or mesh fields are provided)
 - `POST /run_async` with JSON payload (returns `job_id`)
 - `POST /swarm/run` with JSON payload (fan out multiple objectives into parallel jobs)
@@ -348,6 +367,10 @@ API endpoints:
 - `POST /browser/wait_for_selector` with JSON payload (`selector`, optional `state`/`timeout_ms`)
 - `POST /browser/evaluate_js` with JSON payload (`script`, optional `arg`)
 - `POST /browser/close`
+- `POST /agents/templates/export` with JSON payload (`objective` required, optional `name`, `description`, `strategy`, `candidates`, `steps`, `tags`, `workflow_id`, `include_memory`)
+- `POST /agents/templates/import` with JSON payload (`manifest` object or template fields at top level)
+- `POST /agents/templates/{id}/share` with JSON payload (optional `rotate`, `shared`)
+- `POST /agents/templates/{id}/launch` with JSON payload (optional `mode`, `execute`, `allow_dangerous`, `context`, `overrides`)
 - `POST /terminal/sessions` with JSON payload (optional `command`, `cwd`, `shell`)
 - `POST /terminal/sessions/{id}/input` with JSON payload (`input` required)
 - `POST /terminal/sessions/{id}/close`
@@ -358,6 +381,8 @@ API endpoints:
 - `GET /plans/{id}/stream` (SSE status updates)
 - `POST /plans` (create pending plan)
 - `POST /plans/{id}/approve` (execute on approval by default)
+  Supports `action_retry_attempts`, `action_retry_backoff_seconds`, and optional self-healing controls:
+  `auto_repair_attempts`, `repair_strategy`, `repair_model`, `repair_candidates`, `repair_fallbacks`.
 - `POST /plans/{id}/approve_async` (queue approval/execution as async job)
 - `POST /plans/{id}/retry_failed_async` (queue retry of only failed/blocked actions as async job)
 - `POST /plans/{id}/retry_failed` (retry only failed/blocked actions from a previously failed execution)
@@ -548,7 +573,9 @@ make test-go   # Go bridge tests only
 make test-clients  # Desktop/iOS client source checks
 make smoke-browser # Real Playwright browser smoke (skips unless browser runtime installed)
 make build-bridge
-make release-artifacts      # Build dist artifacts (bridge + python + runtime bundle)
+make release-artifacts      # Build dist artifacts (bridge + python + runtime + Android PWA + wearables bundles)
+./scripts/build_android_shell.sh all  # Build Android debug APK + signed release APK/AAB
+./scripts/configure_android_github_secrets.sh  # Push Android signing secrets from the local keystore into GitHub Actions
 make rotate-tokens-dry-run  # Preview token rotation updates
 ```
 
@@ -577,6 +604,12 @@ PYTHONPATH=core:shared python3 -m novaadapt_core.cli benchmark-compare \
 ```
 
 Benchmark publication workflow: `/Users/desmondpottle/Documents/New project/NovaAdapt/docs/benchmarks.md`.
+
+Publication bundle shortcut:
+
+```bash
+./scripts/publish_benchmarks.sh
+```
 
 ## Observability
 
@@ -647,6 +680,37 @@ Exposed tools:
 - `novaadapt_browser_wait_for_selector`
 - `novaadapt_browser_evaluate_js`
 - `novaadapt_browser_close`
+- `novaadapt_agent_templates_list`
+- `novaadapt_agent_templates_gallery`
+- `novaadapt_agent_template_get`
+- `novaadapt_agent_template_export`
+- `novaadapt_agent_template_import`
+- `novaadapt_agent_template_share`
+- `novaadapt_agent_template_launch`
+
+## Agent Templates
+
+NovaAdapt now includes a local-first agent template store for saving, sharing, and relaunching proven agent configurations.
+
+- Gallery templates live in `/Users/desmondpottle/Documents/New project/NovaAdapt/config/agent_gallery.json`.
+- Exported templates are stored locally in a SQLite-backed registry beside the core state DB.
+- Shared templates can be fetched through public read-only manifest URLs without exposing the rest of the control plane.
+- Launch modes support `plan`, `run`, and `workflow` flows, so templates can be reused for previews, immediate execution, or longer-lived orchestration.
+
+CLI examples:
+
+```bash
+PYTHONPATH=core:shared python3 -m novaadapt_core.cli agent-template-export \
+  --objective "Audit the desktop release checklist and prepare a safe plan" \
+  --name "Desktop Release Triage" \
+  --tags ops,release
+
+PYTHONPATH=core:shared python3 -m novaadapt_core.cli agent-templates-list
+
+PYTHONPATH=core:shared python3 -m novaadapt_core.cli agent-template-share \
+  --template-id agtpl-1234567890abcdef \
+  --rotate
+```
 
 ## Docker Deployment
 
@@ -709,10 +773,35 @@ Build release artifacts (bridge binary, wheel/sdist, runtime bundle, checksums):
 ./installer/build_release_artifacts.sh v0.1.0
 ```
 
+Release outputs now include:
+
+- `dist/novaadapt-runtime-<version>.tar.gz`
+- `dist/novaadapt-android-pwa-<version>.zip`
+- `dist/novaadapt-android-native-shell-<version>.zip`
+- `dist/novaadapt-wearables-<version>.tar.gz`
+- python wheel / sdist
+- bridge binary
+- `dist/SHA256SUMS`
+
+Migration guide:
+
+- `/Users/desmondpottle/Documents/New project/NovaAdapt/docs/migration_guide.md`
+
 GitHub release workflow behavior:
 
 - Push to any branch: runs release build/test as a dry artifact pipeline (no GitHub Release publish).
 - Push a tag or dispatch with `release_tag`: builds artifacts and publishes release assets.
+
+## Demo Scripts
+
+Operator-ready demo entrypoints live under `/Users/desmondpottle/Documents/New project/NovaAdapt/scripts`:
+
+- `demo_vision_desktop.sh`
+- `demo_mobile_banking.sh`
+- `demo_iot_swarm.sh`
+
+Each script defaults to preview mode and can be escalated to live execution with explicit env flags.
+Capture walkthroughs live in `/Users/desmondpottle/Documents/New project/NovaAdapt/docs/demo_runbooks.md`.
 
 ## Python API Client
 
@@ -731,6 +820,13 @@ print(client.retry_failed_plan_async("plan-id"))
 print(client.job_stream("job-id", timeout_seconds=10))
 print(client.plan_stream("plan-id", timeout_seconds=10))
 print(client.events(limit=20))
+template = client.agent_template_export(
+    name="Desktop Release Triage",
+    objective="Audit the desktop release checklist and prepare a safe plan",
+    tags=["ops", "release"],
+)
+print(client.agent_template_share(template["template_id"], rotate=True))
+print(client.agent_template_launch(template["template_id"], mode="plan"))
 session = client.issue_session_token(scopes=["read", "plan", "approve"], ttl_seconds=900)
 print(client.revoke_session_token(session["token"]))
 print(client.revoke_session_id(session["session_id"]))
@@ -914,6 +1010,18 @@ Vote mode reliability controls (in model config):
 
 Set `min_vote_agreement` to `2` or `3` when you want stricter consensus before actions execute.
 
+Decompose mode collaboration controls (also in model config):
+
+```json
+"routing": {
+  "decompose_max_subtasks": 4,
+  "decompose_parallel_workers": 4,
+  "decompose_review_retries": 1
+}
+```
+
+Planner outputs can now assign subtask roles, dependencies, and reviewer models so collaborator agents can hand work off cleanly instead of running as isolated prompts.
+
 Single mode also supports fallback chain routing:
 
 ```bash
@@ -923,6 +1031,13 @@ novaadapt run \
   --strategy single \
   --model local-qwen \
   --fallbacks openai-gpt,custom-vllm
+
+novaadapt plan-approve \
+  --id PLAN_ID \
+  --allow-dangerous \
+  --action-retry-attempts 2 \
+  --auto-repair-attempts 1 \
+  --repair-strategy decompose
 ```
 
 ## DirectShell Transport Modes
@@ -930,23 +1045,27 @@ novaadapt run \
 - `native` (default): built-in NovaAdapt desktop executor (no external DirectShell binary required).
 - `subprocess`: runs `directshell exec --json ...` using `DIRECTSHELL_BIN`.
 - `http`: sends `POST` to `DIRECTSHELL_HTTP_URL` with body `{"action": ...}`.
+- `grpc`: sends JSON-framed unary calls to `DIRECTSHELL_GRPC_TARGET`.
 - `http` can target external DirectShell HTTP runtime or NovaAdapt's built-in endpoint (`novaadapt native-http`).
+- `grpc` can target external DirectShell gRPC runtime or NovaAdapt's built-in endpoint (`novaadapt native-grpc`).
 - `daemon`: sends framed JSON RPC over daemon socket/TCP (`DIRECTSHELL_DAEMON_SOCKET` or `DIRECTSHELL_DAEMON_HOST`/`DIRECTSHELL_DAEMON_PORT`). Can target external DirectShell or NovaAdapt's built-in daemon (`novaadapt native-daemon`).
 
 Execution dependency:
 
 - NovaAdapt now includes a built-in native execution runtime for common desktop actions.
-- External DirectShell transports (`subprocess`, `http`, `daemon`) are optional for advanced or pre-existing deployments.
+- External or isolated transports (`subprocess`, `http`, `grpc`, `daemon`) are optional for advanced or pre-existing deployments.
 - Use `novaadapt directshell-check` to verify the configured transport before running with `--execute`.
 - Full runtime contract: `docs/directshell_runtime.md`
 
 Environment variables:
 
-- `DIRECTSHELL_TRANSPORT` = `native`, `subprocess`, `http`, or `daemon`
-- `DIRECTSHELL_NATIVE_FALLBACK_TRANSPORT` = `subprocess`, `http`, or `daemon` (optional; only used when primary transport is `native`)
+- `DIRECTSHELL_TRANSPORT` = `native`, `subprocess`, `http`, `grpc`, or `daemon`
+- `DIRECTSHELL_NATIVE_FALLBACK_TRANSPORT` = `subprocess`, `http`, `grpc`, or `daemon` (optional; only used when primary transport is `native`)
 - `DIRECTSHELL_BIN` (subprocess mode)
 - `DIRECTSHELL_HTTP_URL` (http mode, default `http://127.0.0.1:8765/execute`)
 - `DIRECTSHELL_HTTP_TOKEN` (optional shared token sent as `X-DirectShell-Token` header in http mode)
+- `DIRECTSHELL_GRPC_TARGET` (grpc mode, default `127.0.0.1:8767`)
+- `DIRECTSHELL_GRPC_TOKEN` (optional shared token sent as `x-directshell-token` metadata in grpc mode)
 - `DIRECTSHELL_DAEMON_SOCKET` (daemon Unix socket path, default `/tmp/directshell.sock`; set empty to force TCP)
 - `DIRECTSHELL_DAEMON_HOST` / `DIRECTSHELL_DAEMON_PORT` (daemon TCP endpoint, default `127.0.0.1:8766`)
 - `DIRECTSHELL_DAEMON_TOKEN` (optional shared token included in daemon payloads and enforceable by `novaadapt native-daemon`)
@@ -957,6 +1076,7 @@ Readiness probe:
 novaadapt directshell-check
 novaadapt directshell-check --transport native --native-fallback-transport http
 novaadapt directshell-check --transport http --http-token YOUR_DS_TOKEN
+novaadapt directshell-check --transport grpc --grpc-token YOUR_DS_TOKEN
 novaadapt directshell-check --transport daemon --daemon-token YOUR_DS_TOKEN
 novaadapt directshell-check --transport daemon
 ```
@@ -977,6 +1097,14 @@ Run built-in HTTP transport endpoint:
 novaadapt native-http --host 127.0.0.1 --port 8765
 # optional HTTP auth token
 novaadapt native-http --host 127.0.0.1 --port 8765 --http-token YOUR_DS_TOKEN
+```
+
+Run built-in gRPC transport endpoint:
+
+```bash
+novaadapt native-grpc --host 127.0.0.1 --port 8767
+# optional gRPC auth token
+novaadapt native-grpc --host 127.0.0.1 --port 8767 --grpc-token YOUR_DS_TOKEN
 ```
 
 Run local operator stack with isolated runtime process:

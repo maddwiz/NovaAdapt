@@ -9,12 +9,23 @@ struct PlanSummary: Identifiable {
     let progressCompleted: Int
     let progressTotal: Int
     let hasUndoActions: Bool
+    let executionError: String
+    let repairedCount: Int
+    let repairSummary: String
+    let collaborationSummary: String
+    let transcriptPreview: [String]
 }
 
 struct JobSummary: Identifiable {
     let id: String
     let status: String
     let kind: String
+    let objective: String
+    let error: String
+    let resultSummary: String
+    let repairSummary: String
+    let collaborationSummary: String
+    let transcriptPreview: [String]
 }
 
 struct AuditEventSummary: Identifiable {
@@ -23,6 +34,63 @@ struct AuditEventSummary: Identifiable {
     let action: String
     let status: String
     let createdAt: String
+}
+
+struct ControlArtifactSummary: Identifiable {
+    let id: String
+    let controlType: String
+    let status: String
+    let platform: String
+    let transport: String
+    let goal: String
+    let outputPreview: String
+    let actionType: String
+    let target: String
+    let model: String
+    let createdAt: String
+    let previewPath: String
+    let dangerous: Bool
+}
+
+struct HomeAssistantEntitySummary: Identifiable {
+    let id: String
+    let entityID: String
+    let domain: String
+    let friendlyName: String
+    let state: String
+    let detail: String
+}
+
+struct MQTTMessageSummary: Identifiable {
+    let id: String
+    let topic: String
+    let payload: String
+    let qos: Int
+    let retain: Bool
+    let receivedAt: String
+}
+
+struct RuntimeGovernanceModelSummary: Identifiable {
+    let id: String
+    let label: String
+    let modelID: String
+    let calls: Int
+    let estimatedCostUSD: Double
+}
+
+struct AgentTemplateSummary: Identifiable {
+    let id: String
+    let templateID: String
+    let name: String
+    let description: String
+    let objective: String
+    let strategy: String
+    let tags: [String]
+    let source: String
+    let updatedAt: String
+    let shared: Bool
+    let shareURL: String
+    let manifest: [String: Any]
 }
 
 struct TerminalSessionSummary: Identifiable {
@@ -62,6 +130,21 @@ final class BridgeViewModel: ObservableObject {
     @Published var execute: Bool = false {
         didSet { persistSettings() }
     }
+    @Published var autoRepairAttempts: Int = 0 {
+        didSet { persistSettings() }
+    }
+    @Published var repairStrategy: String = "decompose" {
+        didSet { persistSettings() }
+    }
+    @Published var repairModel: String = "" {
+        didSet { persistSettings() }
+    }
+    @Published var repairCandidatesCSV: String = "" {
+        didSet { persistSettings() }
+    }
+    @Published var repairFallbacksCSV: String = "" {
+        didSet { persistSettings() }
+    }
     @Published var sessionScopesCSV: String = "read,run,plan,approve,reject,undo,cancel" {
         didSet { persistSettings() }
     }
@@ -81,6 +164,95 @@ final class BridgeViewModel: ObservableObject {
     @Published var plans: [PlanSummary] = []
     @Published var jobs: [JobSummary] = []
     @Published var events: [AuditEventSummary] = []
+    @Published var controlArtifacts: [ControlArtifactSummary] = []
+    @Published var iotDomainFilter: String = "" {
+        didSet { persistSettings() }
+    }
+    @Published var iotEntityPrefix: String = "" {
+        didSet { persistSettings() }
+    }
+    @Published var homeAssistantEntities: [HomeAssistantEntitySummary] = []
+    @Published var mqttTopic: String = "" {
+        didSet { persistSettings() }
+    }
+    @Published var mqttPayload: String = "" {
+        didSet { persistSettings() }
+    }
+    @Published var mqttRetain: Bool = false {
+        didSet { persistSettings() }
+    }
+    @Published var mqttMessages: [MQTTMessageSummary] = []
+    @Published var mqttStatusSummary: String = "MQTT idle"
+    @Published var visionGoal: String = "" {
+        didSet { persistSettings() }
+    }
+    @Published var visionAppName: String = "" {
+        didSet { persistSettings() }
+    }
+    @Published var controlAllowDangerous: Bool = false {
+        didSet { persistSettings() }
+    }
+    @Published var mobileGoal: String = "" {
+        didSet { persistSettings() }
+    }
+    @Published var mobilePlatform: String = "android" {
+        didSet { persistSettings() }
+    }
+    @Published var mobilePreferAppium: Bool = false {
+        didSet { persistSettings() }
+    }
+    @Published var mobileActionJSON: String = "{\"type\":\"open_app\",\"package\":\"com.android.settings\"}" {
+        didSet { persistSettings() }
+    }
+    @Published var mobileStatusSummary: String = "Mobile runtime idle"
+    @Published var controlStatus: String = "Control-anything idle"
+    @Published var controlOutput: String = "No control-anything activity yet."
+    @Published var governancePaused: Bool = false
+    @Published var governancePauseReason: String = ""
+    @Published var governanceBudgetLimit: String = "" {
+        didSet { persistSettings() }
+    }
+    @Published var governanceMaxActiveRuns: String = "" {
+        didSet { persistSettings() }
+    }
+    @Published var governanceActiveRuns: Int = 0
+    @Published var governanceRunsTotal: Int = 0
+    @Published var governanceLLMCallsTotal: Int = 0
+    @Published var governanceSpendEstimateUSD: Double = 0
+    @Published var governanceUpdatedAt: String = ""
+    @Published var governanceLastRunAt: String = ""
+    @Published var governanceLastObjectivePreview: String = ""
+    @Published var governanceLastStrategy: String = ""
+    @Published var governanceJobActive: Int = 0
+    @Published var governanceJobQueued: Int = 0
+    @Published var governanceJobRunning: Int = 0
+    @Published var governanceJobMaxWorkers: Int = 0
+    @Published var governancePerModel: [RuntimeGovernanceModelSummary] = []
+    @Published var templateTagFilter: String = "" {
+        didSet { persistSettings() }
+    }
+    @Published var templateManifestJSON: String = "" {
+        didSet { persistSettings() }
+    }
+    @Published var templateStatus: String = "Template marketplace idle"
+    @Published var templateLibrary: [AgentTemplateSummary] = []
+    @Published var templateGallery: [AgentTemplateSummary] = []
+    @Published var liveEventsEnabled: Bool = false {
+        didSet {
+            persistSettings()
+            if hydrating {
+                return
+            }
+            if liveEventsEnabled {
+                ensureLiveEventStream()
+            } else {
+                stopLiveEventStream(statusText: "Live audit stream idle")
+            }
+        }
+    }
+    @Published var liveEventsConnected: Bool = false
+    @Published var liveEventsStatus: String = "Live audit stream idle"
+    @Published var liveAuditEventsSeen: Int = 0
     @Published var wsEvents: [String] = []
     @Published var status: String = "Idle"
 
@@ -103,6 +275,11 @@ final class BridgeViewModel: ObservableObject {
 
     private var socketTask: URLSessionWebSocketTask?
     private var wsCommandResolvers: [String: (Result<[String: Any], Error>) -> Void] = [:]
+    private var liveEventStreamTask: Task<Void, Never>?
+    private var liveRefreshTask: Task<Void, Never>?
+    private var liveLastAuditID: Int = 0
+    private var liveRefreshInFlight = false
+    private var liveRefreshQueued = false
     private var terminalPollTask: Task<Void, Never>?
     private var terminalNextSeq: Int = 0
     private var hydrating = false
@@ -115,11 +292,33 @@ final class BridgeViewModel: ObservableObject {
         static let strategy = "novaadapt.mobile.strategy"
         static let candidatesCSV = "novaadapt.mobile.candidatesCSV"
         static let execute = "novaadapt.mobile.execute"
+        static let autoRepairAttempts = "novaadapt.mobile.autoRepairAttempts"
+        static let repairStrategy = "novaadapt.mobile.repairStrategy"
+        static let repairModel = "novaadapt.mobile.repairModel"
+        static let repairCandidatesCSV = "novaadapt.mobile.repairCandidatesCSV"
+        static let repairFallbacksCSV = "novaadapt.mobile.repairFallbacksCSV"
         static let sessionScopesCSV = "novaadapt.mobile.sessionScopesCSV"
         static let sessionTTLSeconds = "novaadapt.mobile.sessionTTLSeconds"
         static let issuedSessionID = "novaadapt.mobile.issuedSessionID"
         static let revokeExpiresAt = "novaadapt.mobile.revokeExpiresAt"
         static let allowlistDeviceID = "novaadapt.mobile.allowlistDeviceID"
+        static let iotDomainFilter = "novaadapt.mobile.iotDomainFilter"
+        static let iotEntityPrefix = "novaadapt.mobile.iotEntityPrefix"
+        static let mqttTopic = "novaadapt.mobile.mqttTopic"
+        static let mqttPayload = "novaadapt.mobile.mqttPayload"
+        static let mqttRetain = "novaadapt.mobile.mqttRetain"
+        static let visionGoal = "novaadapt.mobile.visionGoal"
+        static let visionAppName = "novaadapt.mobile.visionAppName"
+        static let controlAllowDangerous = "novaadapt.mobile.controlAllowDangerous"
+        static let mobileGoal = "novaadapt.mobile.mobileGoal"
+        static let mobilePlatform = "novaadapt.mobile.mobilePlatform"
+        static let mobilePreferAppium = "novaadapt.mobile.mobilePreferAppium"
+        static let mobileActionJSON = "novaadapt.mobile.mobileActionJSON"
+        static let governanceBudgetLimit = "novaadapt.mobile.governanceBudgetLimit"
+        static let governanceMaxActiveRuns = "novaadapt.mobile.governanceMaxActiveRuns"
+        static let templateTagFilter = "novaadapt.mobile.templateTagFilter"
+        static let templateManifestJSON = "novaadapt.mobile.templateManifestJSON"
+        static let liveEventsEnabled = "novaadapt.mobile.liveEventsEnabled"
         static let terminalCommand = "novaadapt.mobile.terminalCommand"
         static let terminalCWD = "novaadapt.mobile.terminalCWD"
         static let terminalShell = "novaadapt.mobile.terminalShell"
@@ -193,17 +392,21 @@ final class BridgeViewModel: ObservableObject {
         resolveAllWSCommands(error: NSError(domain: "NovaAdaptCompanion", code: -1, userInfo: [NSLocalizedDescriptionKey: "WebSocket disconnected"]))
     }
 
+    func ensureLiveEventStream() {
+        guard liveEventsEnabled else {
+            stopLiveEventStream(statusText: "Live audit stream idle")
+            return
+        }
+        guard liveEventStreamTask == nil else {
+            return
+        }
+        startLiveEventStream()
+    }
+
     func refreshDashboard() {
         Task {
             await runAction(label: "Refreshing dashboard") {
-                let payload = try await self.requestJSON(
-                    method: "GET",
-                    path: "/dashboard/data?plans_limit=30&jobs_limit=30&events_limit=30",
-                    body: nil
-                )
-                self.plans = self.parsePlans(payload["plans"])
-                self.jobs = self.parseJobs(payload["jobs"])
-                self.events = self.parseEvents(payload["events"])
+                try await self.refreshDashboardAsync()
             }
         }
     }
@@ -240,7 +443,7 @@ final class BridgeViewModel: ObservableObject {
                 _ = try await self.requestJSON(
                     method: "POST",
                     path: "/plans/\(planId)/approve",
-                    body: ["execute": true]
+                    body: self.buildRepairPayload(base: ["execute": true])
                 )
                 try await self.refreshDashboardAsync()
             }
@@ -253,11 +456,11 @@ final class BridgeViewModel: ObservableObject {
                 _ = try await self.requestJSON(
                     method: "POST",
                     path: "/plans/\(planId)/retry_failed_async",
-                    body: [
+                    body: self.buildRepairPayload(base: [
                         "allow_dangerous": true,
                         "action_retry_attempts": 2,
                         "action_retry_backoff_seconds": 0.2,
-                    ]
+                    ])
                 )
                 try await self.refreshDashboardAsync()
             }
@@ -294,6 +497,392 @@ final class BridgeViewModel: ObservableObject {
         Task {
             await runAction(label: "Canceling job \(jobId)") {
                 _ = try await self.requestJSON(method: "POST", path: "/jobs/\(jobId)/cancel", body: [:])
+                try await self.refreshDashboardAsync()
+            }
+        }
+    }
+
+    func refreshIoTEntities() {
+        Task {
+            await runAction(label: "Refreshing IoT entities") {
+                try await self.refreshIoTEntitiesAsync()
+            }
+        }
+    }
+
+    func refreshMQTTStatus() {
+        Task {
+            await runAction(label: "Refreshing MQTT status") {
+                let payload = try await self.requestJSON(method: "GET", path: "/iot/mqtt/status", body: nil)
+                self.mqttStatusSummary = self.formatMQTTStatus(payload)
+            }
+        }
+    }
+
+    func refreshRuntimeGovernance() {
+        Task {
+            await runAction(label: "Refreshing runtime governance") {
+                let payload = try await self.requestJSON(method: "GET", path: "/runtime/governance", body: nil)
+                self.applyRuntimeGovernancePayload(payload)
+            }
+        }
+    }
+
+    func applyRuntimeGovernance() {
+        Task {
+            await runAction(label: "Applying runtime governance") {
+                let payload = try await self.requestJSON(
+                    method: "POST",
+                    path: "/runtime/governance",
+                    body: self.buildRuntimeGovernanceUpdatePayload()
+                )
+                self.applyRuntimeGovernancePayload(payload)
+                try await self.refreshDashboardAsync()
+            }
+        }
+    }
+
+    func pauseRuntime() {
+        Task {
+            await runAction(label: "Pausing runtime") {
+                let payload = try await self.requestJSON(
+                    method: "POST",
+                    path: "/runtime/governance",
+                    body: [
+                        "paused": true,
+                        "pause_reason": "Paused from NovaAdapt iOS companion",
+                    ]
+                )
+                self.applyRuntimeGovernancePayload(payload)
+                try await self.refreshDashboardAsync()
+            }
+        }
+    }
+
+    func resumeRuntime() {
+        Task {
+            await runAction(label: "Resuming runtime") {
+                let payload = try await self.requestJSON(
+                    method: "POST",
+                    path: "/runtime/governance",
+                    body: [
+                        "paused": false,
+                        "pause_reason": "",
+                    ]
+                )
+                self.applyRuntimeGovernancePayload(payload)
+                try await self.refreshDashboardAsync()
+            }
+        }
+    }
+
+    func resetRuntimeUsage() {
+        Task {
+            await runAction(label: "Resetting runtime usage") {
+                let payload = try await self.requestJSON(
+                    method: "POST",
+                    path: "/runtime/governance",
+                    body: ["reset_usage": true]
+                )
+                self.applyRuntimeGovernancePayload(payload)
+                try await self.refreshDashboardAsync()
+            }
+        }
+    }
+
+    func cancelAllJobs() {
+        Task {
+            await runAction(label: "Canceling all jobs") {
+                let payload = try await self.requestJSON(
+                    method: "POST",
+                    path: "/runtime/jobs/cancel_all",
+                    body: [
+                        "pause": true,
+                        "pause_reason": "Cancel all from NovaAdapt iOS companion",
+                    ]
+                )
+                self.applyRuntimeGovernancePayload(payload["governance"])
+                try await self.refreshDashboardAsync()
+            }
+        }
+    }
+
+    func refreshTemplates() {
+        Task {
+            await runAction(label: "Refreshing templates") {
+                try await self.refreshTemplatesAsync()
+            }
+        }
+    }
+
+    func exportCurrentTemplate() {
+        Task {
+            let normalizedObjective = objective.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !normalizedObjective.isEmpty else {
+                templateStatus = "Objective is empty"
+                return
+            }
+            await runAction(label: "Exporting current template") {
+                let payload = try await self.requestJSON(
+                    method: "POST",
+                    path: "/agents/templates/export",
+                    body: [
+                        "name": String(normalizedObjective.prefix(60)),
+                        "description": "Exported from NovaAdapt iOS companion",
+                        "objective": normalizedObjective,
+                        "strategy": self.strategy,
+                        "candidates": self.parseCSV(self.candidatesCSV),
+                        "tags": self.parseCSV(self.templateTagFilter),
+                        "include_memory": true,
+                        "source": "ios",
+                        "metadata": [
+                            "source": "ios-companion",
+                            "exported_at": ISO8601DateFormatter().string(from: Date()),
+                        ],
+                    ]
+                )
+                self.templateManifestJSON = self.prettyJSONString(payload["manifest"]) ?? self.templateManifestJSON
+                self.templateStatus = self.string(payload["name"], fallback: "Template exported")
+                try await self.refreshTemplatesAsync()
+            }
+        }
+    }
+
+    func importTemplateManifest() {
+        Task {
+            let raw = templateManifestJSON.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !raw.isEmpty else {
+                templateStatus = "Paste a template manifest JSON first"
+                return
+            }
+            guard
+                let data = raw.data(using: .utf8),
+                let object = try? JSONSerialization.jsonObject(with: data),
+                let manifest = object as? [String: Any]
+            else {
+                templateStatus = "Template manifest JSON is invalid"
+                return
+            }
+            await runAction(label: "Importing template manifest") {
+                _ = try await self.requestJSON(
+                    method: "POST",
+                    path: "/agents/templates/import",
+                    body: ["manifest": manifest]
+                )
+                try await self.refreshTemplatesAsync()
+            }
+        }
+    }
+
+    func importGalleryTemplate(_ template: AgentTemplateSummary) {
+        Task {
+            guard let manifest = templateManifest(template) else {
+                templateStatus = "Gallery template payload is incomplete"
+                return
+            }
+            await runAction(label: "Importing gallery template \(template.name)") {
+                let payload = try await self.requestJSON(
+                    method: "POST",
+                    path: "/agents/templates/import",
+                    body: [
+                        "manifest": manifest,
+                        "source": "gallery",
+                    ]
+                )
+                self.templateManifestJSON = self.prettyJSONString(payload["manifest"]) ?? self.templateManifestJSON
+                try await self.refreshTemplatesAsync()
+            }
+        }
+    }
+
+    func useTemplateObjective(_ template: AgentTemplateSummary) {
+        objective = template.objective
+        strategy = template.strategy.isEmpty ? "single" : template.strategy
+        templateStatus = "Loaded \(template.name) into the objective console"
+    }
+
+    func createPlanFromTemplate(_ template: AgentTemplateSummary) {
+        Task {
+            await runAction(label: "Launching template \(template.name) as plan") {
+                _ = try await self.requestJSON(
+                    method: "POST",
+                    path: "/agents/templates/\(template.templateID)/launch",
+                    body: [
+                        "mode": "plan",
+                        "execute": false,
+                        "context": "ios-companion",
+                    ]
+                )
+                try await self.refreshDashboardAsync()
+            }
+        }
+    }
+
+    func shareTemplate(_ template: AgentTemplateSummary) {
+        Task {
+            await runAction(label: "Sharing template \(template.name)") {
+                let payload = try await self.requestJSON(
+                    method: "POST",
+                    path: "/agents/templates/\(template.templateID)/share",
+                    body: [
+                        "shared": true,
+                        "rotate": false,
+                    ]
+                )
+                self.templateManifestJSON = self.prettyJSONString(payload["manifest"]) ?? self.templateManifestJSON
+                let share = payload["share"] as? [String: Any] ?? [:]
+                self.templateStatus = self.string(share["share_url"], fallback: self.string(share["share_uri"], fallback: "Template shared"))
+                try await self.refreshTemplatesAsync()
+            }
+        }
+    }
+
+    func executeHomeAssistantService(entityID: String, domain: String, service: String) {
+        Task {
+            await runAction(label: "Executing \(domain).\(service)") {
+                let payload = try await self.requestJSON(
+                    method: "POST",
+                    path: "/iot/homeassistant/action",
+                    body: [
+                        "action": [
+                            "type": "ha_service",
+                            "domain": domain,
+                            "service": service,
+                            "entity_id": entityID,
+                        ],
+                        "execute": true,
+                    ]
+                )
+                self.mqttStatusSummary = self.string(payload["output"], fallback: "\(domain).\(service) sent")
+                try await self.refreshDashboardAsync()
+                try await self.refreshIoTEntitiesAsync()
+            }
+        }
+    }
+
+    func publishMQTTMessage() {
+        Task {
+            let topic = mqttTopic.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !topic.isEmpty else {
+                status = "MQTT topic is empty"
+                return
+            }
+            await runAction(label: "Publishing MQTT message") {
+                let payload = try await self.requestJSON(
+                    method: "POST",
+                    path: "/iot/mqtt/publish",
+                    body: [
+                        "topic": topic,
+                        "payload": self.mqttPayload,
+                        "retain": self.mqttRetain,
+                        "execute": true,
+                    ]
+                )
+                self.mqttStatusSummary = self.string(payload["output"], fallback: "MQTT publish complete")
+                try await self.refreshDashboardAsync()
+                try await self.refreshMQTTStatusAsync()
+            }
+        }
+    }
+
+    func subscribeMQTTSnapshot() {
+        Task {
+            let topic = mqttTopic.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !topic.isEmpty else {
+                status = "MQTT topic is empty"
+                return
+            }
+            await runAction(label: "Subscribing to MQTT snapshot") {
+                let payload = try await self.requestJSON(
+                    method: "POST",
+                    path: "/iot/mqtt/subscribe",
+                    body: [
+                        "topic": topic,
+                        "timeout_seconds": 1.5,
+                        "max_messages": 6,
+                        "qos": 0,
+                    ]
+                )
+                let data = payload["data"] as? [String: Any]
+                self.mqttMessages = self.parseMQTTMessages(data?["messages"])
+                self.mqttStatusSummary = self.string(payload["output"], fallback: "MQTT snapshot complete")
+                try await self.refreshDashboardAsync()
+            }
+        }
+    }
+
+    func refreshMobileRuntime() {
+        Task {
+            await runAction(label: "Refreshing mobile runtime") {
+                let payload = try await self.requestJSON(method: "GET", path: "/mobile/status", body: nil)
+                self.mobileStatusSummary = self.formatMobileRuntimeStatus(payload)
+                self.controlStatus = self.mobileStatusSummary
+                self.controlOutput = self.prettyJSONString(payload) ?? self.controlOutput
+            }
+        }
+    }
+
+    func previewVisionControl() {
+        Task {
+            let goal = visionGoal.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !goal.isEmpty else {
+                status = "Vision goal is empty"
+                return
+            }
+            await runAction(label: "Previewing vision control") {
+                let payload = try await self.requestJSON(
+                    method: "POST",
+                    path: "/execute/vision",
+                    body: try self.buildVisionControlPayload(execute: false)
+                )
+                self.applyControlPayload(payload, fallbackStatus: "Vision preview complete")
+                try await self.refreshDashboardAsync()
+            }
+        }
+    }
+
+    func executeVisionControl() {
+        Task {
+            let goal = visionGoal.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !goal.isEmpty else {
+                status = "Vision goal is empty"
+                return
+            }
+            await runAction(label: "Executing vision control") {
+                let payload = try await self.requestJSON(
+                    method: "POST",
+                    path: "/execute/vision",
+                    body: try self.buildVisionControlPayload(execute: true)
+                )
+                self.applyControlPayload(payload, fallbackStatus: "Vision execution complete")
+                try await self.refreshDashboardAsync()
+            }
+        }
+    }
+
+    func previewMobileControl() {
+        Task {
+            await runAction(label: "Previewing mobile control") {
+                let payload = try await self.requestJSON(
+                    method: "POST",
+                    path: "/mobile/action",
+                    body: try self.buildMobileControlPayload(execute: false)
+                )
+                self.applyControlPayload(payload, fallbackStatus: "Mobile preview complete")
+                try await self.refreshDashboardAsync()
+            }
+        }
+    }
+
+    func executeMobileControl() {
+        Task {
+            await runAction(label: "Executing mobile control") {
+                let payload = try await self.requestJSON(
+                    method: "POST",
+                    path: "/mobile/action",
+                    body: try self.buildMobileControlPayload(execute: true)
+                )
+                self.applyControlPayload(payload, fallbackStatus: "Mobile execution complete")
                 try await self.refreshDashboardAsync()
             }
         }
@@ -665,6 +1254,22 @@ final class BridgeViewModel: ObservableObject {
             candidatesCSV = value
         }
         execute = defaults.bool(forKey: DefaultsKey.execute)
+        let autoRepair = defaults.integer(forKey: DefaultsKey.autoRepairAttempts)
+        if autoRepair > 0 {
+            autoRepairAttempts = max(0, min(10, autoRepair))
+        }
+        if let value = defaults.string(forKey: DefaultsKey.repairStrategy), !value.isEmpty {
+            repairStrategy = value
+        }
+        if let value = defaults.string(forKey: DefaultsKey.repairModel) {
+            repairModel = value
+        }
+        if let value = defaults.string(forKey: DefaultsKey.repairCandidatesCSV) {
+            repairCandidatesCSV = value
+        }
+        if let value = defaults.string(forKey: DefaultsKey.repairFallbacksCSV) {
+            repairFallbacksCSV = value
+        }
         if let value = defaults.string(forKey: DefaultsKey.sessionScopesCSV), !value.isEmpty {
             sessionScopesCSV = value
         }
@@ -681,6 +1286,49 @@ final class BridgeViewModel: ObservableObject {
         if let value = defaults.string(forKey: DefaultsKey.allowlistDeviceID) {
             allowlistDeviceID = value
         }
+        if let value = defaults.string(forKey: DefaultsKey.iotDomainFilter) {
+            iotDomainFilter = value
+        }
+        if let value = defaults.string(forKey: DefaultsKey.iotEntityPrefix) {
+            iotEntityPrefix = value
+        }
+        if let value = defaults.string(forKey: DefaultsKey.mqttTopic) {
+            mqttTopic = value
+        }
+        if let value = defaults.string(forKey: DefaultsKey.mqttPayload) {
+            mqttPayload = value
+        }
+        mqttRetain = defaults.bool(forKey: DefaultsKey.mqttRetain)
+        if let value = defaults.string(forKey: DefaultsKey.visionGoal) {
+            visionGoal = value
+        }
+        if let value = defaults.string(forKey: DefaultsKey.visionAppName) {
+            visionAppName = value
+        }
+        controlAllowDangerous = defaults.bool(forKey: DefaultsKey.controlAllowDangerous)
+        if let value = defaults.string(forKey: DefaultsKey.mobileGoal) {
+            mobileGoal = value
+        }
+        if let value = defaults.string(forKey: DefaultsKey.mobilePlatform), !value.isEmpty {
+            mobilePlatform = value
+        }
+        mobilePreferAppium = defaults.bool(forKey: DefaultsKey.mobilePreferAppium)
+        if let value = defaults.string(forKey: DefaultsKey.mobileActionJSON), !value.isEmpty {
+            mobileActionJSON = value
+        }
+        if let value = defaults.string(forKey: DefaultsKey.governanceBudgetLimit) {
+            governanceBudgetLimit = value
+        }
+        if let value = defaults.string(forKey: DefaultsKey.governanceMaxActiveRuns) {
+            governanceMaxActiveRuns = value
+        }
+        if let value = defaults.string(forKey: DefaultsKey.templateTagFilter) {
+            templateTagFilter = value
+        }
+        if let value = defaults.string(forKey: DefaultsKey.templateManifestJSON) {
+            templateManifestJSON = value
+        }
+        liveEventsEnabled = defaults.bool(forKey: DefaultsKey.liveEventsEnabled)
         if let value = defaults.string(forKey: DefaultsKey.terminalCommand) {
             terminalCommand = value
         }
@@ -711,11 +1359,33 @@ final class BridgeViewModel: ObservableObject {
         defaults.set(strategy, forKey: DefaultsKey.strategy)
         defaults.set(candidatesCSV, forKey: DefaultsKey.candidatesCSV)
         defaults.set(execute, forKey: DefaultsKey.execute)
+        defaults.set(max(0, min(10, autoRepairAttempts)), forKey: DefaultsKey.autoRepairAttempts)
+        defaults.set(repairStrategy, forKey: DefaultsKey.repairStrategy)
+        defaults.set(repairModel, forKey: DefaultsKey.repairModel)
+        defaults.set(repairCandidatesCSV, forKey: DefaultsKey.repairCandidatesCSV)
+        defaults.set(repairFallbacksCSV, forKey: DefaultsKey.repairFallbacksCSV)
         defaults.set(sessionScopesCSV, forKey: DefaultsKey.sessionScopesCSV)
         defaults.set(max(60, min(86400, sessionTTLSeconds)), forKey: DefaultsKey.sessionTTLSeconds)
         defaults.set(issuedSessionID, forKey: DefaultsKey.issuedSessionID)
         defaults.set(revokeExpiresAt, forKey: DefaultsKey.revokeExpiresAt)
         defaults.set(allowlistDeviceID, forKey: DefaultsKey.allowlistDeviceID)
+        defaults.set(iotDomainFilter, forKey: DefaultsKey.iotDomainFilter)
+        defaults.set(iotEntityPrefix, forKey: DefaultsKey.iotEntityPrefix)
+        defaults.set(mqttTopic, forKey: DefaultsKey.mqttTopic)
+        defaults.set(mqttPayload, forKey: DefaultsKey.mqttPayload)
+        defaults.set(mqttRetain, forKey: DefaultsKey.mqttRetain)
+        defaults.set(visionGoal, forKey: DefaultsKey.visionGoal)
+        defaults.set(visionAppName, forKey: DefaultsKey.visionAppName)
+        defaults.set(controlAllowDangerous, forKey: DefaultsKey.controlAllowDangerous)
+        defaults.set(mobileGoal, forKey: DefaultsKey.mobileGoal)
+        defaults.set(mobilePlatform, forKey: DefaultsKey.mobilePlatform)
+        defaults.set(mobilePreferAppium, forKey: DefaultsKey.mobilePreferAppium)
+        defaults.set(mobileActionJSON, forKey: DefaultsKey.mobileActionJSON)
+        defaults.set(governanceBudgetLimit, forKey: DefaultsKey.governanceBudgetLimit)
+        defaults.set(governanceMaxActiveRuns, forKey: DefaultsKey.governanceMaxActiveRuns)
+        defaults.set(templateTagFilter, forKey: DefaultsKey.templateTagFilter)
+        defaults.set(templateManifestJSON, forKey: DefaultsKey.templateManifestJSON)
+        defaults.set(liveEventsEnabled, forKey: DefaultsKey.liveEventsEnabled)
         defaults.set(terminalCommand, forKey: DefaultsKey.terminalCommand)
         defaults.set(terminalCWD, forKey: DefaultsKey.terminalCWD)
         defaults.set(terminalShell, forKey: DefaultsKey.terminalShell)
@@ -741,6 +1411,207 @@ final class BridgeViewModel: ObservableObject {
         }
     }
 
+    private func startLiveEventStream() {
+        stopLiveEventStream(statusText: "Live audit stream connecting")
+        guard liveEventsEnabled else {
+            return
+        }
+        liveEventStreamTask = Task { [weak self] in
+            await self?.runLiveEventStreamLoop()
+        }
+    }
+
+    private func stopLiveEventStream(statusText: String? = nil) {
+        liveEventStreamTask?.cancel()
+        liveEventStreamTask = nil
+        liveRefreshTask?.cancel()
+        liveRefreshTask = nil
+        liveEventsConnected = false
+        liveRefreshInFlight = false
+        liveRefreshQueued = false
+        if let statusText {
+            liveEventsStatus = statusText
+        }
+    }
+
+    private func runLiveEventStreamLoop() async {
+        while liveEventsEnabled && !Task.isCancelled {
+            guard let url = makeURL(
+                path: "/events/stream?timeout=300&interval=0.25&since_id=\(max(0, liveLastAuditID))"
+            ) else {
+                liveEventsConnected = false
+                liveEventsStatus = "Live audit stream unavailable: invalid API URL"
+                liveEventStreamTask = nil
+                return
+            }
+
+            var request = URLRequest(url: url)
+            request.httpMethod = "GET"
+            request.timeoutInterval = 310
+            request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+            let bearer = token.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !bearer.isEmpty {
+                request.setValue("Bearer \(bearer)", forHTTPHeaderField: "Authorization")
+            }
+            let deviceID = bridgeDeviceID.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !deviceID.isEmpty {
+                request.setValue(deviceID, forHTTPHeaderField: "X-Device-ID")
+            }
+
+            do {
+                let (bytes, response) = try await URLSession.shared.bytes(for: request)
+                guard let http = response as? HTTPURLResponse else {
+                    throw URLError(.badServerResponse)
+                }
+                guard (200 ... 299).contains(http.statusCode) else {
+                    throw NSError(
+                        domain: "NovaAdaptCompanion",
+                        code: http.statusCode,
+                        userInfo: [NSLocalizedDescriptionKey: "live stream rejected with status \(http.statusCode)"]
+                    )
+                }
+
+                liveEventsConnected = true
+                liveEventsStatus = "Live audit stream connected"
+
+                var eventName = "message"
+                var dataLines: [String] = []
+                var shouldReconnect = false
+
+                for try await rawLine in bytes.lines {
+                    if Task.isCancelled || !liveEventsEnabled {
+                        shouldReconnect = false
+                        break
+                    }
+
+                    let line = String(rawLine)
+                    if line.isEmpty {
+                        if await handleLiveEvent(eventName: eventName, data: dataLines.joined(separator: "\n")) {
+                            shouldReconnect = true
+                            break
+                        }
+                        eventName = "message"
+                        dataLines.removeAll(keepingCapacity: true)
+                        continue
+                    }
+                    if line.hasPrefix(":") {
+                        continue
+                    }
+                    if line.hasPrefix("event:") {
+                        eventName = String(line.dropFirst(6)).trimmingCharacters(in: .whitespaces)
+                        continue
+                    }
+                    if line.hasPrefix("data:") {
+                        dataLines.append(String(line.dropFirst(5)).trimmingCharacters(in: .whitespaces))
+                    }
+                }
+
+                if !dataLines.isEmpty, !Task.isCancelled, liveEventsEnabled {
+                    _ = await handleLiveEvent(eventName: eventName, data: dataLines.joined(separator: "\n"))
+                }
+
+                if !liveEventsEnabled || Task.isCancelled {
+                    break
+                }
+
+                liveEventsConnected = false
+                if shouldReconnect {
+                    liveEventsStatus = "Live audit stream reconnecting"
+                }
+            } catch {
+                if !liveEventsEnabled || Task.isCancelled {
+                    break
+                }
+                liveEventsConnected = false
+                liveEventsStatus = "Live audit stream reconnecting: \(error.localizedDescription)"
+            }
+
+            if !liveEventsEnabled || Task.isCancelled {
+                break
+            }
+            try? await Task.sleep(nanoseconds: 750_000_000)
+        }
+
+        if !liveEventsEnabled {
+            liveEventsConnected = false
+            liveEventsStatus = "Live audit stream idle"
+        }
+        liveEventStreamTask = nil
+    }
+
+    private func handleLiveEvent(eventName: String, data: String) async -> Bool {
+        let normalizedEvent = eventName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if normalizedEvent == "timeout" {
+            liveEventsStatus = "Live audit stream heartbeat"
+            return true
+        }
+        guard normalizedEvent == "audit", let blob = data.data(using: .utf8) else {
+            return false
+        }
+        guard
+            let object = try? JSONSerialization.jsonObject(with: blob),
+            let payload = object as? [String: Any]
+        else {
+            liveEventsStatus = "Live audit stream update"
+            scheduleLiveDashboardRefresh()
+            return false
+        }
+
+        if let eventID = toInt(payload["id"]) {
+            liveLastAuditID = max(liveLastAuditID, eventID)
+        }
+        if let item = parseEvents([payload]).first {
+            events.removeAll { $0.id == item.id }
+            events.insert(item, at: 0)
+            events = Array(events.prefix(30))
+        }
+        liveAuditEventsSeen += 1
+        let category = string(payload["category"], fallback: "audit")
+        let action = string(payload["action"], fallback: "update")
+        liveEventsStatus = "Live • \(category):\(action)"
+        scheduleLiveDashboardRefresh()
+        return false
+    }
+
+    private func scheduleLiveDashboardRefresh(delayMs: UInt64 = 150) {
+        liveRefreshTask?.cancel()
+        liveRefreshTask = Task { [weak self] in
+            guard let self else { return }
+            try? await Task.sleep(nanoseconds: delayMs * 1_000_000)
+            await self.performLiveDashboardRefresh()
+        }
+    }
+
+    private func performLiveDashboardRefresh() async {
+        if liveRefreshInFlight {
+            liveRefreshQueued = true
+            return
+        }
+        liveRefreshInFlight = true
+        defer {
+            liveRefreshInFlight = false
+            if liveRefreshQueued {
+                liveRefreshQueued = false
+                scheduleLiveDashboardRefresh(delayMs: 50)
+            }
+        }
+
+        do {
+            try await refreshDashboardAsync()
+        } catch {
+            liveEventsConnected = false
+            liveEventsStatus = "Live refresh failed: \(error.localizedDescription)"
+        }
+    }
+
+    private func syncLiveAuditCursor() {
+        for item in events {
+            if let value = Int(item.id) {
+                liveLastAuditID = max(liveLastAuditID, value)
+            }
+        }
+    }
+
     private func refreshDashboardAsync() async throws {
         let payload = try await requestJSON(
             method: "GET",
@@ -750,6 +1621,120 @@ final class BridgeViewModel: ObservableObject {
         plans = parsePlans(payload["plans"])
         jobs = parseJobs(payload["jobs"])
         events = parseEvents(payload["events"])
+        controlArtifacts = parseControlArtifacts(payload["control_artifacts"])
+        applyRuntimeGovernancePayload(payload["governance"])
+        syncLiveAuditCursor()
+    }
+
+    private func refreshTemplatesAsync() async throws {
+        let tag = templateTagFilter.trimmingCharacters(in: .whitespacesAndNewlines)
+        let query = tag.isEmpty ? "" : "?tag=\(tag.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? tag)"
+        async let libraryPayload = requestJSON(
+            method: "GET",
+            path: "/agents/templates?limit=24\(query.isEmpty ? "" : "&" + String(query.dropFirst()))",
+            body: nil
+        )
+        async let galleryPayload = requestJSON(method: "GET", path: "/agents/gallery\(query)", body: nil)
+        let (library, gallery) = try await (libraryPayload, galleryPayload)
+        templateLibrary = parseAgentTemplates(library["templates"])
+        templateGallery = parseAgentTemplates(gallery["templates"])
+        let libraryCount = toInt(library["count"]) ?? templateLibrary.count
+        let galleryCount = toInt(gallery["count"]) ?? templateGallery.count
+        templateStatus = "Templates \(libraryCount) local • \(galleryCount) gallery"
+    }
+
+    private func refreshIoTEntitiesAsync() async throws {
+        let domain = iotDomainFilter.trimmingCharacters(in: .whitespacesAndNewlines)
+        let prefix = iotEntityPrefix.trimmingCharacters(in: .whitespacesAndNewlines)
+        var queryItems = [URLQueryItem(name: "limit", value: "24")]
+        if !domain.isEmpty {
+            queryItems.append(URLQueryItem(name: "domain", value: domain))
+        }
+        if !prefix.isEmpty {
+            queryItems.append(URLQueryItem(name: "entity_id_prefix", value: prefix))
+        }
+        var components = URLComponents()
+        components.queryItems = queryItems
+        let query = components.percentEncodedQuery ?? "limit=24"
+        let payload = try await requestJSON(
+            method: "GET",
+            path: "/iot/homeassistant/entities?\(query)",
+            body: nil
+        )
+        homeAssistantEntities = parseHomeAssistantEntities(payload)
+    }
+
+    private func refreshMQTTStatusAsync() async throws {
+        let payload = try await requestJSON(method: "GET", path: "/iot/mqtt/status", body: nil)
+        mqttStatusSummary = formatMQTTStatus(payload)
+    }
+
+    private func applyControlPayload(_ payload: [String: Any], fallbackStatus: String) {
+        let platform = string(payload["platform"])
+        let statusText = string(payload["status"], fallback: fallbackStatus)
+        let outputText = string(payload["output"])
+        if platform.isEmpty {
+            controlStatus = statusText
+        } else {
+            controlStatus = "\(platform) \(statusText)"
+        }
+        controlOutput = prettyJSONString(payload) ?? outputText
+        if !outputText.isEmpty {
+            status = outputText
+        }
+    }
+
+    private func formatMobileRuntimeStatus(_ payload: [String: Any]) -> String {
+        let android = payload["android"] as? [String: Any] ?? [:]
+        let ios = payload["ios"] as? [String: Any] ?? [:]
+        let androidSummary = bool(android["ok"]) ? "android ready" : "android degraded"
+        let iosTransport = string(ios["transport"], fallback: bool(ios["ok"]) ? "vision" : "unavailable")
+        let iosSummary = bool(ios["ok"]) ? "ios \(iosTransport)" : "ios degraded"
+        return "\(androidSummary) • \(iosSummary)"
+    }
+
+    private func buildRuntimeGovernanceUpdatePayload() -> [String: Any] {
+        var payload: [String: Any] = [:]
+        let budget = governanceBudgetLimit.trimmingCharacters(in: .whitespacesAndNewlines)
+        if budget.isEmpty {
+            payload["budget_limit_usd"] = NSNull()
+        } else if let value = Double(budget) {
+            payload["budget_limit_usd"] = value
+        }
+
+        let maxRuns = governanceMaxActiveRuns.trimmingCharacters(in: .whitespacesAndNewlines)
+        if maxRuns.isEmpty {
+            payload["max_active_runs"] = NSNull()
+        } else if let value = Int(maxRuns) {
+            payload["max_active_runs"] = max(1, value)
+        }
+        return payload
+    }
+
+    private func applyRuntimeGovernancePayload(_ value: Any?) {
+        guard let payload = value as? [String: Any] else {
+            return
+        }
+
+        governancePaused = bool(payload["paused"])
+        governancePauseReason = string(payload["pause_reason"])
+        governanceBudgetLimit = string(payload["budget_limit_usd"])
+        governanceMaxActiveRuns = string(payload["max_active_runs"])
+        governanceActiveRuns = toInt(payload["active_runs"]) ?? 0
+        governanceRunsTotal = toInt(payload["runs_total"]) ?? 0
+        governanceLLMCallsTotal = toInt(payload["llm_calls_total"]) ?? 0
+        governanceSpendEstimateUSD = toDouble(payload["spend_estimate_usd"]) ?? 0
+        governanceUpdatedAt = string(payload["updated_at"])
+        governanceLastRunAt = string(payload["last_run_at"])
+        governanceLastObjectivePreview = string(payload["last_objective_preview"])
+        governanceLastStrategy = string(payload["last_strategy"], fallback: "single")
+
+        let jobs = payload["jobs"] as? [String: Any] ?? [:]
+        governanceJobActive = toInt(jobs["active"]) ?? 0
+        governanceJobQueued = toInt(jobs["queued"]) ?? 0
+        governanceJobRunning = toInt(jobs["running"]) ?? 0
+        governanceJobMaxWorkers = toInt(jobs["max_workers"]) ?? 0
+        governancePerModel = parseRuntimeGovernanceModels(payload["per_model"])
     }
 
     private func startTerminalPolling() {
@@ -948,14 +1933,113 @@ final class BridgeViewModel: ObservableObject {
                 "created_at": ISO8601DateFormatter().string(from: Date()),
             ],
         ]
-        let candidates = candidatesCSV
+        let candidates = parseCSV(candidatesCSV)
+        if !candidates.isEmpty {
+            payload["candidates"] = candidates
+        }
+        return buildRepairPayload(base: payload)
+    }
+
+    private func buildRepairPayload(base: [String: Any]) -> [String: Any] {
+        var payload = base
+        let attempts = max(0, min(10, autoRepairAttempts))
+        if attempts > 0 {
+            payload["auto_repair_attempts"] = attempts
+        }
+        let normalizedRepairStrategy = repairStrategy.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !normalizedRepairStrategy.isEmpty {
+            payload["repair_strategy"] = normalizedRepairStrategy
+        }
+        let normalizedRepairModel = repairModel.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !normalizedRepairModel.isEmpty {
+            payload["repair_model"] = normalizedRepairModel
+        }
+        let repairCandidates = repairCandidatesCSV
             .split(separator: ",")
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
-        if strategy == "vote", !candidates.isEmpty {
+        if !repairCandidates.isEmpty {
+            payload["repair_candidates"] = repairCandidates
+        }
+        let repairFallbacks = repairFallbacksCSV
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        if !repairFallbacks.isEmpty {
+            payload["repair_fallbacks"] = repairFallbacks
+        }
+        return payload
+    }
+
+    private func buildVisionControlPayload(execute: Bool) throws -> [String: Any] {
+        let goal = visionGoal.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !goal.isEmpty else {
+            throw NSError(domain: "NovaAdaptCompanion", code: -2, userInfo: [NSLocalizedDescriptionKey: "Vision goal is empty"])
+        }
+        var payload: [String: Any] = [
+            "goal": goal,
+            "execute": execute,
+            "strategy": strategy.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "single" : strategy,
+            "allow_dangerous": controlAllowDangerous,
+        ]
+        let appName = visionAppName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !appName.isEmpty {
+            payload["app_name"] = appName
+        }
+        let candidates = parseCSV(candidatesCSV)
+        if !candidates.isEmpty {
             payload["candidates"] = candidates
         }
         return payload
+    }
+
+    private func buildMobileControlPayload(execute: Bool) throws -> [String: Any] {
+        let normalizedPlatform = mobilePlatform.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let platform = normalizedPlatform.isEmpty ? "android" : normalizedPlatform
+        guard platform == "android" || platform == "ios" else {
+            throw NSError(domain: "NovaAdaptCompanion", code: -2, userInfo: [NSLocalizedDescriptionKey: "Mobile platform must be android or ios"])
+        }
+        var payload: [String: Any] = [
+            "platform": platform,
+            "action": try parseMobileActionJSONObject(),
+            "execute": execute,
+            "allow_dangerous": controlAllowDangerous,
+            "strategy": strategy.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "single" : strategy,
+        ]
+        let goal = mobileGoal.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !goal.isEmpty {
+            payload["goal"] = goal
+        }
+        let candidates = parseCSV(candidatesCSV)
+        if !candidates.isEmpty {
+            payload["candidates"] = candidates
+        }
+        if platform == "ios", mobilePreferAppium {
+            payload["prefer_appium"] = true
+        }
+        return payload
+    }
+
+    private func parseMobileActionJSONObject() throws -> [String: Any] {
+        let raw = mobileActionJSON.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !raw.isEmpty else {
+            throw NSError(domain: "NovaAdaptCompanion", code: -2, userInfo: [NSLocalizedDescriptionKey: "Mobile action JSON is empty"])
+        }
+        guard let data = raw.data(using: .utf8) else {
+            throw NSError(domain: "NovaAdaptCompanion", code: -2, userInfo: [NSLocalizedDescriptionKey: "Mobile action JSON encoding failed"])
+        }
+        let object = try JSONSerialization.jsonObject(with: data)
+        guard let payload = object as? [String: Any] else {
+            throw NSError(domain: "NovaAdaptCompanion", code: -2, userInfo: [NSLocalizedDescriptionKey: "Mobile action JSON must be an object"])
+        }
+        return payload
+    }
+
+    private func parseCSV(_ raw: String) -> [String] {
+        raw
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
     }
 
     private func adminOrPrimaryToken() -> String {
@@ -1087,6 +2171,10 @@ final class BridgeViewModel: ObservableObject {
         let parsed = items.map { item -> PlanSummary in
             let id = string(item["id"])
             let actionLogIDs = (item["action_log_ids"] as? [Any]) ?? []
+            let executionResults = (item["execution_results"] as? [[String: Any]]) ?? []
+            let repairedCount = executionResults.filter {
+                string($0["status"]).lowercased() == "repaired"
+            }.count
             return PlanSummary(
                 id: id.isEmpty ? UUID().uuidString : id,
                 objective: string(item["objective"]),
@@ -1095,7 +2183,16 @@ final class BridgeViewModel: ObservableObject {
                 actionCount: int(item["actions"], fallback: 0, treatArrayAsCount: true),
                 progressCompleted: int(item["progress_completed"], fallback: 0, treatArrayAsCount: false),
                 progressTotal: int(item["progress_total"], fallback: 0, treatArrayAsCount: false),
-                hasUndoActions: !actionLogIDs.isEmpty
+                hasUndoActions: !actionLogIDs.isEmpty,
+                executionError: string(item["execution_error"]),
+                repairedCount: repairedCount,
+                repairSummary: summarizeRepair(item["repair"], executionResults: executionResults),
+                collaborationSummary: summarizeCollaboration(
+                    voteSummary: item["vote_summary"],
+                    collaboration: item["collaboration"],
+                    fallbackStrategy: string(item["strategy"], fallback: "single")
+                ),
+                transcriptPreview: transcriptPreviewLines(item["collaboration"])
             )
         }
         return parsed.sorted { lhs, rhs in
@@ -1107,16 +2204,173 @@ final class BridgeViewModel: ObservableObject {
         guard let items = value as? [[String: Any]] else {
             return []
         }
-        let parsed = items.map { item in
-            JobSummary(
+        let parsed = items.map { item -> JobSummary in
+            let result = item["result"] as? [String: Any]
+            let metadata = item["metadata"] as? [String: Any]
+            let kind = string(item["kind"], fallback: string(metadata?["kind"], fallback: "run"))
+            return JobSummary(
                 id: string(item["id"], fallback: UUID().uuidString),
                 status: string(item["status"], fallback: "unknown"),
-                kind: string(item["kind"], fallback: "run")
+                kind: kind.isEmpty ? "run" : kind,
+                objective: string(item["objective"], fallback: string(metadata?["objective"])),
+                error: string(item["error"]),
+                resultSummary: summarizeJobResult(result),
+                repairSummary: summarizeRepair(result?["repair"], executionResults: (result?["results"] as? [[String: Any]]) ?? []),
+                collaborationSummary: summarizeCollaboration(
+                    voteSummary: result?["vote_summary"],
+                    collaboration: result?["collaboration"],
+                    fallbackStrategy: string(result?["strategy"], fallback: kind)
+                ),
+                transcriptPreview: transcriptPreviewLines(result?["collaboration"])
             )
         }
         return parsed.sorted { lhs, rhs in
             jobRank(lhs.status) < jobRank(rhs.status)
         }
+    }
+
+    private func summarizeRepair(_ value: Any?, executionResults: [[String: Any]]) -> String {
+        let repairedCount = executionResults.filter {
+            string($0["status"]).lowercased() == "repaired"
+        }.count
+        guard let repair = value as? [String: Any] else {
+            return repairedCount > 0 ? "\(repairedCount) repaired action\(repairedCount == 1 ? "" : "s")" : ""
+        }
+        let healed = bool(repair["healed"])
+        let attempts = toInt(repair["attempts"]) ?? 0
+        let unresolved = ((repair["failed_indexes"] as? [Any]) ?? []).count
+        let lastError = string(repair["last_error"])
+        var parts: [String] = []
+        if healed {
+            parts.append("auto-repair healed")
+        } else if attempts > 0 {
+            parts.append("auto-repair attempted")
+        }
+        if repairedCount > 0 {
+            parts.append("\(repairedCount) repaired")
+        }
+        if attempts > 0 {
+            parts.append("\(attempts) attempt\(attempts == 1 ? "" : "s")")
+        }
+        if unresolved > 0 && !healed {
+            parts.append("\(unresolved) unresolved")
+        }
+        if !lastError.isEmpty && !healed {
+            parts.append(lastError)
+        }
+        return parts.joined(separator: " • ")
+    }
+
+    private func summarizeCollaboration(voteSummary: Any?, collaboration: Any?, fallbackStrategy: String) -> String {
+        let vote = voteSummary as? [String: Any] ?? [:]
+        let collab = collaboration as? [String: Any] ?? [:]
+        let mode = string(collab["mode"], fallback: fallbackStrategy).lowercased()
+        if toInt(vote["subtasks_total"]) != nil || mode == "decompose" {
+            let total = toInt(vote["subtasks_total"]) ?? 0
+            let succeeded = toInt(vote["subtasks_succeeded"]) ?? 0
+            let reviewed = toInt(vote["reviewed_subtasks"]) ?? 0
+            let batches = toInt(vote["parallel_batches"]) ?? 0
+            var parts = ["decompose"]
+            if total > 0 {
+                parts.append("\(succeeded)/\(total) subtasks")
+            }
+            if reviewed > 0 {
+                parts.append("\(reviewed) reviewed")
+            }
+            if batches > 0 {
+                parts.append("\(batches) batches")
+            }
+            let reason = string(vote["reason"])
+            if !reason.isEmpty {
+                parts.append(reason.replacingOccurrences(of: "_", with: " "))
+            }
+            return parts.joined(separator: " • ")
+        }
+        if toInt(vote["winner_votes"]) != nil || mode == "vote" {
+            let winnerVotes = toInt(vote["winner_votes"]) ?? 0
+            let totalVotes = toInt(vote["total_votes"]) ?? 0
+            var parts = ["vote"]
+            if totalVotes > 0 {
+                parts.append("\(winnerVotes)/\(totalVotes) votes")
+            }
+            if bool(vote["quorum_met"]) {
+                parts.append("quorum")
+            }
+            return parts.joined(separator: " • ")
+        }
+        return ""
+    }
+
+    private func transcriptPreviewLines(_ value: Any?, limit: Int = 3) -> [String] {
+        guard
+            let collaboration = value as? [String: Any],
+            let transcript = collaboration["transcript"] as? [[String: Any]]
+        else {
+            return []
+        }
+        return transcript.compactMap { item in
+            let type = string(item["type"]).lowercased()
+            switch type {
+            case "subtask_started":
+                let subtaskID = string(item["subtask_id"], fallback: "subtask")
+                let model = string(item["model"])
+                return "started \(subtaskID)\(model.isEmpty ? "" : " with \(model)")"
+            case "subtask_output":
+                let subtaskID = string(item["subtask_id"], fallback: "subtask")
+                let model = string(item["model"])
+                let attempt = toInt(item["attempt"]) ?? 1
+                return "output \(subtaskID) • \(model) • attempt \(attempt)"
+            case "subtask_review":
+                let subtaskID = string(item["subtask_id"], fallback: "subtask")
+                let reviewer = string(item["reviewer_model"], fallback: "reviewer")
+                let approved = bool(item["approved"])
+                return "\(reviewer) \(approved ? "approved" : "rejected") \(subtaskID)"
+            case "subtask_failed":
+                let subtaskID = string(item["subtask_id"], fallback: "subtask")
+                let error = string(item["error"], fallback: "failed")
+                return "\(subtaskID) failed • \(error)"
+            case "synthesis":
+                let model = string(item["model"], fallback: "model")
+                return "synthesis by \(model)"
+            default:
+                return nil
+            }
+        }
+        .prefix(limit)
+        .map { $0 }
+    }
+
+    private func summarizeJobResult(_ value: [String: Any]?) -> String {
+        guard let payload = value else {
+            return ""
+        }
+        let model = string(payload["model"])
+        let strategy = string(payload["strategy"])
+        let results = (payload["results"] as? [[String: Any]]) ?? []
+        var statusCounts: [String: Int] = [:]
+        for item in results {
+            let status = string(item["status"], fallback: "unknown").lowercased()
+            statusCounts[status, default: 0] += 1
+        }
+        var parts: [String] = []
+        if !strategy.isEmpty {
+            parts.append(strategy)
+        }
+        if !model.isEmpty {
+            parts.append(model)
+        }
+        if !results.isEmpty {
+            let ok = statusCounts["ok"] ?? 0
+            let preview = statusCounts["preview"] ?? 0
+            let repaired = statusCounts["repaired"] ?? 0
+            let failed = (statusCounts["failed"] ?? 0) + (statusCounts["blocked"] ?? 0)
+            parts.append("\(results.count) actions")
+            if ok > 0 { parts.append("\(ok) ok") }
+            if preview > 0 { parts.append("\(preview) preview") }
+            if repaired > 0 { parts.append("\(repaired) repaired") }
+            if failed > 0 { parts.append("\(failed) failed") }
+        }
+        return parts.joined(separator: " • ")
     }
 
     private func parseEvents(_ value: Any?) -> [AuditEventSummary] {
@@ -1132,6 +2386,140 @@ final class BridgeViewModel: ObservableObject {
                 createdAt: string(item["created_at"], fallback: "-")
             )
         }
+    }
+
+    private func parseAgentTemplates(_ value: Any?) -> [AgentTemplateSummary] {
+        guard let items = value as? [[String: Any]] else {
+            return []
+        }
+        return items.prefix(24).map { item in
+            let templateID = string(item["template_id"], fallback: UUID().uuidString)
+            let share = item["share"] as? [String: Any] ?? [:]
+            return AgentTemplateSummary(
+                id: templateID,
+                templateID: templateID,
+                name: string(item["name"], fallback: templateID),
+                description: string(item["description"]),
+                objective: string(item["objective"]),
+                strategy: string(item["strategy"], fallback: "single"),
+                tags: (item["tags"] as? [Any] ?? []).map { string($0) }.filter { !$0.isEmpty },
+                source: string(item["source"], fallback: "local"),
+                updatedAt: string(item["updated_at"], fallback: string(item["created_at"], fallback: "-")),
+                shared: bool(item["shared"]),
+                shareURL: string(share["share_url"], fallback: string(share["share_uri"], fallback: string(share["share_path"]))),
+                manifest: item
+            )
+        }
+    }
+
+    private func parseControlArtifacts(_ value: Any?) -> [ControlArtifactSummary] {
+        guard let items = value as? [[String: Any]] else {
+            return []
+        }
+        return items.prefix(12).map { item in
+            let id = string(item["artifact_id"], fallback: UUID().uuidString)
+            let dangerous = (item["dangerous"] as? Bool)
+                ?? ((item["dangerous"] as? NSNumber)?.boolValue ?? false)
+            return ControlArtifactSummary(
+                id: id,
+                controlType: string(item["control_type"], fallback: "control"),
+                status: string(item["status"], fallback: "unknown"),
+                platform: string(item["platform"]),
+                transport: string(item["transport"]),
+                goal: string(item["goal"]),
+                outputPreview: string(item["output_preview"]),
+                actionType: string(item["action_type"]),
+                target: string(item["target"]),
+                model: string(item["model"]),
+                createdAt: string(item["created_at"], fallback: "-"),
+                previewPath: string(item["preview_path"]),
+                dangerous: dangerous
+            )
+        }
+    }
+
+    private func parseHomeAssistantEntities(_ payload: [String: Any]) -> [HomeAssistantEntitySummary] {
+        guard let items = payload["entities"] as? [[String: Any]] else {
+            return []
+        }
+        return items.map { item in
+            let entityID = string(item["entity_id"], fallback: UUID().uuidString)
+            let attributes = item["attributes"] as? [String: Any] ?? [:]
+            let domain = entityID.split(separator: ".", maxSplits: 1).first.map(String.init) ?? ""
+            let friendlyName = string(attributes["friendly_name"], fallback: entityID)
+            return HomeAssistantEntitySummary(
+                id: entityID,
+                entityID: entityID,
+                domain: domain,
+                friendlyName: friendlyName.isEmpty ? entityID : friendlyName,
+                state: string(item["state"], fallback: "unknown"),
+                detail: summarizeHomeAssistantAttributes(attributes)
+            )
+        }
+        .sorted { lhs, rhs in
+            lhs.friendlyName.localizedCaseInsensitiveCompare(rhs.friendlyName) == .orderedAscending
+        }
+    }
+
+    private func parseMQTTMessages(_ value: Any?) -> [MQTTMessageSummary] {
+        guard let items = value as? [[String: Any]] else {
+            return []
+        }
+        return items.map { item in
+            MQTTMessageSummary(
+                id: UUID().uuidString,
+                topic: string(item["topic"]),
+                payload: string(item["payload"]),
+                qos: toInt(item["qos"]) ?? 0,
+                retain: bool(item["retain"]),
+                receivedAt: formatReceivedAt(item["received_at"])
+            )
+        }
+    }
+
+    private func parseRuntimeGovernanceModels(_ value: Any?) -> [RuntimeGovernanceModelSummary] {
+        guard let items = value as? [String: Any] else {
+            return []
+        }
+        return items.compactMap { key, raw in
+            guard let payload = raw as? [String: Any] else {
+                return nil
+            }
+            let label = key.trimmingCharacters(in: .whitespacesAndNewlines)
+            let modelID = string(payload["model_id"])
+            return RuntimeGovernanceModelSummary(
+                id: label.isEmpty ? UUID().uuidString : label,
+                label: label.isEmpty ? "model" : label,
+                modelID: modelID,
+                calls: toInt(payload["calls"]) ?? 0,
+                estimatedCostUSD: toDouble(payload["estimated_cost_usd"]) ?? 0
+            )
+        }
+        .sorted { lhs, rhs in
+            if lhs.calls != rhs.calls {
+                return lhs.calls > rhs.calls
+            }
+            return lhs.label.localizedCaseInsensitiveCompare(rhs.label) == .orderedAscending
+        }
+    }
+
+    func controlArtifactPreviewURL(for artifact: ControlArtifactSummary) -> URL? {
+        let rawPath = artifact.previewPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !rawPath.isEmpty else {
+            return nil
+        }
+        guard let base = normalizedAPIBaseURL() else {
+            return nil
+        }
+        guard var components = URLComponents(url: base, resolvingAgainstBaseURL: false) else {
+            return nil
+        }
+        components.path = rawPath.hasPrefix("/") ? rawPath : "/" + rawPath
+        let bearer = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !bearer.isEmpty {
+            components.queryItems = (components.queryItems ?? []) + [URLQueryItem(name: "token", value: bearer)]
+        }
+        return components.url
     }
 
     private func parseTerminalSessions(_ rows: [[String: Any]]) -> [TerminalSessionSummary] {
@@ -1195,6 +2583,76 @@ final class BridgeViewModel: ObservableObject {
         return nil
     }
 
+    private func toDouble(_ value: Any?) -> Double? {
+        if let number = value as? NSNumber {
+            return number.doubleValue
+        }
+        if let text = value as? String {
+            return Double(text)
+        }
+        return nil
+    }
+
+    private func bool(_ value: Any?) -> Bool {
+        if let flag = value as? Bool {
+            return flag
+        }
+        if let number = value as? NSNumber {
+            return number.boolValue
+        }
+        if let text = value as? String {
+            return ["1", "true", "yes", "on"].contains(text.lowercased())
+        }
+        return false
+    }
+
+    private func summarizeHomeAssistantAttributes(_ attributes: [String: Any]) -> String {
+        var parts: [String] = []
+        for key in ["device_class", "unit_of_measurement", "brightness", "temperature", "current_position"] {
+            let value = attributes[key]
+            let text = string(value)
+            if !text.isEmpty {
+                parts.append("\(key): \(text)")
+            }
+            if parts.count >= 4 {
+                break
+            }
+        }
+        return parts.isEmpty ? "No additional attributes" : parts.joined(separator: " • ")
+    }
+
+    private func formatMQTTStatus(_ payload: [String: Any]) -> String {
+        let ok = bool(payload["ok"])
+        let host = string(payload["host"], fallback: string(payload["broker"], fallback: "broker"))
+        let port = string(payload["port"])
+        let configured = bool(payload["configured"])
+        if ok {
+            return "MQTT connected to \(host)\(port.isEmpty ? "" : ":\(port)")"
+        }
+        if !configured {
+            return "MQTT not configured"
+        }
+        let errorText = string(payload["error"])
+        return errorText.isEmpty ? "MQTT unavailable" : "MQTT unavailable: \(errorText)"
+    }
+
+    private func formatReceivedAt(_ value: Any?) -> String {
+        if let number = value as? NSNumber {
+            return Self.timestampFormatter.string(from: Date(timeIntervalSince1970: number.doubleValue))
+        }
+        if let text = value as? String, let parsed = Double(text) {
+            return Self.timestampFormatter.string(from: Date(timeIntervalSince1970: parsed))
+        }
+        return "-"
+    }
+
+    private static let timestampFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .none
+        formatter.timeStyle = .medium
+        return formatter
+    }()
+
     private func planRank(_ status: String) -> Int {
         switch status.lowercased() {
         case "pending": return 0
@@ -1216,6 +2674,37 @@ final class BridgeViewModel: ObservableObject {
         case "canceled": return 4
         default: return 99
         }
+    }
+
+    private func templateManifest(_ template: AgentTemplateSummary) -> [String: Any]? {
+        if !template.manifest.isEmpty {
+            return template.manifest
+        }
+        guard !template.name.isEmpty, !template.objective.isEmpty else {
+            return nil
+        }
+        return [
+            "template_id": template.templateID,
+            "name": template.name,
+            "description": template.description,
+            "objective": template.objective,
+            "strategy": template.strategy,
+            "tags": template.tags,
+            "source": template.source,
+        ]
+    }
+
+    private func prettyJSONString(_ value: Any?) -> String? {
+        guard let value else {
+            return nil
+        }
+        guard JSONSerialization.isValidJSONObject(value) else {
+            return nil
+        }
+        guard let data = try? JSONSerialization.data(withJSONObject: value, options: [.prettyPrinted]) else {
+            return nil
+        }
+        return String(data: data, encoding: .utf8)
     }
 
     private func prettyJSON(_ raw: String) -> String? {

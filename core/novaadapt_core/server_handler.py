@@ -34,7 +34,10 @@ from . import server_sib_routes as sib_routes
 from . import server_voice_routes as voice_routes
 from . import server_canvas_routes as canvas_routes
 from . import server_workflow_routes as workflow_routes
+from . import server_agent_template_routes as agent_template_routes
 from . import server_plugin_routes as plugin_routes
+from . import server_control_routes as control_routes
+from . import server_runtime_routes as runtime_routes
 from . import server_idempotency_utils as idempotency_utils
 from . import server_stream_utils as stream_utils
 
@@ -325,11 +328,47 @@ def _build_handler(
         def _get_workflow_item(self, query: dict[str, list[str]]) -> int:
             return workflow_routes.get_workflow_item(self, service, _single, query)
 
+        def _get_agent_templates(self, query: dict[str, list[str]]) -> int:
+            return agent_template_routes.get_agent_templates(self, service, _single, query)
+
+        def _get_agent_templates_gallery(self, query: dict[str, list[str]]) -> int:
+            return agent_template_routes.get_agent_templates_gallery(self, service, _single, query)
+
+        def _get_agent_template_item(self, path: str, _query: dict[str, list[str]]) -> int:
+            return agent_template_routes.get_agent_template_item(self, service, path)
+
+        def _get_agent_template_shared(self, path: str, _query: dict[str, list[str]]) -> int:
+            return agent_template_routes.get_agent_template_shared(self, service, path)
+
         def _get_browser_status(self, _query: dict[str, list[str]]) -> int:
             return terminal_browser_routes.get_browser_status(self, service)
 
         def _get_browser_pages(self, _query: dict[str, list[str]]) -> int:
             return terminal_browser_routes.get_browser_pages(self, service)
+
+        def _get_mobile_status(self, _query: dict[str, list[str]]) -> int:
+            return control_routes.get_mobile_status(self, service)
+
+        def _get_homeassistant_entities(self, query: dict[str, list[str]]) -> int:
+            return control_routes.get_homeassistant_entities(self, service, _single, query)
+
+        def _get_homeassistant_status(self, _query: dict[str, list[str]]) -> int:
+            return control_routes.get_homeassistant_status(self, service)
+
+        def _get_mqtt_status(self, _query: dict[str, list[str]]) -> int:
+            return control_routes.get_mqtt_status(self, service)
+
+        def _get_control_artifacts(self, query: dict[str, list[str]]) -> int:
+            return control_routes.get_control_artifacts(self, service, _single, query)
+
+        def _get_runtime_governance(self, _query: dict[str, list[str]]) -> int:
+            return runtime_routes.get_runtime_governance(self, service, job_manager)
+
+        def _get_control_artifact_item(self, path: str, _query: dict[str, list[str]]) -> int:
+            return control_routes.get_control_artifact_item(self, service, path)
+
+        def _get_control_artifact_preview(self, path: str, _query: dict[str, list[str]]) -> int:
+            return control_routes.get_control_artifact_preview(self, service, path)
 
         def _get_plugin_health(self, path: str, _query: dict[str, list[str]]) -> int:
             return plugin_routes.get_plugin_health(self, service, path)
@@ -519,6 +558,18 @@ def _build_handler(
         def _post_workflows_resume(self, _path: str, payload: dict[str, object]) -> int:
             return workflow_routes.post_workflows_resume(self, service, payload)
 
+        def _post_agent_template_export(self, path: str, payload: dict[str, object]) -> int:
+            return agent_template_routes.post_agent_template_export(self, service, path, payload)
+
+        def _post_agent_template_import(self, path: str, payload: dict[str, object]) -> int:
+            return agent_template_routes.post_agent_template_import(self, service, path, payload)
+
+        def _post_agent_template_share(self, path: str, payload: dict[str, object]) -> int:
+            return agent_template_routes.post_agent_template_share(self, service, path, payload)
+
+        def _post_agent_template_launch(self, path: str, payload: dict[str, object]) -> int:
+            return agent_template_routes.post_agent_template_launch(self, service, path, payload)
+
         def _post_memory_ingest(self, path: str, payload: dict[str, object]) -> int:
             return memory_routes.post_memory_ingest(self, service, path, payload)
 
@@ -557,6 +608,27 @@ def _build_handler(
 
         def _post_browser_close(self, path: str, payload: dict[str, object]) -> int:
             return terminal_browser_routes.post_browser_close(self, service, path, payload)
+
+        def _post_execute_vision(self, path: str, payload: dict[str, object]) -> int:
+            return control_routes.post_execute_vision(self, service, path, payload)
+
+        def _post_mobile_action(self, path: str, payload: dict[str, object]) -> int:
+            return control_routes.post_mobile_action(self, service, path, payload)
+
+        def _post_homeassistant_action(self, path: str, payload: dict[str, object]) -> int:
+            return control_routes.post_homeassistant_action(self, service, path, payload)
+
+        def _post_mqtt_publish(self, path: str, payload: dict[str, object]) -> int:
+            return control_routes.post_mqtt_publish(self, service, path, payload)
+
+        def _post_mqtt_subscribe(self, path: str, payload: dict[str, object]) -> int:
+            return control_routes.post_mqtt_subscribe(self, service, path, payload)
+
+        def _post_runtime_governance(self, path: str, payload: dict[str, object]) -> int:
+            return runtime_routes.post_runtime_governance(self, service, job_manager, path, payload)
+
+        def _post_runtime_cancel_all_jobs(self, path: str, payload: dict[str, object]) -> int:
+            return runtime_routes.post_runtime_cancel_all_jobs(self, service, job_manager, path, payload)
 
         def _post_browser_typed_action(
             self,
@@ -620,9 +692,18 @@ def _build_handler(
             return remote_host or "unknown"
 
         def _check_auth(self, path: str, query: dict[str, list[str]] | None = None) -> bool:
-            if path == "/health" or (path.startswith("/channels/") and path.endswith("/inbound")) or not api_token:
+            if (
+                path == "/health"
+                or path.startswith("/agents/templates/shared/")
+                or (path.startswith("/channels/") and path.endswith("/inbound"))
+                or not api_token
+            ):
                 return True
-            if query is not None and path in {"/dashboard", "/dashboard/canvas-workflows", "/dashboard/data"}:
+            if query is not None and (
+                path in {"/dashboard", "/dashboard/canvas-workflows", "/dashboard/data"}
+                or path == "/control/artifacts"
+                or path.startswith("/control/artifacts/")
+            ):
                 query_token = _single(query, "token")
                 if query_token == api_token:
                     return True
@@ -692,6 +773,15 @@ def _build_handler(
             encoded = html.encode("utf-8")
             self.send_response(status_code)
             self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("X-Request-ID", self._request_id)
+            self.send_header("Content-Length", str(len(encoded)))
+            self.end_headers()
+            self.wfile.write(encoded)
+
+        def _send_bytes(self, status_code: int, payload: bytes, *, content_type: str) -> None:
+            encoded = payload if isinstance(payload, bytes) else bytes(payload)
+            self.send_response(status_code)
+            self.send_header("Content-Type", str(content_type or "application/octet-stream"))
             self.send_header("X-Request-ID", self._request_id)
             self.send_header("Content-Length", str(len(encoded)))
             self.end_headers()

@@ -46,6 +46,25 @@ class _Handler(BaseHTTPRequestHandler):
                     "jobs": [{"id": "job-1", "status": "queued"}],
                     "events": [{"id": 1, "category": "run", "action": "run_async"}],
                     "metrics": {"novaadapt_core_requests_total": 1},
+                    "governance": {"paused": False, "llm_calls_total": 3, "jobs": {"active": 1}},
+                    "observability": {
+                        "runtime": {"totals": {"runs_total": 2}},
+                        "repairs": {"attempted": 1},
+                        "collaboration": {"decompose_runs": 1},
+                    },
+                },
+            )
+            return
+        if self.path == "/runtime/governance":
+            self._send(
+                200,
+                {
+                    "paused": False,
+                    "pause_reason": "",
+                    "llm_calls_total": 3,
+                    "runs_total": 2,
+                    "spend_estimate_usd": 0.12,
+                    "jobs": {"active": 1, "queued": 1, "running": 0},
                 },
             )
             return
@@ -409,6 +428,8 @@ class _Handler(BaseHTTPRequestHandler):
             "/browser/wait_for_selector",
             "/browser/evaluate_js",
             "/browser/close",
+            "/runtime/governance",
+            "/runtime/jobs/cancel_all",
             "/terminal/sessions",
             f"/terminal/sessions/{_Handler.terminal_session_id}/input",
             f"/terminal/sessions/{_Handler.terminal_session_id}/close",
@@ -811,6 +832,27 @@ class _Handler(BaseHTTPRequestHandler):
                 self._send(200, {"status": "ok", "output": "evaluated", "data": {"result": 42}})
             elif self.path == "/browser/close":
                 self._send(200, {"status": "ok", "output": "browser session closed"})
+            elif self.path == "/runtime/governance":
+                self._send(
+                    200,
+                    {
+                        "paused": bool(payload.get("paused", False)),
+                        "pause_reason": payload.get("pause_reason", ""),
+                        "llm_calls_total": 0 if payload.get("reset_usage") else 3,
+                        "runs_total": 0 if payload.get("reset_usage") else 2,
+                        "jobs": {"active": 0},
+                    },
+                )
+            elif self.path == "/runtime/jobs/cancel_all":
+                self._send(
+                    200,
+                    {
+                        "ok": True,
+                        "canceled_now": 1,
+                        "cancel_requested": 0,
+                        "stats": {"active": 0},
+                    },
+                )
             elif self.path == "/terminal/sessions":
                 self._send(
                     201,
@@ -933,7 +975,10 @@ class APIClientTests(unittest.TestCase):
 
         self.assertTrue(client.health()["ok"])
         self.assertEqual(client.openapi()["openapi"], "3.1.0")
-        self.assertEqual(client.dashboard_data()["models_count"], 1)
+        dashboard_payload = client.dashboard_data()
+        self.assertEqual(dashboard_payload["models_count"], 1)
+        self.assertIn("governance", dashboard_payload)
+        self.assertIn("observability", dashboard_payload)
         self.assertEqual(client.models()[0]["name"], "local")
         self.assertEqual(client.plugins()[0]["name"], "novabridge")
         self.assertTrue(client.plugin_health("novabridge")["ok"])
@@ -1135,6 +1180,10 @@ class APIClientTests(unittest.TestCase):
         self.assertEqual(client.browser_wait_for_selector("#app")["status"], "ok")
         self.assertEqual(client.browser_evaluate_js("() => 42")["status"], "ok")
         self.assertEqual(client.browser_close()["status"], "ok")
+        self.assertEqual(client.runtime_governance()["llm_calls_total"], 3)
+        self.assertTrue(client.update_runtime_governance(paused=True, pause_reason="ops freeze")["paused"])
+        self.assertEqual(client.update_runtime_governance(reset_usage=True)["llm_calls_total"], 0)
+        self.assertEqual(client.cancel_all_jobs(pause=True)["canceled_now"], 1)
         session = client.start_terminal_session(command="echo hi")
         session_id = session["id"]
         self.assertEqual(client.terminal_session(session_id)["id"], session_id)

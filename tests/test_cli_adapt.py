@@ -1,6 +1,7 @@
 import io
 import json
 import sys
+import tempfile
 import unittest
 from contextlib import redirect_stdout
 from unittest import mock
@@ -172,6 +173,36 @@ class AdaptCLITests(unittest.TestCase):
         run_payload = service.run.call_args.args[0]
         self.assertEqual(run_payload["strategy"], "decompose")
 
+    def test_run_command_passes_auto_repair_controls(self):
+        service = mock.Mock()
+        service.run.return_value = {"ok": True}
+        with mock.patch("novaadapt_core.cli.NovaAdaptService", return_value=service):
+            payload = self._run_cli(
+                "run",
+                "--objective",
+                "Handle the failed cleanup",
+                "--execute",
+                "--auto-repair-attempts",
+                "2",
+                "--repair-strategy",
+                "vote",
+                "--repair-model",
+                "local",
+                "--repair-candidates",
+                "local,backup",
+                "--repair-fallbacks",
+                "backup",
+            )
+        self.assertTrue(payload["ok"])
+        service.run.assert_called_once()
+        run_payload = service.run.call_args.args[0]
+        self.assertTrue(run_payload["execute"])
+        self.assertEqual(run_payload["auto_repair_attempts"], 2)
+        self.assertEqual(run_payload["repair_strategy"], "vote")
+        self.assertEqual(run_payload["repair_model"], "local")
+        self.assertEqual(run_payload["repair_candidates"], "local,backup")
+        self.assertEqual(run_payload["repair_fallbacks"], "backup")
+
     def test_plan_create_command_accepts_decompose_strategy(self):
         service = mock.Mock()
         service.create_plan.return_value = {"id": "plan-2", "status": "pending"}
@@ -188,6 +219,38 @@ class AdaptCLITests(unittest.TestCase):
         plan_payload = service.create_plan.call_args.args[0]
         self.assertEqual(plan_payload["strategy"], "decompose")
 
+    def test_plan_approve_command_passes_auto_repair_controls(self):
+        service = mock.Mock()
+        service.approve_plan.return_value = {"id": "plan-7", "status": "executed"}
+        with mock.patch("novaadapt_core.cli.NovaAdaptService", return_value=service):
+            payload = self._run_cli(
+                "plan-approve",
+                "--id",
+                "plan-7",
+                "--allow-dangerous",
+                "--auto-repair-attempts",
+                "2",
+                "--repair-strategy",
+                "vote",
+                "--repair-model",
+                "local",
+                "--repair-candidates",
+                "local,backup",
+                "--repair-fallbacks",
+                "backup",
+            )
+
+        self.assertEqual(payload["id"], "plan-7")
+        service.approve_plan.assert_called_once()
+        plan_id, approve_payload = service.approve_plan.call_args.args
+        self.assertEqual(plan_id, "plan-7")
+        self.assertTrue(approve_payload["allow_dangerous"])
+        self.assertEqual(approve_payload["auto_repair_attempts"], 2)
+        self.assertEqual(approve_payload["repair_strategy"], "vote")
+        self.assertEqual(approve_payload["repair_model"], "local")
+        self.assertEqual(approve_payload["repair_candidates"], "local,backup")
+        self.assertEqual(approve_payload["repair_fallbacks"], "backup")
+
     def test_voice_status_command(self):
         service = mock.Mock()
         service.voice_status.return_value = {"ok": True, "enabled": False}
@@ -195,6 +258,90 @@ class AdaptCLITests(unittest.TestCase):
             payload = self._run_cli("voice-status")
         self.assertTrue(payload["ok"])
         service.voice_status.assert_called_once_with(context="cli")
+
+    def test_control_surface_commands(self):
+        service = mock.Mock()
+        service.vision_execute.return_value = {"status": "preview", "action": {"type": "click", "target": "10,10"}}
+        service.mobile_status.return_value = {"ok": True, "android": {"ok": True}}
+        service.mobile_action.return_value = {"status": "preview", "platform": "ios"}
+        service.homeassistant_status.return_value = {"ok": True, "transport": "homeassistant-http"}
+        service.homeassistant_discover.return_value = {"ok": True, "count": 1, "entities": [{"entity_id": "light.office"}]}
+        service.homeassistant_action.return_value = {"status": "preview", "action": {"type": "ha_service"}}
+        service.mqtt_status.return_value = {"ok": True, "transport": "mqtt-direct"}
+        service.mqtt_subscribe.return_value = {"status": "ok", "data": {"count": 1, "messages": [{"payload": "ping"}]}}
+        with tempfile.TemporaryDirectory() as tmp:
+            screenshot = io.BytesIO(b"fake-png")
+            screenshot_path = f"{tmp}/shot.png"
+            with open(screenshot_path, "wb") as handle:
+                handle.write(screenshot.getvalue())
+            with mock.patch("novaadapt_core.cli.NovaAdaptService", return_value=service):
+                vision_payload = self._run_cli(
+                    "vision-execute",
+                    "--goal",
+                    "Click continue",
+                    "--screenshot-path",
+                    screenshot_path,
+                )
+                mobile_status_payload = self._run_cli("mobile-status")
+                mobile_action_payload = self._run_cli(
+                    "mobile-action",
+                    "--platform",
+                    "ios",
+                    "--goal",
+                    "Tap continue",
+                    "--screenshot-path",
+                    screenshot_path,
+                )
+                homeassistant_status_payload = self._run_cli("homeassistant-status")
+                homeassistant_discover_payload = self._run_cli("homeassistant-discover", "--domain", "light")
+                homeassistant_action_payload = self._run_cli(
+                    "homeassistant-action",
+                    "--action-json",
+                    '{"type":"ha_service","domain":"light","service":"turn_on","entity_id":"light.office"}',
+                )
+                mqtt_status_payload = self._run_cli("mqtt-status")
+                mqtt_publish_payload = self._run_cli(
+                    "mqtt-publish",
+                    "--topic",
+                    "novaadapt/test",
+                    "--payload",
+                    "ping",
+                )
+                mqtt_subscribe_payload = self._run_cli(
+                    "mqtt-subscribe",
+                    "--topic",
+                    "novaadapt/test",
+                    "--timeout-seconds",
+                    "0.1",
+                    "--max-messages",
+                    "1",
+                )
+
+        self.assertEqual(vision_payload["status"], "preview")
+        self.assertTrue(mobile_status_payload["ok"])
+        self.assertEqual(mobile_action_payload["platform"], "ios")
+        self.assertTrue(homeassistant_status_payload["ok"])
+        self.assertEqual(homeassistant_discover_payload["count"], 1)
+        self.assertEqual(homeassistant_action_payload["status"], "preview")
+        self.assertTrue(mqtt_status_payload["ok"])
+        self.assertEqual(mqtt_publish_payload["status"], "preview")
+        self.assertEqual(mqtt_subscribe_payload["status"], "ok")
+        service.vision_execute.assert_called_once()
+        vision_args = service.vision_execute.call_args.args[0]
+        self.assertTrue(vision_args["screenshot_base64"])
+        service.mobile_status.assert_called_once_with()
+        service.mobile_action.assert_called_once()
+        mobile_args = service.mobile_action.call_args.args[0]
+        self.assertEqual(mobile_args["platform"], "ios")
+        self.assertTrue(mobile_args["screenshot_base64"])
+        service.homeassistant_status.assert_called_once_with()
+        service.homeassistant_discover.assert_called_once_with(domain="light", entity_id_prefix="", limit=250)
+        self.assertEqual(service.homeassistant_action.call_count, 2)
+        mqtt_args = service.homeassistant_action.call_args_list[1].args[0]
+        self.assertEqual(mqtt_args["action"]["type"], "mqtt_publish")
+        self.assertEqual(mqtt_args["action"]["transport"], "mqtt-direct")
+        service.mqtt_status.assert_called_once_with()
+        service.mqtt_subscribe.assert_called_once_with(topic="novaadapt/test", timeout_seconds=0.1, max_messages=1, qos=0)
 
     def test_voice_transcribe_and_synthesize_commands(self):
         service = mock.Mock()
@@ -312,6 +459,62 @@ class AdaptCLITests(unittest.TestCase):
             workflow_id="wf-1",
             context="cli",
         )
+
+    def test_benchmark_publish_command(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            primary_path = f"{tmp}/primary.json"
+            baseline_path = f"{tmp}/baseline.json"
+            out_dir = f"{tmp}/publication"
+            with open(primary_path, "w", encoding="utf-8") as handle:
+                json.dump(
+                    {
+                        "summary": {
+                            "total": 10,
+                            "passed": 9,
+                            "failed": 1,
+                            "success_rate": 0.9,
+                            "first_try_success_rate": 0.9,
+                            "avg_action_count": 4.2,
+                            "blocked_count": 1,
+                        }
+                    },
+                    handle,
+                )
+            with open(baseline_path, "w", encoding="utf-8") as handle:
+                json.dump(
+                    {
+                        "summary": {
+                            "total": 10,
+                            "passed": 7,
+                            "failed": 3,
+                            "success_rate": 0.7,
+                            "first_try_success_rate": 0.7,
+                            "avg_action_count": 5.0,
+                            "blocked_count": 2,
+                        }
+                    },
+                    handle,
+                )
+
+            payload = self._run_cli(
+                "benchmark-publish",
+                "--primary",
+                primary_path,
+                "--baseline",
+                f"OtherAgent={baseline_path}",
+                "--out-dir",
+                out_dir,
+                "--md-title",
+                "CLI Bench Publish",
+                "--notes",
+                "cli smoke",
+            )
+
+            self.assertTrue(payload["comparison_json"].endswith("benchmark.compare.json"))
+            self.assertTrue(payload["comparison_markdown"].endswith("benchmark.compare.md"))
+            self.assertTrue(payload["readme"].endswith("README.md"))
+            with io.open(f"{out_dir}/README.md", encoding="utf-8") as handle:
+                self.assertIn("CLI Bench Publish", handle.read())
 
     def test_run_rejects_invalid_mesh_json(self):
         service = mock.Mock()

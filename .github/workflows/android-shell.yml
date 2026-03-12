@@ -1,0 +1,52 @@
+name: android-shell
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/android-shell.yml'
+      - 'mobile/android/NovaAdaptOperatorApp/**'
+      - 'scripts/build_android_shell.sh'
+      - 'view/**'
+  pull_request:
+    paths:
+      - '.github/workflows/android-shell.yml'
+      - 'mobile/android/NovaAdaptOperatorApp/**'
+      - 'scripts/build_android_shell.sh'
+      - 'view/**'
+  workflow_dispatch:
+
+jobs:
+  debug-build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile/android/NovaAdaptOperatorApp
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android packages
+        run: |
+          sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
+
+      - name: Build debug APK
+        run: |
+          chmod +x ./gradlew
+          ./gradlew assembleDebug --console=plain
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: novaadapt-operator-debug-apk
+          path: mobile/android/NovaAdaptOperatorApp/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error

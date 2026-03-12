@@ -1,0 +1,86 @@
+name: benchmark-publication
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/benchmark-publication.yml'
+      - 'core/novaadapt_core/benchmark.py'
+      - 'core/novaadapt_core/cli.py'
+      - 'docs/benchmarks.md'
+      - 'scripts/publish_benchmarks.sh'
+      - 'tests/test_benchmark.py'
+      - 'tests/test_cli_adapt.py'
+
+jobs:
+  sample-publication:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Create synthetic benchmark inputs
+        run: |
+          mkdir -p results/ci-fixtures
+          cat > results/ci-fixtures/benchmark.novaadapt.json <<'JSON'
+          {
+            "summary": {
+              "total": 20,
+              "passed": 18,
+              "failed": 2,
+              "success_rate": 0.9,
+              "first_try_success_rate": 0.9,
+              "avg_action_count": 4.1,
+              "blocked_count": 1
+            }
+          }
+          JSON
+          cat > results/ci-fixtures/benchmark.openclaw.json <<'JSON'
+          {
+            "summary": {
+              "total": 20,
+              "passed": 13,
+              "failed": 7,
+              "success_rate": 0.65,
+              "first_try_success_rate": 0.65,
+              "avg_action_count": 5.3,
+              "blocked_count": 3
+            }
+          }
+          JSON
+          cat > results/ci-fixtures/benchmark.claude-computer-use.json <<'JSON'
+          {
+            "summary": {
+              "total": 20,
+              "passed": 15,
+              "failed": 5,
+              "success_rate": 0.75,
+              "first_try_success_rate": 0.75,
+              "avg_action_count": 4.9,
+              "blocked_count": 2
+            }
+          }
+          JSON
+
+      - name: Build sample publication bundle
+        run: |
+          PYTHONPATH=core:shared python -m novaadapt_core.cli benchmark-publish \
+            --primary results/ci-fixtures/benchmark.novaadapt.json \
+            --primary-name NovaAdapt \
+            --baseline OpenClaw=results/ci-fixtures/benchmark.openclaw.json \
+            --baseline ClaudeComputerUse=results/ci-fixtures/benchmark.claude-computer-use.json \
+            --out-dir results/sample-publication \
+            --md-title "NovaAdapt Reliability Benchmark (Synthetic CI Sample)" \
+            --notes "Synthetic fixture data generated in CI to validate the publication pipeline."
+
+      - name: Upload sample publication artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-publication-sample
+          path: |
+            results/sample-publication/*

@@ -23,10 +23,12 @@
         </div>
         <div class="hero-actions">
           <span id="connectionStatus" class="badge neutral">Not connected</span>
+          <span id="liveStreamStatus" class="badge neutral">Live idle</span>
           <label class="toggle">
             <input id="autoRefresh" type="checkbox" checked />
             <span>Auto refresh</span>
           </label>
+          <button id="liveStreamBtn" class="secondary">Live Off</button>
           <button id="testConnectionBtn" class="secondary">Test Connection</button>
           <button id="refreshBtn" class="primary">Refresh</button>
         </div>
@@ -65,15 +67,42 @@
             <select id="strategySelect">
               <option value="single">single</option>
               <option value="vote">vote</option>
+              <option value="decompose">decompose</option>
             </select>
           </label>
           <label>
-            <span>Vote Candidates (CSV)</span>
+            <span>Candidate Models (CSV)</span>
             <input id="candidatesInput" type="text" placeholder="local-qwen,openai-gpt,gemini-pro" />
           </label>
           <label class="toggle checkbox-inline">
             <input id="executeToggle" type="checkbox" />
             <span>Execute actions immediately</span>
+          </label>
+        </div>
+        <div class="grid compact">
+          <label>
+            <span>Auto-Repair Attempts</span>
+            <input id="autoRepairAttemptsInput" type="number" min="0" step="1" placeholder="0" />
+          </label>
+          <label>
+            <span>Repair Strategy</span>
+            <select id="repairStrategySelect">
+              <option value="decompose">decompose</option>
+              <option value="single">single</option>
+              <option value="vote">vote</option>
+            </select>
+          </label>
+          <label>
+            <span>Repair Model</span>
+            <input id="repairModelInput" type="text" placeholder="optional override" />
+          </label>
+          <label>
+            <span>Repair Candidates (CSV)</span>
+            <input id="repairCandidatesInput" type="text" placeholder="optional" />
+          </label>
+          <label>
+            <span>Repair Fallbacks (CSV)</span>
+            <input id="repairFallbacksInput" type="text" placeholder="optional" />
           </label>
         </div>
         <div class="row">
@@ -100,10 +129,208 @@
 
       <section class="card">
         <div class="section-head">
+          <h2>Terminal</h2>
+          <span id="terminalStatus" class="badge neutral">Idle</span>
+        </div>
+        <div class="grid compact">
+          <label>
+            <span>Command</span>
+            <input id="terminalCommandInput" type="text" placeholder="npm test" />
+          </label>
+          <label>
+            <span>Working Directory</span>
+            <input id="terminalCwdInput" type="text" placeholder="/workspace/project" />
+          </label>
+          <label>
+            <span>Shell Override</span>
+            <input id="terminalShellInput" type="text" placeholder="/bin/zsh" />
+          </label>
+        </div>
+        <div class="row">
+          <button id="terminalRefreshBtn" class="secondary">Refresh Sessions</button>
+          <button id="terminalStartBtn" class="primary">Start Session</button>
+          <button id="terminalCloseBtn" class="danger">Close Session</button>
+        </div>
+        <div id="terminalSessions" class="plans"></div>
+        <label>
+          <span>Terminal Input</span>
+          <textarea id="terminalInputBox" rows="2" placeholder="ls -la"></textarea>
+        </label>
+        <div class="row">
+          <button id="terminalSendBtn" class="secondary">Send Input</button>
+          <button id="terminalCtrlCBtn" class="secondary">Send Ctrl+C</button>
+        </div>
+        <pre id="terminalOutput" class="summary">No terminal session attached.</pre>
+      </section>
+
+      <section class="card">
+        <div class="section-head">
           <h2>Recent Events</h2>
           <span id="eventCount" class="badge">0</span>
         </div>
         <div id="events" class="events"></div>
+      </section>
+
+      <section class="card">
+        <div class="section-head">
+          <h2>Control Artifacts</h2>
+          <span id="artifactCount" class="badge">0</span>
+        </div>
+        <div id="controlArtifacts" class="events"></div>
+      </section>
+
+      <section class="card">
+        <div class="section-head">
+          <h2>Runtime Governance</h2>
+          <span id="governanceStatus" class="badge neutral">Unknown</span>
+        </div>
+        <div class="grid compact">
+          <label>
+            <span>Budget Limit (USD)</span>
+            <input id="budgetLimitInput" type="number" min="0" step="0.01" placeholder="optional" />
+          </label>
+          <label>
+            <span>Max Active Runs</span>
+            <input id="maxActiveRunsInput" type="number" min="1" step="1" placeholder="optional" />
+          </label>
+          <div class="row row-end">
+            <button id="refreshGovernanceBtn" class="secondary">Refresh Runtime</button>
+            <button id="applyGovernanceBtn" class="primary">Apply Limits</button>
+          </div>
+        </div>
+        <div class="row">
+          <button id="pauseRuntimeBtn" class="secondary">Pause Runtime</button>
+          <button id="resumeRuntimeBtn" class="secondary">Resume Runtime</button>
+          <button id="resetUsageBtn" class="secondary">Reset Usage</button>
+          <button id="cancelAllJobsBtn" class="danger">Cancel All Jobs</button>
+        </div>
+        <pre id="governanceOutput" class="summary">No governance data loaded.</pre>
+      </section>
+
+      <section class="card">
+        <div class="section-head">
+          <h2>IoT Control</h2>
+          <span id="iotStatus" class="badge neutral">Idle</span>
+        </div>
+        <div class="grid compact">
+          <label>
+            <span>Entity Domain</span>
+            <input id="entityDomainInput" type="text" placeholder="light" />
+          </label>
+          <label>
+            <span>Entity Prefix</span>
+            <input id="entityPrefixInput" type="text" placeholder="light.office" />
+          </label>
+          <div class="row row-end">
+            <button id="refreshEntitiesBtn" class="secondary">Refresh Entities</button>
+            <button id="refreshMqttStatusBtn" class="secondary">MQTT Status</button>
+          </div>
+        </div>
+        <div id="iotEntities" class="iot-grid"></div>
+        <div class="grid compact">
+          <label>
+            <span>MQTT Topic</span>
+            <input id="mqttTopicInput" type="text" placeholder="novaadapt/test" />
+          </label>
+          <label>
+            <span>MQTT Payload</span>
+            <textarea id="mqttPayloadInput" rows="3" placeholder='{"hello":"world"}'></textarea>
+          </label>
+          <label class="toggle checkbox-inline">
+            <input id="mqttRetainInput" type="checkbox" />
+            <span>Retain publish</span>
+          </label>
+        </div>
+        <div class="row">
+          <button id="mqttPublishBtn" class="primary">Publish MQTT</button>
+          <button id="mqttSubscribeBtn" class="secondary">Subscribe Snapshot</button>
+        </div>
+        <pre id="mqttOutput" class="summary">No MQTT activity yet.</pre>
+      </section>
+
+      <section class="card">
+        <div class="section-head">
+          <h2>Control Anything</h2>
+          <span id="controlStatus" class="badge neutral">Idle</span>
+        </div>
+        <div class="grid compact">
+          <label>
+            <span>Vision Goal</span>
+            <textarea id="visionGoalInput" rows="3" placeholder="Click the visible Continue button and save the current file"></textarea>
+          </label>
+          <label>
+            <span>Vision App Name</span>
+            <input id="visionAppNameInput" type="text" placeholder="Photoshop" />
+          </label>
+          <label class="toggle checkbox-inline">
+            <input id="controlAllowDangerousInput" type="checkbox" />
+            <span>Allow dangerous vision/mobile actions</span>
+          </label>
+          <div class="row row-end">
+            <button id="refreshMobileStatusBtn" class="secondary">Mobile Status</button>
+            <button id="previewVisionBtn" class="secondary">Preview Vision</button>
+            <button id="executeVisionBtn" class="primary">Execute Vision</button>
+          </div>
+        </div>
+        <div class="grid compact">
+          <label>
+            <span>Mobile Goal</span>
+            <input id="mobileGoalInput" type="text" placeholder="Open Settings and enable Wi-Fi" />
+          </label>
+          <label>
+            <span>Platform</span>
+            <select id="mobilePlatformSelect">
+              <option value="android">android</option>
+              <option value="ios">ios</option>
+            </select>
+          </label>
+          <label class="toggle checkbox-inline">
+            <input id="mobilePreferAppiumInput" type="checkbox" />
+            <span>Prefer Appium when iOS is selected</span>
+          </label>
+        </div>
+        <label>
+          <span>Mobile Action JSON</span>
+          <textarea id="mobileActionInput" rows="6" placeholder='{"type":"open_app","package":"com.android.settings"}'>{"type":"open_app","package":"com.android.settings"}</textarea>
+        </label>
+        <div class="row">
+          <button id="previewMobileBtn" class="secondary">Preview Mobile</button>
+          <button id="executeMobileBtn" class="primary">Execute Mobile</button>
+        </div>
+        <pre id="controlOutput" class="summary">No control-anything activity yet.</pre>
+      </section>
+
+      <section class="card">
+        <div class="section-head">
+          <h2>Agent Marketplace</h2>
+          <span id="templateStatus" class="badge neutral">Idle</span>
+        </div>
+        <div class="grid compact">
+          <label>
+            <span>Tag Filter</span>
+            <input id="templateTagInput" type="text" placeholder="mobile, ops, iot" />
+          </label>
+          <label>
+            <span>Import Manifest JSON</span>
+            <textarea id="templateManifestInput" rows="4" placeholder='{"name":"My agent","objective":"..."}'></textarea>
+          </label>
+          <div class="row row-end">
+            <button id="refreshTemplatesBtn" class="secondary">Refresh Templates</button>
+            <button id="exportTemplateBtn" class="primary">Export Current Objective</button>
+            <button id="importTemplateBtn" class="secondary">Import Manifest</button>
+          </div>
+        </div>
+        <div class="grid compact">
+          <div>
+            <h3>Local Templates</h3>
+            <div id="templateLibrary" class="plans"></div>
+          </div>
+          <div>
+            <h3>Gallery</h3>
+            <div id="templateGallery" class="plans"></div>
+          </div>
+        </div>
+        <pre id="templateOutput" class="summary">No template activity yet.</pre>
       </section>
 
       <section class="card">

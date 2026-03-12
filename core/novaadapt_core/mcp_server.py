@@ -28,13 +28,18 @@ class NovaAdaptMCPServer:
                     "type": "object",
                     "properties": {
                         "objective": {"type": "string"},
-                        "strategy": {"type": "string", "enum": ["single", "vote"]},
+                        "strategy": {"type": "string", "enum": ["single", "vote", "decompose"]},
                         "model": {"type": "string"},
                         "candidates": {"type": "array", "items": {"type": "string"}},
                         "fallbacks": {"type": "array", "items": {"type": "string"}},
                         "execute": {"type": "boolean"},
                         "allow_dangerous": {"type": "boolean"},
                         "max_actions": {"type": "integer"},
+                        "auto_repair_attempts": {"type": "integer"},
+                        "repair_strategy": {"type": "string", "enum": ["single", "vote", "decompose"]},
+                        "repair_model": {"type": "string"},
+                        "repair_candidates": {"type": "array", "items": {"type": "string"}},
+                        "repair_fallbacks": {"type": "array", "items": {"type": "string"}},
                         "adapt_id": {"type": "string"},
                         "player_id": {"type": "string"},
                         "realm": {"type": "string"},
@@ -64,7 +69,7 @@ class NovaAdaptMCPServer:
                     "type": "object",
                     "properties": {
                         "objectives": {"type": "array", "items": {"type": "string"}},
-                        "strategy": {"type": "string", "enum": ["single", "vote"]},
+                        "strategy": {"type": "string", "enum": ["single", "vote", "decompose"]},
                         "model": {"type": "string"},
                         "candidates": {"type": "array", "items": {"type": "string"}},
                         "fallbacks": {"type": "array", "items": {"type": "string"}},
@@ -72,6 +77,11 @@ class NovaAdaptMCPServer:
                         "allow_dangerous": {"type": "boolean"},
                         "max_actions": {"type": "integer"},
                         "max_agents": {"type": "integer"},
+                        "auto_repair_attempts": {"type": "integer"},
+                        "repair_strategy": {"type": "string", "enum": ["single", "vote", "decompose"]},
+                        "repair_model": {"type": "string"},
+                        "repair_candidates": {"type": "array", "items": {"type": "string"}},
+                        "repair_fallbacks": {"type": "array", "items": {"type": "string"}},
                         "adapt_id": {"type": "string"},
                         "player_id": {"type": "string"},
                         "realm": {"type": "string"},
@@ -852,6 +862,104 @@ class NovaAdaptMCPServer:
                 },
             ),
             MCPTool(
+                name="novaadapt_agent_templates_list",
+                description="List stored agent templates",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "limit": {"type": "integer"},
+                        "source": {"type": "string"},
+                        "tag": {"type": "string"},
+                    },
+                },
+            ),
+            MCPTool(
+                name="novaadapt_agent_templates_gallery",
+                description="List built-in gallery agent templates",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "tag": {"type": "string"},
+                    },
+                },
+            ),
+            MCPTool(
+                name="novaadapt_agent_template_get",
+                description="Get a stored agent template",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "template_id": {"type": "string"},
+                    },
+                    "required": ["template_id"],
+                },
+            ),
+            MCPTool(
+                name="novaadapt_agent_template_export",
+                description="Export an agent template manifest",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string"},
+                        "description": {"type": "string"},
+                        "objective": {"type": "string"},
+                        "strategy": {"type": "string"},
+                        "candidates": {"type": "array", "items": {"type": "string"}},
+                        "steps": {"type": "array", "items": {"type": "object"}},
+                        "metadata": {"type": "object"},
+                        "tags": {"type": "array", "items": {"type": "string"}},
+                        "workflow_id": {"type": "string"},
+                        "template_id": {"type": "string"},
+                        "include_memory": {"type": "boolean"},
+                        "memory_query": {"type": "string"},
+                        "memory_top_k": {"type": "integer"},
+                        "source": {"type": "string"},
+                    },
+                },
+            ),
+            MCPTool(
+                name="novaadapt_agent_template_import",
+                description="Import an agent template manifest",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "manifest": {"type": "object"},
+                        "source": {"type": "string"},
+                        "template_id": {"type": "string"},
+                    },
+                    "required": ["manifest"],
+                },
+            ),
+            MCPTool(
+                name="novaadapt_agent_template_share",
+                description="Enable, rotate, or revoke share access for an agent template",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "template_id": {"type": "string"},
+                        "rotate": {"type": "boolean"},
+                        "shared": {"type": "boolean"},
+                    },
+                    "required": ["template_id"],
+                },
+            ),
+            MCPTool(
+                name="novaadapt_agent_template_launch",
+                description="Launch an agent template as a plan, run, or workflow",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "template_id": {"type": "string"},
+                        "mode": {"type": "string"},
+                        "execute": {"type": "boolean"},
+                        "allow_dangerous": {"type": "boolean"},
+                        "context": {"type": "string"},
+                        "overrides": {"type": "object"},
+                    },
+                    "required": ["template_id"],
+                },
+            ),
+            MCPTool(
                 name="novaadapt_memory_recall",
                 description="Recall relevant long-term memory entries",
                 input_schema={
@@ -874,6 +982,115 @@ class NovaAdaptMCPServer:
                         "metadata": {"type": "object"},
                     },
                     "required": ["text"],
+                },
+            ),
+            MCPTool(
+                name="novaadapt_vision_execute",
+                description="Ground and optionally execute a desktop action from a screenshot and goal",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "goal": {"type": "string"},
+                        "model": {"type": "string"},
+                        "strategy": {"type": "string"},
+                        "candidates": {"type": "array", "items": {"type": "string"}},
+                        "fallbacks": {"type": "array", "items": {"type": "string"}},
+                        "app_name": {"type": "string"},
+                        "screenshot_base64": {"type": "string"},
+                        "execute": {"type": "boolean"},
+                        "allow_dangerous": {"type": "boolean"},
+                    },
+                    "required": ["goal"],
+                },
+            ),
+            MCPTool(
+                name="novaadapt_mobile_status",
+                description="Get mobile executor status and platform readiness",
+                input_schema={"type": "object", "properties": {}},
+            ),
+            MCPTool(
+                name="novaadapt_mobile_action",
+                description="Preview or execute an Android or iOS mobile action",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "platform": {"type": "string", "enum": ["android", "ios"]},
+                        "action": {"type": "object"},
+                        "goal": {"type": "string"},
+                        "model": {"type": "string"},
+                        "strategy": {"type": "string"},
+                        "candidates": {"type": "array", "items": {"type": "string"}},
+                        "fallbacks": {"type": "array", "items": {"type": "string"}},
+                        "screenshot_base64": {"type": "string"},
+                        "execute": {"type": "boolean"},
+                        "allow_dangerous": {"type": "boolean"},
+                    },
+                    "required": ["platform"],
+                },
+            ),
+            MCPTool(
+                name="novaadapt_homeassistant_status",
+                description="Get Home Assistant integration status",
+                input_schema={"type": "object", "properties": {}},
+            ),
+            MCPTool(
+                name="novaadapt_homeassistant_discover",
+                description="Discover Home Assistant entities with optional domain or prefix filters",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "domain": {"type": "string"},
+                        "entity_id_prefix": {"type": "string"},
+                        "limit": {"type": "integer"},
+                    },
+                },
+            ),
+            MCPTool(
+                name="novaadapt_homeassistant_action",
+                description="Preview or execute a Home Assistant or MQTT action",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "action": {"type": "object"},
+                        "execute": {"type": "boolean"},
+                        "allow_dangerous": {"type": "boolean"},
+                    },
+                    "required": ["action"],
+                },
+            ),
+            MCPTool(
+                name="novaadapt_mqtt_status",
+                description="Get direct MQTT broker connectivity status",
+                input_schema={"type": "object", "properties": {}},
+            ),
+            MCPTool(
+                name="novaadapt_mqtt_publish",
+                description="Preview or publish a direct MQTT broker message",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "topic": {"type": "string"},
+                        "payload": {"type": "string"},
+                        "qos": {"type": "integer"},
+                        "retain": {"type": "boolean"},
+                        "execute": {"type": "boolean"},
+                        "allow_dangerous": {"type": "boolean"},
+                    },
+                    "required": ["topic", "payload"],
+                },
+            ),
+            MCPTool(
+                name="novaadapt_mqtt_subscribe",
+                description="Collect a bounded snapshot of MQTT messages for a topic",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "topic": {"type": "string"},
+                        "timeout_seconds": {"type": "number"},
+                        "max_messages": {"type": "integer"},
+                        "qos": {"type": "integer"},
+                    },
+                    "required": ["topic"],
                 },
             ),
             MCPTool(
@@ -1609,6 +1826,75 @@ class NovaAdaptMCPServer:
                 status=str(arguments.get("status", "")).strip(),
                 context=str(arguments.get("context", "mcp")).strip() or "mcp",
             )
+        if tool_name == "novaadapt_agent_templates_list":
+            return self.service.agent_templates_list(
+                limit=max(1, min(500, int(arguments.get("limit", 50)))),
+                source=str(arguments.get("source", "")).strip(),
+                tag=str(arguments.get("tag", "")).strip(),
+            )
+        if tool_name == "novaadapt_agent_templates_gallery":
+            return self.service.agent_templates_gallery(tag=str(arguments.get("tag", "")).strip())
+        if tool_name == "novaadapt_agent_template_get":
+            template_id = str(arguments.get("template_id", "")).strip()
+            if not template_id:
+                raise ValueError("'template_id' is required")
+            return self.service.agent_template_get(template_id)
+        if tool_name == "novaadapt_agent_template_export":
+            metadata = arguments.get("metadata")
+            steps = arguments.get("steps")
+            tags = arguments.get("tags")
+            candidates = arguments.get("candidates")
+            return self.service.agent_template_export(
+                name=str(arguments.get("name", "")).strip(),
+                description=str(arguments.get("description", "")).strip(),
+                objective=str(arguments.get("objective", "")).strip(),
+                strategy=str(arguments.get("strategy", "single")).strip() or "single",
+                candidates=[str(item).strip() for item in candidates if str(item).strip()]
+                if isinstance(candidates, list)
+                else None,
+                steps=[dict(item) for item in steps if isinstance(item, dict)] if isinstance(steps, list) else None,
+                metadata=metadata if isinstance(metadata, dict) else None,
+                tags=[str(item).strip() for item in tags if str(item).strip()] if isinstance(tags, list) else None,
+                workflow_id=str(arguments.get("workflow_id", "")).strip(),
+                template_id=str(arguments.get("template_id", "")).strip(),
+                include_memory=bool(arguments.get("include_memory", True)),
+                memory_query=str(arguments.get("memory_query", "")).strip(),
+                memory_top_k=max(1, min(20, int(arguments.get("memory_top_k", 5) or 5))),
+                source=str(arguments.get("source", "local")).strip() or "local",
+            )
+        if tool_name == "novaadapt_agent_template_import":
+            manifest = arguments.get("manifest")
+            if not isinstance(manifest, dict):
+                raise ValueError("'manifest' is required and must be an object")
+            return self.service.agent_template_import(
+                {
+                    "manifest": manifest,
+                    "source": str(arguments.get("source", "")).strip(),
+                    "template_id": str(arguments.get("template_id", "")).strip(),
+                }
+            )
+        if tool_name == "novaadapt_agent_template_share":
+            template_id = str(arguments.get("template_id", "")).strip()
+            if not template_id:
+                raise ValueError("'template_id' is required")
+            return self.service.agent_template_share(
+                template_id,
+                rotate=bool(arguments.get("rotate", False)),
+                shared=bool(arguments.get("shared", True)),
+            )
+        if tool_name == "novaadapt_agent_template_launch":
+            template_id = str(arguments.get("template_id", "")).strip()
+            if not template_id:
+                raise ValueError("'template_id' is required")
+            overrides = arguments.get("overrides")
+            return self.service.agent_template_launch(
+                template_id,
+                mode=str(arguments.get("mode", "plan")).strip() or "plan",
+                execute=bool(arguments.get("execute", False)),
+                allow_dangerous=bool(arguments.get("allow_dangerous", False)),
+                context=str(arguments.get("context", "mcp")).strip() or "mcp",
+                overrides=overrides if isinstance(overrides, dict) else None,
+            )
         if tool_name == "novaadapt_memory_recall":
             query = str(arguments.get("query", "")).strip()
             if not query:
@@ -1625,6 +1911,100 @@ class NovaAdaptMCPServer:
                 text,
                 source_id=source_id,
                 metadata=metadata if isinstance(metadata, dict) else None,
+            )
+        if tool_name == "novaadapt_vision_execute":
+            goal = str(arguments.get("goal", "")).strip()
+            if not goal:
+                raise ValueError("'goal' is required")
+            payload: dict[str, Any] = {
+                "goal": goal,
+                "model": str(arguments.get("model", "")).strip(),
+                "strategy": str(arguments.get("strategy", "single")).strip() or "single",
+                "execute": bool(arguments.get("execute", False)),
+                "allow_dangerous": bool(arguments.get("allow_dangerous", False)),
+            }
+            if isinstance(arguments.get("candidates"), list):
+                payload["candidates"] = [str(item) for item in arguments.get("candidates") if str(item).strip()]
+            if isinstance(arguments.get("fallbacks"), list):
+                payload["fallbacks"] = [str(item) for item in arguments.get("fallbacks") if str(item).strip()]
+            if arguments.get("app_name") is not None:
+                payload["app_name"] = str(arguments.get("app_name"))
+            if arguments.get("screenshot_base64") is not None:
+                payload["screenshot_base64"] = str(arguments.get("screenshot_base64"))
+            return self.service.vision_execute(payload)
+        if tool_name == "novaadapt_mobile_status":
+            return self.service.mobile_status()
+        if tool_name == "novaadapt_mobile_action":
+            platform = str(arguments.get("platform", "")).strip().lower()
+            if platform not in {"android", "ios"}:
+                raise ValueError("'platform' is required and must be 'android' or 'ios'")
+            payload = {
+                "platform": platform,
+                "goal": str(arguments.get("goal", "")).strip(),
+                "model": str(arguments.get("model", "")).strip(),
+                "strategy": str(arguments.get("strategy", "single")).strip() or "single",
+                "execute": bool(arguments.get("execute", False)),
+                "allow_dangerous": bool(arguments.get("allow_dangerous", False)),
+            }
+            action = arguments.get("action")
+            if isinstance(action, dict):
+                payload["action"] = action
+            if isinstance(arguments.get("candidates"), list):
+                payload["candidates"] = [str(item) for item in arguments.get("candidates") if str(item).strip()]
+            if isinstance(arguments.get("fallbacks"), list):
+                payload["fallbacks"] = [str(item) for item in arguments.get("fallbacks") if str(item).strip()]
+            if arguments.get("screenshot_base64") is not None:
+                payload["screenshot_base64"] = str(arguments.get("screenshot_base64"))
+            return self.service.mobile_action(payload)
+        if tool_name == "novaadapt_homeassistant_status":
+            return self.service.homeassistant_status()
+        if tool_name == "novaadapt_homeassistant_discover":
+            return self.service.homeassistant_discover(
+                domain=str(arguments.get("domain") or ""),
+                entity_id_prefix=str(arguments.get("entity_id_prefix") or ""),
+                limit=max(1, int(arguments.get("limit", 250) or 250)),
+            )
+        if tool_name == "novaadapt_homeassistant_action":
+            action = arguments.get("action")
+            if not isinstance(action, dict):
+                raise ValueError("'action' is required and must be an object")
+            return self.service.homeassistant_action(
+                {
+                    "action": action,
+                    "execute": bool(arguments.get("execute", False)),
+                    "allow_dangerous": bool(arguments.get("allow_dangerous", False)),
+                }
+            )
+        if tool_name == "novaadapt_mqtt_status":
+            return self.service.mqtt_status()
+        if tool_name == "novaadapt_mqtt_publish":
+            topic = str(arguments.get("topic") or "").strip()
+            payload_text = str(arguments.get("payload") or "")
+            if not topic:
+                raise ValueError("'topic' is required")
+            return self.service.homeassistant_action(
+                {
+                    "action": {
+                        "type": "mqtt_publish",
+                        "topic": topic,
+                        "payload": payload_text,
+                        "qos": int(arguments.get("qos", 0) or 0),
+                        "retain": bool(arguments.get("retain", False)),
+                        "transport": "mqtt-direct",
+                    },
+                    "execute": bool(arguments.get("execute", False)),
+                    "allow_dangerous": bool(arguments.get("allow_dangerous", False)),
+                }
+            )
+        if tool_name == "novaadapt_mqtt_subscribe":
+            topic = str(arguments.get("topic") or "").strip()
+            if not topic:
+                raise ValueError("'topic' is required")
+            return self.service.mqtt_subscribe(
+                topic=topic,
+                timeout_seconds=float(arguments.get("timeout_seconds", 3.0) or 3.0),
+                max_messages=max(1, int(arguments.get("max_messages", 10) or 10)),
+                qos=int(arguments.get("qos", 0) or 0),
             )
         if tool_name == "novaadapt_browser_status":
             return self.service.browser_status()

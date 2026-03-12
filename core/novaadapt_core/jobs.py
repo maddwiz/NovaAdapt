@@ -3,6 +3,7 @@ from __future__ import annotations
 import inspect
 import threading
 import uuid
+from collections import Counter
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -21,13 +22,15 @@ class JobRecord:
     result: dict[str, Any] | None = None
     error: str | None = None
     cancel_requested: bool = False
+    metadata: dict[str, Any] | None = None
 
 
 class JobManager:
     """Async job manager with optional SQLite-backed persistence."""
 
     def __init__(self, max_workers: int = 4, store: JobStore | None = None) -> None:
-        self._executor = ThreadPoolExecutor(max_workers=max_workers)
+        self.max_workers = max(1, int(max_workers))
+        self._executor = ThreadPoolExecutor(max_workers=self.max_workers)
         self._lock = threading.Lock()
         self._jobs: dict[str, JobRecord] = {}
         self._futures: dict[str, Future[None]] = {}
@@ -44,14 +47,22 @@ class JobManager:
                     result=row.get("result"),
                     error=row.get("error"),
                     cancel_requested=bool(row.get("cancel_requested")),
+                    metadata=row.get("metadata") if isinstance(row.get("metadata"), dict) else None,
                 )
 
-    def submit(self, fn: Callable[..., dict[str, Any]], *args: Any, **kwargs: Any) -> str:
+    def submit(
+        self,
+        fn: Callable[..., dict[str, Any]],
+        *args: Any,
+        job_meta: dict[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> str:
         job_id = uuid.uuid4().hex
         record = JobRecord(
             id=job_id,
             status="queued",
             created_at=_now_iso(),
+            metadata=dict(job_meta) if isinstance(job_meta, dict) else None,
         )
         with self._lock:
             self._jobs[job_id] = record
@@ -77,6 +88,7 @@ class JobManager:
                         result=persisted.get("result"),
                         error=persisted.get("error"),
                         cancel_requested=bool(persisted.get("cancel_requested")),
+                        metadata=persisted.get("metadata") if isinstance(persisted.get("metadata"), dict) else None,
                     )
                     self._jobs[job_id] = record
 
@@ -182,6 +194,47 @@ class JobManager:
             return self._store.list(limit=limit)
         return []
 
+    def stats(self) -> dict[str, Any]:
+        with self._lock:
+            records = list(self._jobs.values())
+        counts = Counter(record.status for record in records)
+        cancel_requested = sum(1 for record in records if record.cancel_requested)
+        return {
+            "total": len(records),
+            "queued": int(counts.get("queued", 0)),
+            "running": int(counts.get("running", 0)),
+            "succeeded": int(counts.get("succeeded", 0)),
+            "failed": int(counts.get("failed", 0)),
+            "canceled": int(counts.get("canceled", 0)),
+            "cancel_requested": cancel_requested,
+            "active": int(counts.get("queued", 0)) + int(counts.get("running", 0)),
+            "max_workers": self.max_workers,
+        }
+
+    def cancel_all(self) -> dict[str, Any]:
+        with self._lock:
+            job_ids = list(self._jobs.keys())
+        results: list[dict[str, Any]] = []
+        canceled = 0
+        requested = 0
+        for job_id in job_ids:
+            outcome = self.cancel(job_id)
+            if outcome is None:
+                continue
+            results.append(outcome)
+            if bool(outcome.get("canceled")):
+                canceled += 1
+            elif outcome.get("status") in {"queued", "running"}:
+                requested += 1
+        return {
+            "ok": True,
+            "total_jobs": len(job_ids),
+            "canceled_now": canceled,
+            "cancel_requested": requested,
+            "results": results,
+            "stats": self.stats(),
+        }
+
     def shutdown(self, wait: bool = True) -> None:
         self._executor.shutdown(wait=wait)
 
@@ -196,6 +249,9 @@ class JobManager:
 
 
 def _serialize(record: JobRecord) -> dict[str, Any]:
+    metadata = dict(record.metadata) if isinstance(record.metadata, dict) else None
+    kind = str(metadata.get("kind") or "").strip() if isinstance(metadata, dict) else ""
+    objective = str(metadata.get("objective") or "").strip() if isinstance(metadata, dict) else ""
     return {
         "id": record.id,
         "status": record.status,
@@ -205,6 +261,9 @@ def _serialize(record: JobRecord) -> dict[str, Any]:
         "result": record.result,
         "error": record.error,
         "cancel_requested": record.cancel_requested,
+        "metadata": metadata,
+        "kind": kind or "run",
+        "objective": objective,
     }
 
 
