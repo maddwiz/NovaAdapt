@@ -57,6 +57,17 @@ cd /Users/desmondpottle/Documents/New project/NovaAdapt
 That will build the debug APK and, if needed, generate a local upload keystore plus signed release outputs.
 GitHub secret bootstrap and Play publish notes live in `/Users/desmondpottle/Documents/New project/NovaAdapt/docs/android_play_publish.md`.
 
+For local preflight before a device test:
+
+```bash
+cd /Users/desmondpottle/Documents/New project/NovaAdapt
+./scripts/build_android_shell.sh verify
+```
+
+That runs Android unit tests and assembles the debug APK with the same setup assumptions used by CI.
+
+Play listing copy, privacy policy HTML, and release checklist now live in `/Users/desmondpottle/Documents/New project/NovaAdapt/mobile/android/play-store`.
+
 ## Runtime Requirements
 
 - reachable NovaAdapt bridge

@@ -1,0 +1,15 @@
+NovaAdapt Operator turns your Android phone into the remote cockpit for NovaAdapt.
+
+Pair your phone in one scan:
+- scan a pairing QR from the desktop console
+- open a NovaAdapt deep link
+- paste a pairing code or manifest
+
+Once paired, you can:
+- approve or reject high-impact actions
+- watch jobs and plans in real time
+- monitor desktop, browser, mobile, and IoT control flows
+- access the live terminal console remotely
+- stay connected to your NovaAdapt runtime without typing bridge URLs manually
+
+Built for operators, solo builders, and vibe coders who want the power of NovaAdapt without manual setup friction.

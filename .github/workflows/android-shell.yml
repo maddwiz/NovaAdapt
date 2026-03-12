@@ -39,6 +39,11 @@ jobs:
         run: |
           sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
 
+      - name: Run Android unit tests
+        run: |
+          chmod +x ./gradlew
+          ./gradlew testDebugUnitTest --console=plain
+
       - name: Build debug APK
         run: |
           chmod +x ./gradlew
