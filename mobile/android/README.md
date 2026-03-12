@@ -54,6 +54,7 @@ cd /Users/desmondpottle/Documents/New project/NovaAdapt
 ```
 
 That will build the debug APK and, if needed, generate a local upload keystore plus signed release outputs.
+GitHub secret bootstrap and Play publish notes live in `/Users/desmondpottle/Documents/New project/NovaAdapt/docs/android_play_publish.md`.
 
 ## Runtime Requirements
 

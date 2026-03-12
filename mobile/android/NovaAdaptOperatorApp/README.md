@@ -34,9 +34,11 @@ Generated signing state is stored outside the repo in `~/.novaadapt/android/nova
 
 - `.github/workflows/android-shell.yml` builds the debug APK on pushes, pull requests, and manual dispatch.
 - `.github/workflows/android-play.yml` performs manual Google Play uploads when the required GitHub secrets are configured.
+- `scripts/configure_android_github_secrets.sh` bootstraps the Android signing secrets from the locally generated keystore.
 
 ## Notes
 
 - This shell is buildable locally and in CI; store publishing still requires Google Play credentials/secrets.
 - The app enables WebView file access and universal access from file URLs so the bundled console can talk to remote bridge/core endpoints.
 - The bundled console itself still lives in `/Users/desmondpottle/Documents/New project/NovaAdapt/view` and remains the source of truth for operator UX.
+- End-to-end Play publish notes live in `/Users/desmondpottle/Documents/New project/NovaAdapt/docs/android_play_publish.md`.

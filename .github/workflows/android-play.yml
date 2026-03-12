@@ -23,9 +23,6 @@ jobs:
       NOVAADAPT_ANDROID_KEY_PASSWORD: ${{ secrets.NOVAADAPT_ANDROID_KEY_PASSWORD }}
       NOVAADAPT_GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.NOVAADAPT_GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
       NOVAADAPT_ANDROID_KEYSTORE_BASE64: ${{ secrets.NOVAADAPT_ANDROID_KEYSTORE_BASE64 }}
-    defaults:
-      run:
-        working-directory: mobile/android/NovaAdaptOperatorApp
     steps:
       - name: Validate required secrets
         shell: bash
@@ -69,11 +66,9 @@ jobs:
           echo "NOVAADAPT_ANDROID_KEYSTORE_PATH=$NOVAADAPT_ANDROID_KEYSTORE_PATH" >> "$GITHUB_ENV"
 
       - name: Build signed release bundle
-        env:
-          NOVAADAPT_ANDROID_KEYSTORE_PATH: ${{ env.NOVAADAPT_ANDROID_KEYSTORE_PATH }}
+        working-directory: .
         run: |
-          chmod +x ./gradlew
-          ./gradlew clean bundleRelease --console=plain
+          ./scripts/build_android_shell.sh bundle
 
       - name: Upload signed AAB
         uses: actions/upload-artifact@v4

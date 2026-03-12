@@ -27,6 +27,7 @@ Migration and operator references:
 - `/Users/desmondpottle/Documents/New project/NovaAdapt/docs/migration_guide.md`
 - `/Users/desmondpottle/Documents/New project/NovaAdapt/mobile/android/README.md`
 - `/Users/desmondpottle/Documents/New project/NovaAdapt/mobile/android/NovaAdaptOperatorApp/README.md`
+- `/Users/desmondpottle/Documents/New project/NovaAdapt/docs/android_play_publish.md`
 - `/Users/desmondpottle/Documents/New project/NovaAdapt/wearables/release_manifest.json`
 - `/Users/desmondpottle/Documents/New project/NovaAdapt/scripts/demo_vision_desktop.sh`
 - `/Users/desmondpottle/Documents/New project/NovaAdapt/scripts/demo_mobile_banking.sh`

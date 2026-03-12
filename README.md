@@ -575,6 +575,7 @@ make smoke-browser # Real Playwright browser smoke (skips unless browser runtime
 make build-bridge
 make release-artifacts      # Build dist artifacts (bridge + python + runtime + Android PWA + wearables bundles)
 ./scripts/build_android_shell.sh all  # Build Android debug APK + signed release APK/AAB
+./scripts/configure_android_github_secrets.sh  # Push Android signing secrets from the local keystore into GitHub Actions
 make rotate-tokens-dry-run  # Preview token rotation updates
 ```
 
