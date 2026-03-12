@@ -3,4 +3,7 @@
     <color name="nova_bg">#F3F0E9</color>
     <color name="nova_brand">#1F6F5F</color>
     <color name="nova_ink">#1F1A14</color>
+    <color name="nova_muted">#685F53</color>
+    <color name="nova_ok">#1B7F52</color>
+    <color name="nova_warn">#A34F2F</color>
 </resources>

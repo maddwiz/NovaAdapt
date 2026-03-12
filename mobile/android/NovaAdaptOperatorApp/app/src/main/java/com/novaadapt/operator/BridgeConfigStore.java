@@ -51,6 +51,24 @@ final class BridgeConfigStore {
         return prefs(context).getBoolean(KEY_AUTO_CONNECT, true);
     }
 
+    static boolean hasCompleteConfiguration(Context context) {
+        return !getWsUrl(context).isEmpty()
+                && !getBridgeHttpUrl(context).isEmpty()
+                && !getToken(context).isEmpty();
+    }
+
+    static void applyPairingManifest(Context context, PairingManifest manifest) {
+        save(
+                context,
+                manifest.wsUrl,
+                manifest.bridgeHttpUrl,
+                manifest.token,
+                manifest.adminToken,
+                manifest.deviceId,
+                manifest.autoConnect
+        );
+    }
+
     static void save(
             Context context,
             String wsUrl,

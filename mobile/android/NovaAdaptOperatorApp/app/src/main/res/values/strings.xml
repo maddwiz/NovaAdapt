@@ -13,4 +13,17 @@
     <string name="action_reload">Reload Console</string>
     <string name="action_reconnect">Reconnect Console</string>
     <string name="settings_summary">These values are injected into the bundled NovaAdapt realtime console on launch. The shell loads the local operator UI from the repo view bundle and connects to your remote bridge/core stack.</string>
+    <string name="pairing_title">Connect NovaAdapt in one paste</string>
+    <string name="pairing_summary">Paste a NovaAdapt pairing link, manifest JSON, or pairing code from your desktop bridge. The app will fill the connection settings and open the operator console for you.</string>
+    <string name="pairing_summary_configured">Connected to %1$s. Paste a new pairing manifest any time to repoint this operator shell.</string>
+    <string name="hint_pairing_payload">novaadapt://pair?payload=... or paste the raw pairing code</string>
+    <string name="action_import_pairing">Import Pairing</string>
+    <string name="action_paste_clipboard">Paste Clipboard</string>
+    <string name="action_open_settings">Open Manual Settings</string>
+    <string name="pairing_status_waiting">Waiting for a pairing link, pairing code, or manual settings.</string>
+    <string name="pairing_status_empty">Paste a pairing link, JSON manifest, or pairing code first.</string>
+    <string name="pairing_status_ready">Operator ready on device %1$s.</string>
+    <string name="pairing_status_imported">Imported pairing for %1$s on %2$s.</string>
+    <string name="pairing_status_invalid">Could not import %1$s: %2$s</string>
+    <string name="pairing_status_clipboard_empty">Clipboard does not contain pairing text.</string>
 </resources>

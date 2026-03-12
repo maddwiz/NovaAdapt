@@ -44,6 +44,7 @@ The native shell:
 - packages the repo operator console as Android assets
 - stores bridge credentials and device identity in Android `SharedPreferences`
 - bootstraps the console with prefilled bridge/websocket settings
+- imports pairing manifests from raw codes, JSON manifests, shared text, or `novaadapt://pair?...` deep links
 - can auto-connect immediately on launch for dedicated operator devices
 
 Command-line build path:
@@ -61,6 +62,16 @@ GitHub secret bootstrap and Play publish notes live in `/Users/desmondpottle/Doc
 - reachable NovaAdapt bridge
 - bridge token or scoped session token
 - optional device allowlist entry if bridge device enforcement is enabled
+
+## Easiest Setup Path
+
+For non-technical operators, the intended path is now:
+
+1. Generate a mobile pairing payload from the desktop realtime console `Mobile Pairing` card.
+2. Scan the generated QR on Android, open the `novaadapt://pair?...` link directly, or paste the raw pairing code into the app.
+3. Let the Android shell import the manifest and open the bundled operator console automatically.
+
+Manual bridge URL / token entry is still available in Settings, but it is no longer the primary setup flow.
 
 ## Current Tradeoffs
 

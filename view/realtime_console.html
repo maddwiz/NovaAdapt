@@ -7,6 +7,7 @@
   <title>NovaAdapt Realtime Console</title>
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.5.0/css/xterm.min.css" />
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js"></script>
   <style>
     :root {
       --bg: #f3f0e9;
@@ -213,6 +214,22 @@
       display: none;
     }
 
+    .pairing-qr-wrap {
+      margin-top: 10px;
+      border: 1px dashed var(--line);
+      border-radius: 12px;
+      background: #fffdf8;
+      min-height: 204px;
+      display: grid;
+      place-items: center;
+      padding: 12px;
+    }
+
+    .pairing-qr-wrap canvas {
+      max-width: 100%;
+      height: auto;
+    }
+
     .hint {
       margin-top: 8px;
       color: var(--muted);
@@ -349,6 +366,77 @@
           <button id="ping-btn">Ping</button>
         </div>
         <div class="status" id="status">Disconnected</div>
+      </section>
+
+      <section class="card">
+        <h2>Mobile Pairing</h2>
+        <div class="row">
+          <div>
+            <label for="pairing-subject">Pairing Subject</label>
+            <input id="pairing-subject" value="NovaAdapt Operator" />
+          </div>
+          <div>
+            <label for="pairing-device-id">Pairing Device ID (optional)</label>
+            <input id="pairing-device-id" placeholder="leave blank to auto-generate" />
+          </div>
+        </div>
+        <div class="row triple">
+          <div>
+            <label for="pairing-ttl">Pairing TTL (s)</label>
+            <input id="pairing-ttl" type="number" value="2592000" min="3600" max="7776000" />
+          </div>
+          <div>
+            <label for="pairing-auto-connect">Auto Connect</label>
+            <select id="pairing-auto-connect">
+              <option value="true" selected>true</option>
+              <option value="false">false</option>
+            </select>
+          </div>
+          <div>
+            <label for="pairing-include-admin">Include Admin Token</label>
+            <select id="pairing-include-admin">
+              <option value="true" selected>true</option>
+              <option value="false">false</option>
+            </select>
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label for="pairing-auto-allowlist">Auto Allowlist New Device</label>
+            <select id="pairing-auto-allowlist">
+              <option value="true" selected>true</option>
+              <option value="false">false</option>
+            </select>
+          </div>
+          <div>
+            <label for="pairing-code-output">Pairing Code</label>
+            <input id="pairing-code-output" readonly placeholder="generated pairing code" />
+          </div>
+        </div>
+        <div class="row single">
+          <div>
+            <label for="pairing-uri-output">Pairing URI</label>
+            <textarea id="pairing-uri-output" readonly placeholder="novaadapt://pair?payload=..."></textarea>
+          </div>
+        </div>
+        <div class="row single">
+          <div>
+            <label for="pairing-manifest-output">Pairing Manifest</label>
+            <textarea id="pairing-manifest-output" readonly placeholder="Generated pairing manifest JSON"></textarea>
+          </div>
+        </div>
+        <div class="pairing-qr-wrap" id="pairing-qr-wrap">
+          <div class="hint" id="pairing-qr-hint">Generate a pairing URI to render a QR for phone camera import.</div>
+          <canvas id="pairing-qr-canvas" hidden></canvas>
+        </div>
+        <div class="controls">
+          <button id="pairing-generate-btn">Generate Pairing</button>
+          <button id="pairing-copy-code-btn">Copy Code</button>
+          <button id="pairing-copy-uri-btn">Copy URI</button>
+          <button id="pairing-copy-manifest-btn">Copy Manifest</button>
+        </div>
+        <div class="status" id="pairing-gen-status">Pairing idle</div>
+        <div class="hint">Generate once on your desktop bridge, then open the URI on Android or paste the code into the app. This keeps the desktop operator token separate from the phone token.</div>
       </section>
 
       <section class="card">
@@ -835,12 +923,15 @@
     const iotOutputEl = $("iot-output");
     const mqttStatusEl = $("mqtt-status");
     const mqttOutputEl = $("mqtt-output");
+    const pairingGenStatusEl = $("pairing-gen-status");
     const templateStatusEl = $("template-status");
     const templateOutputEl = $("template-output");
     const artifactStatusEl = $("artifact-status");
     const artifactOutputEl = $("artifact-output");
     const artifactPreviewMetaEl = $("artifact-preview-meta");
     const artifactPreviewImageEl = $("artifact-preview-image");
+    const pairingQRHintEl = $("pairing-qr-hint");
+    const pairingQRCanvasEl = $("pairing-qr-canvas");
     const bootstrapStorageKey = "novaadapt.realtime_console.bootstrap.v1";
     const persistedBootstrapFields = [
       "ws-url",
@@ -851,6 +942,12 @@
       "since-id",
       "poll-timeout",
       "allowlist-device-id",
+      "pairing-subject",
+      "pairing-device-id",
+      "pairing-ttl",
+      "pairing-auto-connect",
+      "pairing-include-admin",
+      "pairing-auto-allowlist",
     ];
     const bootstrapQueryMap = {
       ws_url: "ws-url",
@@ -904,6 +1001,11 @@
       mqttStatusEl.className = `status ${cls}`.trim();
     }
 
+    function setPairingGenStatus(text, cls = "") {
+      pairingGenStatusEl.textContent = text;
+      pairingGenStatusEl.className = `status ${cls}`.trim();
+    }
+
     function setTemplateStatus(text, cls = "") {
       templateStatusEl.textContent = text;
       templateStatusEl.className = `status ${cls}`.trim();
@@ -937,6 +1039,39 @@
       const text = typeof payload === "string" ? payload : JSON.stringify(payload, null, 2);
       mqttOutputEl.textContent = text;
       mqttOutputEl.scrollTop = mqttOutputEl.scrollHeight;
+    }
+
+    function setPairingManifestOutput(payload) {
+      $("pairing-manifest-output").value =
+        typeof payload === "string" ? payload : JSON.stringify(payload, null, 2);
+    }
+
+    async function renderPairingQRCode(text) {
+      const value = String(text || "").trim();
+      if (!value) {
+        pairingQRCanvasEl.hidden = true;
+        pairingQRCanvasEl.width = 0;
+        pairingQRCanvasEl.height = 0;
+        pairingQRHintEl.hidden = false;
+        pairingQRHintEl.textContent = "Generate a pairing URI to render a QR for phone camera import.";
+        return;
+      }
+      if (!window.QRCode || typeof window.QRCode.toCanvas !== "function") {
+        pairingQRCanvasEl.hidden = true;
+        pairingQRHintEl.hidden = false;
+        pairingQRHintEl.textContent = "QR library unavailable. Copy the URI or pairing code instead.";
+        return;
+      }
+      await window.QRCode.toCanvas(pairingQRCanvasEl, value, {
+        width: 180,
+        margin: 1,
+        color: {
+          dark: "#1f1a14",
+          light: "#fffdf8",
+        },
+      });
+      pairingQRHintEl.hidden = true;
+      pairingQRCanvasEl.hidden = false;
     }
 
     function setTemplateOutput(payload) {
@@ -1123,6 +1258,29 @@
       if (token) url.searchParams.set("token", token);
       if (deviceID) url.searchParams.set("device_id", deviceID);
       return url.toString();
+    }
+
+    async function copyTextValue(value, label) {
+      const text = String(value || "");
+      if (!text.trim()) {
+        throw new Error(`${label} is empty`);
+      }
+      if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+        await navigator.clipboard.writeText(text);
+        return;
+      }
+      const scratch = document.createElement("textarea");
+      scratch.value = text;
+      scratch.setAttribute("readonly", "readonly");
+      scratch.style.position = "absolute";
+      scratch.style.left = "-9999px";
+      document.body.appendChild(scratch);
+      scratch.select();
+      const ok = document.execCommand("copy");
+      document.body.removeChild(scratch);
+      if (!ok) {
+        throw new Error(`clipboard copy failed for ${label}`);
+      }
     }
 
     function flushPendingCommandsOnDisconnect() {
@@ -1386,6 +1544,54 @@
       } catch (err) {
         appendLog("session_issue_error", String(err));
         setStatus("Session issue network error", "bad");
+      }
+    }
+
+    function pairingRequestBody() {
+      const ttl = Math.max(3600, Math.min(7776000, Number($("pairing-ttl").value || 2592000)));
+      const body = {
+        subject: $("pairing-subject").value.trim() || "NovaAdapt Operator",
+        ttl_seconds: ttl,
+        auto_connect: $("pairing-auto-connect").value === "true",
+        include_admin_token: $("pairing-include-admin").value === "true",
+        auto_allowlist: $("pairing-auto-allowlist").value === "true",
+      };
+      const deviceID = $("pairing-device-id").value.trim();
+      if (deviceID) {
+        body.device_id = deviceID;
+      }
+      return body;
+    }
+
+    async function generatePairingPayload() {
+      try {
+        const response = await bridgeAdminRequest("/auth/pair", {
+          method: "POST",
+          body: pairingRequestBody(),
+        });
+        const payload = response.payload || {};
+        const manifest = payload.manifest || {};
+        $("pairing-code-output").value = String(payload.pairing_code || "");
+        $("pairing-uri-output").value = String(payload.pairing_uri || "");
+        await renderPairingQRCode(payload.pairing_uri || "");
+        if (payload.device_id) {
+          $("pairing-device-id").value = String(payload.device_id);
+          $("allowlist-device-id").value = String(payload.device_id);
+        }
+        setPairingManifestOutput(manifest);
+        setPairingGenStatus(`Pairing ready for ${payload.device_id || "device"}`, "ok");
+        appendLog("pairing_generated", payload);
+        if (payload.added_to_allowlist) {
+          listAllowedDevices();
+        }
+      } catch (err) {
+        appendLog("pairing_generate_error", {
+          error: String(err),
+          status: err?.status ?? null,
+          payload: err?.payload ?? null,
+        });
+        await renderPairingQRCode("");
+        setPairingGenStatus(String(err), "bad");
       }
     }
 
@@ -2582,6 +2788,36 @@
     $("device-remove-btn").addEventListener("click", () => {
       removeAllowedDevice();
     });
+    $("pairing-generate-btn").addEventListener("click", () => {
+      generatePairingPayload();
+    });
+    $("pairing-copy-code-btn").addEventListener("click", async () => {
+      try {
+        await copyTextValue($("pairing-code-output").value, "pairing code");
+        setPairingGenStatus("Pairing code copied", "ok");
+      } catch (err) {
+        appendLog("pairing_copy_code_error", String(err));
+        setPairingGenStatus(String(err), "bad");
+      }
+    });
+    $("pairing-copy-uri-btn").addEventListener("click", async () => {
+      try {
+        await copyTextValue($("pairing-uri-output").value, "pairing uri");
+        setPairingGenStatus("Pairing URI copied", "ok");
+      } catch (err) {
+        appendLog("pairing_copy_uri_error", String(err));
+        setPairingGenStatus(String(err), "bad");
+      }
+    });
+    $("pairing-copy-manifest-btn").addEventListener("click", async () => {
+      try {
+        await copyTextValue($("pairing-manifest-output").value, "pairing manifest");
+        setPairingGenStatus("Pairing manifest copied", "ok");
+      } catch (err) {
+        appendLog("pairing_copy_manifest_error", String(err));
+        setPairingGenStatus(String(err), "bad");
+      }
+    });
     $("connect-btn").addEventListener("click", connect);
     $("disconnect-btn").addEventListener("click", disconnect);
 
@@ -2824,6 +3060,11 @@
     setIoTOutput("No IoT activity yet.");
     setMQTTStatus("MQTT idle");
     setMQTTOutput("No MQTT activity yet.");
+    setPairingGenStatus("Pairing idle");
+    setPairingManifestOutput("No pairing manifest generated yet.");
+    renderPairingQRCode("").catch((err) => {
+      appendLog("pairing_qr_init_error", String(err));
+    });
     setTemplateStatus("Marketplace idle");
     setTemplateOutput("No marketplace activity yet.");
     setArtifactStatus("Artifacts idle");

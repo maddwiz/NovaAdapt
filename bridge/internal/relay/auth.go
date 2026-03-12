@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -26,6 +27,10 @@ const (
 	scopeReject  = "reject"
 	scopeUndo    = "undo"
 	scopeCancel  = "cancel"
+
+	defaultSessionMaxTTLSeconds = 24 * 3600
+	defaultPairingTTLSeconds    = 30 * 24 * 3600
+	maxPairingTTLSeconds        = 90 * 24 * 3600
 )
 
 var allBridgeScopes = []string{
@@ -152,6 +157,16 @@ func (h *Handler) issueSessionToken(
 	deviceID string,
 	ttlSeconds int,
 ) (string, sessionTokenClaims, error) {
+	return h.issueSessionTokenWithLimit(subject, scopes, deviceID, ttlSeconds, defaultSessionMaxTTLSeconds)
+}
+
+func (h *Handler) issueSessionTokenWithLimit(
+	subject string,
+	scopes []string,
+	deviceID string,
+	ttlSeconds int,
+	maxTTLSeconds int,
+) (string, sessionTokenClaims, error) {
 	key := h.sessionSigningKey()
 	if key == "" {
 		return "", sessionTokenClaims{}, fmt.Errorf("session signing key is not configured")
@@ -166,8 +181,11 @@ func (h *Handler) issueSessionToken(
 	if ttl <= 0 {
 		ttl = int(max(60, int(h.cfg.SessionTokenTTL.Seconds())))
 	}
-	if ttl > 24*3600 {
-		ttl = 24 * 3600
+	if maxTTLSeconds <= 0 {
+		maxTTLSeconds = defaultSessionMaxTTLSeconds
+	}
+	if ttl > maxTTLSeconds {
+		ttl = maxTTLSeconds
 	}
 	sessionID, err := generateSessionID()
 	if err != nil {
@@ -430,6 +448,137 @@ func (h *Handler) handleIssueSessionToken(body []byte, auth authContext, request
 	}, nil
 }
 
+func (h *Handler) handleIssuePairingPayload(body []byte, auth authContext, requestID string, r *http.Request) (map[string]any, error) {
+	payload := map[string]any{}
+	if len(bytesTrimSpace(body)) > 0 {
+		if err := json.Unmarshal(body, &payload); err != nil {
+			return nil, fmt.Errorf("request body must be valid JSON object")
+		}
+	}
+
+	subject := auth.Subject
+	if value := strings.TrimSpace(toString(payload["subject"])); value != "" {
+		subject = value
+	}
+	if subject == "" {
+		subject = "android-operator"
+	}
+
+	deviceID := strings.TrimSpace(toString(payload["device_id"]))
+	if deviceID == "" {
+		deviceID = auth.DeviceID
+	}
+	if deviceID == "" {
+		generated, err := generatePairingDeviceID("android")
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate device id")
+		}
+		deviceID = generated
+	}
+
+	autoAllowlist := h.hasAllowedDevices()
+	if value, ok := toBool(payload["auto_allowlist"]); ok {
+		autoAllowlist = value
+	}
+	addedToAllowlist := false
+	if h.hasAllowedDevices() {
+		if !h.isAllowedDevice(deviceID) {
+			if !autoAllowlist {
+				return nil, fmt.Errorf("device_id is not in allowed list")
+			}
+			added, err := h.addAllowedDevice(deviceID)
+			if err != nil {
+				return nil, err
+			}
+			addedToAllowlist = added
+		}
+	}
+
+	operatorScopes := extractScopes(payload["scopes"])
+	if len(operatorScopes) == 0 {
+		operatorScopes = []string{scopeRead, scopeRun, scopePlan, scopeApprove, scopeReject, scopeUndo, scopeCancel}
+	}
+	if err := validateScopes(operatorScopes); err != nil {
+		return nil, err
+	}
+
+	adminScopes := extractScopes(payload["admin_scopes"])
+	if len(adminScopes) == 0 {
+		adminScopes = []string{scopeAdmin}
+	}
+	if err := validateScopes(adminScopes); err != nil {
+		return nil, err
+	}
+
+	ttlSeconds := defaultPairingTTLSeconds
+	if rawTTL := toInt(payload["ttl_seconds"]); rawTTL > 0 {
+		ttlSeconds = rawTTL
+	}
+	adminTTLSeconds := ttlSeconds
+	if rawTTL := toInt(payload["admin_ttl_seconds"]); rawTTL > 0 {
+		adminTTLSeconds = rawTTL
+	}
+
+	includeAdminToken := true
+	if value, ok := toBool(payload["include_admin_token"]); ok {
+		includeAdminToken = value
+	}
+
+	autoConnect := true
+	if value, ok := toBool(payload["auto_connect"]); ok {
+		autoConnect = value
+	}
+
+	operatorToken, operatorClaims, err := h.issueSessionTokenWithLimit(subject, operatorScopes, deviceID, ttlSeconds, maxPairingTTLSeconds)
+	if err != nil {
+		return nil, err
+	}
+	adminToken := ""
+	adminClaims := sessionTokenClaims{}
+	if includeAdminToken {
+		adminToken, adminClaims, err = h.issueSessionTokenWithLimit(subject+"-admin", adminScopes, deviceID, adminTTLSeconds, maxPairingTTLSeconds)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	httpURL, wsURL := h.publicBridgeURLs(r)
+	manifest := map[string]any{
+		"version":         1,
+		"subject":         subject,
+		"device_id":       deviceID,
+		"bridge_http_url": httpURL,
+		"ws_url":          wsURL,
+		"token":           operatorToken,
+		"auto_connect":    autoConnect,
+		"issued_at":       operatorClaims.Iat,
+		"expires_at":      operatorClaims.Exp,
+		"scopes":          operatorClaims.Scopes,
+	}
+	if adminToken != "" {
+		manifest["admin_token"] = adminToken
+		manifest["admin_expires_at"] = adminClaims.Exp
+		manifest["admin_scopes"] = adminClaims.Scopes
+	}
+
+	pairingCode, err := encodePairingManifest(manifest)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode pairing manifest")
+	}
+	pairingURI := "novaadapt://pair?payload=" + url.QueryEscape(pairingCode)
+	return map[string]any{
+		"status":             "ok",
+		"subject":            subject,
+		"device_id":          deviceID,
+		"auto_connect":       autoConnect,
+		"added_to_allowlist": addedToAllowlist,
+		"pairing_code":       pairingCode,
+		"pairing_uri":        pairingURI,
+		"manifest":           manifest,
+		"request_id":         requestID,
+	}, nil
+}
+
 func (h *Handler) handleRevokeSessionToken(body []byte, requestID string) (map[string]any, error) {
 	payload := map[string]any{}
 	if len(bytesTrimSpace(body)) > 0 {
@@ -503,6 +652,27 @@ func extractScopes(value any) []string {
 	}
 }
 
+func toBool(value any) (bool, bool) {
+	switch v := value.(type) {
+	case bool:
+		return v, true
+	case string:
+		switch strings.ToLower(strings.TrimSpace(v)) {
+		case "1", "true", "yes", "on":
+			return true, true
+		case "0", "false", "no", "off":
+			return false, true
+		}
+	case float64:
+		return v != 0, true
+	case int:
+		return v != 0, true
+	case int64:
+		return v != 0, true
+	}
+	return false, false
+}
+
 func toString(value any) string {
 	if value == nil {
 		return ""
@@ -532,6 +702,26 @@ func toInt(value any) int {
 
 func bytesTrimSpace(value []byte) []byte {
 	return []byte(strings.TrimSpace(string(value)))
+}
+
+func generatePairingDeviceID(prefix string) (string, error) {
+	buf := make([]byte, 6)
+	if _, err := rand.Read(buf); err != nil {
+		return "", err
+	}
+	base := strings.TrimSpace(strings.ToLower(prefix))
+	if base == "" {
+		base = "device"
+	}
+	return base + "-" + hex.EncodeToString(buf), nil
+}
+
+func encodePairingManifest(payload map[string]any) (string, error) {
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(raw), nil
 }
 
 func (h *Handler) revokeSession(sessionID string, expiresAt int64) (bool, error) {

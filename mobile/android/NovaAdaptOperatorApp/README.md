@@ -7,6 +7,7 @@ This is a native Android WebView shell for NovaAdapt's bundled operator console.
 - loads the repo's `view/realtime_console.html` from packaged Android assets
 - persists bridge/websocket/operator identity values in Android `SharedPreferences`
 - injects those values into the console via query-parameter bootstrap
+- imports pairing manifests from shared text, deep links, pasted codes, or raw JSON
 - supports auto-connect on launch for dedicated operator devices
 
 ## Import
@@ -14,6 +15,20 @@ This is a native Android WebView shell for NovaAdapt's bundled operator console.
 1. Open `mobile/android/NovaAdaptOperatorApp` in Android Studio.
 2. Let Android Studio provision the Android Gradle Plugin / Gradle distribution.
 3. Run on an Android device or emulator with network access to your NovaAdapt bridge.
+
+## Operator Onboarding
+
+The Android shell now opens with a first-run pairing screen when it does not yet have a complete bridge configuration.
+
+Accepted import formats:
+
+- QR-opened `novaadapt://pair?payload=...` deep links
+- `novaadapt://pair?payload=...`
+- raw base64url pairing code
+- raw manifest JSON
+- shared text from another app
+
+After import, the shell stores the bridge URL, websocket URL, tokens, and device id locally, then opens the packaged operator console.
 
 ## Command-Line Build
 
