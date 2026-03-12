@@ -18,21 +18,33 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 
 import androidx.annotation.NonNull;
+import androidx.activity.result.ActivityResultLauncher;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
 
+import com.journeyapps.barcodescanner.ScanContract;
+import com.journeyapps.barcodescanner.ScanOptions;
 import com.google.android.material.appbar.MaterialToolbar;
 import com.google.android.material.button.MaterialButton;
 import com.google.android.material.textfield.TextInputEditText;
 import com.google.android.material.textview.MaterialTextView;
 
+import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
 public class MainActivity extends AppCompatActivity {
+    private ActivityResultLauncher<ScanOptions> qrScanLauncher;
     private View onboardingScroll;
     private TextInputEditText pairingPayloadInput;
     private MaterialTextView pairingSummaryView;
     private MaterialTextView pairingStatusView;
+    private MaterialTextView discoveryStatusView;
     private WebView webView;
+    private ExecutorService backgroundExecutor;
     private boolean consoleReady = false;
+    private boolean discoveryInFlight = false;
+    private String discoveredBridgeHttpUrl = "";
     private String lastLoadedUrl = "";
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -48,14 +60,29 @@ public class MainActivity extends AppCompatActivity {
         pairingPayloadInput = findViewById(R.id.pairing_payload_input);
         pairingSummaryView = findViewById(R.id.pairing_summary);
         pairingStatusView = findViewById(R.id.pairing_status);
+        discoveryStatusView = findViewById(R.id.discovery_status);
         MaterialButton importPairingButton = findViewById(R.id.import_pairing_button);
         MaterialButton pasteClipboardButton = findViewById(R.id.paste_clipboard_button);
+        MaterialButton scanQrButton = findViewById(R.id.scan_qr_button);
+        MaterialButton discoverBridgeButton = findViewById(R.id.discover_bridge_button);
         MaterialButton openSettingsButton = findViewById(R.id.open_settings_button);
         webView = findViewById(R.id.console_webview);
+        backgroundExecutor = Executors.newSingleThreadExecutor();
+        qrScanLauncher = registerForActivityResult(new ScanContract(), result -> {
+            String contents = result == null ? "" : result.getContents();
+            if (contents == null || contents.trim().isEmpty()) {
+                setPairingStatus(getString(R.string.pairing_status_scan_cancelled), false);
+                return;
+            }
+            pairingPayloadInput.setText(contents);
+            importPairingPayload(contents, "qr scan");
+        });
         configureWebView();
 
         importPairingButton.setOnClickListener((view) -> importPairingPayload(textOf(pairingPayloadInput), "manual import"));
         pasteClipboardButton.setOnClickListener((view) -> importClipboardPayload());
+        scanQrButton.setOnClickListener((view) -> launchQrScanner());
+        discoverBridgeButton.setOnClickListener((view) -> discoverNearbyBridge());
         openSettingsButton.setOnClickListener((view) -> startActivity(new Intent(this, SettingsActivity.class)));
 
         boolean consumedIntent = consumePairingIntent(getIntent());
@@ -119,6 +146,14 @@ public class MainActivity extends AppCompatActivity {
         super.onBackPressed();
     }
 
+    @Override
+    protected void onDestroy() {
+        if (backgroundExecutor != null) {
+            backgroundExecutor.shutdownNow();
+        }
+        super.onDestroy();
+    }
+
     @SuppressLint("SetJavaScriptEnabled")
     private void configureWebView() {
         WebSettings settings = webView.getSettings();
@@ -170,7 +205,11 @@ public class MainActivity extends AppCompatActivity {
         }
         onboardingScroll.setVisibility(View.VISIBLE);
         webView.setVisibility(View.GONE);
-        pairingSummaryView.setText(getString(R.string.pairing_summary));
+        if (!discoveredBridgeHttpUrl.isEmpty()) {
+            pairingSummaryView.setText(getString(R.string.pairing_summary_discovered, discoveredBridgeHttpUrl));
+        } else {
+            pairingSummaryView.setText(getString(R.string.pairing_summary));
+        }
         if (textOf(pairingPayloadInput).isEmpty()) {
             setPairingStatus(getString(R.string.pairing_status_waiting), false);
         }
@@ -233,6 +272,59 @@ public class MainActivity extends AppCompatActivity {
         importPairingPayload(payload, "clipboard import");
     }
 
+    private void launchQrScanner() {
+        try {
+            ScanOptions options = new ScanOptions();
+            options.setDesiredBarcodeFormats(ScanOptions.QR_CODE);
+            options.setPrompt(getString(R.string.scan_prompt));
+            options.setBeepEnabled(false);
+            options.setOrientationLocked(false);
+            options.setBarcodeImageEnabled(false);
+            qrScanLauncher.launch(options);
+        } catch (Exception err) {
+            setPairingStatus(getString(R.string.pairing_status_scan_failed, err.getMessage()), false);
+        }
+    }
+
+    private void discoverNearbyBridge() {
+        if (discoveryInFlight || backgroundExecutor == null) {
+            return;
+        }
+        discoveryInFlight = true;
+        setDiscoveryStatus(getString(R.string.discovery_status_running), R.color.nova_muted);
+        backgroundExecutor.execute(() -> {
+            try {
+                List<BridgeDiscovery.Result> results = BridgeDiscovery.discoverNearby();
+                runOnUiThread(() -> applyDiscoveryResults(results));
+            } catch (Exception err) {
+                runOnUiThread(() -> {
+                    discoveryInFlight = false;
+                    setDiscoveryStatus(getString(R.string.discovery_status_failed, err.getMessage()), R.color.nova_warn);
+                });
+            }
+        });
+    }
+
+    private void applyDiscoveryResults(List<BridgeDiscovery.Result> results) {
+        discoveryInFlight = false;
+        if (results == null || results.isEmpty()) {
+            discoveredBridgeHttpUrl = "";
+            setDiscoveryStatus(getString(R.string.discovery_status_none), R.color.nova_warn);
+            refreshConsoleState(false);
+            return;
+        }
+        BridgeDiscovery.Result primary = results.get(0);
+        discoveredBridgeHttpUrl = primary.bridgeHttpUrl;
+        BridgeConfigStore.saveDiscoveredBridge(this, primary.wsUrl, primary.bridgeHttpUrl);
+        if (results.size() == 1) {
+            setDiscoveryStatus(getString(R.string.discovery_status_found_one, primary.bridgeHttpUrl), R.color.nova_ok);
+        } else {
+            setDiscoveryStatus(getString(R.string.discovery_status_found_many, results.size(), primary.bridgeHttpUrl), R.color.nova_ok);
+        }
+        Toast.makeText(this, discoveryStatusView.getText(), Toast.LENGTH_SHORT).show();
+        refreshConsoleState(true);
+    }
+
     private String extractPairingPayload(Intent intent) {
         if (intent == null) {
             return "";
@@ -261,6 +353,11 @@ public class MainActivity extends AppCompatActivity {
                 this,
                 ok ? R.color.nova_ok : R.color.nova_warn
         ));
+    }
+
+    private void setDiscoveryStatus(String text, int colorRes) {
+        discoveryStatusView.setText(text);
+        discoveryStatusView.setTextColor(ContextCompat.getColor(this, colorRes));
     }
 
     private String textOf(TextInputEditText input) {

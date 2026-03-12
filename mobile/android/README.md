@@ -68,10 +68,12 @@ GitHub secret bootstrap and Play publish notes live in `/Users/desmondpottle/Doc
 For non-technical operators, the intended path is now:
 
 1. Generate a mobile pairing payload from the desktop realtime console `Mobile Pairing` card.
-2. Scan the generated QR on Android, open the `novaadapt://pair?...` link directly, or paste the raw pairing code into the app.
+2. In the Android app, tap `Scan QR` to read the generated pairing QR, open the `novaadapt://pair?...` link directly, or paste the raw pairing code into the app.
 3. Let the Android shell import the manifest and open the bundled operator console automatically.
 
 Manual bridge URL / token entry is still available in Settings, but it is no longer the primary setup flow.
+
+If you are on the same local network as the NovaAdapt host, the Android shell can also use `Discover Nearby` to find the bridge and prefill its host settings before pairing.
 
 ## Current Tradeoffs
 

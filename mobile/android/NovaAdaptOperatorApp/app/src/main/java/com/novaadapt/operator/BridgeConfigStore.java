@@ -69,6 +69,18 @@ final class BridgeConfigStore {
         );
     }
 
+    static void saveDiscoveredBridge(Context context, String wsUrl, String bridgeHttpUrl) {
+        save(
+                context,
+                safe(wsUrl, getWsUrl(context)),
+                safe(bridgeHttpUrl, getBridgeHttpUrl(context)),
+                getToken(context),
+                getAdminToken(context),
+                getDeviceId(context),
+                isAutoConnectEnabled(context)
+        );
+    }
+
     static void save(
             Context context,
             String wsUrl,

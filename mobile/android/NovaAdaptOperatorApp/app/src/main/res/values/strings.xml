@@ -19,6 +19,8 @@
     <string name="hint_pairing_payload">novaadapt://pair?payload=... or paste the raw pairing code</string>
     <string name="action_import_pairing">Import Pairing</string>
     <string name="action_paste_clipboard">Paste Clipboard</string>
+    <string name="action_scan_qr">Scan QR</string>
+    <string name="action_discover_bridge">Discover Nearby</string>
     <string name="action_open_settings">Open Manual Settings</string>
     <string name="pairing_status_waiting">Waiting for a pairing link, pairing code, or manual settings.</string>
     <string name="pairing_status_empty">Paste a pairing link, JSON manifest, or pairing code first.</string>
@@ -26,4 +28,14 @@
     <string name="pairing_status_imported">Imported pairing for %1$s on %2$s.</string>
     <string name="pairing_status_invalid">Could not import %1$s: %2$s</string>
     <string name="pairing_status_clipboard_empty">Clipboard does not contain pairing text.</string>
+    <string name="pairing_status_scan_cancelled">QR scan cancelled.</string>
+    <string name="pairing_status_scan_failed">QR scan failed: %1$s</string>
+    <string name="pairing_summary_discovered">Nearby bridge found at %1$s. Scan the QR or paste the pairing code to finish setup without typing addresses.</string>
+    <string name="discovery_status_idle">Nearby discovery idle.</string>
+    <string name="discovery_status_running">Scanning the local network for NovaAdapt bridge…</string>
+    <string name="discovery_status_found_one">Found bridge at %1$s. Manual settings were updated with this host.</string>
+    <string name="discovery_status_found_many">Found %1$d bridges. Using %2$s as the default host.</string>
+    <string name="discovery_status_none">No nearby NovaAdapt bridge responded on port 9797.</string>
+    <string name="discovery_status_failed">Bridge discovery failed: %1$s</string>
+    <string name="scan_prompt">Scan the NovaAdapt pairing QR from your desktop.</string>
 </resources>

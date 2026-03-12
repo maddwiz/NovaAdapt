@@ -77,7 +77,8 @@ Recommended flow for non-technical users:
 1. Open the realtime console on the desktop machine that already has bridge admin access.
 2. Fill the `Mobile Pairing` card and click `Generate Pairing`.
 3. Open the generated deep link on Android or copy the pairing code into the native operator app.
-4. The Android shell imports the manifest, stores the connection settings, and opens the operator console automatically.
+4. If the user is on the same LAN but not yet paired, the Android shell can use `Discover Nearby` to locate the bridge and prefill the host automatically.
+5. The Android shell imports the manifest, stores the connection settings, and opens the operator console automatically.
 
 ## Notes
 

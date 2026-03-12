@@ -8,6 +8,8 @@ This is a native Android WebView shell for NovaAdapt's bundled operator console.
 - persists bridge/websocket/operator identity values in Android `SharedPreferences`
 - injects those values into the console via query-parameter bootstrap
 - imports pairing manifests from shared text, deep links, pasted codes, or raw JSON
+- scans desktop-generated pairing QR codes in-app
+- can discover nearby bridges on the local network and prefill the host settings
 - supports auto-connect on launch for dedicated operator devices
 
 ## Import
