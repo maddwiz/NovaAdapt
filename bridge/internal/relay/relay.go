@@ -347,6 +347,33 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.writeJSON(w, statusCode, revoked)
 		return
 	}
+	if r.URL.Path == "/auth/pair" {
+		if r.Method != http.MethodPost {
+			statusCode = http.StatusMethodNotAllowed
+			h.writeJSON(w, statusCode, map[string]any{"error": "Method not allowed", "request_id": requestID})
+			return
+		}
+		if !auth.hasScope(scopeAdmin) {
+			statusCode = http.StatusForbidden
+			h.writeJSON(w, statusCode, map[string]any{"error": "Forbidden", "request_id": requestID})
+			return
+		}
+		body, err := h.readBody(r)
+		if err != nil {
+			statusCode = http.StatusBadRequest
+			h.writeJSON(w, statusCode, map[string]any{"error": err.Error(), "request_id": requestID})
+			return
+		}
+		pairing, err := h.handleIssuePairingPayload(body, auth, requestID, r)
+		if err != nil {
+			statusCode = http.StatusBadRequest
+			h.writeJSON(w, statusCode, map[string]any{"error": err.Error(), "request_id": requestID})
+			return
+		}
+		statusCode = http.StatusOK
+		h.writeJSON(w, statusCode, pairing)
+		return
+	}
 	if r.URL.Path == "/auth/devices" {
 		if !auth.hasScope(scopeAdmin) {
 			statusCode = http.StatusForbidden
@@ -1063,6 +1090,24 @@ func (h *Handler) clientRateKey(r *http.Request) string {
 
 func canonicalOrigin(origin string) string {
 	return strings.TrimRight(strings.ToLower(strings.TrimSpace(origin)), "/")
+}
+
+func (h *Handler) publicBridgeURLs(r *http.Request) (string, string) {
+	scheme := h.requestScheme(r)
+	host := strings.TrimSpace(r.Host)
+	if host == "" {
+		host = strings.TrimSpace(r.URL.Host)
+	}
+	if host == "" {
+		host = "127.0.0.1"
+	}
+	httpURL := scheme + "://" + host
+	wsScheme := "ws"
+	if scheme == "https" {
+		wsScheme = "wss"
+	}
+	wsURL := wsScheme + "://" + host + "/ws"
+	return httpURL, wsURL
 }
 
 func (h *Handler) isRateLimited(r *http.Request, now time.Time) bool {

@@ -80,6 +80,7 @@ Secure relay service for remote clients (phone/glasses) to reach NovaAdapt core.
   - `POST /check`
 - `GET /ws` (WebSocket upgrade; requires bridge auth)
 - `POST /auth/session` (issue scoped short-lived bridge session token; admin only)
+- `POST /auth/pair` (issue a long-lived mobile pairing manifest + deep link; admin only)
 - `POST /auth/session/revoke` (revoke a scoped session token; admin only)
 
 ## Auth Model
@@ -91,6 +92,29 @@ Bridge supports two token modes:
 
 `POST /auth/session` requires admin auth (static token, or session token with `admin` scope).
 For cross-origin browser clients, set `--cors-allowed-origins` (or `NOVAADAPT_BRIDGE_CORS_ALLOWED_ORIGINS`).
+
+`POST /auth/pair` is the plug-and-play onboarding endpoint for operator phones. It returns:
+
+- a long-lived operator session token
+- an optional admin session token
+- `bridge_http_url` and `ws_url`
+- a base64url pairing code
+- a `novaadapt://pair?payload=...` deep link that the Android operator app can import directly
+
+Example request:
+
+```json
+{
+  "subject": "android-operator",
+  "device_id": "pixel-operator",
+  "ttl_seconds": 2592000,
+  "auto_connect": true,
+  "include_admin_token": true,
+  "auto_allowlist": true
+}
+```
+
+When bridge device allowlisting is enabled, `auto_allowlist` can automatically enroll the target phone device id while leaving the desktop admin caller untouched.
 
 Request body (all fields optional):
 

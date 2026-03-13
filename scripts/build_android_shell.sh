@@ -15,7 +15,7 @@ SIGNING_ENV_FILE="${NOVAADAPT_ANDROID_SIGNING_ENV:-$SIGNING_ENV_DEFAULT}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    debug|release|bundle|all)
+    debug|release|bundle|all|test|verify)
       MODE="$1"
       ;;
     --no-generate-keystore)
@@ -108,6 +108,12 @@ chmod +x ./gradlew
 case "$MODE" in
   debug)
     ./gradlew assembleDebug --console=plain
+    ;;
+  test)
+    ./gradlew testDebugUnitTest --console=plain
+    ;;
+  verify)
+    ./gradlew testDebugUnitTest assembleDebug --console=plain
     ;;
   release)
     ensure_keystore

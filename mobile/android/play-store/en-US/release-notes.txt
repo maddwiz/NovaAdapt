@@ -1,0 +1,6 @@
+NovaAdapt Operator launch build
+
+- one-scan pairing with QR and deep-link import
+- nearby bridge discovery on local networks
+- live remote operator console and approvals
+- bridge, vision, mobile, terminal, and IoT controls

@@ -3,6 +3,7 @@
 NovaAdapt now has the full repo-side path for Android operator release builds:
 
 - local debug/release/AAB build via `scripts/build_android_shell.sh`
+- Play listing bundle packaging via `scripts/package_play_store_kit.sh`
 - GitHub Actions debug build via `.github/workflows/android-shell.yml`
 - GitHub Actions Play upload via `.github/workflows/android-play.yml`
 - release workflow integration via `.github/workflows/release.yml`
@@ -13,6 +14,7 @@ NovaAdapt now has the full repo-side path for Android operator release builds:
 - local upload keystore generation is handled by `scripts/build_android_shell.sh`
 - signed release APK/AAB builds are working locally
 - GitHub repo secrets can be bootstrapped from the local keystore with `scripts/configure_android_github_secrets.sh`
+- Play listing copy, privacy policy HTML, and release checklist live in `mobile/android/play-store`
 
 ## What Still Requires The Operator
 
@@ -46,6 +48,20 @@ cd /Users/desmondpottle/Documents/New project/NovaAdapt
 - workflow: `android-play`
 - input `track`: `internal`, `alpha`, `beta`, `production`
 - input `status`: typically `completed`
+
+5. Package the listing bundle for handoff/review:
+
+```bash
+cd /Users/desmondpottle/Documents/New project/NovaAdapt
+./scripts/package_play_store_kit.sh
+```
+
+That emits a zip in `dist/` containing:
+
+- Play listing copy
+- privacy policy HTML
+- release checklist
+- the latest built APK/AAB if present
 
 ## Secret Inventory
 

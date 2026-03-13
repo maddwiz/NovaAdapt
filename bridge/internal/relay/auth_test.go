@@ -1,6 +1,7 @@
 package relay
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -338,6 +339,147 @@ func TestDeviceAllowlistRoutesRequireAdminScope(t *testing.T) {
 	h.ServeHTTP(rrRemove, reqRemove)
 	if rrRemove.Code != http.StatusForbidden {
 		t.Fatalf("expected 403 on /auth/devices/remove for non-admin token, got %d body=%s", rrRemove.Code, rrRemove.Body.String())
+	}
+}
+
+func TestPairingRouteIssuesManifestAndDeepLink(t *testing.T) {
+	h, err := NewHandler(Config{
+		CoreBaseURL: "http://example.com",
+		BridgeToken: "bridge",
+		Timeout:     5 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("new handler: %v", err)
+	}
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/auth/pair",
+		strings.NewReader(`{"subject":"android-user","device_id":"android-operator-1","ttl_seconds":86400,"auto_connect":true}`),
+	)
+	req.Header.Set("Authorization", "Bearer bridge")
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 from /auth/pair, got %d body=%s", rr.Code, rr.Body.String())
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal pairing payload: %v", err)
+	}
+	if status := strings.TrimSpace(toString(payload["status"])); status != "ok" {
+		t.Fatalf("expected status ok, got %#v", payload)
+	}
+	if got := strings.TrimSpace(toString(payload["subject"])); got != "android-user" {
+		t.Fatalf("expected subject android-user, got %#v", payload)
+	}
+	if got := strings.TrimSpace(toString(payload["device_id"])); got != "android-operator-1" {
+		t.Fatalf("expected device_id android-operator-1, got %#v", payload)
+	}
+	pairingCode := strings.TrimSpace(toString(payload["pairing_code"]))
+	pairingURI := strings.TrimSpace(toString(payload["pairing_uri"]))
+	if pairingCode == "" || pairingURI == "" {
+		t.Fatalf("expected pairing code and uri, got %#v", payload)
+	}
+	if !strings.Contains(pairingURI, "novaadapt://pair?payload=") {
+		t.Fatalf("expected pairing uri, got %q", pairingURI)
+	}
+
+	rawManifest, ok := payload["manifest"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected manifest object, got %#v", payload["manifest"])
+	}
+	if got := strings.TrimSpace(toString(rawManifest["bridge_http_url"])); got != "http://example.com" {
+		t.Fatalf("expected bridge_http_url http://example.com, got %#v", rawManifest)
+	}
+	if got := strings.TrimSpace(toString(rawManifest["ws_url"])); got != "ws://example.com/ws" {
+		t.Fatalf("expected ws_url ws://example.com/ws, got %#v", rawManifest)
+	}
+	if strings.TrimSpace(toString(rawManifest["token"])) == "" {
+		t.Fatalf("expected operator token in manifest, got %#v", rawManifest)
+	}
+	if strings.TrimSpace(toString(rawManifest["admin_token"])) == "" {
+		t.Fatalf("expected admin token in manifest, got %#v", rawManifest)
+	}
+
+	decoded, err := base64.RawURLEncoding.DecodeString(pairingCode)
+	if err != nil {
+		t.Fatalf("decode pairing code: %v", err)
+	}
+	var decodedManifest map[string]any
+	if err := json.Unmarshal(decoded, &decodedManifest); err != nil {
+		t.Fatalf("unmarshal decoded pairing code: %v", err)
+	}
+	if got := strings.TrimSpace(toString(decodedManifest["device_id"])); got != "android-operator-1" {
+		t.Fatalf("expected decoded device_id android-operator-1, got %#v", decodedManifest)
+	}
+}
+
+func TestPairingRouteAutoAddsAllowedDevice(t *testing.T) {
+	h, err := NewHandler(Config{
+		CoreBaseURL:      "http://example.com",
+		BridgeToken:      "bridge",
+		AllowedDeviceIDs: []string{"desktop-admin"},
+		Timeout:          5 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("new handler: %v", err)
+	}
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/auth/pair",
+		strings.NewReader(`{"subject":"android-user","device_id":"android-operator-2","include_admin_token":false,"auto_allowlist":true}`),
+	)
+	req.Header.Set("Authorization", "Bearer bridge")
+	req.Header.Set("X-Device-ID", "desktop-admin")
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 from /auth/pair, got %d body=%s", rr.Code, rr.Body.String())
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal pairing payload: %v", err)
+	}
+	if added, ok := payload["added_to_allowlist"].(bool); !ok || !added {
+		t.Fatalf("expected added_to_allowlist=true, got %#v", payload)
+	}
+	if !h.isAllowedDevice("android-operator-2") {
+		t.Fatalf("expected new device to be allowlisted")
+	}
+	rawManifest, ok := payload["manifest"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected manifest object, got %#v", payload["manifest"])
+	}
+	if _, hasAdminToken := rawManifest["admin_token"]; hasAdminToken {
+		t.Fatalf("expected admin token to be omitted when include_admin_token=false, got %#v", rawManifest)
+	}
+}
+
+func TestPairingRouteRequiresAdminScope(t *testing.T) {
+	h, err := NewHandler(Config{
+		CoreBaseURL: "http://example.com",
+		BridgeToken: "bridge",
+		Timeout:     5 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("new handler: %v", err)
+	}
+
+	readToken, _, err := h.issueSessionToken("reader", []string{scopeRead}, "", 120)
+	if err != nil {
+		t.Fatalf("issue read token: %v", err)
+	}
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/auth/pair", strings.NewReader(`{"subject":"android"}`))
+	req.Header.Set("Authorization", "Bearer "+readToken)
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for non-admin token on /auth/pair, got %d body=%s", rr.Code, rr.Body.String())
 	}
 }
 
