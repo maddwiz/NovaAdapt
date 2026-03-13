@@ -113,6 +113,15 @@ func TestRequiredScopeForTerminalAndMemoryRoutes(t *testing.T) {
 	if got := requiredScopeForRoute(http.MethodGet, "/browser/status"); got != scopeRead {
 		t.Fatalf("expected %q scope for browser status, got %q", scopeRead, got)
 	}
+	if got := requiredScopeForRoute(http.MethodGet, "/runtime/governance"); got != scopeRead {
+		t.Fatalf("expected %q scope for runtime governance read, got %q", scopeRead, got)
+	}
+	if got := requiredScopeForRoute(http.MethodPost, "/runtime/governance"); got != scopeRun {
+		t.Fatalf("expected %q scope for runtime governance update, got %q", scopeRun, got)
+	}
+	if got := requiredScopeForRoute(http.MethodPost, "/runtime/jobs/cancel_all"); got != scopeRun {
+		t.Fatalf("expected %q scope for runtime cancel all, got %q", scopeRun, got)
+	}
 }
 
 func TestSessionTokenCannotIssueSessionWithoutAdminScope(t *testing.T) {
