@@ -121,6 +121,8 @@ func TestIsForwardedPathIncludesControlAnythingAndTemplates(t *testing.T) {
 		"/control/artifacts/art-1/preview",
 		"/execute/vision",
 		"/mobile/status",
+		"/runtime/governance",
+		"/runtime/jobs/cancel_all",
 		"/mobile/action",
 		"/iot/homeassistant/entities",
 		"/iot/homeassistant/status",

@@ -1,0 +1,5 @@
+{
+  "repo_root": "/Users/desmondpottle/Documents/New project/NovaAdapt",
+  "origin_url": "https://github.com/maddwiz/NovaAdapt.git",
+  "allowed_branch_prefixes": ["swarm/", "feat/", "fix/", "hotfix/", "release/"]
+}

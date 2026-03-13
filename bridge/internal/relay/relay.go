@@ -64,6 +64,8 @@ var allowedPaths = map[string]struct{}{
 	"/control/artifacts":          {},
 	"/execute/vision":             {},
 	"/mobile/status":              {},
+	"/runtime/governance":         {},
+	"/runtime/jobs/cancel_all":    {},
 	"/mobile/action":              {},
 	"/iot/homeassistant/entities": {},
 	"/iot/homeassistant/status":   {},
